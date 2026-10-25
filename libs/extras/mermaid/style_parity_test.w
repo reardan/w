@@ -142,6 +142,5 @@ void test_style_unsupported_options():
 	asserts(c"unknown theme variable recorded as ignored", ignored.config_ignored != 0 && ignored.config_ignored.length == 1)
 	mm_document_free(ignored)
 	parity_reject(c"---\nconfig:\n  fontSize: 200\n---\nflowchart LR\nA\n", c"fontSize must be 8 to 72 (px)")
-	parity_reject(c"treeView-beta\n  App.tsx icon(fa)\n", c"TreeView icons are not yet supported")
 	parity_reject(c"stateDiagram-v2\n[*]:::hot --> A\nclassDef hot fill:red\n", c"start and end states cannot be styled")
 	parity_reject(c"venn-beta\nset A\nstyle Z fill:red\n", c"style target matches no item")

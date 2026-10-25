@@ -259,15 +259,15 @@ flowchart/flowchart_112.mmd	partial	ok	Font Awesome fa: label prefixes render as
 flowchart/flowchart_113.mmd	partial	ok	Font Awesome fa:/fab: label prefixes render as literal text
 flowchart/flowchart_114.mmd	supported	ok
 gantt/gantt_001.mmd	supported	ok
-gantt/gantt_002.mmd	unsupported	error 14:68: Gantt requires end date, until task or positive duration
-gantt/gantt_003.mmd	unsupported	error 5:37: unknown Gantt dependency
+gantt/gantt_002.mmd	supported	ok
+gantt/gantt_003.mmd	supported	ok
 gantt/gantt_004.mmd	supported	ok
-gantt/gantt_005.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
-gantt/gantt_006.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
-gantt/gantt_007.mmd	unsupported	error 2:21: unsupported Gantt directive or missing task colon
+gantt/gantt_005.mmd	supported	ok
+gantt/gantt_006.mmd	supported	ok
+gantt/gantt_007.mmd	supported	ok
 gantt/gantt_008.mmd	supported	ok
 gantt/gantt_009.mmd	supported	ok
-gantt/gantt_010.mmd	unsupported	error 3:17: unsupported Gantt dateFormat
+gantt/gantt_010.mmd	supported	ok
 gantt/gantt_011.mmd	unsupported	error 8:19: unterminated quoted configuration value
 gitgraph/gitgraph_001.mmd	supported	ok
 gitgraph/gitgraph_002.mmd	supported	ok
@@ -307,8 +307,8 @@ gitgraph/gitgraph_035.mmd	supported	ok
 ishikawa/ishikawa_001.mmd	supported	ok
 kanban/kanban_001.mmd	supported	ok
 kanban/kanban_002.mmd	supported	ok
-kanban/kanban_003.mmd	unsupported	error 23:5: duplicate hierarchy node identifier
-mindmap/mindmap_001.mmd	partial	ok	::icon() names are kept in the model; icon fonts are not drawn
+kanban/kanban_003.mmd	supported	ok
+mindmap/mindmap_001.mmd	supported	ok
 mindmap/mindmap_002.mmd	supported	ok
 mindmap/mindmap_003.mmd	supported	ok
 mindmap/mindmap_004.mmd	supported	ok
@@ -319,9 +319,9 @@ mindmap/mindmap_008.mmd	supported	ok
 mindmap/mindmap_009.mmd	supported	ok
 mindmap/mindmap_010.mmd	supported	ok
 mindmap/mindmap_011.mmd	supported	ok
-mindmap/mindmap_012.mmd	partial	ok	::icon() names are kept in the model; icon fonts are not drawn
+mindmap/mindmap_012.mmd	supported	ok
 mindmap/mindmap_013.mmd	supported	ok
-mindmap/mindmap_014.mmd	unsupported	error 5:7: indentation must match a previous level
+mindmap/mindmap_014.mmd	supported	ok
 mindmap/mindmap_015.mmd	supported	ok
 packet/packet_001.mmd	supported	ok
 packet/packet_002.mmd	supported	ok
@@ -444,7 +444,7 @@ timeline/timeline_002.mmd	supported	ok
 timeline/timeline_003.mmd	supported	ok
 timeline/timeline_004.mmd	supported	ok
 timeline/timeline_005.mmd	supported	ok
-timeline/timeline_006.mmd	unsupported	error 1:10: expected end of diagram header
+timeline/timeline_006.mmd	supported	ok
 timeline/timeline_007.mmd	supported	ok
 timeline/timeline_008.mmd	supported	ok
 timeline/timeline_009.mmd	supported	ok
@@ -462,15 +462,15 @@ treemap/treemap_006.mmd	supported	ok
 treemap/treemap_007.mmd	supported	ok
 treemap/treemap_008.mmd	supported	ok
 treeview/treeView_001.mmd	supported	ok
-treeview/treeView_002.mmd	unsupported	error 3:73: TreeView icons are not yet supported
+treeview/treeView_002.mmd	supported	ok
 treeview/treeView_003.mmd	supported	ok
 treeview/treeView_004.mmd	supported	ok
 treeview/treeView_005.mmd	supported	ok
 treeview/treeView_006.mmd	supported	ok
 treeview/treeView_007.mmd	unsupported	error 9:1: invalid frontmatter key
-treeview/treeView_008.mmd	unsupported	error 3:34: TreeView icons are not yet supported
-treeview/treeView_009.mmd	unsupported	error 8:28: TreeView icons are not yet supported
-treeview/treeView_010.mmd	unsupported	error 4:69: TreeView icons are not yet supported
+treeview/treeView_008.mmd	supported	ok
+treeview/treeView_009.mmd	supported	ok
+treeview/treeView_010.mmd	supported	ok
 treeview/treeView_011.mmd	supported	ok
 treeview/treeView_012.mmd	supported	ok
 treeview/treeView_013.mmd	supported	ok
@@ -508,24 +508,24 @@ venn/venn_006.mmd	supported	ok
 venn/venn_007.mmd	supported	ok
 venn/venn_008.mmd	supported	ok
 wardley/wardley_001.mmd	supported	ok
-wardley/wardley_002.mmd	unsupported	error 3:6: expected Wardley dependency arrow
+wardley/wardley_002.mmd	supported	ok
 wardley/wardley_003.mmd	supported	ok
 wardley/wardley_004.mmd	supported	ok
 wardley/wardley_005.mmd	supported	ok
 wardley/wardley_006.mmd	supported	ok
 wardley/wardley_007.mmd	supported	ok
-wardley/wardley_008.mmd	unsupported	error 8:40: unsupported Wardley decorator; supported: build, buy, outsource, inertia
-wardley/wardley_009.mmd	unsupported	error 11:11: expected Wardley dependency arrow
+wardley/wardley_008.mmd	supported	ok
+wardley/wardley_009.mmd	supported	ok
 wardley/wardley_010.mmd	supported	ok
 wardley/wardley_011.mmd	supported	ok
 wardley/wardley_012.mmd	supported	ok
 wardley/wardley_013.mmd	supported	ok
 wardley/wardley_014.mmd	supported	ok
 wardley/wardley_015.mmd	supported	ok
-wardley/wardley_016.mmd	unsupported	error 11:13: expected Wardley dependency arrow
-wardley/wardley_017.mmd	unsupported	error 11:27: expected Wardley dependency arrow
-wardley/wardley_018.mmd	unsupported	error 3:6: expected Wardley dependency arrow
-wardley/wardley_019.mmd	unsupported	error 3:6: expected Wardley dependency arrow
+wardley/wardley_016.mmd	supported	ok
+wardley/wardley_017.mmd	supported	ok
+wardley/wardley_018.mmd	supported	ok
+wardley/wardley_019.mmd	supported	ok
 xychart/xyChart_001.mmd	supported	ok
 xychart/xyChart_002.mmd	supported	ok
 xychart/xyChart_003.mmd	supported	ok

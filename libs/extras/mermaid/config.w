@@ -819,9 +819,9 @@ int mm_config_scalar_entry(mm_document* d, mm_config_entry* e):
 #   b boolean; i LOW HIGH integer; m LOW HIGH decimal in thousandths;
 #   e A|B|C enumeration; c color; s N string of at most N bytes;
 #   d duration (1day, 2week, ...); k sankey linkColor (enumeration or color);
-#   L list of colors; M mapping of colors.
+#   L list of colors; M mapping of colors; N mapping of names (icon maps).
 char* mm_config_specs():
-	return c"wrap b\nsequence.mirrorActors b\nsequence.actorMargin i 0 1000\nsequence.width i 20 2000\nsequence.height i 20 75\nsequence.messageAlign e left|center|right\nsequence.showSequenceNumbers b\nsequence.wrap b\nsequence.activationWidth i 1 200\nsequence.diagramMarginX i 0 1000\ngantt.barHeight i 4 200\ngantt.barGap i 0 200\ngantt.topAxis b\ngantt.tickInterval d\ngantt.displayMode e compact|\ngantt.axisFormat s 64\ngantt.weekday e monday|tuesday|wednesday|thursday|friday|saturday|sunday\ngantt.leftPadding i 0 1000\nxyChart.width i 100 5000\nxyChart.height i 100 5000\nxyChart.chartOrientation e vertical|horizontal\nxyChart.showDataLabel b\nxyChart.showTitle b\nxyChart.showLegend b\nxyChart.xAxis.showLabel b\nxyChart.xAxis.showTitle b\nxyChart.xAxis.showAxisLine b\nxyChart.yAxis.showLabel b\nxyChart.yAxis.showTitle b\nxyChart.yAxis.showTick b\nxyChart.yAxis.showAxisLine b\nsankey.showValues b\nsankey.nodeAlignment e left|right|center|justify\nsankey.linkColor k\nsankey.prefix s 32\nsankey.suffix s 32\nsankey.nodeWidth i 1 200\nsankey.nodePadding i 0 500\nsankey.width i 100 5000\nsankey.height i 100 5000\nsankey.nodeColors M\nradar.width i 100 5000\nradar.height i 100 5000\nradar.marginTop i 0 1000\nradar.marginRight i 0 1000\nradar.marginBottom i 0 1000\nradar.marginLeft i 0 1000\nradar.axisScaleFactor m 0 10000\nradar.axisLabelFactor m 0 10000\nradar.curveTension m 0 1000\ntimeline.disableMulticolor b\ntimeline.width i 20 2000\ntimeline.sectionFills L\ngitGraph.showBranches b\ngitGraph.showCommitLabel b\ngitGraph.mainBranchName s 64\ngitGraph.mainBranchOrder i 0 1000000\ngitGraph.parallelCommits b\nrailroad.showMarkers b\nrailroad.horizontalSeparation i 0 200\nrailroad.verticalSeparation i 0 200\nrailroad.strokeWidth i 1 16\nrailroad.terminalFill c\nrailroad.terminalStroke c\nrailroad.nonTerminalFill c\nrailroad.nonTerminalStroke c\nrailroad.lineColor c\nrequirement.rect_min_width i 0 2000\nrequirement.rect_min_height i 0 2000\nc4.c4ShapeInRow i 1 100\nc4.c4BoundaryInRow i 1 100\n"
+	return c"wrap b\nsequence.mirrorActors b\nsequence.actorMargin i 0 1000\nsequence.width i 20 2000\nsequence.height i 20 75\nsequence.messageAlign e left|center|right\nsequence.showSequenceNumbers b\nsequence.wrap b\nsequence.activationWidth i 1 200\nsequence.diagramMarginX i 0 1000\ngantt.barHeight i 4 200\ngantt.barGap i 0 200\ngantt.topAxis b\ngantt.tickInterval d\ngantt.displayMode e compact|\ngantt.axisFormat s 64\ngantt.weekday e monday|tuesday|wednesday|thursday|friday|saturday|sunday\ngantt.leftPadding i 0 1000\nxyChart.width i 100 5000\nxyChart.height i 100 5000\nxyChart.chartOrientation e vertical|horizontal\nxyChart.showDataLabel b\nxyChart.showTitle b\nxyChart.showLegend b\nxyChart.xAxis.showLabel b\nxyChart.xAxis.showTitle b\nxyChart.xAxis.showAxisLine b\nxyChart.yAxis.showLabel b\nxyChart.yAxis.showTitle b\nxyChart.yAxis.showTick b\nxyChart.yAxis.showAxisLine b\nsankey.showValues b\nsankey.nodeAlignment e left|right|center|justify\nsankey.linkColor k\nsankey.prefix s 32\nsankey.suffix s 32\nsankey.nodeWidth i 1 200\nsankey.nodePadding i 0 500\nsankey.width i 100 5000\nsankey.height i 100 5000\nsankey.nodeColors M\nradar.width i 100 5000\nradar.height i 100 5000\nradar.marginTop i 0 1000\nradar.marginRight i 0 1000\nradar.marginBottom i 0 1000\nradar.marginLeft i 0 1000\nradar.axisScaleFactor m 0 10000\nradar.axisLabelFactor m 0 10000\nradar.curveTension m 0 1000\ntimeline.disableMulticolor b\nmindmap.colorBy e branch|depth\ntreeView.showIcons b\ntreeView.rowIndent i 0 200\ntreeView.lineThickness i 1 16\ntreeView.defaultIconPack s 64\ntreeView.filenameIcons N\ntreeView.extensionIcons N\nthemeVariables.treeView.labelColor c\nthemeVariables.treeView.lineColor c\nthemeVariables.treeView.descriptionColor c\nthemeVariables.treeView.iconColor c\nthemeVariables.treeView.highlightStroke c\nthemeVariables.treeView.highlightBg s 64\ntimeline.width i 20 2000\ntimeline.sectionFills L\ngitGraph.showBranches b\ngitGraph.showCommitLabel b\ngitGraph.mainBranchName s 64\ngitGraph.mainBranchOrder i 0 1000000\ngitGraph.parallelCommits b\nrailroad.showMarkers b\nrailroad.horizontalSeparation i 0 200\nrailroad.verticalSeparation i 0 200\nrailroad.strokeWidth i 1 16\nrailroad.terminalFill c\nrailroad.terminalStroke c\nrailroad.nonTerminalFill c\nrailroad.nonTerminalStroke c\nrailroad.lineColor c\nrequirement.rect_min_width i 0 2000\nrequirement.rect_min_height i 0 2000\nc4.c4ShapeInRow i 1 100\nc4.c4BoundaryInRow i 1 100\n"
 
 # The spec of key (owned), or null when the key is not supported.
 char* mm_config_spec(char* key):
@@ -850,7 +850,7 @@ int mm_in_words_config(char* key, char* words):
 
 # Family sections whose configuration must be a mapping.
 int mm_config_section(char* key):
-	return mm_in_words_config(key, c"|packet|themeVariables|flowchart|kanban|sequence|gantt|xyChart|sankey|radar|timeline|gitGraph|railroad|requirement|c4|xyChart.xAxis|xyChart.yAxis|sankey.nodeColors|")
+	return mm_in_words_config(key, c"|packet|themeVariables|flowchart|kanban|sequence|gantt|xyChart|sankey|radar|timeline|gitGraph|railroad|requirement|c4|xyChart.xAxis|xyChart.yAxis|sankey.nodeColors|mindmap|treeView|treeView.filenameIcons|treeView.extensionIcons|themeVariables.treeView|")
 
 # Decimal number (optional sign and up to three fraction digits), else 0.
 int mm_config_decimal(char* value, int integer):
@@ -898,16 +898,7 @@ int mm_config_duration(char* value):
 	return strcmp(unit, c"millisecond") == 0 || strcmp(unit, c"second") == 0 || strcmp(unit, c"minute") == 0 || strcmp(unit, c"hour") == 0 || strcmp(unit, c"day") == 0 || strcmp(unit, c"week") == 0 || strcmp(unit, c"month") == 0
 
 void mm_config_store(mm_document* d, char* key, char* value):
-	if (d.config == 0): d.config = new list[mm_property*]
-	for mm_property* property in d.config:
-		if (strcmp(property.key, key) == 0):
-			free(property.value)
-			property.value = strclone(value)
-			return
-	mm_property* property = new mm_property()
-	property.key = strclone(key)
-	property.value = strclone(value)
-	d.config.push(property)
+	mm_config_set(d, key, value)
 
 # A later list or color mapping replaces an earlier one as a whole.
 void mm_config_clear_children(mm_document* d, char* key):
@@ -942,9 +933,10 @@ void mm_config_invalid(mm_document* d, mm_config_entry* e, char* key, char* text
 void mm_config_typed(mm_document* d, mm_config_entry* e, char* key, char* spec):
 	char* value = e.value
 	int kind = spec[0]
-	if (kind == 'L' || kind == 'M'):
+	if (kind == 'L' || kind == 'M' || kind == 'N'):
 		if (kind == 'L' && e.map != 2): mm_config_invalid(d, e, key, c" must be a list of colors")
 		else if (kind == 'M' && e.map != 1): mm_config_invalid(d, e, key, c" must be a mapping of colors")
+		else if (kind == 'N' && e.map != 1): mm_config_invalid(d, e, key, c" must be a mapping of icon names")
 		else: mm_config_clear_children(d, key)
 		return
 	if (mm_config_scalar_entry(d, e) == 0): return
@@ -1019,9 +1011,12 @@ int mm_config_member(mm_document* d, mm_config_entry* e, char* key):
 	if (spec == 0): return 0
 	int kind = spec[0]
 	free(spec)
-	if (kind != 'L' && kind != 'M'): return 0
+	if (kind != 'L' && kind != 'M' && kind != 'N'): return 0
 	if (mm_config_scalar_entry(d, e)):
-		if (mm_style_color(e.value) >= 0): mm_config_store(d, key, e.value)
+		if (kind == 'N'):
+			if (e.value[0] == 0 || strlen(e.value) > 64): mm_config_invalid(d, e, key, c" requires an icon name")
+			else: mm_config_store(d, key, e.value)
+		else if (mm_style_color(e.value) >= 0): mm_config_store(d, key, e.value)
 		else: mm_config_invalid(d, e, key, c" requires #RGB, #RRGGBB or a supported color name")
 	return 1
 

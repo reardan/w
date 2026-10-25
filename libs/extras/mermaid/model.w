@@ -150,8 +150,10 @@ struct mm_narrative_event:
 	# Sequence central connections `()`: bit 1 at the sender, bit 2 at the receiver.
 	int central
 
-# Gantt calendar settings. Units are days, or minutes when the date format
-# has a time of day. Excluded and included day lists are sorted and unique.
+# Gantt calendar settings. Units are days (minutes = 0), minutes (1) when the
+# date format has a time of day or a task needs sub-day durations, or seconds
+# (2) when it has second or Unix-timestamp tokens. Moments are UTC wall-clock
+# values since 1970-01-01. Excluded and included day lists are sorted and unique.
 struct mm_gantt_settings:
 	char* date_format
 	char* axis_format
@@ -162,6 +164,19 @@ struct mm_gantt_settings:
 	list[int] excluded
 	list[int] included
 	int today
+	# A day-unit chart was promoted to minutes by a sub-day duration.
+	int promoted
+	# `weekday`: first day of week ticks, 0 = Sunday (upstream default).
+	int week_start
+	# Valid `tickInterval`: count and unit (1 ms ... 7 month); 0 = automatic.
+	int tick_count
+	int tick_unit
+	# `displayMode: compact` packs non-overlapping tasks of a section into rows.
+	int compact
+	# `inclusiveEndDates`: explicit end dates include their whole last day.
+	int inclusive
+	# `topAxis`: axis labels above the chart as well as below it.
+	int top_axis
 
 const int MM_CURVE_STEP = 1
 const int MM_CURVE_LINEAR = 2
@@ -536,6 +551,25 @@ char* mm_config_value(mm_document* d, char* key):
 	for mm_property* property in d.config:
 		if (strcmp(property.key, key) == 0): return property.value
 	return 0
+
+# Sets (or replaces) a resolved value. config.w stores validated
+# configuration here; family parsers store the diagram's own settings under
+# the same key (`timeline TD` as "timeline.direction", Wardley `size` as
+# "wardley.size"), so a diagram directive wins over configuration.
+void mm_config_set(mm_document* d, char* key, char* value):
+	if (d.config == 0): d.config = new list[mm_property*]
+	for mm_property* property in d.config:
+		if (strcmp(property.key, key) == 0):
+			free(property.value)
+			property.value = strclone(value)
+			return
+	if (d.config.length >= MM_MAX_ITEMS):
+		mm_error(d, d.source_start, c"configuration limit exceeded")
+		return
+	mm_property* property = new mm_property()
+	property.key = strclone(key)
+	property.value = strclone(value)
+	d.config.push(property)
 
 int mm_config_has(mm_document* d, char* key):
 	return mm_config_value(d, key) != 0

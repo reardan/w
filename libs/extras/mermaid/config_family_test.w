@@ -204,7 +204,7 @@ void test_gantt_configuration():
 	asserts(c"bottom axis label", bottom.y > 300)
 	mm_scene_free(s)
 	mm_scene_free(plain)
-	fam_reject(c"%%{init: {'gantt': {'axisFormat': '%Q'}}}%%\ngantt\nA : 2024-01-01, 1d\n", c"unsupported Gantt axisFormat")
+	fam_reject(c"%%{init: {'gantt': {'axisFormat': '%K'}}}%%\ngantt\nA : 2024-01-01, 1d\n", c"unsupported Gantt axisFormat")
 	fam_reject(c"%%{init: {'gantt': {'displayMode': 'wide'}}}%%\ngantt\nA : 2024-01-01, 1d\n", c"gantt.displayMode must be one of: compact, ")
 
 int fam_fill(mm_scene* s, int index):
@@ -219,14 +219,16 @@ int fam_fill(mm_scene* s, int index):
 
 void test_timeline_configuration():
 	char* body = c"timeline\nsection One\n2020 : a\nsection Two\n2021 : b\n"
+	# Multicolour is upstream's default (disableMulticolor: false): one light
+	# colour per section, repainted from cScale by themes.
 	mm_scene* plain = fam_scene(body)
-	assert_equal(-1, fam_fill(plain, 0))
+	assert_equal(0xdbeafe, fam_fill(plain, 0))
 	mm_bounds* period = plain.nodes[0]
 	assert_equal(170, period.w)
 	mm_scene* s = fam_configured(c"{'timeline': {'disableMulticolor': false}}", body)
-	assert_equal(mm_style_series_color(0), fam_fill(s, 0))
-	assert_equal(mm_style_series_color(0), fam_fill(s, 1))
-	assert_equal(mm_style_series_color(1), fam_fill(s, 2))
+	assert_equal(0xdbeafe, fam_fill(s, 0))
+	assert_equal(0xdbeafe, fam_fill(s, 1))
+	assert_equal(0xfee2e2, fam_fill(s, 2))
 	mm_scene_free(s)
 	s = fam_configured(c"{'timeline': {'disableMulticolor': true}}", body)
 	assert_equal(-1, fam_fill(s, 0))

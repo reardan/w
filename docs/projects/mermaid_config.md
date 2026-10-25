@@ -129,8 +129,8 @@ key switches to the upstream meaning.
 | --- | --- | --- |
 | `barHeight`, `barGap` | integers 4–200 and 0–200 | Bar height and row pitch (`barHeight + barGap`), with a header gap before each section; unset keeps 30 px bars on an 85 px pitch |
 | `displayMode` | `compact` or empty | Packs non-overlapping tasks of a section into shared rows, labels drawn on the bars |
-| `tickInterval` | count + `millisecond`/`second`/`minute`/`hour`/`day`/`week`/`month` | Axis ticks every interval; months are calendar months, weeks start on `weekday`, at most 1000 ticks (a finer interval coarsens) |
-| `weekday` | `monday` … `sunday` (default `sunday`) | First day of weekly ticks |
+| `tickInterval` | count + `millisecond`/`second`/`minute`/`hour`/`day`/`week`/`month` | Axis ticks on unit boundaries whose calendar field is a multiple of the count, as d3's `interval.every` (`3day`: the 1st, 4th, ... of each month; weeks counted from 1970 and starting on `weekday`); more than 200 ticks falls back to automatic ticks; the `tickInterval` statement wins |
+| `weekday` | `monday` … `sunday` (default `sunday`) | First day of weekly ticks; the `weekday` statement wins |
 | `topAxis` | boolean | Natively the axis is at the top; `true` adds upstream's bottom axis, `false` keeps only the bottom one |
 | `axisFormat` | strftime string (the `axisFormat` tokens) | Axis label format; the `axisFormat` statement wins |
 | `leftPadding` | integer 0–1000, native 180 | Minimum width of the task label column |
@@ -139,9 +139,27 @@ key switches to the upstream meaning.
 
 | Key | Values | Effect |
 | --- | --- | --- |
-| `disableMulticolor` | boolean, native default true | `false` colors each section (or each period without sections) from the series palette |
+| `disableMulticolor` | boolean, default false (upstream) | Multicolour colors each section (or each period outside a section) with a light series colour that themes repaint from `cScale`; `true` draws plain boxes |
 | `sectionFills` | list of colors | Section colors, cycled; implies multicolor |
 | `width` | integer 20–2000, native 170 | Minimum period column width |
+
+### Mindmap (`mindmap.*`)
+
+| Key | Values | Effect |
+| --- | --- | --- |
+| `colorBy` | `branch` (default) or `depth` | Node colour series: the root's child each node descends from, or its depth |
+
+### TreeView (`treeView.*`, `themeVariables.treeView.*`)
+
+| Key | Values | Effect |
+| --- | --- | --- |
+| `showIcons` | boolean | Adds folder icons for directories and file icons otherwise |
+| `rowIndent` | integer 0–200, native 36 | Indent per level (at least 12 px) |
+| `lineThickness` | integer 1–16 | Connector width (at most 8 px) |
+| `defaultIconPack` | string | Kept; icon packs are never fetched |
+| `filenameIcons`, `extensionIcons` | mapping of names to icon names | Icons by whole file name or extension (extension keys such as `.ts` need dotted YAML keys, which are not accepted yet) |
+| `themeVariables.treeView.labelColor`, `lineColor`, `descriptionColor`, `iconColor`, `highlightStroke` | colors | Label, connector, description, icon and `highlight` outline colours |
+| `themeVariables.treeView.highlightBg` | any CSS value | `highlight` row fill when it is a plain colour (native tint otherwise) |
 
 ### XY chart (`xyChart.*`)
 

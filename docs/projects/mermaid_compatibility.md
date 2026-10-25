@@ -51,12 +51,12 @@ Details and exact restrictions: [Graph and workflow families](mermaid_graph_fami
 | Family / headers | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
 | Requirement — `requirementDiagram` | Six requirement types, elements, validated properties, seven relation kinds, forward-reference validation | Rich Markdown and full configuration | [requirements.mmd](../../examples/mermaid/requirements.mmd) |
-| Mindmap — `mindmap` | Single indentation tree, plain/square/rounded/circle/cloud/bang/hexagon nodes, icon names, CSS class names, subtree layout | Icon fonts, class-driven styling and ambiguous-indentation heuristics | [mindmap.mmd](../../examples/mermaid/mindmap.mmd) |
-| Kanban — `kanban` | Columns/cards, generated or explicit IDs, assignment/ticket/priority metadata, column layout, `ticketBaseUrl` links, nested cards flattened into their column as upstream | Column metadata and other kanban configuration | [kanban.mmd](../../examples/mermaid/kanban.mmd) |
-| TreeView — `treeView-beta` | Indented forests, quoted/Unicode labels, `tree`-command prefixes, `##` descriptions, source-ordered rows and ancestry connectors | Icons | [treeview.mmd](../../examples/mermaid/treeview.mmd) |
+| Mindmap — `mindmap` | Single indentation tree, plain/square/rounded/circle/cloud/bang/hexagon nodes, native icon pictograms (no font download), CSS class names, upstream nearest-shallower-parent indentation, branch/depth colours, subtree layout | Class-driven styling and icon-pack glyph fidelity | [mindmap.mmd](../../examples/mermaid/mindmap.mmd) |
+| Kanban — `kanban` | Columns/cards, generated or explicit IDs, assignment/ticket/priority metadata, column layout, `ticketBaseUrl` links, nested cards flattened into their column as upstream, column metadata and `label` overrides, repeated IDs | Other kanban configuration (`sectionWidth`, …) | [kanban.mmd](../../examples/mermaid/kanban.mmd) |
+| TreeView — `treeView-beta` | Indented forests, quoted/Unicode labels, `tree`-command prefixes, `##` descriptions, source-ordered rows and ancestry connectors, `icon(...)` pictograms, `showIcons` folder/file icons and filename maps, `:::` classes with `highlight`, row/line config and treeView theme colours | Extension icon maps (dotted YAML keys) and icon-pack glyphs | [treeview.mmd](../../examples/mermaid/treeview.mmd) |
 | Ishikawa — `ishikawa-beta` | Upstream fishbone geometry: fish-head problem, 82° cause bones sharing a 500px length pool, alternating upper/lower pairs, alternating horizontal/diagonal sub-cause bones, 15-character label wrapping and arrowheads | Theme/configuration parity | [ishikawa.mmd](../../examples/mermaid/ishikawa.mmd) |
 | Cynefin — `cynefin-beta` | Upstream 800×600 field: unstroked quadrants, seeded wavy fold/boundary, Clear/Chaotic cliff, central Confusion ellipse (three badges plus "+N more"), domain models/practices, item badges and quadratic transitions with labels (self-loops skipped) | Theme/configuration parity (including `seed`) and dense transition routing | [cynefin.mmd](../../examples/mermaid/cynefin.mmd) |
-| Wardley — `wardley-beta` | Anchors/components, normalized coordinates, forward dependencies, custom evolution stages, `evolve` arrows, notes, pipelines, label offsets, build/buy/outsource and inertia decorators | Flows (`+>`, `limited by`), market/ecosystem/submap, annotations, accelerators and `evolve` renaming | [wardley.mmd](../../examples/mermaid/wardley.mmd) |
+| Wardley — `wardley-beta` | Anchors/components, normalized coordinates, forward dependencies, custom evolution stages, `evolve` arrows, notes, pipelines, label offsets, build/buy/outsource/market and inertia decorators, `size`, `@` stage boundaries and two-line stages, flows (`+>`, `+<`, `+<>`, labelled `+'x'>`), dashed and `; label` links, annotations with legend, accelerators/deaccelerators | `limited by`, `(ecosystem)`, `submap`, `evolve` renaming (absent from 12.2.0's grammar) and trend indicators | [wardley.mmd](../../examples/mermaid/wardley.mmd) |
 | GitGraph — `gitGraph` | Branch heads, commits/types/tags, checkout/switch, merges, cherry-picks with validated merge parents, branch order, LR/TB/BT layouts | Branch configuration and upstream geometry | [history.mmd](../../examples/mermaid/history.mmd) |
 | Block — `block`, `block-beta` | Grid columns/spans, spaces, nested composites, the full block shape set, block arrows, labelled solid links and `style`/`classDef`/`class`/`linkStyle` | Dotted and thick links | [blocks.mmd](../../examples/mermaid/blocks.mmd) |
 | Architecture — `architecture-beta` | Services/groups/junctions, built-in icons and `pack:name` icons with a native glyph/unknown-icon fallback (never fetched), all port pairs and arrowheads, `{group}` edge endpoints, `align row`/`align column`, port-pair grid placement with elbow routing | fcose force-directed geometry, edge labels and bundled icon packs | [architecture.mmd](../../examples/mermaid/architecture.mmd) |
@@ -78,9 +78,9 @@ Details: [Ordered diagrams](mermaid_narratives.md).
 | Family / header | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
 | Sequence — `sequenceDiagram` | Participants/actors, `@{ "type": ... }` participant objects (boundary/control/entity/database/collections/queue symbols), aliases, lifecycle, message variants including central `()` connections, entity codes (`#9829;`, `#infin;`), notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes, `rect` highlights, `link`/`links` menus rendered as SVG link boxes, and `properties`/`details` kept in the model | Half-arrows, property-driven icons/CSS classes and other rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
-| Journey — `journey` | Sections, tasks, 1–5 scores, actor lists and source-ordered score plot | Upstream avatar/face rendering, themes and HTML labels | [journey.mmd](../../examples/mermaid/journey.mmd) |
-| Timeline — `timeline` | Sections, ordinal period labels, multiple/continued events, `<br>` line breaks and chronological columns | Other rich labels, configuration and alternative layouts | [timeline.mmd](../../examples/mermaid/timeline.mmd) |
-| Gantt — `gantt` | Validated dates in `YYYY`/`MM`/`DD`/`HH:mm` `dateFormat`s, minute/hour/day/week durations, `excludes`/`includes`/`weekend`, strftime `axisFormat`, fixed-date `todayMarker`, `click` hrefs kept in the model, sequential starts, forward/multiple dependencies, until endpoints and status/milestone marks | Timezones, month/year units, other moment.js tokens, `tickInterval`/`topAxis` and drawn links | [gantt.mmd](../../examples/mermaid/gantt.mmd) |
+| Journey — `journey` | Sections, tasks, 1–5 scores, actor lists, source-ordered score plot with upstream score faces, coloured actor avatars and legend | Theme-driven section colours and HTML labels | [journey.mmd](../../examples/mermaid/journey.mmd) |
+| Timeline — `timeline` | Sections, ordinal period labels, multiple/continued events, `<br>` line breaks, chronological columns, `LR`/`TD` layouts, multicolour sections/periods and `disableMulticolor` | Other rich labels and automatic wrapping | [timeline.mmd](../../examples/mermaid/timeline.mmd) |
+| Gantt — `gantt` | Validated dates in moment.js `dateFormat`s (incl. `Z` offsets as UTC, `X`/`x`, `A`, `Do`, `MMM`), ms–year durations (calendar months), `excludes`/`includes`/`weekend`, d3 `axisFormat`, `tickInterval`/`weekday`, `topAxis`, compact `displayMode`, `vert` markers, `inclusiveEndDates`, fixed-date `todayMarker`, `click` hrefs kept in the model, sequential starts, forward/multiple dependencies, until endpoints and status/milestone marks | Years before 1970, week/era tokens, click callbacks and local-time display (upstream 12.2.0 draws no dependency links either) | [gantt.mmd](../../examples/mermaid/gantt.mmd) |
 | ZenUML — `zenuml` | Participants/actors and `@Annotation` kinds with Boundary/Control/Entity/Database/Collections/Queue symbols, `@Starter`, `@return`/`@reply` dashed replies, aliases, `new` creation (with or without arguments), assignment replies, async/sync/nested and inline-bodied calls, returns, alternatives, loops, try/catch/finally and parallel/optional fragments, `//` Markdown comments above messages and fragments | Icons for other annotation kinds and styles | [zenuml.mmd](../../examples/mermaid/zenuml.mmd) |
 
 Gantt schedules use their actual calendar semantics rather than generic graph
@@ -166,12 +166,12 @@ differ from upstream in layout or detail.
 | er | 23 | 0 | 2 | 25 |
 | eventmodeling | 13 | 0 | 0 | 13 |
 | flowchart | 111 | 4 | 1 | 116 |
-| gantt | 4 | 0 | 7 | 11 |
+| gantt | 10 | 0 | 1 | 11 |
 | gitgraph | 34 | 0 | 2 | 36 |
 | ishikawa | 1 | 0 | 0 | 1 |
 | journey | 1 | 0 | 0 | 1 |
-| kanban | 2 | 0 | 1 | 3 |
-| mindmap | 12 | 2 | 1 | 15 |
+| kanban | 3 | 0 | 0 | 3 |
+| mindmap | 15 | 0 | 0 | 15 |
 | packet | 4 | 0 | 0 | 4 |
 | pie | 4 | 0 | 0 | 4 |
 | quadrant | 3 | 0 | 0 | 3 |
@@ -182,15 +182,15 @@ differ from upstream in layout or detail.
 | sequence | 42 | 0 | 0 | 42 |
 | state | 22 | 0 | 0 | 22 |
 | swimlane | 13 | 0 | 0 | 13 |
-| timeline | 13 | 0 | 1 | 14 |
+| timeline | 14 | 0 | 0 | 14 |
 | treemap | 8 | 0 | 0 | 8 |
-| treeview | 8 | 0 | 5 | 13 |
+| treeview | 12 | 0 | 1 | 13 |
 | usecase | 24 | 0 | 0 | 24 |
 | venn | 8 | 0 | 0 | 8 |
-| wardley | 12 | 0 | 7 | 19 |
+| wardley | 19 | 0 | 0 | 19 |
 | xychart | 8 | 0 | 0 | 8 |
 | zenuml | 16 | 0 | 0 | 16 |
-| **All** | **507** | **6** | **35** | **548** |
+| **All** | **529** | **4** | **15** | **548** |
 
 <!-- corpus-counts:end -->
 

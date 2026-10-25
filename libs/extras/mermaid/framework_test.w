@@ -125,7 +125,7 @@ void test_framework_wardley_normalized_axes_and_dependencies():
 	mm_document_free(d)
 
 void test_framework_invalid_input_and_prefixes():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA:::", c"treeView-beta\nA ::: x.y", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B",c"ishikawa-beta\n"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(a/b)", c"treeView-beta\nA icon(x) icon(y)", c"treeView-beta\nA:::bad!cls", c"treeView-beta\nA:::", c"treeView-beta\nA ::: x.y", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B",c"ishikawa-beta\n"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid framework fails explicitly", d.error != 0)
@@ -280,7 +280,7 @@ void test_framework_wardley_evolution_notes_pipelines_and_decorators():
 	__w_list_free(cast(__w_list*, samples))
 
 void test_framework_wardley_modifier_diagnostics():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [0.5, 0.5] (rent)", c"wardley-beta\ncomponent A [0.5, 0.5] (build) (buy)", c"wardley-beta\ncomponent A [0.5, 0.5] label [1000, 0]", c"wardley-beta\nevolution A -> B -> C", c"wardley-beta\nevolution A -> -> C -> D", c"wardley-beta\nevolution A -> B -> C -> D\nevolution A -> B -> C -> D", c"wardley-beta\nevolve Missing 0.5", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A->B 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A 0.5\nevolve A 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.6, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\nB [0.6]\n}", c"wardley-beta\nnote \"\" [0.1, 0.1]", c"wardley-beta\nnote Text", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.1, 0.2]\npipeline A [0.3, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n}\npipeline B [0.1, 0.2]", c"wardley-beta\nA +> B"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [0.5, 0.5] (rent)", c"wardley-beta\ncomponent A [0.5, 0.5] (build) (buy)", c"wardley-beta\ncomponent A [0.5, 0.5] label [1000, 0]", c"wardley-beta\nevolution A", c"wardley-beta\nevolution A -> -> C -> D", c"wardley-beta\nevolution A -> B -> C -> D\nevolution A -> B -> C -> D", c"wardley-beta\nevolve Missing 0.5", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A->B 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A 0.5\nevolve A 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.6, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\nB [0.6]\n}", c"wardley-beta\nnote \"\" [0.1, 0.1]", c"wardley-beta\nnote Text", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.1, 0.2]\npipeline A [0.3, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n}\npipeline B [0.1, 0.2]", c"wardley-beta\nA +> B"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		if (d.error == 0): println2(text)
@@ -290,7 +290,7 @@ void test_framework_wardley_modifier_diagnostics():
 	__w_list_free(cast(__w_list*, bad))
 	char* text = c"wardley-beta\ncomponent A [0.5, 0.5] (rent)\n"
 	mm_document* d = mm_parse(text, strlen(text))
-	assert_strings_equal(c"unsupported Wardley decorator; supported: build, buy, outsource, inertia", d.error)
+	assert_strings_equal(c"unsupported Wardley decorator; supported: build, buy, outsource, market, inertia", d.error)
 	mm_document_free(d)
 	text = c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}\n"
 	d = mm_parse(text, strlen(text))

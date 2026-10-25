@@ -732,6 +732,14 @@ void mm_n_journey(mm_parser* p, char* text, char* section):
 	free(tail)
 	free(score)
 
+# `timeline LR` (default) or `timeline TD` after the header keyword.
+void mm_n_timeline_header(mm_parser* p):
+	mm_space(p)
+	char* word = mm_identifier(p)
+	if (strcmp(word, c"LR") == 0 || strcmp(word, c"TD") == 0): mm_config_set(p.doc, c"timeline.direction", word)
+	else: mm_error(p.doc, p.pos, c"timeline direction must be LR or TD")
+	free(word)
+
 void mm_n_timeline(mm_parser* p, char* text, char* section):
 	int colon = index_of(text, c":")
 	int end = strlen(text)
@@ -783,18 +791,6 @@ int mm_n_date(char* text):
 	if (year < 0 || month < 0 || day < 0): return -1
 	return mm_n_days(year, month, day)
 
-int mm_n_duration(char* text):
-	int length = strlen(text)
-	if (length < 2): return -1
-	int multiplier = 1
-	if (text[length - 1] == 'w'): multiplier = 7
-	else if (text[length - 1] != 'd'): return -1
-	char* number = str_copy_range(text, 0, length - 1)
-	int result = mm_n_number(number, 365000 / multiplier)
-	free(number)
-	if (result <= 0): return -1
-	return result * multiplier
-
 mm_gantt_settings* mm_n_gantt_settings(mm_document* d):
 	if (d.gantt == 0):
 		mm_gantt_settings* g = new mm_gantt_settings()
@@ -807,94 +803,411 @@ mm_gantt_settings* mm_n_gantt_settings(mm_document* d):
 		d.gantt = g
 	return d.gantt
 
-# Minute-unit charts end at 4000-12-31 so every moment fits a 32-bit int.
+# Minute-unit charts end at 4000-12-31 and second-unit charts at 2037-12-31,
+# so every moment fits a 32-bit int.
 const int MM_N_MINUTE_YEAR_LIMIT = 4000
+const int MM_N_SECOND_YEAR_LIMIT = 2037
+
+# Chart units per day: days, minutes or seconds.
+int mm_n_per_day(mm_gantt_settings* g):
+	if (g.minutes == 1): return 1440
+	if (g.minutes == 2): return 86400
+	return 1
+
+# Seconds per chart unit.
+int mm_n_unit_seconds(mm_gantt_settings* g):
+	if (g.minutes == 1): return 60
+	if (g.minutes == 2): return 1
+	return 86400
+
+int mm_n_year_limit(mm_gantt_settings* g):
+	if (g.minutes == 1): return MM_N_MINUTE_YEAR_LIMIT
+	if (g.minutes == 2): return MM_N_SECOND_YEAR_LIMIT
+	return 9999
 
 int mm_n_unit_limit(mm_gantt_settings* g):
-	if (g.minutes): return (mm_n_days(MM_N_MINUTE_YEAR_LIMIT, 12, 31) + 1) * 1440
-	return mm_n_days(9999, 12, 31)
+	if (g.minutes == 0): return mm_n_days(9999, 12, 31)
+	return (mm_n_days(mm_n_year_limit(g), 12, 31) + 1) * mm_n_per_day(g)
 
+# Civil date of a day number: [year, month, day, day of year (1-based)].
+list[int] mm_n_civil(int days):
+	int year = 1970
+	while (days >= 365 + mm_n_leap(year)):
+		days = days - 365 - mm_n_leap(year)
+		year = year + 1
+	int ordinal = days + 1
+	int month = 1
+	while (month < 12 && days >= mm_n_month_length(year, month)):
+		days = days - mm_n_month_length(year, month)
+		month = month + 1
+	return list[int]{year, month, days + 1, ordinal}
+
+# Calendar month arithmetic as dayjs `add(n, 'M')`: the day clamps to the
+# target month's length. Returns past the unit limit when out of range.
+int mm_n_add_months(mm_gantt_settings* g, int value, int months):
+	int per = mm_n_per_day(g)
+	int limit = mm_n_unit_limit(g) + 1
+	int day = value / per
+	int rest = value % per
+	list[int] civil = mm_n_civil(day)
+	int total = civil[0] * 12 + civil[1] - 1 + months
+	int year = total / 12
+	int month = total % 12 + 1
+	int date = civil[2]
+	__w_list_free(cast(__w_list*, civil))
+	if (year > mm_n_year_limit(g)): return limit
+	if (date > mm_n_month_length(year, month)): date = mm_n_month_length(year, month)
+	int result = mm_n_days(year, month, date)
+	if (result < 0): return limit
+	return result * per + rest
+
+# moment.js/dayjs dateFormat tokens: the token width at format, 0 for a
+# literal byte, -1 for an unsupported token. `Do` and `[...]` are handled
+# by the callers.
 int mm_n_format_token(char* format):
-	if (mm_n_prefix(format, c"YYYY")): return 4
-	if (mm_n_prefix(format, c"MM") || mm_n_prefix(format, c"DD") || mm_n_prefix(format, c"HH") || mm_n_prefix(format, c"mm")): return 2
+	int c = format[0]
+	int run = 1
+	while (format[run] == c && run < 4): run = run + 1
+	if (c == 'Y'):
+		if (run >= 4): return 4
+		if (run >= 2): return 2
+		return -1
+	if (c == 'M' || c == 'D' || c == 'd'):
+		if (c == 'D' && run == 1 && format[1] == 'o'): return 2
+		return run
+	if (c == 'S'):
+		if (run > 3): return 3
+		return run
+	if (c == 'H' || c == 'h' || c == 'k' || c == 'm' || c == 's' || c == 'Z'):
+		if (run > 2): return 2
+		return run
+	if (c == 'A' || c == 'a' || c == 'X' || c == 'x' || c == 'Q'): return 1
+	# Week-based and era tokens are not supported; other letters (such as
+	# the `T` of ISO 8601) are literals, as in moment.js.
+	if (c == 'w' || c == 'W' || c == 'g' || c == 'G' || c == 'E' || c == 'e' || c == 'N' || c == 'n'): return -1
 	return 0
 
-int mm_n_format_slot(int c):
-	if (c == 'M'): return 1
-	if (c == 'D'): return 2
-	if (c == 'H'): return 3
-	if (c == 'm'): return 4
-	return 0
-
-# Returns 0 for a date format, 1 for a minute format, -1 when unsupported.
+# Returns 0 for a date format, 1 for a minute format, 2 for a second format,
+# -1 when unsupported. Date-less formats anchor at 1970-01-01.
 int mm_n_format_kind(char* format):
 	list[int] counts = list[int]{0, 0, 0, 0, 0}
 	int i = 0
 	int valid = 1
-	while (format[i] != 0):
+	int kind = 0
+	int tokens = 0
+	while (format[i] != 0 && valid):
+		if (format[i] == '['):
+			int close = index_of(format + i, c"]")
+			if (close < 0): valid = 0
+			else: i = i + close + 1
+			continue
 		int width = mm_n_format_token(format + i)
-		if (width == 0):
-			if (isalnum(format[i])): valid = 0
+		if (width < 0): valid = 0
+		if (width <= 0):
 			i = i + 1
 			continue
-		int slot = mm_n_format_slot(format[i])
-		counts[slot] = counts[slot] + 1
+		int c = format[i]
+		tokens = tokens + 1
+		if (c == 'Y'): counts[0] = counts[0] + 1
+		if (c == 'M' || c == 'Q'): counts[1] = counts[1] + 1
+		if (c == 'D'): counts[2] = counts[2] + 1
+		if ((c == 'H' || c == 'h' || c == 'k' || c == 'm' || c == 'A' || c == 'a' || c == 'Z') && kind < 1): kind = 1
+		if (c == 's' || c == 'S' || c == 'X' || c == 'x'): kind = 2
+		if (c == 'X' || c == 'x'): counts[3] = counts[3] + 1
 		i = i + width
-	int result = counts[3]
-	if (valid == 0 || counts[0] != 1 || counts[1] != 1 || counts[2] != 1 || counts[3] > 1 || counts[3] != counts[4]): result = -1
+	if (valid == 0 || tokens == 0 || counts[0] > 1 || counts[1] > 1 || counts[2] > 1 || counts[3] > 1): kind = -1
 	__w_list_free(cast(__w_list*, counts))
-	return result
+	return kind
 
-# Parses text with the active dateFormat into chart units, or returns -1.
+# Reads up to `most` (at least `least`) digits at text[*at]; -1 when absent.
+int mm_n_read_digits(char* text, int* at, int least, int most):
+	int value = 0
+	int count = 0
+	while (count < most && text[*at + count] >= '0' && text[*at + count] <= '9'):
+		value = value * 10 + text[*at + count] - '0'
+		count = count + 1
+	if (count < least): return -1
+	*at = *at + count
+	return value
+
+# English month or weekday name (prefix of `length` letters, or the full
+# name when length is 0) at text[*at]; returns the 1-based index or -1.
+int mm_n_read_name(char* text, int* at, list[char*] names, int length):
+	int end = *at
+	while (isalpha(text[end])): end = end + 1
+	int size = end - *at
+	for k in range(names.length):
+		char* name = names[k]
+		int full = strlen(name)
+		int ok = (length == 0 && size == full) || (length > 0 && size == length) || (length < 0 && size >= 2 && size <= full)
+		for j in range(size):
+			if (ok && (j >= full || tolower(text[*at + j]) != tolower(name[j]))): ok = 0
+		if (ok):
+			*at = end
+			return k + 1
+	return -1
+
+# Unix seconds (X, optional fraction) or milliseconds (x) at text[*at];
+# -1 when absent or beyond 2^31 seconds.
+int mm_n_read_unix(char* text, int* at, int milliseconds):
+	int value = 0
+	int count = 0
+	int dropped = 0
+	while (text[*at] >= '0' && text[*at] <= '9'):
+		int digit = text[*at] - '0'
+		int keep = 1
+		if (milliseconds):
+			# The last three digits are the sub-second part.
+			int remaining = 0
+			while (text[*at + 1 + remaining] >= '0' && text[*at + 1 + remaining] <= '9'): remaining = remaining + 1
+			if (remaining < 3): keep = 0
+		if (keep):
+			if (value > (2147483647 - digit) / 10): return -1
+			value = value * 10 + digit
+		else: dropped = dropped + 1
+		count = count + 1
+		*at = *at + 1
+	if (count == 0): return -1
+	if (milliseconds == 0 && text[*at] == '.'):
+		*at = *at + 1
+		if (mm_n_read_digits(text, at, 1, 9) < 0): return -1
+	return value
+
+# Parses text with the active dateFormat into chart units (UTC; an explicit
+# Z/ZZ offset is converted to UTC), or returns -1.
 int mm_n_moment(mm_gantt_settings* g, char* text):
 	char* format = g.date_format
-	list[int] parts = list[int]{0, 0, 0, 0, 0}
+	list[char*] months = list[char*]{c"january", c"february", c"march", c"april", c"may", c"june", c"july", c"august", c"september", c"october", c"november", c"december"}
+	list[char*] weekdays = list[char*]{c"sunday", c"monday", c"tuesday", c"wednesday", c"thursday", c"friday", c"saturday"}
+	# year, month, day, day of year, hour, minute, second, pm, quarter, offset minutes, unix, twelve-hour, k-hour
+	list[int] parts = list[int]{1970, -1, -1, -1, 0, 0, 0, -1, -1, 0, -1, 0, 0}
 	int i = 0
 	int j = 0
 	int valid = 1
 	while (format[i] != 0 && valid):
+		if (format[i] == '['):
+			int close = i + index_of(format + i, c"]")
+			for k in range(i + 1, close):
+				if (valid && text[j] != format[k]): valid = 0
+				if (valid): j = j + 1
+			i = close + 1
+			continue
 		int width = mm_n_format_token(format + i)
-		if (width == 0):
+		if (width <= 0):
 			if (text[j] != format[i]): valid = 0
 			i = i + 1
 			j = j + 1
 			continue
+		int c = format[i]
 		int value = 0
-		for k in range(width):
-			if (valid && (text[j + k] < '0' || text[j + k] > '9')): valid = 0
-			if (valid): value = value * 10 + text[j + k] - '0'
-		parts[mm_n_format_slot(format[i])] = value
+		if (c == 'Y'):
+			value = mm_n_read_digits(text, &j, width, width)
+			if (width == 2 && value >= 0):
+				if (value > 68): value = value + 1900
+				else: value = value + 2000
+			parts[0] = value
+		else if (c == 'M' && width >= 3):
+			int length = 3
+			if (width == 4): length = 0
+			value = mm_n_read_name(text, &j, months, length)
+			parts[1] = value
+		else if (c == 'M'):
+			value = mm_n_read_digits(text, &j, width, 2)
+			parts[1] = value
+		else if (c == 'D' && format[i + 1] == 'o'):
+			value = mm_n_read_digits(text, &j, 1, 2)
+			if (value >= 0 && isalpha(text[j]) && isalpha(text[j + 1])): j = j + 2
+			parts[2] = value
+		else if (c == 'D' && width >= 3):
+			int least = 1
+			if (width == 4): least = 3
+			value = mm_n_read_digits(text, &j, least, 3)
+			parts[3] = value
+		else if (c == 'D'):
+			value = mm_n_read_digits(text, &j, width, 2)
+			parts[2] = value
+		else if (c == 'd'):
+			if (width == 1): value = mm_n_read_digits(text, &j, 1, 1)
+			else: value = mm_n_read_name(text, &j, weekdays, -1)
+		else if (c == 'H' || c == 'h' || c == 'k'):
+			value = mm_n_read_digits(text, &j, width, 2)
+			parts[4] = value
+			if (c == 'h'): parts[11] = 1
+			if (c == 'k'): parts[12] = 1
+		else if (c == 'm'):
+			value = mm_n_read_digits(text, &j, width, 2)
+			parts[5] = value
+		else if (c == 's'):
+			value = mm_n_read_digits(text, &j, width, 2)
+			parts[6] = value
+		else if (c == 'S'): value = mm_n_read_digits(text, &j, width, width)
+		else if (c == 'A' || c == 'a'):
+			value = -1
+			if ((text[j] == 'A' || text[j] == 'a') && (text[j + 1] == 'M' || text[j + 1] == 'm')): value = 0
+			if ((text[j] == 'P' || text[j] == 'p') && (text[j + 1] == 'M' || text[j + 1] == 'm')): value = 1
+			if (value >= 0): j = j + 2
+			parts[7] = value
+		else if (c == 'Q'):
+			value = mm_n_read_digits(text, &j, 1, 1)
+			if (value < 1 || value > 4): value = -1
+			parts[8] = value
+		else if (c == 'X' || c == 'x'):
+			value = mm_n_read_unix(text, &j, c == 'x')
+			parts[10] = value
+		else if (c == 'Z'):
+			value = -1
+			if (text[j] == 'Z'):
+				value = 0
+				j = j + 1
+				parts[9] = 0
+			else if (text[j] == '+' || text[j] == '-'):
+				int sign = 1
+				if (text[j] == '-'): sign = -1
+				j = j + 1
+				int hours = mm_n_read_digits(text, &j, 2, 2)
+				if (text[j] == ':'): j = j + 1
+				int minutes = mm_n_read_digits(text, &j, 2, 2)
+				if (hours >= 0 && minutes >= 0 && hours <= 14 && minutes <= 59):
+					value = 0
+					parts[9] = sign * (hours * 60 + minutes)
+		if (value < 0): valid = 0
 		i = i + width
-		j = j + width
 	if (valid && text[j] != 0): valid = 0
 	int result = -1
-	if (valid && parts[3] <= 23 && parts[4] <= 59): result = mm_n_days(parts[0], parts[1], parts[2])
-	if (result >= 0 && g.minutes):
-		if (parts[0] > MM_N_MINUTE_YEAR_LIMIT): result = -1
-		else: result = result * 1440 + parts[3] * 60 + parts[4]
+	int per = mm_n_per_day(g)
+	if (valid && parts[10] >= 0):
+		# Unix timestamps are UTC seconds since the epoch.
+		result = parts[10] / mm_n_unit_seconds(g)
+	else if (valid):
+		int year = parts[0]
+		int month = parts[1]
+		if (month < 0 && parts[8] > 0): month = (parts[8] - 1) * 3 + 1
+		if (month < 0): month = 1
+		int day = parts[2]
+		if (day < 0): day = 1
+		int hour = parts[4]
+		if (parts[11] || parts[7] >= 0):
+			if (hour < 1 || hour > 12): hour = 99
+			else: hour = hour % 12 + 12 * (parts[7] == 1)
+		if (parts[12] && hour == 24): hour = 0
+		if (hour <= 23 && parts[5] <= 59 && parts[6] <= 59 && year <= mm_n_year_limit(g)):
+			if (parts[3] >= 0):
+				if (parts[3] >= 1 && parts[3] <= 365 + mm_n_leap(year) && year >= 1970): result = mm_n_days(year, 1, 1) + parts[3] - 1
+			else: result = mm_n_days(year, month, day)
+		if (result >= 0 && g.minutes == 1): result = result * 1440 + hour * 60 + parts[5] - parts[9]
+		if (result >= 0 && g.minutes == 2): result = result * 86400 + hour * 3600 + parts[5] * 60 + parts[6] - parts[9] * 60
+	if (result < 0 || result > mm_n_unit_limit(g)): result = -1
 	__w_list_free(cast(__w_list*, parts))
+	__w_list_free(cast(__w_list*, months))
+	__w_list_free(cast(__w_list*, weekdays))
 	return result
 
-# Day/week durations in either mode; hour/minute units need a time format.
-int mm_n_span(mm_gantt_settings* g, char* text):
+# Duration `<number><unit>` with units ms, s, m, h, d, w, M and y and an
+# optional decimal fraction. Returns the unit index (0 ms ... 7 y) and the
+# value in thousandths through *milli, or -1 when the text is no duration.
+int mm_n_span_parse(char* text, int* milli):
 	int length = strlen(text)
-	if (length < 2): return -1
-	int unit = text[length - 1]
-	int per = 0
-	int day = 1
-	if (g.minutes): day = 1440
-	if (unit == 'd'): per = day
-	if (unit == 'w'): per = day * 7
-	if (g.minutes && unit == 'h'): per = 60
-	if (g.minutes && unit == 'm'): per = 1
-	if (per == 0): return -1
-	int maximum = 365000
-	if (g.minutes): maximum = 3660 * 1440
-	char* number = str_copy_range(text, 0, length - 1)
-	int result = mm_n_number(number, maximum / per)
-	free(number)
-	if (result <= 0): return -1
-	return result * per
+	int unit = -1
+	int suffix = 1
+	if (length >= 3 && text[length - 2] == 'm' && text[length - 1] == 's'):
+		unit = 0
+		suffix = 2
+	else if (length >= 2):
+		int c = text[length - 1]
+		if (c == 's'): unit = 1
+		if (c == 'm'): unit = 2
+		if (c == 'h'): unit = 3
+		if (c == 'd'): unit = 4
+		if (c == 'w'): unit = 5
+		if (c == 'M'): unit = 6
+		if (c == 'y'): unit = 7
+	if (unit < 0): return -1
+	int whole = 0
+	int fraction = 0
+	int scale = 100
+	int digits = 0
+	int dot = 0
+	for i in range(length - suffix):
+		int c = text[i]
+		if (c == '.' && dot == 0): dot = 1
+		else if (c >= '0' && c <= '9'):
+			if (dot == 0):
+				if (whole > 2000000): return -1
+				whole = whole * 10 + c - '0'
+			else:
+				fraction = fraction + (c - '0') * scale
+				scale = scale / 10
+			digits = digits + 1
+		else: return -1
+	if (digits == 0 || whole > 2000000): return -1
+	*milli = whole * 1000 + fraction
+	return unit
+
+# Seconds per duration unit below months (ms is handled by the caller).
+int mm_n_span_unit_seconds(int unit):
+	if (unit == 1): return 1
+	if (unit == 2): return 60
+	if (unit == 3): return 3600
+	if (unit == 4): return 86400
+	return 604800
+
+# Non-calendar duration in units of `unit_seconds`, rounded up; -1 when it
+# is no such duration or too long. *exact reports whether no rounding happened.
+int mm_n_span_units(char* text, int unit_seconds, int* exact):
+	int milli = 0
+	int unit = mm_n_span_parse(text, &milli)
+	*exact = 1
+	if (unit < 0 || unit > 5): return -1
+	int whole = milli / 1000
+	int fraction = milli % 1000
+	int maximum = 3660 * (86400 / unit_seconds)
+	if (unit_seconds == 86400): maximum = 365000
+	if (unit == 0):
+		# Milliseconds round up to whole seconds first.
+		int seconds = whole / 1000
+		if (whole % 1000 != 0 || fraction != 0): seconds = seconds + 1
+		if (whole % 1000 != 0 || fraction != 0): *exact = 0
+		int result = seconds / unit_seconds
+		if (seconds % unit_seconds != 0):
+			result = result + 1
+			*exact = 0
+		return result
+	int per = mm_n_span_unit_seconds(unit)
+	if (per % unit_seconds == 0):
+		int factor = per / unit_seconds
+		if (whole > maximum / factor): return -1
+		int part = fraction * factor
+		int result = whole * factor + part / 1000
+		if (part % 1000 != 0):
+			result = result + 1
+			*exact = 0
+		if (result > maximum): return -1
+		return result
+	# A unit smaller than the chart unit: count seconds, then round up.
+	if (whole > 2000000000 / per): return -1
+	int seconds = whole * per + fraction * per / 1000
+	if ((fraction * per) % 1000 != 0):
+		seconds = seconds + 1
+		*exact = 0
+	int result = seconds / unit_seconds
+	if (seconds % unit_seconds != 0):
+		result = result + 1
+		*exact = 0
+	if (result > maximum): return -1
+	return result
+
+# Calendar months of an `M`/`y` duration (whole months only), else -1.
+int mm_n_span_months(char* text):
+	int milli = 0
+	int unit = mm_n_span_parse(text, &milli)
+	if (unit == 6 && milli % 1000 == 0 && milli <= 120000000): return milli / 1000
+	if (unit == 7 && (milli * 12) % 1000 == 0 && milli <= 10000000): return milli * 12 / 1000
+	return -1
+
+# Any duration the task grammar accepts (used to tell IDs from durations).
+int mm_n_is_span(char* text):
+	int milli = 0
+	return mm_n_span_parse(text, &milli) >= 0
 
 int mm_n_sorted_has(list[int] values, int value):
 	int low = 0
@@ -942,21 +1255,26 @@ int mm_n_working_days(mm_gantt_settings* g, int a, int b):
 int mm_n_working_units(mm_gantt_settings* g, int a, int b):
 	if (b <= a): return 0
 	if (g.minutes == 0): return mm_n_working_days(g, a, b)
-	int first = a / 1440
-	int last = b / 1440
+	int per = mm_n_per_day(g)
+	int first = a / per
+	int last = b / per
 	if (first == last):
 		if (mm_n_excluded_day(g, first)): return 0
 		return b - a
-	int total = mm_n_working_days(g, first + 1, last) * 1440
-	if (mm_n_excluded_day(g, first) == 0): total = total + (first + 1) * 1440 - a
-	if (b > last * 1440 && mm_n_excluded_day(g, last) == 0): total = total + b - last * 1440
+	# Whole working days, counted in days first so seconds charts cannot overflow.
+	int days = mm_n_working_days(g, first + 1, last)
+	if (days > 2147483647 / per): return 2147483647
+	int total = days * per
+	if (mm_n_excluded_day(g, first) == 0): total = total + (first + 1) * per - a
+	if (b > last * per && mm_n_excluded_day(g, last) == 0): total = total + b - last * per
 	return total
 
 # Duration-based ends skip excluded days; returns past the limit when none fit.
 int mm_n_finish(mm_gantt_settings* g, int start, int duration):
-	if (duration == 0 || (g.weekday_mask == 0 && g.excluded.length == 0)): return start + duration
 	int limit = mm_n_unit_limit(g) + 1
-	if (start + duration > limit || mm_n_working_units(g, start, limit) < duration): return limit
+	if (duration > limit - start): return limit
+	if (duration == 0 || (g.weekday_mask == 0 && g.excluded.length == 0)): return start + duration
+	if (mm_n_working_units(g, start, limit) < duration): return limit
 	int low = start + duration
 	int high = limit
 	while (low < high):
@@ -975,7 +1293,7 @@ int mm_n_same_word(char* a, char* b):
 
 int mm_n_day_value(mm_gantt_settings* g, char* text):
 	int day = mm_n_moment(g, text)
-	if (day >= 0 && g.minutes): return day / 1440
+	if (day >= 0 && g.minutes): return day / mm_n_per_day(g)
 	if (day < 0): day = mm_n_date(text)
 	return day
 
@@ -1011,12 +1329,14 @@ void mm_n_gantt_days(mm_parser* p, mm_gantt_settings* g, char* text, int include
 	if (items == 0): mm_error(p.doc, p.pos, c"unsupported Gantt excludes/includes value")
 	__w_list_free(cast(__w_list*, names))
 
-# Supported strftime tokens for axis labels.
+# d3-time-format directives accepted for axis labels (all of d3's), with
+# the optional `-`, `_` and `0` padding modifiers.
 int mm_n_axis_valid(char* format):
-	char* tokens = c"YymdebBaAHIMpj%"
+	char* tokens = c"aAbBcdefgGHIjLmMpqQsSuUVwWxXyYZ%"
 	int i = 0
 	while (format[i] != 0):
 		if (format[i] == '%'):
+			if (format[i + 1] == '-' || format[i + 1] == '_' || format[i + 1] == '0'): i = i + 1
 			int known = 0
 			int k = 0
 			while (tokens[k] != 0):
@@ -1026,6 +1346,32 @@ int mm_n_axis_valid(char* format):
 			i = i + 1
 		i = i + 1
 	return 1
+
+# `tickInterval <n><unit>` as upstream's /^([1-9][0-9]*)(millisecond|second|
+# minute|hour|day|week|month)$/; other text is accepted and ignored, as upstream.
+void mm_n_tick_interval(mm_gantt_settings* g, char* text):
+	list[char*] units = list[char*]{c"millisecond", c"second", c"minute", c"hour", c"day", c"week", c"month"}
+	int digits = 0
+	while (isdigit(text[digits])): digits = digits + 1
+	g.tick_count = 0
+	g.tick_unit = 0
+	if (digits > 0 && digits <= 6 && text[0] != '0'):
+		for k in range(units.length):
+			if (strcmp(text + digits, units[k]) == 0):
+				char* number = str_copy_range(text, 0, digits)
+				g.tick_count = atoi(number)
+				g.tick_unit = k + 1
+				free(number)
+	__w_list_free(cast(__w_list*, units))
+
+# Weekday name (case-insensitive) to 0 = Sunday ... 6, or -1.
+int mm_n_weekday_index(char* text):
+	list[char*] names = list[char*]{c"sunday", c"monday", c"tuesday", c"wednesday", c"thursday", c"friday", c"saturday"}
+	int result = -1
+	for k in range(7):
+		if (mm_n_same_word(text, names[k])): result = k
+	__w_list_free(cast(__w_list*, names))
+	return result
 
 # `click ID href "url"` keeps the target on the task's node metadata.
 void mm_n_gantt_click(mm_parser* p, char* text):
@@ -1094,6 +1440,20 @@ int mm_n_gantt_directive(mm_parser* p, char* text):
 			if (g.today < 0 && g.minutes == 0): g.today = mm_n_date(value)
 		free(value)
 	else if (mm_n_prefix(text, c"click ")): mm_n_gantt_click(p, text + 6)
+	else if (mm_n_prefix(text, c"tickInterval ")):
+		char* value = mm_n_trim(text + 13)
+		mm_n_tick_interval(g, value)
+		free(value)
+	else if (mm_n_prefix(text, c"weekday ")):
+		char* value = mm_n_trim(text + 8)
+		int day = mm_n_weekday_index(value)
+		if (day < 0): mm_error(p.doc, p.pos, c"Gantt weekday must name a day of the week")
+		else: g.week_start = day
+		free(value)
+	else if (strcmp(text, c"inclusiveEndDates") == 0):
+		if (p.doc.narrative.length != 0): mm_error(p.doc, p.pos, c"Gantt inclusiveEndDates must precede tasks")
+		g.inclusive = 1
+	else if (strcmp(text, c"topAxis") == 0): g.top_axis = 1
 	else: return 0
 	return 1
 
@@ -1115,10 +1475,14 @@ struct mm_n_schedule:
 	char* dependencies
 	char* until
 	list[int] dependency_indices
-	int until_index
+	list[int] until_indices
 	int previous
 	int duration
 	int offset
+	# Calendar months of an M/y duration (duration is then unused).
+	int months
+	# The duration is in minutes although the chart was still in days.
+	int minute_duration
 
 int mm_n_dependency_index(mm_parser* p, char* id, int offset):
 	for i in range(p.doc.narrative.length):
@@ -1127,24 +1491,50 @@ int mm_n_dependency_index(mm_parser* p, char* id, int offset):
 	mm_error(p.doc, offset, c"unknown Gantt dependency")
 	return -1
 
+void mm_n_id_indices(mm_parser* p, char* ids, list[int] indices, int offset):
+	int at = 0
+	while (ids[at] != 0):
+		while (ids[at] == 32 || ids[at] == 9): at = at + 1
+		int start = at
+		while (ids[at] != 0 && ids[at] != 32 && ids[at] != 9): at = at + 1
+		if (at == start): break
+		char* id = str_copy_range(ids, start, at)
+		int index = mm_n_dependency_index(p, id, offset)
+		free(id)
+		if (index >= 0): indices.push(index)
+
 # Resolve names once, so reverse dependency chains do not repeatedly scan IDs.
+# `until a b` ends at the earliest start of the listed tasks, as upstream.
 void mm_n_schedule_indices(mm_parser* p, list[mm_n_schedule*] schedules):
 	for mm_n_schedule* item in schedules:
-		int at = 0
-		while (item.dependencies[at] != 0):
-			while (item.dependencies[at] == 32 || item.dependencies[at] == 9): at = at + 1
-			int start = at
-			while (item.dependencies[at] != 0 && item.dependencies[at] != 32 && item.dependencies[at] != 9): at = at + 1
-			if (at == start): break
-			char* id = str_copy_range(item.dependencies, start, at)
-			int index = mm_n_dependency_index(p, id, item.offset)
-			free(id)
-			if (index >= 0): item.dependency_indices.push(index)
-		if (item.until[0] != 0): item.until_index = mm_n_dependency_index(p, item.until, item.offset)
+		mm_n_id_indices(p, item.dependencies, item.dependency_indices, item.offset)
+		mm_n_id_indices(p, item.until, item.until_indices, item.offset)
+
+# A sub-day duration in a day-unit chart switches the chart to minutes:
+# resolved moments and day durations scale by 1440; excluded days stay days.
+void mm_n_promote_gantt(mm_parser* p, list[mm_n_schedule*] schedules):
+	mm_gantt_settings* g = mm_n_gantt_settings(p.doc)
+	int promote = 0
+	for mm_n_schedule* item in schedules:
+		if (item.minute_duration): promote = 1
+	if (promote == 0 || g.minutes != 0): return
+	for mm_n_schedule* item in schedules:
+		mm_narrative_event* task = item.task
+		if (task.start > mm_n_days(MM_N_MINUTE_YEAR_LIMIT, 12, 31) || task.end > mm_n_days(MM_N_MINUTE_YEAR_LIMIT, 12, 31) + 1):
+			mm_error(p.doc, item.offset, c"Gantt end precedes start or exceeds supported calendar")
+			return
+		if (task.start >= 0): task.start = task.start * 1440
+		if (task.end >= 0): task.end = task.end * 1440
+		if (item.minute_duration == 0 && item.duration > 0): item.duration = item.duration * 1440
+	if (g.today >= 0 && g.today <= mm_n_days(MM_N_MINUTE_YEAR_LIMIT, 12, 31)): g.today = g.today * 1440
+	else: g.today = -1
+	g.minutes = 1
+	g.promoted = 1
 
 void mm_n_resolve_gantt(mm_parser* p, list[mm_n_schedule*] schedules):
 	# Resolve starts and ends independently: an until edge needs only a start.
 	mm_n_schedule_indices(p, schedules)
+	if (p.doc.error == 0): mm_n_promote_gantt(p, schedules)
 	if (p.doc.error != 0): return
 	mm_gantt_settings* g = mm_n_gantt_settings(p.doc)
 	int last_day = mm_n_unit_limit(g)
@@ -1171,9 +1561,16 @@ void mm_n_resolve_gantt(mm_parser* p, list[mm_n_schedule*] schedules):
 					changed = 1
 			if (task.end < 0):
 				int finish = -1
-				if (item.until_index >= 0):
-					mm_narrative_event* dependency = p.doc.narrative[item.until_index]
-					finish = dependency.start
+				if (item.until_indices.length > 0):
+					for int index in item.until_indices:
+						mm_narrative_event* dependency = p.doc.narrative[index]
+						if (dependency.start < 0):
+							finish = -2
+						else if (finish != -2 && (finish < 0 || dependency.start < finish)): finish = dependency.start
+					if (finish == -2): finish = -1
+				else if (task.start >= 0 && item.months > 0):
+					int calendar = mm_n_add_months(g, task.start, item.months)
+					finish = mm_n_finish(g, task.start, calendar - task.start)
 				else if (task.start >= 0): finish = mm_n_finish(g, task.start, item.duration)
 				if (finish >= 0):
 					task.end = finish
@@ -1211,10 +1608,11 @@ void mm_n_gantt(mm_parser* p, char* text, char* section, list[mm_n_schedule*] sc
 		else if (strcmp(field, c"active") == 0): status = status | 2
 		else if (strcmp(field, c"crit") == 0): status = status | 4
 		else if (strcmp(field, c"milestone") == 0): status = status | 8
+		else if (strcmp(field, c"vert") == 0): status = status | 16
 		else: break
 		at = at + 1
 	char* id = strclone(c"")
-	if (at < fields.length && mm_n_moment(g, fields[at]) < 0 && mm_n_span(g, fields[at]) < 0 && mm_n_prefix(fields[at], c"after ") == 0 && mm_n_prefix(fields[at], c"until ") == 0 && strcmp(fields[at], c"0d") != 0):
+	if (at < fields.length && mm_n_moment(g, fields[at]) < 0 && mm_n_is_span(fields[at]) == 0 && mm_n_prefix(fields[at], c"after ") == 0 && mm_n_prefix(fields[at], c"until ") == 0):
 		free(id)
 		id = strclone(fields[at])
 		if (mm_n_actor(p, id) >= 0):
@@ -1237,15 +1635,30 @@ void mm_n_gantt(mm_parser* p, char* text, char* section, list[mm_n_schedule*] sc
 		if (previous < 0): mm_error(p.doc, p.pos, c"first Gantt task requires an explicit start or dependencies")
 	int finish = -1
 	int duration = -1
+	int months = 0
+	int minute_duration = 0
 	char* until = strclone(c"")
 	if (at < fields.length):
 		finish = mm_n_moment(g, fields[at])
+		if (finish >= 0 && g.inclusive):
+			finish = finish + mm_n_per_day(g)
+			if (finish > mm_n_unit_limit(g)): finish = -1
 		if (finish < 0):
-			duration = mm_n_span(g, fields[at])
-			if ((status & 8) != 0 && strcmp(fields[at], c"0d") == 0): duration = 0
+			int exact = 1
+			duration = mm_n_span_units(fields[at], mm_n_unit_seconds(g), &exact)
+			if (duration > 0 && exact == 0 && g.minutes == 0):
+				# Sub-day durations in a day chart: keep minutes and promote at resolve.
+				duration = mm_n_span_units(fields[at], 60, &exact)
+				minute_duration = 1
+			if (duration == 0 && (status & 24) == 0): duration = -1
+			if (duration < 0):
+				months = mm_n_span_months(fields[at])
+				if (months > 0): duration = 0
+				else: months = 0
 			if (mm_n_prefix(fields[at], c"until ")):
 				free(until)
 				until = mm_n_trim(fields[at] + 6)
+				if (until[0] == 0): mm_error(p.doc, p.pos, c"Gantt until requires task identifiers")
 		at = at + 1
 	if ((finish < 0 && duration < 0 && until[0] == 0) || at != fields.length): mm_error(p.doc, p.pos, c"Gantt requires end date, until task or positive duration")
 	if (p.doc.error == 0):
@@ -1261,9 +1674,11 @@ void mm_n_gantt(mm_parser* p, char* text, char* section, list[mm_n_schedule*] sc
 			schedule.dependencies = strclone(dependencies)
 			schedule.until = strclone(until)
 			schedule.dependency_indices = new list[int]
-			schedule.until_index = -1
+			schedule.until_indices = new list[int]
 			schedule.previous = previous
 			schedule.duration = duration
+			schedule.months = months
+			schedule.minute_duration = minute_duration
 			schedule.offset = p.pos
 			schedules.push(schedule)
 	free(dependencies)
@@ -1655,6 +2070,7 @@ void mm_narrative_body(mm_parser* p):
 		free(item.dependencies)
 		free(item.until)
 		__w_list_free(cast(__w_list*, item.dependency_indices))
+		__w_list_free(cast(__w_list*, item.until_indices))
 		free(item)
 	__w_list_free(cast(__w_list*, schedules))
 	__w_list_free(cast(__w_list*, numbering))

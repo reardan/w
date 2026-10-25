@@ -534,6 +534,7 @@ mm_document* mm_parse_raw(char* source, int length, list[mm_property*] config):
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (d.kind == MM_AGENT && mm_end(&p) == 0): mm_direction(&p)
+	if (d.kind == MM_TIMELINE && mm_end(&p) == 0): mm_n_timeline_header(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
 	if (d.kind == MM_TREEVIEW || d.kind == MM_ISHIKAWA):
 		mm_outline_body(&p)

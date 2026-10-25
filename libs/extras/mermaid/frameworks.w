@@ -42,6 +42,32 @@ int mm_tree_prefix(mm_parser* p, int indent):
 		column = column + 1
 	return -1
 
+# Removes `icon(pack:name)` / `icon(none)` / `icon()` tokens (whitespace
+# delimited, before or after `:::` classes) into *icon; "" hides the icon.
+# Returns the owned remaining text.
+char* mm_tree_icons(mm_parser* p, char* text, char** icon):
+	string_builder* rest = string_new()
+	int length = strlen(text)
+	int at = 0
+	while (at < length && p.doc.error == 0):
+		int start = at
+		while (at < length && text[at] != ' ' && text[at] != 9): at = at + 1
+		int end = at
+		while (at < length && (text[at] == ' ' || text[at] == 9)): at = at + 1
+		if (end - start >= 6 && index_of(text + start, c"icon(") == 0 && text[end - 1] == ')'):
+			if (*icon != 0): mm_error(p.doc, p.pos, c"duplicate TreeView icon")
+			else:
+				char* name = str_copy_range(text, start + 5, end - 1)
+				if (strcmp(name, c"none") == 0): name[0] = 0
+				for i in range(strlen(name)):
+					if (isalnum(name[i]) == 0 && name[i] != ':' && name[i] != '-' && name[i] != '_' && name[i] != '.'): mm_error(p.doc, p.pos, c"invalid TreeView icon name")
+				*icon = name
+		else: string_append_bytes(rest, text + start, at - start)
+	char* result = mm_style_trim(rest.data, 0, rest.length)
+	string_free(rest)
+	free(text)
+	return result
+
 # Comma-joined class names from "name name ..." at text[at]; diagnoses bad names.
 char* mm_tree_classes(mm_parser* p, char* text, int at):
 	string_builder* joined = string_new()
@@ -95,6 +121,7 @@ void mm_outline_body(mm_parser* p):
 		if (depth >= 64): mm_error(p.doc, p.pos, c"outline nesting limit exceeded")
 		char* text = mm_line_text(p)
 		char* description = strclone(c"")
+		char* icon = 0
 		char* classes = 0
 		if (p.doc.kind == MM_TREEVIEW):
 			int marker = index_of(text, c"##")
@@ -105,7 +132,7 @@ void mm_outline_body(mm_parser* p):
 				char* label = mm_style_trim(text, 0, marker)
 				free(text)
 				text = label
-			if (index_of(text, c"icon(") >= 0): mm_error(p.doc, p.pos, c"TreeView icons are not yet supported")
+			text = mm_tree_icons(p, text, &icon)
 			# `:::name` (space separated, after the label) assigns CSS classes.
 			int styled = index_of(text, c":::")
 			if (styled >= 0):
@@ -128,6 +155,7 @@ void mm_outline_body(mm_parser* p):
 		if (index < 0):
 			free(text)
 			free(description)
+			if (icon != 0): free(icon)
 			if (classes != 0): free(classes)
 			break
 		mm_node* n = p.doc.nodes[index]
@@ -135,6 +163,7 @@ void mm_outline_body(mm_parser* p):
 		n.label = text
 		free(n.annotation)
 		n.annotation = description
+		if (icon != 0): n.metadata.push(new mm_property(strclone(c"icon"), icon, MM_VALUE_STRING))
 		if (classes != 0):
 			free(n.style_classes)
 			n.style_classes = classes
@@ -230,8 +259,10 @@ char* mm_wardley_name(mm_parser* p):
 	mm_space(p)
 	if (mm_peek(p) == '"'): return mm_quoted(p)
 	int start = p.pos
-	while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13 && mm_peek(p) != '[' && mm_peek(p) != '{'):
-		if (p.pos + 1 < p.doc.length && p.doc.source[p.pos] == '-' && (p.doc.source[p.pos + 1] == '>' || p.doc.source[p.pos + 1] == '-')): break
+	while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13 && mm_peek(p) != '[' && mm_peek(p) != '{' && mm_peek(p) != ';' && mm_peek(p) != '>'):
+		if (p.pos + 1 < p.doc.length && p.doc.source[p.pos] == '-' && (p.doc.source[p.pos + 1] == '>' || p.doc.source[p.pos + 1] == '-' || p.doc.source[p.pos + 1] == '.')): break
+		# Flow ports and labelled flows: +> +< +<> +'label'>
+		if (p.pos + 1 < p.doc.length && p.doc.source[p.pos] == '+' && (p.doc.source[p.pos + 1] == '>' || p.doc.source[p.pos + 1] == '<' || p.doc.source[p.pos + 1] == '\'')): break
 		p.pos = p.pos + 1
 	int end = p.pos
 	while (end > start && p.doc.source[end - 1] == 32): end = end - 1
@@ -296,9 +327,9 @@ void mm_wardley_modifiers(mm_parser* p, mm_node* n):
 			char* word = mm_identifier(p)
 			mm_space(p)
 			if (mm_match(p, c")") == 0): mm_error(p.doc, p.pos, c"expected decorator closing parenthesis")
-			if (mm_in_words(word, c"|build|buy|outsource|")): mm_wardley_set(p, n, c"strategy", word)
+			if (mm_in_words(word, c"|build|buy|outsource|market|")): mm_wardley_set(p, n, c"strategy", word)
 			else if (strcmp(word, c"inertia") == 0): mm_wardley_set(p, n, c"inertia", c"1")
-			else: mm_error(p.doc, at, c"unsupported Wardley decorator; supported: build, buy, outsource, inertia")
+			else: mm_error(p.doc, at, c"unsupported Wardley decorator; supported: build, buy, outsource, market, inertia")
 			free(word)
 		else: return
 		mm_space(p)
@@ -314,28 +345,95 @@ int mm_wardley_declare(mm_parser* p, int shape):
 	n.shape = shape
 	return index
 
-# `evolution A -> B -> C -> D` replaces the four default stage labels. The
-# labels live in document notes (node -1, side = stage index).
+# Decimal 0..1 text (as mm_unit_value) in thousandths; -1 reported as an error.
+int mm_wardley_boundary(mm_parser* p, char* text):
+	int value = 0
+	int i = 0
+	if (text[0] != '0' && text[0] != '1'): i = -1
+	else:
+		value = (text[0] - '0') * 1000
+		i = 1
+		if (text[1] == '.'):
+			int scale = 100
+			i = 2
+			while (isdigit(text[i])):
+				value = value + (text[i] - '0') * scale
+				scale = scale / 10
+				i = i + 1
+			if (i == 2): i = -1
+	if (i < 0 || text[i] != 0 || value > 1000):
+		mm_error(p.doc, p.pos, c"expected Wardley stage boundary between zero and one")
+		return 0
+	return value
+
+# Owned copy of a stage name without surrounding double quotes.
+char* mm_wardley_unquote(char* text):
+	int length = strlen(text)
+	if (length >= 2 && text[0] == '"' && text[length - 1] == '"'): return str_copy_range(text, 1, length - 1)
+	return strclone(text)
+
+# `evolution A -> B -> ...` (two to eight stages) replaces the default stage
+# labels. Each stage is `Name`, `Name@boundary` (the stage's right edge on the
+# evolution axis) and/or `Name / Second line`. Labels live in document notes:
+# node -1 for the name, -2 for the second line, side = stage index. Boundaries
+# are kept as the "wardley.boundaries" setting only when every stage has one,
+# as upstream.
 void mm_wardley_stages(mm_parser* p):
-	if (p.doc.notes.length != 0): mm_error(p.doc, p.pos, c"duplicate Wardley evolution axis")
+	for mm_note* existing in p.doc.notes:
+		if (existing.node == -1): mm_error(p.doc, p.pos, c"duplicate Wardley evolution axis")
 	char* text = mm_line_text(p)
 	int start = 0
 	int count = 0
 	int length = strlen(text)
+	string_builder* boundaries = string_new()
+	int bounded = 0
+	int previous = 0
 	for i in range(length + 1):
 		if (i == length || (text[i] == '-' && text[i + 1] == '>')):
-			char* label = mm_style_trim(text, start, i)
+			char* segment = mm_style_trim(text, start, i)
+			# `Name@0.25 / Second`: the boundary may precede or follow the second line.
+			int at = index_of(segment, c"@")
+			if (at >= 0):
+				int stop = at + 1
+				while (segment[stop] != 0 && segment[stop] != '/'): stop = stop + 1
+				char* number = mm_style_trim(segment, at + 1, stop)
+				int value = mm_wardley_boundary(p, number)
+				free(number)
+				if (value <= previous && p.doc.error == 0): mm_error(p.doc, p.pos, c"Wardley stage boundaries must increase")
+				previous = value
+				if (boundaries.length != 0): string_append_char(boundaries, ' ')
+				string_append_int(boundaries, value)
+				bounded = bounded + 1
+				string_builder* rest = string_new()
+				string_append_bytes(rest, segment, at)
+				string_append(rest, segment + stop)
+				free(segment)
+				segment = strclone(rest.data)
+				string_free(rest)
+			char* second = 0
+			int slash = index_of(segment, c"/")
+			char* stage = 0
+			if (slash >= 0):
+				second = mm_style_trim(segment, slash + 1, strlen(segment))
+				stage = mm_style_trim(segment, 0, slash)
+			else: stage = strclone(segment)
+			free(segment)
+			char* label = mm_wardley_unquote(stage)
+			free(stage)
 			if (label[0] == 0): mm_error(p.doc, p.pos, c"empty Wardley evolution stage")
-			if (count < 4 && p.doc.error == 0):
-				mm_note* note = new mm_note()
-				note.node = -1
-				note.side = count
-				note.text = label
-				p.doc.notes.push(note)
+			if (count < 8 && p.doc.error == 0):
+				p.doc.notes.push(new mm_note(-1, count, label))
+				if (second != 0):
+					char* line = mm_wardley_unquote(second)
+					if (line[0] == 0): mm_error(p.doc, p.pos, c"empty Wardley evolution stage")
+					p.doc.notes.push(new mm_note(-2, count, line))
 			else: free(label)
+			if (second != 0): free(second)
 			count = count + 1
 			start = i + 2
-	if (count != 4): mm_error(p.doc, p.pos, c"Wardley evolution axis requires four stages")
+	if (count < 2 || count > 8): mm_error(p.doc, p.pos, c"Wardley evolution axis requires two to eight stages")
+	if (bounded == count && p.doc.error == 0): mm_config_set(p.doc, c"wardley.boundaries", boundaries.data)
+	string_free(boundaries)
 	free(text)
 
 void mm_wardley_evolve(mm_parser* p):
@@ -471,6 +569,177 @@ void mm_wardley_resolve(mm_parser* p):
 			int split = index_of(pipeline.value, c" ")
 			if (high >= 0 && (low < atoi(pipeline.value) || high > atoi(pipeline.value + split + 1))): mm_error(p.doc, p.pos, c"Wardley pipeline component outside pipeline range")
 
+# Flow port `+>`, `+<` or `+<>`: arrowhead bits (1 at the target, 2 at the source).
+int mm_wardley_port(mm_parser* p):
+	if (mm_match(p, c"+<>")): return 3
+	if (mm_match(p, c"+>")): return 1
+	if (mm_match(p, c"+<")): return 2
+	return 0
+
+# `+'label'>`, `+'label'<` or `+'label'<>`; returns arrowhead bits or 0.
+int mm_wardley_labelled_flow(mm_parser* p, mm_edge* e):
+	if (p.pos + 1 >= p.doc.length || p.doc.source[p.pos] != '+' || p.doc.source[p.pos + 1] != '\''): return 0
+	int start = p.pos + 2
+	int close = start
+	while (close < p.doc.length && p.doc.source[close] != '\'' && p.doc.source[close] != 10): close = close + 1
+	if (close >= p.doc.length || p.doc.source[close] != '\''):
+		mm_error(p.doc, p.pos, c"unterminated Wardley flow label")
+		return 0
+	free(e.label)
+	e.label = str_copy_range(p.doc.source, start, close)
+	p.pos = close + 1
+	if (mm_match(p, c"<>")): return 3
+	if (mm_match(p, c">")): return 1
+	if (mm_match(p, c"<")): return 2
+	mm_error(p.doc, p.pos, c"expected Wardley flow direction after label")
+	return 0
+
+# `A [port] [arrow] B [port] [; label]`: plain `->`/`-->` dependencies,
+# dashed `-.->` links and flows. Flows set e.scope = 1 and arrowhead bits in
+# e.arrow; the link label (`; label` or the flow label) is e.label.
+void mm_wardley_link(mm_parser* p):
+	char* name = mm_wardley_name(p)
+	int from = mm_add_node(p.doc, name, p.pos)
+	free(name)
+	if (from < 0): return
+	mm_edge* e = new mm_edge()
+	e.from_node = from
+	e.label = strclone(c"")
+	mm_space(p)
+	int ends = mm_wardley_port(p)
+	int connected = ends != 0
+	mm_space(p)
+	int flow = mm_wardley_labelled_flow(p, e)
+	if (flow != 0):
+		ends = ends | flow
+		connected = 1
+	else if (mm_match(p, c"-.->")):
+		e.dashed = 1
+		connected = 1
+	else if (mm_match(p, c"-->") || mm_match(p, c"->") || mm_match(p, c">")): connected = 1
+	if (connected == 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"expected Wardley dependency arrow")
+	if (p.doc.error == 0):
+		name = mm_wardley_name(p)
+		e.to_node = mm_add_node(p.doc, name, p.pos)
+		free(name)
+		mm_space(p)
+		int target_ends = mm_wardley_port(p)
+		if (target_ends != 0): ends = ends | target_ends
+		mm_space(p)
+		if (mm_match(p, c";")):
+			char* label = mm_line_text(p)
+			if (label[0] == 0): mm_error(p.doc, p.pos, c"empty Wardley link label")
+			free(e.label)
+			e.label = label
+	e.arrow = ends
+	e.scope = ends != 0
+	if (p.doc.edges.length >= MM_MAX_ITEMS): mm_error(p.doc, p.pos, c"dependency limit exceeded")
+	if (p.doc.error == 0 && e.to_node >= 0): p.doc.edges.push(e)
+	else:
+		free(e.label)
+		free(e)
+
+# Unique-id node for a map element that links cannot reference (a newline
+# never occurs in a parsed name): notes, annotations and forces.
+int mm_wardley_element(mm_parser* p, char* kind, int shape, char* text):
+	string_builder* id = string_from(c"\n")
+	string_append(id, kind)
+	string_append_char(id, ':')
+	string_append_int(id, p.doc.nodes.length)
+	int index = mm_add_node(p.doc, id.data, p.pos)
+	string_free(id)
+	if (index < 0):
+		free(text)
+		return -1
+	mm_node* n = p.doc.nodes[index]
+	n.declared = 1
+	n.shape = shape
+	free(n.label)
+	n.label = text
+	return index
+
+int mm_wardley_size_value(mm_parser* p):
+	mm_space(p)
+	int value = 0
+	int digits = 0
+	while (isdigit(mm_peek(p))):
+		if (value < 100000): value = value * 10 + mm_peek(p) - '0'
+		digits = digits + 1
+		p.pos = p.pos + 1
+	if (digits == 0 || value < 100 || value > 4000): mm_error(p.doc, p.pos, c"Wardley size must be integers from 100 to 4000")
+	return value
+
+# `size [width, height]` in pixels (upstream default 1100 x 600).
+void mm_wardley_size(mm_parser* p):
+	if (mm_config_value(p.doc, c"wardley.size") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley size")
+	mm_space(p)
+	if (mm_match(p, c"[") == 0): mm_error(p.doc, p.pos, c"expected Wardley size bracket")
+	int width = mm_wardley_size_value(p)
+	mm_space(p)
+	if (mm_match(p, c",") == 0): mm_error(p.doc, p.pos, c"expected coordinate comma")
+	int height = mm_wardley_size_value(p)
+	mm_space(p)
+	if (mm_match(p, c"]") == 0): mm_error(p.doc, p.pos, c"expected coordinate closing bracket")
+	if (p.doc.error != 0): return
+	string_builder* value = string_new()
+	string_append_int(value, width)
+	string_append_char(value, ' ')
+	string_append_int(value, height)
+	mm_config_set(p.doc, c"wardley.size", value.data)
+	string_free(value)
+
+# `annotations [vis, evo]` places the numbered annotation legend box.
+void mm_wardley_annotations(mm_parser* p):
+	if (mm_config_value(p.doc, c"wardley.annotations") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley annotations box")
+	mm_node scratch
+	mm_wardley_coordinates(p, &scratch)
+	if (p.doc.error != 0): return
+	string_builder* value = string_new()
+	string_append_int(value, scratch.value_y)
+	string_append_char(value, ' ')
+	string_append_int(value, scratch.value_x)
+	mm_config_set(p.doc, c"wardley.annotations", value.data)
+	string_free(value)
+
+# `annotation N,[vis, evo] "text"`: a numbered marker (shape 4, number in
+# the node annotation). Repeated numbers mark several points of one note.
+void mm_wardley_annotation(mm_parser* p):
+	mm_space(p)
+	int number = 0
+	int digits = 0
+	while (isdigit(mm_peek(p))):
+		if (number < 1000): number = number * 10 + mm_peek(p) - '0'
+		digits = digits + 1
+		p.pos = p.pos + 1
+	if (digits == 0 || number < 1 || number > 999): mm_error(p.doc, p.pos, c"Wardley annotation number must be 1 to 999")
+	mm_space(p)
+	if (mm_match(p, c",") == 0): mm_error(p.doc, p.pos, c"expected comma after annotation number")
+	if (p.doc.error != 0): return
+	mm_node scratch
+	mm_wardley_coordinates(p, &scratch)
+	mm_space(p)
+	if (mm_peek(p) != '"' && p.doc.error == 0): mm_error(p.doc, p.pos, c"Wardley annotation text must be quoted")
+	if (p.doc.error != 0): return
+	char* text = mm_quoted(p)
+	if (text[0] == 0): mm_error(p.doc, p.pos, c"empty Wardley annotation")
+	int index = mm_wardley_element(p, c"annotation", 4, text)
+	if (index < 0): return
+	mm_node* n = p.doc.nodes[index]
+	n.value_x = scratch.value_x
+	n.value_y = scratch.value_y
+	free(n.annotation)
+	n.annotation = itoa(number)
+
+# `accelerator "name" [vis, evo]` (shape 5) and `deaccelerator` (shape 6).
+void mm_wardley_force(mm_parser* p, int shape):
+	char* name = mm_wardley_name(p)
+	if (p.doc.error != 0):
+		free(name)
+		return
+	int index = mm_wardley_element(p, c"force", shape, name)
+	if (index < 0): return
+	mm_wardley_coordinates(p, p.doc.nodes[index])
+
 void mm_wardley_body(mm_parser* p):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
 		if (mm_metadata(p)):
@@ -483,6 +752,11 @@ void mm_wardley_body(mm_parser* p):
 		else if (mm_keyword(p, c"evolve")): mm_wardley_evolve(p)
 		else if (mm_keyword(p, c"note")): mm_wardley_note(p)
 		else if (mm_keyword(p, c"pipeline")): mm_wardley_pipeline(p)
+		else if (mm_keyword(p, c"size")): mm_wardley_size(p)
+		else if (mm_keyword(p, c"annotations")): mm_wardley_annotations(p)
+		else if (mm_keyword(p, c"annotation")): mm_wardley_annotation(p)
+		else if (mm_keyword(p, c"accelerator")): mm_wardley_force(p, 5)
+		else if (mm_keyword(p, c"deaccelerator")): mm_wardley_force(p, 6)
 		else:
 			int anchor = mm_keyword(p, c"anchor")
 			int component = anchor || mm_keyword(p, c"component")
@@ -492,22 +766,7 @@ void mm_wardley_body(mm_parser* p):
 				mm_node* n = p.doc.nodes[index]
 				mm_wardley_coordinates(p, n)
 				mm_wardley_modifiers(p, n)
-			else:
-				char* name = mm_wardley_name(p)
-				int from = mm_add_node(p.doc, name, p.pos)
-				free(name)
-				mm_space(p)
-				if (mm_match(p, c"-->") == 0 && mm_match(p, c"->") == 0): mm_error(p.doc, p.pos, c"expected Wardley dependency arrow")
-				name = mm_wardley_name(p)
-				int to = mm_add_node(p.doc, name, p.pos)
-				free(name)
-				if (p.doc.edges.length >= MM_MAX_ITEMS): mm_error(p.doc, p.pos, c"dependency limit exceeded")
-				if (p.doc.error == 0):
-					mm_edge* e = new mm_edge()
-					e.from_node = from
-					e.to_node = to
-					e.label = strclone(c"")
-					p.doc.edges.push(e)
+			else: mm_wardley_link(p)
 		if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported Wardley decorator, flow or syntax")
 		mm_separators(p)
 	for mm_node* n in p.doc.nodes:
