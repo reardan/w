@@ -41,10 +41,14 @@ const int otl_attach_gpos_mark = 3
 const int otl_max_nesting = 8
 
 # otl_glyph.subst bits (HarfBuzz's glyph props): any substitution, a
-# ligature of several glyphs, an output of a multiple substitution.
+# ligature of several glyphs, an output of a multiple substitution; and
+# HarfBuzz's IS_LIG_BASE ligature property: the glyph is the ligature
+# that lig_id names (lig_comp is its component count), not a mark inside
+# one.
 const int otl_subst_substituted = 1
 const int otl_subst_ligated = 2
 const int otl_subst_multiplied = 4
+const int otl_subst_lig_base = 8
 
 # Flags carried in the high bits of a stage's feature masks. hb selects
 # HarfBuzz's matching rules: input glyphs must carry the feature mask, a
@@ -53,11 +57,13 @@ const int otl_subst_multiplied = 4
 # manual_joiners). per_syllable keeps matches inside the starting glyph's
 # syllable. Without hb the legacy rules apply: ZWJ and variation
 # selectors are always skipped, ZWNJ never, and only the first glyph's
-# mask is checked.
+# mask is checked. auto_zwnj narrows manual_joiners to ZWJ (HarfBuzz's
+# F_MANUAL_ZWJ alone): ZWNJ stays skippable in context.
+const int otl_mask_auto_zwnj = 0x08000000
 const int otl_mask_per_syllable = 0x10000000
 const int otl_mask_manual_joiners = 0x20000000
 const int otl_mask_hb = 0x40000000
-const int otl_mask_flags = 0x70000000
+const int otl_mask_flags = 0x78000000
 
 struct otl_glyph:
 	int gid
@@ -105,6 +111,7 @@ struct otl_ctx:
 	int next           # position after a successful application
 	int hb             # otl_mask_hb matching (see the flag)
 	int manual_joiners
+	int auto_zwnj      # otl_mask_auto_zwnj
 	int per_syllable
 	int lookup_mask    # the current lookup's feature mask, flags removed
 	int syllable       # syllable of the glyph the lookup started at
@@ -238,6 +245,7 @@ void otl_ctx_init(otl_ctx* c, ttf_font* f, otl_buffer* b, int kind):
 	c.next = 0
 	c.hb = 0
 	c.manual_joiners = 0
+	c.auto_zwnj = 0
 	c.per_syllable = 0
 	c.lookup_mask = -1
 	c.syllable = 0
@@ -323,7 +331,7 @@ int otl_hb_ignorable(otl_ctx* c, otl_glyph* g, int context):
 	int cp = g.cp
 	if ((cp < 0) || (g.subst & otl_subst_substituted) || !ut_default_ignorable(cp)): return 0
 	if (c.kind == otl_gpos): return (cp != 0x200d) || context || !c.manual_joiners
-	if (cp == 0x200c): return context && !c.manual_joiners
+	if (cp == 0x200c): return context && (!c.manual_joiners || c.auto_zwnj)
 	if (cp == 0x200d): return context || !c.manual_joiners
 	if ((cp == 0x034f) || ((cp >= 0x180b) && (cp <= 0x180d)) || (cp == 0x180f) || ((cp >= 0xe0020) && (cp <= 0xe007f))): return 0
 	return 1
@@ -360,15 +368,41 @@ int otl_match_item(otl_ctx* c, int how, int data, int base, int k, int class_def
 	if (how == otl_match_class): return ttf_class(c.font, class_def, gid) == value
 	return ttf_coverage(c.font, base + value, gid) >= 0
 
+int otl_lig_comp(otl_glyph* g);
+
+# HarfBuzz's match_input rule (hb matching): input glyphs cannot span
+# marks of different components of an earlier ligature, unless that
+# ligature glyph is one the lookup skips; and when the first glyph is
+# not inside a ligature, no later one may be inside another.
+int otl_hb_lig_compatible(otl_ctx* c, int start, int at, int* ligbase):
+	otl_glyph* first = &c.buffer.glyphs[start]
+	otl_glyph* g = &c.buffer.glyphs[at]
+	int first_comp = otl_lig_comp(first)
+	int this_comp = otl_lig_comp(g)
+	if ((first.lig_id != 0) && (first_comp != 0)):
+		if ((first.lig_id == g.lig_id) && (first_comp == this_comp)): return 1
+		if (ligbase[0] == 0):
+			ligbase[0] = 1
+			int j = start
+			while ((j > 0) && (c.buffer.glyphs[j - 1].lig_id == first.lig_id)):
+				j = j - 1
+				if (otl_lig_comp(&c.buffer.glyphs[j]) == 0):
+					if (otl_skip_props(c, j)): ligbase[0] = 2
+					break
+		return ligbase[0] == 2
+	return (g.lig_id == 0) || (this_comp == 0) || (g.lig_id == first.lig_id)
+
 # Match count items forward from after position start; positions get
 # the matched indices. Returns 1 on a full match.
 int otl_match_forward(otl_ctx* c, int how, int data, int base, int count, int class_def, int start, int32* positions):
 	int at = start
+	int ligbase = 0
 	for k in range(count):
 		if (c.hb): at = otl_hb_find(c, how, data, base, k, class_def, at, 1, 0)
 		else: at = otl_next_index(c, at)
 		if (at < 0): return 0
 		if (!otl_match_item(c, how, data, base, k, class_def, at)): return 0
+		if (c.hb && !otl_hb_lig_compatible(c, start, at, &ligbase)): return 0
 		positions[k] = at
 	return 1
 
@@ -626,7 +660,9 @@ int otl_multiple_subst(otl_ctx* c, int sub, int i):
 		for k in range(n):
 			otl_glyph* out = &c.buffer.glyphs[i + k]
 			out.subst = out.subst | otl_subst_multiplied
-			if (numbered): out.lig_comp = k
+			if (numbered):
+				out.lig_comp = k
+				out.subst = out.subst & ~otl_subst_lig_base
 	c.next = i + n
 	return 1
 
@@ -661,19 +697,33 @@ int otl_ligature_subst(otl_ctx* c, int sub, int i):
 			return 1
 		int last = i
 		if (components > 1): last = positions[components - 2]
+		# Under hb rules, like HarfBuzz, a base glyph with marks or marks
+		# alone make no ligature id: their skipped marks stay as they were.
+		int numbered = 1
+		if (c.hb):
+			int base_lig = b.glyphs[i].props == otl_class_base
+			int mark_lig = b.glyphs[i].props == otl_class_mark
+			for k in range(components - 1):
+				if (b.glyphs[positions[k]].props != otl_class_mark):
+					base_lig = 0
+					mark_lig = 0
+			numbered = !base_lig && !mark_lig
 		# Skipped marks between components belong to the component before
 		# them, for mark-to-ligature attachment.
-		int lig_id = b.next_lig_id
-		b.next_lig_id = b.next_lig_id + 1
+		int lig_id = 0
+		if (numbered):
+			lig_id = b.next_lig_id
+			b.next_lig_id = b.next_lig_id + 1
 		int component = 1
 		int next_component = 0
 		for j in range(i + 1, last + 1):
 			if ((next_component < components - 1) && (j == positions[next_component])):
 				component = component + 1
 				next_component = next_component + 1
-			else:
+			else if (numbered):
 				b.glyphs[j].lig_id = lig_id
 				b.glyphs[j].lig_comp = component
+				b.glyphs[j].subst = b.glyphs[j].subst & ~otl_subst_lig_base
 			if (b.glyphs[j].cluster < b.glyphs[i].cluster): b.glyphs[i].cluster = b.glyphs[j].cluster
 		# The merged cluster also takes in glyphs after the last component
 		# that shared its cluster (its marks), like HarfBuzz.
@@ -687,10 +737,12 @@ int otl_ligature_subst(otl_ctx* c, int sub, int i):
 			k = k - 1
 		otl_glyph* g = &b.glyphs[i]
 		g.gid = ttf_u16(f, lig)
-		g.lig_id = lig_id
-		g.lig_comp = components
+		if (numbered):
+			g.lig_id = lig_id
+			g.lig_comp = components
 		g.subst = (g.subst | otl_subst_substituted | otl_subst_ligated) & ~otl_subst_multiplied
-		if (components == 1): g.subst = g.subst & ~otl_subst_ligated
+		if (numbered): g.subst = g.subst | otl_subst_lig_base
+		if (components == 1): g.subst = g.subst & ~(otl_subst_ligated | otl_subst_lig_base)
 		if (c.gdef_classes != 0): g.props = otl_glyph_class(c, g)
 		else if (components > 1): g.props = otl_class_ligature
 		c.next = i + 1
@@ -855,8 +907,9 @@ int otl_mark_record(otl_ctx* c, int mark_array, int index, int* anchor):
 	return ttf_u16(c.font, rec)
 
 # A glyph's ligature component as HarfBuzz reads it: 0 on a ligature.
+# HarfBuzz's _hb_glyph_info_get_lig_comp: 0 on a ligature glyph itself.
 int otl_lig_comp(otl_glyph* g):
-	if (g.subst & otl_subst_ligated): return 0
+	if (g.subst & otl_subst_lig_base): return 0
 	return g.lig_comp
 
 # HarfBuzz's MarkBasePos accept(): false for a later component of a
@@ -1016,6 +1069,7 @@ void otl_apply_lookup(otl_ctx* c, int lookup_index, int mask):
 	if (lookup == 0): return
 	c.hb = (mask & otl_mask_hb) != 0
 	c.manual_joiners = (mask & otl_mask_manual_joiners) != 0
+	c.auto_zwnj = (mask & otl_mask_auto_zwnj) != 0
 	c.per_syllable = (mask & otl_mask_per_syllable) != 0
 	mask = mask & ~otl_mask_flags
 	c.lookup_mask = mask
