@@ -53,10 +53,26 @@ destroyed participant are errors. Numbering continues while hidden; restarting
 with an explicit integer sets a new range. Starts are 0–1,000,000 and increments
 are 1–1,000,000.
 
-Not yet supported: participant configuration objects/stereotypes, participant
-configuration after creation, rendering link menus
-(they are kept in the model; the SVG has no interactive menus), `properties`/
-`details`, half-arrows, multiline/rich labels or browser styling. Upstream
+Participant objects `participant A@{ "type": "queue", "alias": "Jobs" }`
+select participant, actor, boundary, control, entity, database, collections or
+queue symbols (an `as` alias wins over `alias`). Central connections
+(`A->>()B`, `A()->>B`) draw small circles at the lifeline. Entity codes
+(`#9829;`, `#infin;`, `#quot;`) decode in labels and notes; the source keeps
+them. `link`/`links` menus render as a box under each lifeline whose safe
+entries are SVG links. `properties A: {json}` and `details A: text` are kept as
+participant members; property icons are never fetched.
+
+Half-arrows (upstream lexer tokens, solid and `--` dotted): `-|\` / `-|/`
+top / bottom solid half arrowheads and `-\\` / `-//` top / bottom stick
+halves at the receiver, and `/|-`, `\|-`, `//-`, `\\-` the same four
+reversed at the sender. They draw with upstream's marker geometry (the
+`solidTop`/`solidBottom`/`stickTop`/`stickBottom` markers oriented
+`auto-start-reverse`, so the half flips with the message direction).
+Example: [sequence_half_arrows.mmd](../../examples/mermaid/sequence_half_arrows.mmd).
+
+Messages and notes take Markdown strings and `<br>` (the shared rich layout).
+Not yet supported: participant
+configuration after creation or browser styling. Upstream
 `autonumber` takes integers only, so fractional numbering is not offered. Arbitrary control
 keywords do not silently become participants.
 
@@ -69,10 +85,16 @@ Reference: <https://mermaid.js.org/syntax/userJourney.html>.
 Supported: `journey`, title, sections and `Task: score: Actor, Other actor`.
 Scores must be integers 1–5; actor lists are optional. Tasks remain in source
 order. The preview shows section labels, task cards, actor labels and a connected
-score plot with numbered points on a 1–5 vertical scale.
+score plot on a 1–5 vertical scale whose points are upstream's score faces: a
+cornsilk face with two eyes and a smile above 3, a straight mouth at 3 and a
+frown below 3. Every listed actor is an avatar dot on the task card in
+upstream's actor colours (`#8FBC8F`, `#7CFC00`, `#00FFFF`, `#20B2AA`,
+`#B0E0E6`, `#FFFFE0`, repeating, by first mention), and a legend below the chart
+pairs each colour with its actor. `config: journey:` keys (margins, font
+sizes, ...) are ignored and recorded like other unsupported keys; the native
+layout keeps its own geometry.
 
-This uses the scores and actor metadata natively; it does not reproduce Mermaid's
-colored avatar legend, face icons, theme configuration or HTML labels.
+Not reproduced: theme-driven section colours and HTML labels.
 
 Example: [journey.mmd](../../examples/mermaid/journey.mmd).
 
@@ -89,9 +111,22 @@ text, not parsed dates. Each period owns a chronological column on a horizontal
 axis, with its events stacked below it. Empty event labels and an event without
 a preceding period are errors.
 
-Other rich labels, configurable colors/themes (`disableMulticolor` is moot: the
-native timeline is single-colored) and alternative wrapping/layout choices remain
-unsupported.
+`timeline LR` (the default) and `timeline TD` choose the direction, as upstream
+since 11.14: `TD` stacks the periods top down on a vertical axis with each
+period's events in a row to its right. Periods and their events are colour-coded
+as upstream's multicolour default: by section when the chart has sections,
+otherwise one colour per period (12 light colours, repeating). With a theme the
+same primitives repaint from `cScale0`–`cScale11`, `config: timeline:
+sectionFills` replaces the colours and `disableMulticolor: true` draws every
+box plain; `timeline.width` sets the minimum column width. The vertical
+layout uses the same colours.
+
+In the horizontal layout period and event text wraps at spaces inside the
+column (`timeline.width`, default 170px, less 30px padding) from measured
+per-glyph widths, as upstream wraps it; a single word wider than that widens
+the column instead, and event boxes and period headers grow 18px per extra
+line (issue #817). The `TD` layout wraps the same way. Markdown strings and
+`<br>` use the shared rich layout; other rich labels remain unsupported.
 
 Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 
@@ -99,27 +134,54 @@ Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 
 Reference: <https://mermaid.js.org/syntax/gantt.html>.
 
-Supported: `gantt`, title, sections, task IDs, explicit
-start/end dates, positive integer day/week durations (`3d`, `2w`), sequential
-starts after the previous task, and `after taskID` dependencies, including forward references and multiple
-space-separated IDs (the latest dependency end wins). `until taskID` ends at
-the referenced task start. The first task needs an explicit date or dependency. Calendar dates validate Gregorian leap
-years and accept years 1970–9999. `done`, `active`, `crit` and `milestone` tags
-are represented using completion lines, an active label, a double border and a
-diamond respectively; milestones can use `0d`.
+Supported: `gantt`, title, sections, task IDs, explicit start/end dates,
+durations, sequential starts after the previous task, and `after taskID`
+dependencies, including forward references and multiple space-separated IDs (the
+latest dependency end wins). `until a b` ends at the earliest start of the listed
+tasks. The first task needs an explicit date or dependency. Calendar dates
+validate Gregorian leap years and accept years 1970–9999. `done`, `active`,
+`crit` and `milestone` tags are represented using completion lines, an active
+label, a double border and a diamond respectively; milestones (and `vert`
+markers) may have zero duration. `vert` tasks draw a full-height purple
+reference line with their label and take no row, as upstream.
 
 The preview uses a common calendar axis and proportional start positions/bar
 lengths. Date ticks maintain enough spacing to stay readable. Dependencies
 resolve after parsing the complete chart; unknown references, dependency cycles,
-ends before starts, and schedules beyond year 9999 fail.
+ends before starts, and schedules beyond the calendar fail.
 
-`dateFormat` accepts any arrangement of `YYYY`, `MM`, `DD` and optionally
-`HH` with `mm`, separated by non-alphanumeric literals (`DD-MM-YYYY`,
-`YYYY/MM/DD`, `MM.DD.YYYY`, `YYYY-MM-DD HH:mm`, ...). It applies to every later
-date and must precede tasks, exclusions and a fixed today marker. A format with
-a time of day switches the chart to minute units: durations then also accept
-`h` and `m` (`90m`, `2h`) and dates are limited to years 1970–4000 so every
-moment fits a 32-bit integer; minute durations are capped at 3,660 days.
+**Units and time zones.** Every moment is a UTC wall-clock value counted from
+1970-01-01 in one of three units: days (date-only formats), minutes (a format
+with hours, minutes, AM/PM or an offset) or seconds (a format with seconds,
+fractions or a Unix timestamp). Minute charts are limited to years 1970–4000 and
+second charts to 1970–2037 so every moment fits a 32-bit integer. An explicit
+offset (`Z`, `ZZ`: `Z`, `+02:00`, `-0130`) is converted to UTC, so `10:00+02:00`
+and `08:00Z` are the same moment, and axis labels print UTC (`%Z` prints
+`+0000`). Upstream parses offsets the same way but displays the browser's local
+zone; the native chart is deterministic and never reads the host time zone.
+Formats without a date (`HH:mm`) anchor at 1970-01-01 where upstream uses the
+current day.
+
+`dateFormat` accepts the moment.js/dayjs tokens upstream documents: `YYYY`, `YY`
+(69–99 → 19xx), `Q`, `M`, `MM`, `MMM`, `MMMM` (English names, any case), `D`,
+`DD`, `Do` (`5th`), `DDD`, `DDDD` (day of year), `d`/`dd`/`ddd`/`dddd` (weekday,
+read and ignored), `H`, `HH`, `h`, `hh` with `A`/`a`, `k`, `kk`, `m`, `mm`, `s`,
+`ss`, `S`, `SS`, `SSS`, `X` (Unix seconds, optional fraction), `x` (Unix
+milliseconds), `Z` and `ZZ`; `[text]` and other characters (such as the `T` of
+ISO 8601) are literals. Week-based and era tokens (`w`, `W`, `gggg`, `GGGG`,
+`E`, `e`, `N`) are diagnosed. The format applies to every later date and must
+precede tasks, exclusions and a fixed today marker. Task fields are
+comma-separated, so a date cannot contain a comma.
+
+Durations are `<number><unit>` with `ms`, `s`, `m`, `h`, `d`, `w`, `M` and `y`,
+optionally fractional (`1.5d`, `0.5y`). `M` and `y` add calendar months as dayjs
+does (the day clamps to the month length: 2024-01-31 + `1M` is 2024-02-29) and
+must amount to whole months. A duration finer than the chart unit rounds up
+(`1s` on a minute chart is one minute); in a day chart, a sub-day duration
+(`20h`, `1.5d`) switches the whole chart to minutes while keeping the
+`%Y-%m-%d` default axis labels. Durations are capped at 3,660 days (365,000 in
+day charts). `inclusiveEndDates` (before the tasks) makes explicit end dates
+include their last day.
 
 `excludes` takes `weekends`, weekday names and dates (space or comma separated,
 dates in the active format or `YYYY-MM-DD`); `includes` takes dates that override
@@ -131,20 +193,41 @@ Excluded days within the chart are shaded (charts longer than 1,000 days skip th
 shading). Scheduling uses whole-week arithmetic plus a binary search, so long
 chains over exclusion calendars stay bounded.
 
-`axisFormat` uses strftime tokens `%Y %y %m %d %e %b %B %a %A %H %I %M %p %j %%`;
-the default is `%Y-%m-%d` (`%Y-%m-%d %H:%M` for minute charts). Minute-chart
-ticks snap to clock intervals (minutes, hours, days, weeks) and tick spacing grows
-with the label width. `todayMarker off` and style-only `todayMarker` lines are
-accepted; the native renderer never reads the wall clock, so a red marker is
-drawn only for a fixed date (`todayMarker 2026-10-08`, a native extension) inside
-the charted range. `click ID href "url"` stores the URL as `href` metadata on
-the task's node (the SVG writer has no link primitive, so it is not yet emitted
-as `<a>`); the ID must name a task, and `call` callbacks are rejected.
+`axisFormat` accepts every d3-time-format directive (`%a %A %b %B %c %d %e %f %g
+%G %H %I %j %L %m %M %p %q %Q %s %S %u %U %V %w %W %x %X %y %Y %Z %%`, en-US
+locale) with the `-`, `_` and `0` padding modifiers; the default is `%Y-%m-%d`
+(`%Y-%m-%d %H:%M` for minute and `%Y-%m-%d %H:%M:%S` for second charts). Ticks
+snap to clock intervals and grow with the label width. `tickInterval <n><unit>`
+(upstream's `millisecond|second|minute|hour|day|week|month` units) fixes the
+tick step: week ticks start on `weekday <name>` (Sunday by default) and month
+ticks on the first of the month. As d3's `interval.every(n)`, which upstream
+uses, a tick falls on a unit boundary whose calendar field is a multiple of n:
+`3day` ticks on the 1st, 4th, 7th, ... of each month, `6hour` at 00, 06, 12 and
+18, `2month` in January, March, ..., and `2week` on every second week counted
+from 1970. Other `tickInterval` text is accepted and
+ignored, as upstream, and an interval that would draw more than 200 ticks falls
+back to automatic ticks. Tick labels are centred on their ticks (measured widths) and drawn above the chart; the `topAxis`
+directive or `config: gantt: topAxis: true` also repeats them below it, and
+`topAxis: false` keeps only the bottom row (upstream's default position).
 
-Not yet supported: timezones, `inclusiveEndDates`, `topAxis`, `tickInterval`,
-`weekday`, month/year/second duration units, other moment.js tokens, click
-callbacks, rendered links or configurable styles. Unsupported scheduling
-directives fail rather than producing an incorrect chart.
+`displayMode: compact` (top-level frontmatter, or `config: gantt: displayMode`)
+packs each section's tasks into the fewest rows: a task takes the first row
+whose last task ended by its start, and labels move onto the bars: centred inside a bar their measured text fits (with 4px either side), otherwise just past the bar's end, as upstream's `taskText`/`taskTextOutsideRight`. `config:
+gantt:` also accepts `axisFormat`, `tickInterval`, `weekday` and `topAxis` (the
+diagram's own directives win), and `barHeight`, `barGap` and `leftPadding`
+size the bars, rows and label column; other keys are ignored and recorded.
+
+`todayMarker off` and style-only `todayMarker` lines are accepted; the native
+renderer never reads the wall clock, so a red marker is drawn only for a fixed
+date (`todayMarker 2026-10-08`, a native extension) inside the charted range.
+`click ID href "url"` stores the URL as `href` metadata on the task's node (the
+SVG writer has no link primitive, so it is not yet emitted as `<a>`); the ID
+must name a task, and `call` callbacks are rejected.
+
+Upstream 12.2.0 draws no dependency arrows between tasks (there is no option to
+enable them), so none are drawn natively either. Not yet supported: years before
+1970, click callbacks, rendered links and configurable bar styles. Unsupported
+scheduling directives fail rather than producing an incorrect chart.
 
 Example: [gantt.mmd](../../examples/mermaid/gantt.mmd).
 
@@ -168,15 +251,34 @@ a top-level call without an explicit caller uses an `External` participant.
 Balanced method arguments are required. Calls and returns become native
 lifeline messages with activation bars; control constructs become frames.
 
-Not yet supported: `@return`/`@reply`, `@Starter`, participant icons for
-annotations (they render as stereotype text), every loop spelling, rich
-comments or styles. Braces inside quoted arguments or after an async message's
+`@Starter(A)` names the caller of top-level calls; `@return`/`@reply` makes the
+next async message a dashed reply. `@Boundary`, `@Control`, `@Entity`,
+`@Database`, `@Collections` and `@Queue` draw their UML symbols. Every cloud
+annotator in zenuml.md's annotator chart (AWS `@CloudWatch` … `@VPC`, Azure
+`@AzureActiveDirectory` … `@VirtualMachine`, Google Cloud `@BigTable` …
+`@VisionAPI`; 50 kinds, matched case-insensitively like ZenUML) draws an icon
+tile left of the label in its provider's category colour with a short caption
+(`EC2`, `Fn`, `SQL`, ...); the vendor artwork itself is not reproduced. Other
+annotation names keep the `<<Annotation>>` stereotype line. zenuml.md
+documents no styling syntax; the participant rule of ZenUML's grammar
+(`participantType? stereotype? name width? label? COLOR?`) gives
+`<<Stereotype>>` (a `«Stereotype»` line above the label), a width in pixels
+(1–2000, the box's minimum width) and a `#rgb`/`#rrggbb` colour that fills the
+participant box with a contrasting black or white label (ZenUML's brightness
+rule), e.g. `@Lambda <<Service>> Checkout 180 as Checkout handler #FFEBE6`.
+`//` comments (Markdown emphasis included) render above the following message
+or fragment.
+
+Not yet supported: every loop spelling, message styling and the vendor icon
+artwork. Braces inside quoted arguments or after an async message's
 colon stay label text.
-`//` comments are retained in source but not displayed above messages. Quoted
+Comments before a participant declaration are dropped. Quoted
 arguments do not currently process backslash escapes. Statements outside the
 listed subset fail explicitly.
 
-Example: [zenuml.mmd](../../examples/mermaid/zenuml.mmd).
+Examples: [zenuml.mmd](../../examples/mermaid/zenuml.mmd),
+[zenuml_cloud.mmd](../../examples/mermaid/zenuml_cloud.mmd); checks in
+`./wbuild syntax_tail_test syntax_tail_64_test`.
 
 ## Validation
 
@@ -188,5 +290,9 @@ diagnostics and every source prefix. `./wbuild narrative_test narrative_64_test`
 fragments, activation validation, journey score geometry, timeline event grouping,
 Gregorian dates/dependencies/status, nested ZenUML calls and returns, lossless
 edits, malformed/truncated input, ownership and source/item/layout bounds.
+`./wbuild sequence_objects_test sequence_objects_64_test` covers participant
+objects, properties/details, central connections, entity codes, link menus and
+ZenUML `@return`/`@Starter`/symbols/comments; `./wbuild flowchart_test
+flowchart_64_test` covers flowchart shapes, links, edge IDs and click actions.
 The same display list drives SVG and native desktop rendering; examples are
 also exercised through CLI check/export and native screenshot smoke checks.

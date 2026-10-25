@@ -29,8 +29,10 @@ void test_data_pie_proportions_and_source():
 	mm_scene* scene = mm_render(d)
 	mm_document_free(d)
 	char* svg = mm_svg(scene)
-	asserts(c"quarter fraction label", index_of(svg, c">25</text>") >= 0)
-	asserts(c"three quarter fraction label", index_of(svg, c">75</text>") >= 0)
+	# Upstream slice labels: ((value / sum) * 100).toFixed(0) + '%'.
+	asserts(c"quarter percentage label", index_of(svg, c">25%</text>") >= 0)
+	asserts(c"three quarter percentage label", index_of(svg, c">75%</text>") >= 0)
+	asserts(c"no bare slice number", index_of(svg, c">25</text>") < 0)
 	asserts(c"owned source title", index_of(svg, c">Budget</text>") >= 0)
 	free(svg)
 	mm_scene_free(scene)
@@ -137,7 +139,7 @@ void test_data_venn_regions_and_aliases():
 	mm_document_free(d)
 	data_bad(c"venn-beta\nset A\nunion A,B[\"x\"]\n")
 	data_bad(c"venn-beta\nset A\nunion A,A[\"x\"]\n")
-	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\n")
+	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\nset E\nset F\nset G\nset H\nset I\n")
 
 void test_data_packet_ranges_and_wrapping():
 	mm_document* d = data_parse(c"packet-beta\n+16: \"Source\"\n+16: \"Destination\"\n32-79: \"Payload\"\n")
@@ -363,6 +365,21 @@ void test_data_squarified_treemap_geometry():
 	mm_scene_free(scene)
 	mm_document_free(d)
 
+# Overlapping pairs among the scene's MM_TEXT boxes whose left edge lies in
+# [min_x, max_x]: the outside-label collision contract.
+int data_text_overlaps(mm_scene* scene, int min_x, int max_x):
+	int overlaps = 0
+	for i in range(scene.items.length):
+		mm_primitive* a = scene.items[i]
+		if (a.kind != MM_TEXT || a.x < min_x || a.x > max_x): continue
+		for j in range(i + 1, scene.items.length):
+			mm_primitive* b = scene.items[j]
+			if (b.kind != MM_TEXT || b.x < min_x || b.x > max_x): continue
+			int ax2 = a.x + mm_text_width(a.text, 0)
+			int bx2 = b.x + mm_text_width(b.text, 0)
+			if (a.x < bx2 && b.x < ax2 && a.y < b.y + MM_TEXT_LINE && b.y < a.y + MM_TEXT_LINE): overlaps = overlaps + 1
+	return overlaps
+
 void test_data_dense_pie_legend_labels():
 	string_builder* source = string_from(c"pie showData\n")
 	for i in range(40):
@@ -373,18 +390,277 @@ void test_data_dense_pie_legend_labels():
 	mm_scene* scene = mm_render(d)
 	int labels = 0
 	int percentages = 0
+	int legend_x = -1
+	int outside = 0
+	int outside_right = 0
+	int leaders = 0
 	for mm_primitive* p in scene.items:
+		if (p.kind == MM_LINE): leaders = leaders + 1
 		if (p.kind != MM_TEXT): continue
 		if (index_of(p.text, c"Category ") == 0):
-			assert_equal(500, p.x)
+			if (legend_x < 0): legend_x = p.x
+			assert_equal(legend_x, p.x)
 			assert_equal(80 + labels * 26, p.y)
 			labels = labels + 1
 		if (strcmp(p.text, c"2.5% (value: 1)") == 0): percentages = percentages + 1
+		if (strcmp(p.text, c"2.5%") == 0):
+			outside = outside + 1
+			if (p.x + mm_text_width(p.text, 0) > outside_right): outside_right = p.x + mm_text_width(p.text, 0)
 	assert_equal(40, labels)
 	assert_equal(40, percentages)
+	# Every 9-degree wedge gets an outside label with a two-segment leader,
+	# none overlapping, and the legend moves clear of the right-hand column.
+	assert_equal(40, outside)
+	assert_equal(80, leaders)
+	asserts(c"legend right of outside labels", legend_x > outside_right)
+	assert_equal(0, data_text_overlaps(scene, -10000, legend_x - 1))
 	mm_scene_free(scene)
 	mm_document_free(d)
 	string_free(source)
+
+# One dominant slice crowds many thin wedges into one arc: their labels
+# must stack apart, keep angular order (leaders never cross) and stay off
+# the legend.
+void test_data_pie_small_slices_spread_without_overlap():
+	string_builder* source = string_from(c"pie\n\"Big\": 300\n")
+	for i in range(18):
+		string_append(source, c"\"S")
+		string_append_int(source, i)
+		string_append(source, c"\": 1\n")
+	mm_document* d = data_parse(source.data)
+	mm_scene* scene = mm_render(d)
+	int legend_x = 0
+	int outside = 0
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Big") == 0): legend_x = p.x
+	asserts(c"legend found", legend_x > 0)
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_TEXT && p.x < legend_x - 28 && index_of(p.text, c"0.") == 0): outside = outside + 1
+	assert_equal(18, outside)
+	assert_equal(0, data_text_overlaps(scene, -10000, legend_x - 29))
+	# Leader end points (second segment of each pair) descend monotonically
+	# per side, so no two leaders cross.
+	int last_right = -100000
+	int last_left = -100000
+	int lines = 0
+	for mm_primitive* p in scene.items:
+		if (p.kind != MM_LINE): continue
+		lines = lines + 1
+		if (lines % 2 == 1): continue
+		if (p.x2 > 250):
+			asserts(c"right leaders keep order", p.y2 > last_right)
+			last_right = p.y2
+		else:
+			asserts(c"left leaders keep order", p.y2 > last_left)
+			last_left = p.y2
+	assert_equal(36, lines)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	string_free(source)
+
+# Ribbon crossings read back from the scene: ribbons spanning the same
+# column pair whose top-to-bottom order differs at the two ends.
+int data_sankey_scene_crossings(mm_scene* scene):
+	list[mm_primitive*] ribbons = new list[mm_primitive*]
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_POLYGON && p.points.length == 68): ribbons.push(p)
+	int total = 0
+	for i in range(ribbons.length):
+		mm_primitive* a = ribbons[i]
+		for j in range(i + 1, ribbons.length):
+			mm_primitive* b = ribbons[j]
+			if (a.points[0] != b.points[0] || a.points[32] != b.points[32]): continue
+			int a0 = a.points[1] + a.points[67]
+			int b0 = b.points[1] + b.points[67]
+			int a1 = a.points[33] + a.points[35]
+			int b1 = b.points[33] + b.points[35]
+			if ((a0 < b0 && a1 > b1) || (a0 > b0 && a1 < b1)): total = total + 1
+	__w_list_free(cast(__w_list*, ribbons))
+	return total
+
+int data_sankey_crossings(char* source):
+	mm_document* d = data_parse(source)
+	mm_scene* scene = mm_render(d)
+	int crossings = data_sankey_scene_crossings(scene)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	return crossings
+
+void test_data_sankey_global_crossing_reduction():
+	# Ribbons sharing a source stack in their targets' order.
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nX,C,1\nA,B,5\nA,C,5\n"))
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nA,Y,10\nB,X,10\nC,Y,10\n"))
+	# Planar inputs whose first-pass order crosses: the sweeps untangle
+	# sources and middle columns too.
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nS1,M2,4\nS2,M1,4\nS3,M2,4\nM1,T1,4\nM2,T2,8\n"))
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nA,X,3\nB,Y,3\nC,X,3\nD,Y,3\nE,X,3\nX,Z,9\nY,W,6\n"))
+	# A non-planar K3,3 stage keeps the crossings it cannot avoid but fewer
+	# than the six the single forward pass drew.
+	int dense = data_sankey_crossings(c"sankey-beta\nn1,m3,2\nn2,m1,2\nn3,m2,2\nn1,m2,1\nn2,m3,1\nn3,m1,1\nm1,k2,3\nm2,k1,3\nm3,k3,3\n")
+	asserts(c"dense stage improves", dense > 0 && dense <= 3)
+	# Deterministic: the same source renders the same display list.
+	char* source = c"sankey-beta\nS1,M2,4\nS2,M1,4\nS3,M2,4\nM1,T1,4\nM2,T2,8\n"
+	mm_document* first = data_parse(source)
+	mm_document* second = data_parse(source)
+	char* a = mm_svg(mm_render(first))
+	char* b = mm_svg(mm_render(second))
+	assert_strings_equal(a, b)
+	free(a)
+	free(b)
+	mm_document_free(first)
+	mm_document_free(second)
+
+# Drawn ribbon crossings read back from the scene for every pair of ribbons
+# whose x spans overlap: sign changes of the difference of their center lines
+# (top edge plus bottom edge, sampled 17 times each) across the overlap.
+float data_sankey_center(mm_primitive* p, int x):
+	if (x <= p.points[0]): return cast(float, p.points[1] + p.points[67])
+	for j in range(1, 17):
+		int x1 = p.points[j * 2]
+		if (x <= x1):
+			int x0 = p.points[j * 2 - 2]
+			float y0 = cast(float, p.points[j * 2 - 1] + p.points[(34 - j) * 2 + 1])
+			float y1 = cast(float, p.points[j * 2 + 1] + p.points[(33 - j) * 2 + 1])
+			if (x1 == x0): return y1
+			return y0 + (y1 - y0) * cast(float, x - x0) / cast(float, x1 - x0)
+	return cast(float, p.points[33] + p.points[35])
+
+int data_sankey_drawn_crossings(mm_scene* scene):
+	list[mm_primitive*] ribbons = new list[mm_primitive*]
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_POLYGON && p.points.length == 68): ribbons.push(p)
+	int total = 0
+	for i in range(ribbons.length):
+		mm_primitive* a = ribbons[i]
+		for j in range(i + 1, ribbons.length):
+			mm_primitive* b = ribbons[j]
+			int lo = a.points[0]
+			if (b.points[0] > lo): lo = b.points[0]
+			int hi = a.points[32]
+			if (b.points[32] < hi): hi = b.points[32]
+			if (hi <= lo): continue
+			int last = 0
+			for k in range(65):
+				int x = lo + (hi - lo) * k / 64
+				float diff = data_sankey_center(a, x) - data_sankey_center(b, x)
+				int sign = 0
+				if (diff > 0.0): sign = 1
+				if (diff < 0.0): sign = -1
+				if (sign != 0 && last != 0 && sign != last): total = total + 1
+				if (sign != 0): last = sign
+	__w_list_free(cast(__w_list*, ribbons))
+	return total
+
+# Global crossing counts in value units (flow values are fixed point).
+int data_sankey_units(float crossings):
+	return cast(int, crossings / 1000000.0 + 0.5)
+
+int data_sankey_drawn(char* source):
+	mm_document* d = data_parse(source)
+	mm_scene* scene = mm_render(d)
+	int crossings = data_sankey_drawn_crossings(scene)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	return crossings
+
+void test_data_sankey_crossings_between_column_pairs():
+	# The long A->Y ribbon crosses the B->N->Y path, which shares no column
+	# pair with it: the first pass draws 2 crossings and the old same-pair
+	# count saw none, so it never moved. Globally counted, the backward
+	# sweep swaps Y and Z and one unavoidable crossing remains.
+	char* source = c"sankey-beta\nA,M,5\nB,N,5\nM,Z,5\nN,Y,5\nA,Y,10\n"
+	assert_equal(1, data_sankey_drawn(source))
+	assert_equal(100, data_sankey_units(mm_data_sankey_initial_crossings))
+	assert_equal(25, data_sankey_units(mm_data_sankey_final_crossings))
+	asserts(c"cross-span chart relaxes", mm_data_sankey_sweeps_run >= 1)
+	# Same-pair crossings still count: M->Y and N->Z cross once (25 = 5 * 5).
+	assert_equal(1, data_sankey_drawn(c"sankey-beta\nA,M,5\nB,N,5\nM,Y,5\nN,Z,5\nB,Y,10\n"))
+	assert_equal(25, data_sankey_units(mm_data_sankey_final_crossings))
+	# A planar chart reaches zero and stops sweeping.
+	assert_equal(0, data_sankey_drawn(c"sankey-beta\nA,X,3\nB,Y,3\nC,X,3\nD,Y,3\nE,X,3\nX,Z,9\nY,W,6\n"))
+	assert_equal(0, data_sankey_units(mm_data_sankey_final_crossings))
+
+# A deterministic stress chart at the 256-flow item limit: 8 columns of 12
+# nodes, a chain into every node and extra flows spanning 1-3 columns.
+char* data_sankey_stress_source():
+	string_builder* text = string_from(c"sankey-beta\n")
+	list[int] seen = new list[int]
+	int seed = 7
+	int flows = 0
+	int attempts = 0
+	while (flows < 256 && attempts < 100000):
+		attempts = attempts + 1
+		seed = (seed * 1103515245 + 12345) & 2147483647
+		int from_layer = 0
+		int to_layer = 0
+		int from_index = 0
+		int to_index = 0
+		if (flows < 84):
+			to_layer = flows / 12 + 1
+			to_index = flows % 12
+			from_layer = to_layer - 1
+			from_index = (seed >> 8) % 12
+		else:
+			from_layer = (seed >> 4) % 7
+			to_layer = from_layer + 1 + ((seed >> 9) % 3)
+			if (to_layer > 7): to_layer = 7
+			from_index = (seed >> 13) % 12
+			to_index = (seed >> 18) % 12
+		int key = (from_layer * 12 + from_index) * 1000 + to_layer * 12 + to_index
+		int duplicate = 0
+		for int other in seen:
+			if (other == key): duplicate = 1
+		if (duplicate): continue
+		seen.push(key)
+		string_append(text, c"n")
+		string_append_int(text, from_layer)
+		string_append(text, c"_")
+		string_append_int(text, from_index)
+		string_append(text, c",n")
+		string_append_int(text, to_layer)
+		string_append(text, c"_")
+		string_append_int(text, to_index)
+		string_append(text, c",")
+		string_append_int(text, 1 + (seed >> 23) % 9)
+		string_append(text, c"\n")
+		flows = flows + 1
+	__w_list_free(cast(__w_list*, seen))
+	char* source = strclone(text.data)
+	string_free(text)
+	return source
+
+void test_data_sankey_global_crossings_stress():
+	char* source = data_sankey_stress_source()
+	mm_document* d = data_parse(source)
+	assert_equal(256, d.data.items.length)
+	mm_scene* scene = mm_render(d)
+	int drawn = data_sankey_drawn_crossings(scene)
+	int initial = data_sankey_units(mm_data_sankey_initial_crossings)
+	int final = data_sankey_units(mm_data_sankey_final_crossings)
+	# The full schedule fits the work budget at the item limit.
+	assert_equal(MM_DATA_SANKEY_SWEEPS, mm_data_sankey_sweeps_run)
+	asserts(c"transpositions refine the sweeps", mm_data_sankey_transposes_run > 0)
+	# The first-pass order weighs about 49900; sweeps plus transpositions
+	# take it to about 41300. The previous same-column-pair relaxation drew
+	# 2250 crossings on this chart; the global one draws about 1990.
+	asserts(c"stress chart loses at least 15% of its crossings", final * 100 <= initial * 85)
+	asserts(c"stress chart draws fewer crossings than before", drawn > 0 && drawn < 2250)
+	# Deterministic: rendering again reproduces the counts and the drawing.
+	mm_scene* again = mm_render(d)
+	assert_equal(drawn, data_sankey_drawn_crossings(again))
+	assert_equal(final, data_sankey_units(mm_data_sankey_final_crossings))
+	mm_scene_free(again)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	free(source)
+
+void test_data_sankey_sweep_budget():
+	assert_equal(0, mm_data_sankey_sweep_budget(0))
+	assert_equal(MM_DATA_SANKEY_SWEEPS, mm_data_sankey_sweep_budget(1000))
+	# Larger charts get a shorter schedule, never none.
+	assert_equal(2, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET / 3))
+	assert_equal(1, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET))
+	assert_equal(1, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET * 50))
 
 void test_data_packet_configured_word_order():
 	mm_document* d = data_parse(c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n    bitOrder: descending\n---\npacket\n0-7: \"Data\"\n8-19: \"Rest\"\n")
@@ -526,15 +802,18 @@ void test_data_venn_sizes_and_text_nodes():
 	int text_count = 0
 	for mm_primitive* p in scene.items:
 		if (p.kind == MM_TEXT && index_of(p.text, c"note") >= 0): text_count = text_count + 1
-		if (p.kind != MM_LINE): continue
-		if (lines < 32):
-			if (p.x < first_left): first_left = p.x
-			if (p.x > first_right): first_right = p.x
-		else:
-			if (p.x < second_left): second_left = p.x
-			if (p.x > second_right): second_right = p.x
+		# Sets are filled disc polygons sampled from their circles.
+		if (p.kind != MM_POLYGON): continue
+		for k in range(0, p.points.length, 2):
+			int x = p.points[k]
+			if (lines == 0):
+				if (x < first_left): first_left = x
+				if (x > first_right): first_right = x
+			else:
+				if (x < second_left): second_left = x
+				if (x > second_right): second_right = x
 		lines = lines + 1
-	assert_equal(64, lines)
+	assert_equal(2, lines)
 	assert_equal(3, text_count)
 	assert_equal(340, first_right - first_left)
 	assert_equal(170, second_right - second_left)
@@ -551,7 +830,6 @@ void test_data_venn_sizes_and_text_nodes():
 	data_bad(c"venn-beta\ntext A[\"No parent\"]\n")
 	data_bad(c"venn-beta\nset A:0\n")
 	data_bad(c"venn-beta\nset A:2\nset B:1\nunion A,B[\"Too large\"]:3\n")
-	data_bad(c"venn-beta\nset A:10\nset B:10\nset C:10\n")
 	data_bad(c"venn-beta\nset A\n  text A[\"Duplicate\"]\n")
 
 void test_data_new_syntax_prefixes():

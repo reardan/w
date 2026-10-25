@@ -206,14 +206,16 @@ void __ui_items_order(ui_bidi_run* runs, int32* visual_runs, int run_count, int3
 				visual[v] = i
 				v = v + 1
 
-# Shapes items (their face, level and script set) at ppem with
+# Shapes items (their face, level and script set) at the base strike's
+# ppem, in sibling strikes that keep its options (hinting), with
 # text[context_start, context_end) as shaping context, then places them
 # left to right by visual. Raises ascent/descent to every strike used.
 # Returns the total advance, or -1 with status set on a failure.
-int __ui_items_shape(ui_text_item* items, int count, int32* visual, char* text, int context_start, int context_end, int ppem, int* ascent, int* descent, int* status):
+int __ui_items_shape(ui_text_item* items, int count, int32* visual, char* text, int context_start, int context_end, int base_strike, int* ascent, int* descent, int* status):
+	int ppem = ui_font_st.strikes[base_strike].ppem
 	for i in range(count):
 		ui_text_item* item = &items[i]
-		item.strike = ui_font_strike(item.face, ppem)
+		item.strike = ui_font_strike_sibling(base_strike, item.face, ppem)
 		if (item.strike < 0):
 			status[0] = UI_SHAPE_FAILED
 			return -1
@@ -303,7 +305,7 @@ ui_paragraph* ui_paragraph_shape(char* text, int length, int strike, int directi
 	p.ascent = ui_font_strike_ascent(strike)
 	p.descent = ui_font_strike_descent(strike)
 	int status = UI_SHAPE_OK
-	int advance = __ui_items_shape(p.items, p.item_count, p.visual_items, text, 0, length, ui_font_st.strikes[strike].ppem, &p.ascent, &p.descent, &status)
+	int advance = __ui_items_shape(p.items, p.item_count, p.visual_items, text, 0, length, strike, &p.ascent, &p.descent, &status)
 	if (advance < 0):
 		p.status = status
 		return p
@@ -491,7 +493,7 @@ int __ui_line_build(ui_paragraph* p, char* text, int start, int end, ui_text_lin
 	free(item_end)
 	ui_bidi_line_free(order)
 	int status = UI_SHAPE_OK
-	int advance = __ui_items_shape(line.items, line.item_count, line.visual_items, text, start, end, ui_font_st.strikes[p.strike].ppem, &line.ascent, &line.descent, &status)
+	int advance = __ui_items_shape(line.items, line.item_count, line.visual_items, text, start, end, p.strike, &line.ascent, &line.descent, &status)
 	if (advance < 0): return status
 	line.advance = advance
 	int visible = __ui_line_visible_end(p, text, start, end)

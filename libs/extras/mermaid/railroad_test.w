@@ -101,14 +101,14 @@ void test_rail_geometry_bypasses_loops_and_zero_count():
 	asserts(c"zero body not falsely drawn", index_of(svg, c"never") < 0)
 	int backwards = 0
 	for mm_primitive* p in s.items:
-		if (p.kind == MM_LINE && p.x > p.x2 && p.x - p.x2 == 6): backwards = backwards + 1
-	asserts(c"repetition loop points backwards", backwards > 0)
+		if (p.kind == MM_LINE && p.x > p.x2 && p.y == p.y2): backwards = backwards + 1
+	asserts(c"repetition loop runs backwards", backwards > 0)
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
 
 void test_rail_errors_limits_and_escaping():
-	rail_bad(c"railroad-ebnf-beta\nr = \"a\"\n")
+	rail_bad(c"railroad-ebnf-beta\nr = \"a\" x = \"b\" ;\n")
 	rail_bad(c"railroad-ebnf-beta\nr = \"a\";\nr = \"b\";\n")
 	rail_bad(c"railroad-ebnf-beta\nr = A - ;\n")
 	rail_bad(c"railroad-ebnf-beta\n/* missing\n")
@@ -210,4 +210,125 @@ void test_rail_character_classes_and_exceptions():
 	asserts(c"exception is explicit rather than alternative", index_of(svg, c">except</text>") >= 0)
 	free(svg)
 	mm_scene_free(scene)
+	mm_document_free(d)
+
+mm_rail_expr* rail_rule_expr(mm_document* d, int rule):
+	mm_rail_rule* r = d.railroad.rules[rule]
+	return d.railroad.expressions[r.expression]
+
+mm_rail_expr* rail_child(mm_document* d, mm_rail_expr* e, int index):
+	return d.railroad.expressions[e.children[index]]
+
+void test_rail_upstream_escapes_per_notation():
+	# IR, EBNF and PEG decode \n \r \t and take any other escaped character literally.
+	mm_document* d = rail_parse(c"railroad-ebnf-beta\nr = \"a\\\"b\" | 'c\\'d' | \"\\n\\t\\x\\\\\" ;\n")
+	mm_rail_expr* choice = rail_rule_expr(d, 0)
+	assert_equal(MM_RAIL_CHOICE, choice.kind)
+	assert_strings_equal(c"a\"b", rail_child(d, choice, 0).text)
+	assert_strings_equal(c"c'd", rail_child(d, choice, 1).text)
+	assert_strings_equal(c"\n\tx\\", rail_child(d, choice, 2).text)
+	mm_scene* s = mm_render(d)
+	char* svg = mm_svg(s)
+	asserts(c"control escapes displayed visibly", index_of(svg, c">\\n\\tx\\</text>") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = rail_parse(c"railroad-beta\nr = terminal(\"tab\\there\") ;\n")
+	assert_strings_equal(c"tab\there", rail_rule_expr(d, 0).text)
+	mm_document_free(d)
+	d = rail_parse(c"railroad-peg-beta\nr <- '\\'' \"multi\nline\" ;\n")
+	mm_rail_expr* sequence = rail_rule_expr(d, 0)
+	assert_strings_equal(c"'", rail_child(d, sequence, 0).text)
+	assert_strings_equal(c"multi\nline", rail_child(d, sequence, 1).text)
+	mm_document_free(d)
+	# ABNF (RFC 5234): no escapes, double quotes only; a backslash is literal.
+	d = rail_parse(c"railroad-abnf-beta\nr = %s\"a\\\" ;\n")
+	assert_strings_equal(c"a\\", rail_rule_expr(d, 0).text)
+	mm_document_free(d)
+	rail_bad(c"railroad-abnf-beta\nr = 'a' ;\n")
+	rail_bad(c"railroad-ebnf-beta\nr = \"open ;\n")
+
+void test_rail_optional_semicolons_at_rule_boundaries():
+	list[char*] sources = list[char*]{c"railroad-ebnf-beta\na = \"x\" b\nb ::= \"y\" | \"z\"\nc = a ;\n", c"railroad-abnf-beta\na = \"x\" b ; comment\nb = 1*DIGIT\nb =/ ALPHA\n", c"railroad-peg-beta\nA <- \"x\" B\nB <- [0-9]+\n", c"railroad-beta\na = terminal(\"x\")\nb = nonterminal(\"a\")\n"}
+	list[int] counts = list[int]{3, 2, 2, 2}
+	for i in range(sources.length):
+		mm_document* d = rail_parse(sources[i])
+		assert_equal(counts[i], d.railroad.rules.length)
+		mm_scene* s = mm_render(d)
+		asserts(c"semicolon-free grammar renders", s != 0)
+		mm_scene_free(s)
+		char* copy = mm_write(d)
+		assert_strings_equal(sources[i], copy)
+		free(copy)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, sources))
+	__w_list_free(cast(__w_list*, counts))
+	# A continuation line is still part of the rule; only a rule head ends it.
+	mm_document* d = rail_parse(c"railroad-ebnf-beta\na = \"x\"\n  b\n  | c\n")
+	assert_equal(1, d.railroad.rules.length)
+	assert_equal(MM_RAIL_CHOICE, rail_rule_expr(d, 0).kind)
+	mm_document_free(d)
+	rail_bad(c"railroad-ebnf-beta\na = \"x\" )\n")
+	rail_bad(c"railroad-peg-beta\nA <- \"x\" B = \"y\"\n")
+
+void test_rail_references_link_to_rules():
+	mm_document* d = rail_parse(c"railroad-ebnf-beta\nexpr = term ( \"+\" expr )? ;\nterm = digit | \"(\" expr \")\" ;\n")
+	int linked = 0
+	int external = 0
+	for mm_rail_expr* e in d.railroad.expressions:
+		if (e.kind != MM_RAIL_REFERENCE): continue
+		if (e.target > 0): linked = linked + 1
+		else: external = external + 1
+	# expr (twice) and term are defined here; digit is external.
+	assert_equal(3, linked)
+	assert_equal(1, external)
+	mm_scene* s = mm_render(d)
+	char* svg = mm_svg(s)
+	asserts(c"rule rows are link targets", index_of(svg, c"id=\"railroad-rule-expr\"") >= 0)
+	asserts(c"defined references link to their rule", index_of(svg, c"<a href=\"#railroad-rule-term\">") >= 0)
+	asserts(c"external references are not linked", index_of(svg, c"#railroad-rule-digit") < 0)
+	asserts(c"upstream rule label", index_of(svg, c">expr =</text>") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+# Upstream geometry: arcRadius 10 quarter circles, bypass 2r above the track.
+void test_rail_curved_upstream_geometry():
+	mm_document* d = rail_parse(c"railroad-ebnf-beta\nr = [\"a\"] ;\n")
+	mm_scene* s = mm_render(d)
+	mm_rail_expr* optional = rail_rule_expr(d, 0)
+	mm_rail_expr* body = rail_child(d, optional, 0)
+	assert_equal(body.width + 40, optional.width)
+	assert_equal(body.up + 20, optional.up)
+	assert_equal(body.height + 20, optional.height)
+	int diagonal = 0
+	int min_y = 100000
+	int max_y = 0
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_LINE): continue
+		if (p.x != p.x2 && p.y != p.y2): diagonal = diagonal + 1
+		if (p.y < min_y): min_y = p.y
+		if (p.y > max_y): max_y = p.y
+	# One optional bypass: four quarter arcs of six segments each (the
+	# near-tangent ends round to axis-aligned steps); the bypass runs along
+	# the top edge, 2r above the body.
+	assert_equal(16, diagonal)
+	assert_equal(optional.up, max_y - min_y)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = rail_parse(c"railroad-ebnf-beta\nr = \"a\" | \"b\" | \"c\" ;\n")
+	mm_scene_free(mm_render(d))
+	mm_rail_expr* choice = rail_rule_expr(d, 0)
+	mm_rail_expr* leaf = rail_child(d, choice, 0)
+	assert_equal(leaf.height * 3 + 16, choice.height)
+	assert_equal(choice.height / 2, choice.up)
+	assert_equal(leaf.width + 40, choice.width)
+	mm_document_free(d)
+	d = rail_parse(c"railroad-ebnf-beta\nr = { \"a\" } ;\n")
+	mm_scene_free(mm_render(d))
+	mm_rail_expr* loop = rail_rule_expr(d, 0)
+	leaf = rail_child(d, loop, 0)
+	# Zero-or-more: bypass above and loop below, each two radii.
+	assert_equal(leaf.height + 40, loop.height)
+	assert_equal(leaf.up + 20, loop.up)
 	mm_document_free(d)

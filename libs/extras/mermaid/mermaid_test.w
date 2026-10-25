@@ -76,7 +76,7 @@ void test_mermaid_lossless_write_and_immutable_edit():
 	mm_document_free(d)
 
 void test_mermaid_invalid_and_unsupported():
-	list[char*] cases = list[char*]{c"unknownDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nA", c"flowchart LR\nA ==> B", c"erDiagram\nA {\nint id PK,\n}"}
+	list[char*] cases = list[char*]{c"unknownDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nA", c"flowchart LR\nA =-> B", c"erDiagram\nA {\nint id PK,\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"invalid input diagnosed", d.error != 0)
@@ -180,7 +180,7 @@ void test_mermaid_unicode_and_bom():
 
 void test_mermaid_item_limits():
 	string_builder* s = string_from(c"erDiagram\n")
-	for i in range(MM_MAX_ITEMS + 1):
+	for i in range(MM_MAX_GRAPH_NODES + 1):
 		string_append(s, c"ENTITY_")
 		string_append_int(s, i)
 		string_append_char(s, 10)
@@ -189,14 +189,24 @@ void test_mermaid_item_limits():
 	mm_document_free(d)
 	string_free(s)
 	s = string_from(c"flowchart TB\n")
-	for i in range(MM_MAX_ITEMS + 1): string_append(s, c"A --> B\n")
+	for i in range(MM_MAX_GRAPH_EDGES + 1): string_append(s, c"A --> B\n")
 	d = mm_parse(s.data, s.length)
 	assert_strings_equal(c"edge limit exceeded", d.error)
 	mm_document_free(d)
 	string_free(s)
+	# Families outside the layered flowchart/ER budget keep the general one.
+	s = string_from(c"classDiagram\n")
+	for i in range(MM_MAX_ITEMS + 1):
+		string_append(s, c"class C")
+		string_append_int(s, i)
+		string_append_char(s, 10)
+	d = mm_parse(s.data, s.length)
+	assert_strings_equal(c"node limit exceeded", d.error)
+	mm_document_free(d)
+	string_free(s)
 
 void test_mermaid_rejects_configuration_and_other_shapes():
-	list[char*] cases = list[char*]{c"%%{init: {\"fontSize\": 12}}%%\nflowchart TB\nA", c"flowchart TB\nA[(database)]", c"erDiagram\nA {\n9bad id\n}"}
+	list[char*] cases = list[char*]{c"%%{init: {\"look\": \"sketch\"}}%%\nflowchart TB\nA", c"flowchart TB\nA[{database}]", c"erDiagram\nA {\n9bad id\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported semantics rejected", d.error != 0)
