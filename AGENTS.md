@@ -238,4 +238,15 @@ working in this repo.
   accomplished so far, the concrete next steps, and whether the issue
   should be broken into smaller issues — suggest the breakdown when it
   should.
+- Draft vs. ready for review: a PR stays **Draft** only while work on it
+  is still ongoing. Once its work is complete and CI is green, the agent
+  that owns it marks it ready for review itself (`gh pr ready <N>`, or
+  the GitHub API / MCP `update_pull_request` with `draft: false`); do
+  not leave that click to the maintainer. A non-draft PR means "ready to
+  review and merge", so never mark one ready while commits, fixes or a
+  red CI run are still pending, and move it back to draft
+  (`gh pr ready --undo`) if new work turns up. A `Part of #N` PR is
+  ready once its own planned slice is done and the status comment above
+  is posted on the issue; if more of its slice is still coming, it stays
+  draft.
 - Never report an issue as done while it is still open.
