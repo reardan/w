@@ -12,6 +12,8 @@ import libs.extras.mermaid.serialize
 const int MM_EE_ATTEMPTS = 160
 const int MM_EE_SAME = -2
 
+list[int] mm_ee_operator_spans(mm_document* d, int start, int end);
+
 # ---------------------------------------------------------------- scanning
 
 int mm_ee_in_comment(mm_document* d, int offset):
@@ -149,8 +151,9 @@ int mm_ee_token(mm_document* d, int start, int end, char* id, int from):
 			at = at + 1
 			continue
 		if (c == '%' && at + 1 < end && d.source[at + 1] == '%' && mm_ee_in_comment(d, at)): return -1
-		if (c == '['): bracket = bracket + 1
-		else if (c == ']' && bracket > 0): bracket = bracket - 1
+		# Architecture `(icon)` names are not references either.
+		if (c == '[' || (c == '(' && d.kind == MM_ARCHITECTURE)): bracket = bracket + 1
+		else if ((c == ']' || (c == ')' && d.kind == MM_ARCHITECTURE)) && bracket > 0): bracket = bracket - 1
 		else if (c == '|' && d.kind == MM_FLOW && bracket == 0): bar = bar == 0
 		if (bracket == 0 && bar == 0 && at >= from && at + length <= end):
 			int match = 1
@@ -174,6 +177,19 @@ int mm_ee_other_mention(mm_document* d, mm_ee_unit* unit, int self):
 		if (n.id[0] == '@' || index_of(n.id, c"@") >= 0): continue
 		if (mm_ee_mentions(d, unit, n.id)): return i
 	return -1
+
+# The node a statement names first (its subject), or -1.
+int mm_ee_unit_subject(mm_document* d, mm_ee_unit* unit):
+	int best = -1
+	int best_at = unit.code_end
+	for i in range(d.nodes.length):
+		char* id = d.nodes[i].id
+		if (mm_position_identity(id) == 0): continue
+		int at = mm_ee_token(d, unit.code, unit.code_end, id, unit.code)
+		if (at >= 0 && at < best_at):
+			best = i
+			best_at = at
+	return best
 
 # The unit that opens group index's block (its header names the group).
 int mm_ee_group_unit(mm_ee_scan* scan, int index):
@@ -475,9 +491,6 @@ int mm_ee_attempt(mm_editor* e, char* source, mm_expect* x):
 		return 0
 	x.attempts = x.attempts + 1
 	mm_document* next = mm_parse_selected(source, strlen(source), e.selected)
-	println(c"---- candidate")
-	println(source)
-	if (next.error != 0): println(next.error)
 	int ok = mm_ee_validate(e.document, next, x)
 	mm_document_free(next)
 	if (ok): ok = mm_editor_change(e, source)
@@ -670,11 +683,20 @@ int mm_ee_delete_expect(mm_editor* e, mm_expect* x):
 			if (unit.opener):
 				for i in range(d.nodes.length):
 					if (x.removed[i] && d.nodes[i].group && mm_ee_group_unit(scan, i) == u): opener_of_removed = 1
+				# A removed node's own body block (entity, class, requirement).
+				int subject = mm_ee_unit_subject(d, unit)
+				if (subject >= 0 && x.removed[subject] && d.nodes[subject].group == 0): opener_of_removed = 1
 			if (unit.opener && opener_of_removed == 0):
 				# A surviving block naming a removed node (e.g. a relation inside a
 				# composite) is handled by its inner statements.
 				continue
-			if (pass == 1 && survivor && unit.opener == 0):
+			# Pass 1: rows that only declare items lose just the removed items.
+			int relation = 0
+			if (pass == 1 && unit.opener == 0):
+				list[int] spans = mm_ee_operator_spans(d, unit.code, unit.code_end)
+				relation = spans.length > 0
+				__w_list_free(cast(__w_list*, spans))
+			if (pass == 1 && relation == 0 && unit.opener == 0 && (survivor || unit.code_end > unit.code)):
 				for i in range(d.nodes.length):
 					if (x.removed[i] == 0 || mm_position_identity(d.nodes[i].id) == 0): continue
 					int at = mm_ee_token(d, unit.code, unit.code_end, d.nodes[i].id, unit.code)
@@ -857,7 +879,9 @@ int mm_ee_add_node(mm_editor* e, char* id, char* label, int group):
 	x.added.push(id)
 	if (d.kind != MM_REQUIREMENT): x.added_labels.push(label)
 	else: x.added_labels.push(0)
-	x.added_parents.push(group)
+	# A block diagram's top-level items belong to its synthetic root.
+	if (group < 0 && d.kind == MM_BLOCK): x.added_parents.push(mm_find_node(d, c"@block:root"))
+	else: x.added_parents.push(group)
 	int ok = 0
 	if (group >= 0 && d.kind == MM_ARCHITECTURE):
 		string_builder* in_group = string_from(statement)
@@ -1104,6 +1128,14 @@ int mm_ee_edge_label(mm_editor* e, int index, char* label):
 			for k in range(spans.length / 2):
 				if (ok == 0): ok = mm_ee_attempt_splice(e, spans[k * 2 + 1], spans[k * 2 + 1], bar.data, x)
 			if (ok == 0): ok = mm_ee_attempt_splice(e, unit.code_end, unit.code_end, colon.data, x)
+			# `A -- "label" --> B` (use case, flowchart inline text).
+			for k in range(spans.length / 2):
+				if (ok == 0 && d.source[spans[k * 2]] == '-'):
+					string_builder* inline = string_from(c"-- \"")
+					string_append(inline, label)
+					string_append(inline, c"\" ")
+					ok = mm_ee_attempt_splice(e, spans[k * 2], spans[k * 2], inline.data, x)
+					string_free(inline)
 			__w_list_free(cast(__w_list*, spans))
 			string_free(bar)
 			string_free(colon)

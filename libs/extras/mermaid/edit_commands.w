@@ -992,3 +992,52 @@ int mm_editor_add_node_in(mm_editor* e, char* id, char* label, int group):
 		string_free(statement)
 		return ok
 	return mm_ee_add_node(e, id, text, group)
+
+# Inspector commands: connection label and kind, ER cardinalities and
+# attributes, class members and requirement properties. Each is one
+# validated, minimal splice of the statement that states it.
+int mm_editor_edge_editable(mm_editor* e, int index):
+	if (mm_editor_edit_reason(e, MM_EDIT_EDGE_DELETE, index)[0] != 0): return 0
+	return mm_outline_family(e.document.kind) == 0
+
+int mm_editor_edge_label(mm_editor* e, int index, char* label):
+	if (mm_editor_edge_editable(e, index) == 0 || e.document.kind == MM_REQUIREMENT): return 0
+	return mm_ee_edge_label(e, index, label)
+
+# `operator`: the family's connector text (`-.->`, `<|--`, `||--o{`) or a
+# requirement relation keyword (`satisfies`).
+int mm_editor_edge_kind(mm_editor* e, int index, char* operator):
+	if (mm_editor_edge_editable(e, index) == 0): return 0
+	if (e.document.kind == MM_C4 || e.document.kind == MM_ARCHITECTURE): return 0
+	return mm_ee_edge_kind(e, index, operator)
+
+int mm_editor_er_cardinality(mm_editor* e, int index, int left, int right, int dashed):
+	if (mm_editor_edge_editable(e, index) == 0): return 0
+	return mm_ee_er_cardinality(e, index, left, right, dashed)
+
+int mm_editor_attribute_add(mm_editor* e, int index, char* type_name, char* name, char* keys, char* comment):
+	return mm_ee_attribute_add(e, index, type_name, name, keys, comment)
+
+int mm_editor_attribute_remove(mm_editor* e, int index, int which):
+	return mm_ee_attribute_remove(e, index, which)
+
+int mm_editor_attribute_set(mm_editor* e, int index, int which, char* type_name, char* name, char* keys, char* comment):
+	return mm_ee_attribute_set(e, index, which, type_name, name, keys, comment)
+
+int mm_editor_member_add(mm_editor* e, int index, char* text):
+	return mm_ee_member_add(e, index, text)
+
+int mm_editor_member_remove(mm_editor* e, int index, int which):
+	return mm_ee_member_remove(e, index, which)
+
+int mm_editor_member_set(mm_editor* e, int index, int which, char* text):
+	return mm_ee_member_set(e, index, which, text)
+
+# Connector choices the inspector offers per family (`|`-separated).
+char* mm_editor_edge_kinds(int kind):
+	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"|-->|---|-.->|==>|--o|--x|<-->|"
+	if (kind == MM_CLASS): return c"|-->|--|..>|..|<|--|*--|o--|..|>|"
+	if (kind == MM_STATE): return c"|-->|"
+	if (kind == MM_REQUIREMENT): return c"|contains|copies|derives|satisfies|verifies|refines|traces|"
+	if (kind == MM_USECASE): return c"|-->|---|..>|"
+	return c""
