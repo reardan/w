@@ -558,6 +558,13 @@ void check_tables(char* address):
 	path = atspi_test_property_string(c, b, tree, 21, c"org.a11y.atspi.Accessible", c"Name")
 	assert_strings_equal(c"a.txt", path)
 	free(path)
+	# Unnamed rows are named from their cells.
+	path = atspi_test_property_string(c, b, tree, 20, c"org.a11y.atspi.Accessible", c"Name")
+	assert_strings_equal(c"a.txt 3 KB", path)
+	free(path)
+	path = atspi_test_property_string(c, b, tree, 11, c"org.a11y.atspi.Accessible", c"Name")
+	assert_strings_equal(c"Name Size", path)
+	free(path)
 	# Header cells are not TableCells.
 	dbus_body(c.conn)
 	assert_equal(0 - 1, atspi_test_call(c, b, tree, 12, c"org.a11y.atspi.TableCell", c"GetRowColumnSpan", 0, &reply))

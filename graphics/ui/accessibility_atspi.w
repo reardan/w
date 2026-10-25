@@ -575,6 +575,36 @@ void ui_atspi_put_text(dbus_buf* out, ui_access_text* t):
 	dbus_put_string_n(out, t.data, t.length)
 
 
+# A row without a name of its own is named from its cells, as ARIA
+# rows are: screen readers announce a focused row by its name and do
+# not read a row's cells themselves.
+void ui_atspi_put_name(dbus_buf* out, ui_access_node* n):
+	if ((n.role != UI_ACCESS_ROW) || (n.name.length > 0)):
+		ui_atspi_put_text(out, &n.name)
+		return
+	int length = 0
+	ui_access_node* c = n.first_child
+	while (c != 0):
+		if (c.name.length > 0): length = length + c.name.length + 1
+		c = c.next_sibling
+	if (length == 0):
+		ui_atspi_put_text(out, &n.name)
+		return
+	char* joined = cast(char*, __w_alloc(length))
+	int at = 0
+	c = n.first_child
+	while (c != 0):
+		if (c.name.length > 0):
+			if (at > 0):
+				joined[at] = ' '
+				at = at + 1
+			for i in range(c.name.length): joined[at + i] = c.name.data[i]
+			at = at + c.name.length
+		c = c.next_sibling
+	dbus_put_string_n(out, joined, at)
+	free(joined)
+
+
 /* Queued actions, applied by ui_access_atspi_dispatch. */
 
 int ui_atspi_allowed(ui_access_node* n, int action):
@@ -615,7 +645,7 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 		if (strcmp(prop, c"Name") == 0):
 			dbus_put_sig(out, c"s")
 			if (n == 0): dbus_put_string(out, b.app_name)
-			else: ui_atspi_put_text(out, &n.name)
+			else: ui_atspi_put_name(out, n)
 			return 1
 		if (strcmp(prop, c"Description") == 0):
 			dbus_put_sig(out, c"s")
@@ -1366,7 +1396,7 @@ void ui_atspi_put_cache_item(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* 
 		dbus_put_u32(out, ATSPI_ROLE_APPLICATION)
 		dbus_put_string(out, c"")
 	else:
-		ui_atspi_put_text(out, &n.name)
+		ui_atspi_put_name(out, n)
 		dbus_put_u32(out, ui_atspi_role(n))
 		ui_atspi_put_text(out, &n.description)
 		ui_atspi_states(b, n, &lo, &hi)

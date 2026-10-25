@@ -213,8 +213,9 @@ format). It needs no libatspi, ATK, GLib or libdbus.
    "no screen reader" and carry on. `ui_access_atspi_open_at(address, name)`
    takes an explicit bus address.
 2. `ui_access_atspi_publish(b, tree)` copies the snapshot and announces what
-   changed since the last publication: children added and removed, defunct
-   nodes, checked/expanded/selected/enabled/focused states, names,
+   changed since the last publication: cache additions and removals,
+   children added and removed, defunct nodes, every changed state (focus
+   last), selection changes on lists, tab lists and tables, names,
    descriptions, progress values and text changes.
 3. Once per frame call `ui_access_atspi_dispatch(b, tree)` with the snapshot the
    application dispatches against. It answers every pending query from the
@@ -234,18 +235,51 @@ has no switch role. Actions are queued (64 at most) and revalidated against the
 application's tree, as in the other bridges; publishing drops queued actions
 for the old snapshot.
 
+Tables implement Table and their data cells TableCell. The snapshot has no
+header flag, so the bridge treats a TABLE's first ROW as its column header
+row when that row has no actions and is not selected while a later row has
+actions or is selected; its cells publish as table column headers and answer
+`GetColumnHeader`, `GetColumnDescription` and `GetColumnHeaderCells`. Row
+indices count data rows only, every span is 1 and a cell's index is
+`row * columns + column`. A row without a name of its own is named from its
+cells' names (as ARIA rows are), since Orca announces a focused row by name.
+Lists, tab lists and tables implement Selection: `SelectChild` and
+`AddRowSelection` queue `ACTIVATE` on the child, as a click would (and
+return true without a call when it is already selected); deselection,
+`SelectAll` and `ClearSelection` return false, since a single-selection
+host owns that policy.
+
+`Cache.GetItems` returns the full preload, `a((so)(so)(so)iiassusau)`: the
+application root and then every node in tree order with its parent, index,
+child count, interfaces, name, role, description and states. Each
+publication emits `Cache.AddAccessible` for new objects (parents first,
+before the `ChildrenChanged` that announces them) and `RemoveAccessible`
+for gone ones, as the ATK bridge does, so a caching libatspi stays coherent.
+
 `graphics_ui_accessibility_atspi_test` runs the bridge against a private
 `dbus-daemon` with a client that plays both the registry and a screen reader:
 registration, tree walking, roles, states, geometry, text offsets, actions,
-edits and the events a republication emits (it skips when `dbus-daemon` is
-not installed). The bridge was also qualified against the real at-spi2-core
-2.52 registry with a libatspi (pyatspi) client: the application appears on the
-desktop, the tree, names, states, interfaces, text and progress value read
-correctly, `do_action`, `set_text_contents` and `grab_focus` reach the
-application callback, and checked-state and text-changed events arrive. Orca
-itself was not run. Not yet provided: the libatspi cache preload (GetItems
-answers an empty cache, so clients query objects on demand), text attributes
-and selection, table relations, and a peer-to-peer application bus.
+edits, tables, selection, the cache preload and the events a republication
+emits, in order (it skips when `dbus-daemon` is not installed). The bridge
+was also qualified against the real at-spi2-core 2.52 registry with a
+libatspi (pyatspi) client: the application appears on the desktop, the tree,
+names, states, interfaces, text and progress value read correctly,
+`do_action`, `set_text_contents` and `grab_focus` reach the application
+callback, and checked-state and text-changed events arrive. Table row and
+column counts, `get_accessible_at`, column headers and descriptions,
+`TableCell` positions and header cells, `Selection` and `add_row_selection`
+read and act correctly; after a republish that adds a row the cached child
+count is right (no double insertion), and libatspi logs no cache errors.
+
+Orca 46.1 was run headless (Xvfb, a private session bus, at-spi-bus-launcher,
+speech-dispatcher's dummy module, `orca --debug-file`) against a window with
+a table and a tab list while a libatspi client moved focus and selection.
+Its speech log: "Files frame." on window activation, "Starred page tab." on
+the tab list's selection change, and "Downloads. table with 3 rows 2 columns.
+b.png 9 KB." when the selected, focused row changed. Keyboard navigation
+inside Orca (its own table commands, flat review) and braille were not
+exercised. Not yet provided: text attributes and text selection, row
+headers, multi-selection policy, and a peer-to-peer application bus.
 
 ## Focus and contrast
 
