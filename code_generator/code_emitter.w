@@ -98,7 +98,10 @@ int tls_reserve(int size):
 	if (tls_size == 0): tls_size = word_size
 	int offset = tls_size
 	if ((tls_inprocess_capacity > 0) && (size > tls_inprocess_capacity - offset)):
-		error(c"thread_local storage exceeds the in-process session's 64KB per-thread block; start a new session")
+		char* message = c"thread_local storage exceeds the in-process session's 64KB per-thread block; start a new session"
+		if (code_fixed_error_hook): (cast(code_fixed_error_callback*, code_fixed_error_hook))(message)
+		println2(message)
+		exit(1)
 	tls_size = tls_size + size
 	return offset
 
