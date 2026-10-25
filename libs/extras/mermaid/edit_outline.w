@@ -243,10 +243,10 @@ int mm_outline_add(mm_editor* e, int index, char* label, int kind):
 	string_builder* text = string_new()
 	int at = lines[last]
 	# Appending after the final line: make sure the previous line ends.
-	if (at == d.source_end && at > d.source_start && d.source[at - 1] != 10): string_append_char(text, 10)
+	if (at == d.source_end && at > d.source_start && d.source[at - 1] != 10): mm_append_newline(text, d)
 	string_append(text, prefix)
 	string_append(text, label)
-	string_append_char(text, 10)
+	mm_append_newline(text, d)
 	mm_oe_expect* x = mm_oe_expect_new(d)
 	while (x.order.length > 0): x.order.pop()
 	for i in range(d.nodes.length):
@@ -295,11 +295,9 @@ int mm_outline_reorder(mm_editor* e, int index, int up):
 	char* b = str_copy_range(d.source, lines[second], lines[second_end])
 	# A final line without a newline moves into the middle: give it one.
 	string_builder* moved = string_from(b)
-	if (moved.length > 0 && moved.data[moved.length - 1] != 10): string_append_char(moved, 10)
+	if (moved.length > 0 && moved.data[moved.length - 1] != 10): mm_append_newline(moved, d)
 	string_append(moved, a)
-	if (lines[second_end] == d.source_end && b[0] != 0 && b[strlen(b) - 1] != 10 && moved.length > 0 && moved.data[moved.length - 1] == 10):
-		moved.length = moved.length - 1
-		moved.data[moved.length] = 0
+	if (lines[second_end] == d.source_end && b[0] != 0 && b[strlen(b) - 1] != 10 && moved.length > 0 && moved.data[moved.length - 1] == 10): mm_strip_newline(moved)
 	mm_oe_expect* x = mm_oe_expect_new(d)
 	while (x.order.length > 0): x.order.pop()
 	for i in range(first): x.order.push(i)
@@ -353,12 +351,12 @@ int mm_outline_reparent(mm_editor* e, int index, int parent):
 		if (ok == 0): break
 		string_append(text, new_prefix)
 		string_append_bytes(text, d.source + start + strlen(old_prefix), end - start - strlen(old_prefix))
-	if (ok && text.length > 0 && text.data[text.length - 1] != 10): string_append_char(text, 10)
+	if (ok && text.length > 0 && text.data[text.length - 1] != 10): mm_append_newline(text, d)
 	int target = mm_oe_subtree_end(d, parent)
 	if (ok && target > index && target < last): ok = 0
 	int at = lines[target]
 	string_builder* inserted = string_new()
-	if (ok && at == d.source_end && at != lines[last] && at > d.source_start && d.source[at - 1] != 10): string_append_char(inserted, 10)
+	if (ok && at == d.source_end && at != lines[last] && at > d.source_start && d.source[at - 1] != 10): mm_append_newline(inserted, d)
 	string_append_bytes(inserted, text.data, text.length)
 	mm_oe_expect* x = mm_oe_expect_new(d)
 	while (x.order.length > 0): x.order.pop()

@@ -107,10 +107,8 @@ int mm_bs_attempt(mm_editor* e, list[mm_ee_splice*] edits, mm_expect* x, int a, 
 char* mm_bs_line_text(mm_document* d, int start, int end, int into_end):
 	string_builder* text = string_new()
 	string_append_bytes(text, d.source + start, end - start)
-	if (text.length > 0 && text.data[text.length - 1] != 10 && into_end == 0): string_append_char(text, 10)
-	if (into_end && text.length > 0 && text.data[text.length - 1] == 10 && d.source[d.source_end - 1] != 10):
-		text.length = text.length - 1
-		text.data[text.length] = 0
+	if (text.length > 0 && text.data[text.length - 1] != 10 && into_end == 0): mm_append_newline(text, d)
+	if (into_end && text.length > 0 && text.data[text.length - 1] == 10 && d.source[d.source_end - 1] != 10): mm_strip_newline(text)
 	char* result = text.data
 	free(text)
 	return result
@@ -124,7 +122,7 @@ char* mm_bs_own_line(mm_document* d, int start, int end):
 	string_builder* text = string_new()
 	string_append_bytes(text, d.source + line, code - line)
 	string_append_bytes(text, d.source + start, end - start)
-	string_append_char(text, 10)
+	mm_append_newline(text, d)
 	char* result = text.data
 	free(text)
 	return result
@@ -170,8 +168,12 @@ int mm_bs_swap(mm_editor* e, int a, int b):
 		char* line = mm_bs_own_line(d, as, ae)
 		mm_ee_add(edits, cut, ae, c"")
 		if (bwe == d.source_end && d.source[bwe - 1] != 10):
-			string_builder* text = string_from(c"\n")
-			string_append_bytes(text, line, strlen(line) - 1)
+			string_builder* text = string_new()
+			mm_append_newline(text, d)
+			string_builder* bare = string_from(line)
+			mm_strip_newline(bare)
+			string_append(text, bare.data)
+			string_free(bare)
 			mm_ee_add(edits, bwe, bwe, text.data)
 			string_free(text)
 		else: mm_ee_add(edits, bwe, bwe, line)
