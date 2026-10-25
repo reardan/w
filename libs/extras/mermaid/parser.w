@@ -45,15 +45,15 @@ int mm_node_parse(mm_parser* p):
 	if (p.doc.kind == MM_FLOW && mm_match(p, c"[(")):
 		close = ')'
 		extra = ']'
-		n.shape = MM_FLOW_CYLINDER
+		n.shape = MM_SHAPE_CYLINDER
 	else if (p.doc.kind == MM_FLOW && mm_match(p, c"(((")):
 		close = ')'
 		extra = ')'
 		extra2 = ')'
-		n.shape = MM_FLOW_DOUBLE_CIRCLE
+		n.shape = MM_SHAPE_DOUBLE_CIRCLE
 	else if (p.doc.kind == MM_FLOW && mm_match(p, c">")):
 		close = ']'
-		n.shape = MM_FLOW_ODD
+		n.shape = MM_SHAPE_ODD
 	else if (flow && mm_match(p, c"([")):
 		close = ']'
 		extra = ')'

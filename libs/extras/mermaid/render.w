@@ -223,7 +223,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 		if (n.shape == 3):
 			b.w = b.w * 2
 			b.h = 100 + extra * 2
-		if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): mm_shape_size(n.shape, &b.w, &b.h)
+		if (d.kind != MM_FLOW && mm_shape_catalogued(n.shape)): mm_shape_size(n.shape, &b.w, &b.h)
 		if (d.kind == MM_ER):
 			b.h = 40 + extra
 			for mm_attribute* a in n.attributes:
@@ -270,7 +270,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 				if (strcmp(dir, c"LR") == 0 || strcmp(dir, c"RL") == 0):
 					b.w = 10
 					b.h = 100
-		if (d.kind == MM_FLOW && n.group == 0 && n.shape >= MM_FLOW_CYLINDER): mm_flow_shape_measure(n, b, mm_scope_direction(d, n.parent), text_w, text_h)
+		if (d.kind == MM_FLOW && n.group == 0 && n.shape >= MM_SHAPE_CYLINDER): mm_flow_shape_measure(n, b, mm_scope_direction(d, n.parent), text_w, text_h)
 		mm_text_set_size(previous)
 		s.nodes.push(b)
 
@@ -669,7 +669,7 @@ void mm_render_node(mm_document* d, mm_scene* s, int i):
 	mm_node* n = d.nodes[i]
 	mm_bounds* b = s.nodes[i]
 	int style_start = s.items.length
-	if (d.kind == MM_FLOW && n.shape >= MM_FLOW_CYLINDER):
+	if (d.kind == MM_FLOW && n.shape >= MM_SHAPE_CYLINDER):
 		if (mm_flow_shape_draw(s, n, b) == 0):
 			mm_text_block* inner = mm_node_text(d, n)
 			mm_text_draw(s, inner, b.x + b.w / 2, b.y + (b.h - inner.height) / 2, 1)

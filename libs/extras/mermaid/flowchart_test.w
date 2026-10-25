@@ -54,7 +54,7 @@ void test_flow_named_shapes_and_aliases():
 		mm_document_free(d)
 		string_free(source)
 	__w_list_free(cast(__w_list*, names))
-	assert_equal(MM_FLOW_STACKED_DOCUMENT, mm_flow_shape_code(c"documents"))
+	assert_equal(MM_SHAPE_DOCUMENTS, mm_flow_shape_code(c"documents"))
 	assert_equal(-1, mm_flow_shape_code(c"not-a-shape"))
 	flow_reject(c"flowchart TD\nA@{ shape: blob }\n", c"unknown flowchart shape name")
 	flow_reject(c"flowchart TD\nA@{ shape: rect\n", c"unterminated metadata block")
@@ -62,9 +62,9 @@ void test_flow_named_shapes_and_aliases():
 
 void test_flow_bracket_shapes_cylinder_odd_double_circle():
 	mm_document* d = flow_parse(c"flowchart LR\nA[(Database)] --> B>Odd] --> C(((Stop)))\n")
-	assert_equal(MM_FLOW_CYLINDER, d.nodes[0].shape)
-	assert_equal(MM_FLOW_ODD, d.nodes[1].shape)
-	assert_equal(MM_FLOW_DOUBLE_CIRCLE, d.nodes[2].shape)
+	assert_equal(MM_SHAPE_CYLINDER, d.nodes[0].shape)
+	assert_equal(MM_SHAPE_ODD, d.nodes[1].shape)
+	assert_equal(MM_SHAPE_DOUBLE_CIRCLE, d.nodes[2].shape)
 	assert_strings_equal(c"Database", d.nodes[0].label)
 	assert_strings_equal(c"Odd", d.nodes[1].label)
 	assert_strings_equal(c"Stop", d.nodes[2].label)
@@ -85,8 +85,8 @@ void test_flow_icon_and_image_nodes():
 	mm_document* d = flow_parse(c"flowchart TD\nA@{ icon: \"fa:user\", form: \"square\", label: \"User Icon\", pos: \"t\", h: 60 }\nB@{ img: \"https://example.com/a.png\", label: \"Pic\", pos: \"b\", w: 60, h: 40, constraint: \"on\" }\nA --> B\n")
 	mm_node* a = d.nodes[0]
 	mm_node* b = d.nodes[1]
-	assert_equal(MM_FLOW_ICON, a.shape)
-	assert_equal(MM_FLOW_IMAGE, b.shape)
+	assert_equal(MM_SHAPE_ICON, a.shape)
+	assert_equal(MM_SHAPE_IMAGE, b.shape)
 	assert_strings_equal(c"fa:user", mm_flow_property(a, c"icon"))
 	assert_strings_equal(c"60", mm_flow_property(a, c"h"))
 	assert_strings_equal(c"https://example.com/a.png", mm_flow_property(b, c"img"))
