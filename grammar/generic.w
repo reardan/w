@@ -1869,7 +1869,7 @@ int generic_declaration_scan_repl():
 	if (nextc == '['): return 0
 	char* save = generic_reparse_save()
 	get_token()
-	while (accept(c"*")) {}
+	while (accept(c"*")) { }
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	int is_generic = name_is_ident & (nextc == '[')

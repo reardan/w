@@ -599,12 +599,12 @@ void repl_entry_item(int entry_symbol):
 	# shims emit code, so the entry function jumps over the region
 	if (peek(c"import") | peek(c"type") | peek(c"struct") | peek(c"union") | peek(c"enum") | peek(c"c_lib") | peek(c"extern")):
 		int skip = repl_skip_start()
-		if (import_statement()) {}
-		else if (type_alias_declaration()) {}
-		else if (struct_declaration()) {}
-		else if (union_declaration()) {}
-		else if (enum_declaration()) {}
-		else if (extern_statement()) {}
+		if (import_statement()) { }
+		else if (type_alias_declaration()) { }
+		else if (struct_declaration()) { }
+		else if (union_declaration()) { }
+		else if (enum_declaration()) { }
+		else if (extern_statement()) { }
 		repl_skip_end(skip)
 		current_function_symbol = entry_symbol
 		number_of_args = 0

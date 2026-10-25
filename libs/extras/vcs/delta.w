@@ -147,8 +147,6 @@ const int DELTA_BLOCK_SIZE = 64
 /* Tunable constants */
 
 
-
-
 int DELTA_MAX_CHAIN_DEPTH():
 	return 16
 

@@ -312,7 +312,6 @@ int ui_atspi_selection_same(ui_access_node* a, ui_access_node* b):
 	return 1
 
 
-
 int ui_atspi_role(ui_access_node* n):
 	int r = n.role
 	if (r == UI_ACCESS_DOCUMENT):

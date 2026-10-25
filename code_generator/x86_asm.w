@@ -203,4 +203,3 @@ void define_asm_functions():
 	x86_asm(c"push ebx; push esi; push edi; push ebp; mov eax,[esp+0x18]")
 	x86_asm(c"mov ecx,[esp+0x14]; mov [eax],esp; mov esp,ecx; pop ebp; pop edi")
 	x86_asm(c"pop esi; pop ebx; ret")
-

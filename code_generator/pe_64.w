@@ -40,8 +40,8 @@ import code_generator.elf_all
 import lib.lib
 
 
-int sym_address(char *s);  /* from symbol_table.w */
-void error(char *s);       /* from diagnostics.w */
+int sym_address(char* s);  /* from symbol_table.w */
+void error(char* s);       /* from diagnostics.w */
 
 
 # File positions of the optional header and the .text/.data section

@@ -94,9 +94,6 @@ void scalar_field_case(char* source, char* diagnostic, int relaxed = 0, int seed
 	free(full)
 
 
-
-
-
 void test_scalar_field_0():
 	scalar_field_case(c"struct Pair:\n\tint first\n\tint second\nint main():\n\town Pair* pair = new Pair(3, 4)\n\trefmut int* p = &pair.first\n\trefmut int* q = &pair.second\n\t*p = 7\n\t*q = 8\n\treturn *p + *q - 15\n", 0)
 	scalar_field_case(c"struct Pair:\n\tint first\n\tint second\nint main():\n\town Pair* pair = new Pair(3, 4)\n\trefmut int* p = &pair.first\n\tpair.second = 9\n\t*p = 7\n\treturn *p + pair.second - 16\n", 0)

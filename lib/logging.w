@@ -1,7 +1,7 @@
 import lib.lib
 
 
-char *logging_filename
+char* logging_filename
 int logging_file
 
 
@@ -20,7 +20,7 @@ void log(char* str):
 void logging_init(char* directory):
 	# Make directory if it doesnt exist
 	int err = mkdir(directory, 511)
-	
+
 
 	# Get Time
 	char* time_string = get_time_string()
@@ -37,4 +37,3 @@ int main(int argc, int argv):
 	log(c"Hi there!\x0a")
 	close(logging_file)
 	return 0
-

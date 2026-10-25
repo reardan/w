@@ -94,7 +94,6 @@ void mixed_exclusive_case(char* source, char* diagnostic, int relaxed = 0, int s
 	free(full)
 
 
-
 void test_exclusive_mixed_0():
 	mixed_exclusive_case(c"struct Mixed:\n\town int* stored\n\trefmut[data] int* view\nown[a] Mixed* make(refmut[a] int* input):\n\treturn new Mixed(new int, input)\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] Mixed* holder = make(&x)\n\trefmut int* p = holder.view\n\t*p = 8\n\treturn x - 8\n", 0)
 	mixed_exclusive_case(c"struct Mixed:\n\town int* stored\n\trefmut[data] int* view\nown[a] Mixed* make(refmut[a] int* input):\n\treturn new Mixed(new int, input)\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] Mixed* holder = make(&x)\n\tint old = x\n\tref int* p = holder.view\n\treturn *p + old\n", c"conflicting")

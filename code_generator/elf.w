@@ -6,11 +6,6 @@ import code_generator.pe_64
 import code_generator.macho_64
 
 
-
-
-
-
-
 void be_start(int word_size):
 	build_id_note_pos = 0   /* set again by the ELF writers that emit the note */
 	debug_elf_origin = 0
@@ -91,7 +86,3 @@ void elf_section_set_info(int header, int v):
 void elf_section_set_entsize(int header, int v):
 	if (word_size == 8): save_i(code + header + 56, v, 8)
 	else: save_int(code + header + 36, v)
-
-
-
-

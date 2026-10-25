@@ -438,5 +438,3 @@ list[at_rule*] at_collect_rules(pg_ast_node* root):
 				g_grammar_name = strclone(pg_ast_child(inner, cnt - 2).text)
 		i = i + 1
 	return rules
-
-

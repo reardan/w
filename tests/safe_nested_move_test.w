@@ -94,9 +94,6 @@ void nested_move_case(char* source, char* diagnostic, int relaxed = 0, int seed 
 	free(full)
 
 
-
-
-
 void test_nested_move_0():
 	nested_move_case(c"struct Child:\n\town int* first\n\town int* second\n\tint tag\nstruct Outer:\n\town Child* left\n\town Child* right\nint main():\n\town Outer* outer = new Outer(new Child(new int, new int, 3), new Child(new int, new int, 4))\n\town int* first = outer.left.first\n\trefmut int* second = outer.left.second\n\t*first = 7\n\t*second = 8\n\treturn *first + *second - 15\n", 0)
 	nested_move_case(c"struct Child:\n\town int* first\n\town int* second\n\tint tag\nstruct Outer:\n\town Child* left\n\town Child* right\nint main():\n\town Outer* outer = new Outer(new Child(new int, new int, 3), new Child(new int, new int, 4))\n\town int* first = outer.left.first\n\town int* second = outer.right.first\n\t*first = 7\n\t*second = 8\n\treturn *first + *second - 15\n", 0)

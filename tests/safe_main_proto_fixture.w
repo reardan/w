@@ -5,4 +5,3 @@ void checked(ref int* p):
 
 int helper():
 	return main()
-

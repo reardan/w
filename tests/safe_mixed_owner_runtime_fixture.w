@@ -2,9 +2,9 @@ import lib.memory_debug
 import tests.safe_mixed_owner_import_fixture
 
 
-type OwnerFactory = fn[a,b](ref[a] int*, ref[b] int[]) -> own[a,b] OwnedView*
-type OwnerPass = fn[a,b](own[a,b] OwnedView*) -> own[a,b] OwnedView*
-type TakeData = fn[a,b](own[a,b] OwnedView*) -> ref[b] int[]
+type OwnerFactory = fn[a, b](ref[a] int*, ref[b] int[]) -> own[a, b] OwnedView*
+type OwnerPass = fn[a, b](own[a, b] OwnedView*) -> own[a, b] OwnedView*
+type TakeData = fn[a, b](own[a, b] OwnedView*) -> ref[b] int[]
 
 
 int mixed_clobber(int value):
@@ -23,7 +23,7 @@ int mixed_exercise():
 	int total = 0
 	for i in range(100):
 		*value = 3
-		own[a,b] OwnedView* view = pass_owner(factory(value, data))
+		own[a, b] OwnedView* view = pass_owner(factory(value, data))
 		ref int[] slice = take(view)
 		value = new int
 		int pressure = mixed_clobber(1)
@@ -32,18 +32,18 @@ int mixed_exercise():
 
 
 struct MixedOuter:
-	own[item,data] OwnedView* child
+	own[item, data] OwnedView* child
 	own int* other
 
 
-ref[a] int* mixed_nested(own[a,b] MixedOuter* outer):
+ref[a] int* mixed_nested(own[a, b] MixedOuter* outer):
 	return outer.child.item
 
 
 int mixed_nested_exercise():
 	int value = 11
 	int[2] data
-	own[a,b] MixedOuter* outer = new MixedOuter(owned_view_new(&value, data), new int)
+	own[a, b] MixedOuter* outer = new MixedOuter(owned_view_new(&value, data), new int)
 	ref int* p = mixed_nested(outer)
 	return *p
 
@@ -51,7 +51,7 @@ int mixed_nested_exercise():
 int mixed_replacement():
 	int value = 3
 	int[2] data
-	own[a,b] OwnedView* view = owned_view_new(&value, data)
+	own[a, b] OwnedView* view = owned_view_new(&value, data)
 	for i in range(10): view = owned_view_new(&value, data)
 	ref int* p = owned_view_take_item(view)
 	return *p
@@ -60,9 +60,9 @@ int mixed_replacement():
 int mixed_exits(int early):
 	int value = 3
 	int[2] data
-	own[a,b] OwnedView* outer = owned_view_new(&value, data)
+	own[a, b] OwnedView* outer = owned_view_new(&value, data)
 	for i in range(3):
-		own[a,b] OwnedView* inner = owned_view_new(&value, data)
+		own[a, b] OwnedView* inner = owned_view_new(&value, data)
 		if (early): return 3
 		if (i == 0): continue
 		break

@@ -2719,7 +2719,6 @@ int ast_expression_it_argument(expression_ast* tree):
 	return found
 
 
-
 int ast_expression_list_it(expression_ast* tree, int receiver, int depth):
 	int mode = list_it_mode(token)
 	int id = expression_ast_add(tree, ast_list_it, receiver, -1)

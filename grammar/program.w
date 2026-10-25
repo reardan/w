@@ -809,7 +809,7 @@ int script_statement_starts_here():
 	# step ahead with the reparse save/seek/restore trick.
 	char* save = generic_reparse_save()
 	get_token()
-	while (accept(c"*")) {}
+	while (accept(c"*")) { }
 	int c1 = token[0]
 	int next_is_ident = is_ident_start_byte(c1)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
@@ -844,7 +844,7 @@ int script_function_definition_ahead():
 	if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
-	while (accept(c"*")) {}
+	while (accept(c"*")) { }
 	int c1 = token[0]
 	int next_is_ident = is_ident_start_byte(c1)
 	int is_definition = 0

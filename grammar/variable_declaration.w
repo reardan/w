@@ -143,5 +143,3 @@ int variable_declaration():
 		regalloc_store_declared(last_declared_symbol)
 		return type
 	return -1
-
-

@@ -158,15 +158,14 @@ void test_type_with_fields_total_size():
 	assert_equal(12, type_get_size(type_index))
 
 
-
 # Test pointer level
 void test_pointer_level():
 	push_basic_types()
 	int first_pointer = type_lookup_pointer(c"int", 1)
 	assert1(first_pointer > 0)
-	assert_equal(first_pointer+1, type_lookup_pointer(c"int", 2))
-	assert_equal(first_pointer+2, type_lookup_pointer(c"char", 1))
-	assert_equal(first_pointer+3, type_lookup_pointer(c"char", 2))
+	assert_equal(first_pointer + 1, type_lookup_pointer(c"int", 2))
+	assert_equal(first_pointer + 2, type_lookup_pointer(c"char", 1))
+	assert_equal(first_pointer + 3, type_lookup_pointer(c"char", 2))
 
 
 # type_lookup_pointer's same-name chains (#714) keep the linear scan's

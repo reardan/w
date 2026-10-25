@@ -24,7 +24,7 @@ void test_args_count_and_program():
 	assert_strings_equal(c"prog", args_program())
 	assert_strings_equal(c"arg2", args_get(2))
 	assert_equal(0, cast(int, args_get(8)))
-	assert_equal(0, cast(int, args_get(0-1)))
+	assert_equal(0, cast(int, args_get(0 - 1)))
 
 
 void test_args_positionals():

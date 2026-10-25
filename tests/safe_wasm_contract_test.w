@@ -183,7 +183,6 @@ void wasm_contract_case(char* source, char* diagnostic, int relaxed = 0, char* t
 	free(number)
 
 
-
 void test_wasm_contract_0():
 	wasm_contract_case(c"int main():\n\town int* value = new int\n\t*value = (1 << 20) + 7\n\treturn (*value >> 20) - 1\n", 0)
 	wasm_contract_case(c"int main():\n\town int* value = new int\n\town int* moved = value\n\treturn *value\n", c"moved")

@@ -1,4 +1,4 @@
-char *last_identifier
+char* last_identifier
 
 # Declared return type of the most recently compiled call (-1 when the
 # callee is unknown) and the code position right after its cleanup. Only

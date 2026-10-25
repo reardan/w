@@ -29,7 +29,7 @@ void test_modulus():
 
 
 void test_raw_asm():
-	raw_asm (c"\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
+	raw_asm(c"\x90\x90\x90\x90\x90\x90\x90\x90\x90\x90")
 
 
 int func1():
@@ -41,7 +41,7 @@ int func2(int* f):
 
 void test_func_pointer_argument():
 	# Untyped word-pointer storage needs the explicit cast escape hatch
-	int *f = cast(int*, func1)
+	int* f = cast(int*, func1)
 	int got = func2(f)
 	assert_equal(99, got)
 
@@ -52,7 +52,7 @@ void test_func_argument_direct():
 
 
 void test_func_pointer_variable():
-	int *f = cast(int*, func1)
+	int* f = cast(int*, func1)
 	int got = f()
 	assert_equal(99, got)
 

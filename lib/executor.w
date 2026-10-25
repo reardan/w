@@ -179,7 +179,7 @@ struct executor_result:
 	int status
 	int value
 	int cancelled            # the waiter was cancelled (or hit its
-	                         # deadline) after dispatch; the job still ran
+							 # deadline) after dispatch; the job still ran
 
 
 char* executor_status_name(int status):

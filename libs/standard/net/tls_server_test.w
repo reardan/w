@@ -349,8 +349,8 @@ void test_server_no_supported_suite_rejected():
 	int ch_len = 0
 	char* ch = tlss_build_client_hello(client_priv, &ch_len)
 	for i in range(3):
-		ch[73 + 2*i] = 0x13
-		ch[74 + 2*i] = 4 + i   # CCM/CCM8/unknown, none supported
+		ch[73 + 2 * i] = 0x13
+		ch[74 + 2 * i] = 4 + i   # CCM/CCM8/unknown, none supported
 	int chrec_len = 0
 	char* chrec = tlss_wrap_handshake(ch, ch_len, &chrec_len)
 

@@ -96,6 +96,7 @@ Other useful targets:
 ./wbuild ast_expression_suite  # full suite with --ast-required (no expression fallback)
 ./wbuild warning_test  # asserts the compiler's type/style warnings
 ./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)
+./wbuild wfmt        # bin/wfmt, the rewriting formatter (docs/projects/wfmt.md)
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
@@ -136,7 +137,8 @@ opt-in lint rules (unused locals, unreachable code, shadowing,
 assignment as a condition, self-assignment, duplicate imports, and
 whitespace/line-width rules) for the named files, and `w check --fix
 file.w` rewrites their mechanically fixable whitespace issues in place
-(docs/projects/lint.md). Compile-diagnostic fixtures carry
+(docs/projects/lint.md). `bin/wfmt` goes further and rewrites the spacing
+inside lines in one canonical style (docs/projects/wfmt.md). Compile-diagnostic fixtures carry
 their expected messages as `# expect_stderr:` / `# reject_stderr:` /
 `# expect_fail` directive lines in their own header comments;
 `bin/wfixture` (`tools/wfixture.w`) compiles each fixture and asserts

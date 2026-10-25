@@ -9,7 +9,9 @@ combining marks canonically, applies the OpenType features of the script
 (ccmp/locl; Arabic-style isol/fina/medi/init from Unicode joining types;
 rlig/rclt/calt/liga/clig; kern/mark/mkmk/curs/dist/abvm/blwm), and
 returns positioned glyphs in visual order (reversed for RTL) with font-
-unit advances and offsets and source clusters.
+unit advances and offsets and source clusters. ttf_shape_context also
+takes the text around the run, so that joining forms see across the run
+boundary (HarfBuzz's pre- and post-context).
 
 Fonts without the tables still shape usefully: Arabic falls back to the
 Unicode presentation forms (including lam-alef ligatures) when the font
@@ -141,11 +143,38 @@ void ttf_reorder_marks(otl_buffer* b):
 				j = j - 1
 		i = end
 
+# Shaping context (HarfBuzz's pre-context and post-context): the joining
+# types of the nearest non-transparent characters just before and after
+# the run, so that joining sees across a run boundary (a word split
+# between fonts). ut_join_u when there are none; set with
+# ttf_shape_set_context or ttf_shape_context.
+int ttf_context_before
+int ttf_context_after
+
+# The joining type of the first character of cps that is not transparent,
+# scanning from the end when backward; join-causing reads as dual.
+int ttf_context_join(int32* cps, int count, int backward):
+	for k in range(count):
+		int i = k
+		if (backward): i = count - 1 - k
+		int type = ut_joining_type(cps[i])
+		if (type == ut_join_t): continue
+		if (type == ut_join_c): return ut_join_d
+		return type
+	return ut_join_u
+
+# Sets the context for the following ttf_shape calls: pre holds the text
+# before the run in logical order (nearest last), post the text after it
+# (nearest first). ttf_shape_set_context(0, 0, 0, 0) clears it.
+void ttf_shape_set_context(int32* pre, int pre_count, int32* post, int post_count):
+	ttf_context_before = ttf_context_join(pre, pre_count, 1)
+	ttf_context_after = ttf_context_join(post, post_count, 0)
+
 # Arabic-style joining (ArabicShaping.txt): the positional form of each
-# character as ut_form_*, written to forms.
+# character as ut_form_*, written to forms, with the shaping context.
 void ttf_joining_forms(otl_buffer* b, int32* forms):
 	int previous = -1
-	int previous_type = ut_join_u
+	int previous_type = ttf_context_before
 	for i in range(b.count):
 		forms[i] = ut_form_none
 		int type = ut_join_u
@@ -164,6 +193,11 @@ void ttf_joining_forms(otl_buffer* b, int32* forms):
 			if ((type == ut_join_r) || (type == ut_join_d)): forms[i] = ut_form_fina
 		previous = i
 		previous_type = type
+	# A following join into the post-context.
+	int after = ttf_context_after
+	if ((previous >= 0) && ((previous_type == ut_join_l) || (previous_type == ut_join_d)) && ((after == ut_join_r) || (after == ut_join_d))):
+		if (forms[previous] == ut_form_isol): forms[previous] = ut_form_init
+		else if (forms[previous] == ut_form_fina): forms[previous] = ut_form_medi
 
 int ttf_form_mask(int form):
 	if (form == ut_form_isol): return ttf_mask_isol
@@ -759,4 +793,12 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 			g.attach_kind = 0
 	otl_position_finish(b, rtl)
 	if (rtl): otl_buffer_reverse(b)
+	return b
+
+# ttf_shape with context: pre and post as for ttf_shape_set_context, which
+# this call sets and clears.
+otl_buffer* ttf_shape_context(ttf_font* f, int32* cps, int32* clusters, int count, int32* pre, int pre_count, int32* post, int post_count, int rtl, int script, int language, int flags):
+	ttf_shape_set_context(pre, pre_count, post, post_count)
+	otl_buffer* b = ttf_shape(f, cps, clusters, count, rtl, script, language, flags)
+	ttf_shape_set_context(cast(int32*, 0), 0, cast(int32*, 0), 0)
 	return b

@@ -4,7 +4,7 @@
 import code_generator.code_emitter
 
 
-int sym_address(char *s);  /* compiler/symbol_table.w */
+int sym_address(char* s);  /* compiler/symbol_table.w */
 int sym_defined_address(char* s);
 
 

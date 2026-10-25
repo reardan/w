@@ -1535,3 +1535,13 @@ when stderr is not a terminal.
   Direction: let memory_debug retry a failed guard munmap after
   reclaiming its quarantine, as it already does for a failed mmap. Also
   name the limit in the message.
+
+## `check --fix` skips a root that is also an import (2026-10-25, wfmt #716)
+
+`bin/wv2 check --fix m.w lib/lib.w` fixes `m.w` but prints `skipping
+'lib/lib.w' (already compiled)` and leaves `lib/lib.w` unfixed: the root
+was already compiled as `m.w`'s import, and the text rules only run for a
+root that compiles. Running `--fix` over a whole import closure therefore
+fixes only the files nothing earlier imported. Run the text rules for
+every named root before compiling any of them, or point users at
+`bin/wfmt -w`, which formats files without compiling them.
