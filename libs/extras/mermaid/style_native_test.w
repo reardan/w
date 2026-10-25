@@ -78,3 +78,39 @@ void test_mermaid_native_concave_polygon_preserves_gap():
 	asserts(c"both filled spans visible", left > 0 && right > 0)
 	ui_render_destroy(&r)
 	mm_scene_free(scene)
+
+# Vertex count of a native render and a checksum of its vertex positions.
+int native_hand_drawn_verts(char* source, int* checksum):
+	mm_document* d = mm_parse(source, strlen(source))
+	asserts(c"parse hand-drawn", d.error == 0)
+	mm_scene* scene = mm_render(d)
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_begin(&r, 800, 400)
+	mm_ui_render(&r, scene, ui_rect_new(0.0, 0.0, 800.0, 400.0), 1.0, 0.0, 0.0)
+	int count = r.layer_vert_count[0]
+	int sum = 0
+	for i in range(count):
+		float32* v = &r.layer_verts[0][i * 8]
+		sum = (sum * 31 + cast(int, v[0] * 4.0) * 7 + cast(int, v[1] * 4.0)) % 1000003
+	*checksum = sum
+	ui_render_destroy(&r)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	return count
+
+# `look: handDrawn` natively: the same seeded double strokes as the SVG,
+# deterministic, and different from the crisp classic outline.
+void test_mermaid_native_hand_drawn_look():
+	char* source = c"---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 11\n---\nflowchart LR\nA[Hand drawn box] --> B[Second]\n"
+	int sum = 0
+	int first = native_hand_drawn_verts(source, &sum)
+	int again = 0
+	assert_equal(first, native_hand_drawn_verts(source, &again))
+	assert_equal(sum, again)
+	int other = 0
+	native_hand_drawn_verts(c"---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 12\n---\nflowchart LR\nA[Hand drawn box] --> B[Second]\n", &other)
+	asserts(c"another seed draws other strokes", other != sum)
+	int crisp = 0
+	int classic = native_hand_drawn_verts(c"---\nconfig:\n  theme: default\n---\nflowchart LR\nA[Hand drawn box] --> B[Second]\n", &crisp)
+	asserts(c"rough strokes draw more segments", first > classic)

@@ -321,6 +321,40 @@ void mm_n_activation(mm_parser* p, int actor, int active):
 	mm_narrative_event* event = mm_n_event(p, kind, c"", c"")
 	if (event != 0): event.from_node = actor
 
+# Sequence message arrow kinds: 0 none, 1 arrowhead, 2 cross, 3 open (async),
+# 4 bidirectional, then the half-arrows: 5 top / 6 bottom solid half and
+# 7 top / 8 bottom stick half at the receiver, 9..12 the same four drawn
+# reversed at the sender. Each kind has a solid and a dotted spelling.
+const int MM_N_ARROW_KINDS = 13
+
+char* mm_n_arrow_token(int kind, int dashed):
+	if (kind == 0 && dashed): return c"-->"
+	if (kind == 0): return c"->"
+	if (kind == 1 && dashed): return c"-->>"
+	if (kind == 1): return c"->>"
+	if (kind == 2 && dashed): return c"--x"
+	if (kind == 2): return c"-x"
+	if (kind == 3 && dashed): return c"--)"
+	if (kind == 3): return c"-)"
+	if (kind == 4 && dashed): return c"<<-->>"
+	if (kind == 4): return c"<<->>"
+	if (kind == 5 && dashed): return c"--|\\"
+	if (kind == 5): return c"-|\\"
+	if (kind == 6 && dashed): return c"--|/"
+	if (kind == 6): return c"-|/"
+	if (kind == 7 && dashed): return c"--\\\\"
+	if (kind == 7): return c"-\\\\"
+	if (kind == 8 && dashed): return c"--//"
+	if (kind == 8): return c"-//"
+	if (kind == 9 && dashed): return c"/|--"
+	if (kind == 9): return c"/|-"
+	if (kind == 10 && dashed): return c"\\|--"
+	if (kind == 10): return c"\\|-"
+	if (kind == 11 && dashed): return c"//--"
+	if (kind == 11): return c"//-"
+	if (kind == 12 && dashed): return c"\\\\--"
+	return c"\\\\-"
+
 void mm_n_message(mm_parser* p, char* text, int zen):
 	int colon = index_of(text, c":")
 	if (colon < 0):
@@ -334,26 +368,22 @@ void mm_n_message(mm_parser* p, char* text, int zen):
 	if (zen == 0 && text[at] == '(' && text[at + 1] == ')'):
 		central = 1
 		at = at + 2
-	char* arrow = strclone(c"")
-	list[char*] arrows = list[char*]{c"<<-->>", c"<<->>", c"-->>", c"->>", c"-->", c"--x", c"--)", c"->", c"-x", c"-)"}
-	for char* candidate in arrows:
-		if (mm_n_prefix(text + at, candidate)):
-			free(arrow)
-			arrow = strclone(candidate)
-			at = at + strlen(candidate)
-			break
-	__w_list_free(cast(__w_list*, arrows))
 	int type = -1
 	int dashed = 0
-	if (strcmp(arrow, c"->") == 0 || strcmp(arrow, c"-->") == 0): type = 0
-	if (strcmp(arrow, c"->>") == 0 || strcmp(arrow, c"-->>") == 0): type = 1
-	if (strcmp(arrow, c"-x") == 0 || strcmp(arrow, c"--x") == 0): type = 2
-	if (strcmp(arrow, c"-)") == 0 || strcmp(arrow, c"--)") == 0): type = 3
-	if (strcmp(arrow, c"<<->>") == 0 || strcmp(arrow, c"<<-->>") == 0): type = 4
-	if (index_of(arrow, c"--") >= 0): dashed = 1
-	if (zen && strcmp(arrow, c"->") == 0): type = 3
-	if (zen && strcmp(arrow, c"->") != 0): type = -1
-	free(arrow)
+	int best = 0
+	for kind in range(MM_N_ARROW_KINDS):
+		for dots in range(2):
+			char* candidate = mm_n_arrow_token(kind, dots)
+			int length = strlen(candidate)
+			if (length > best && mm_n_prefix(text + at, candidate)):
+				best = length
+				type = kind
+				dashed = dots
+	at = at + best
+	# ZenUML async messages use `->` (an open arrow); other arrows are rejected.
+	if (zen):
+		if (type == 0 && dashed == 0): type = 3
+		else: type = -1
 	int activate = 0
 	if (text[at] == '+'):
 		activate = 1
@@ -1803,6 +1833,129 @@ void mm_n_zen_new(mm_parser* p, char* text, int nested, list[int] blocks, list[i
 	event.dashed = 1
 	if (nested): mm_n_zen_open(p, index, receiver, c"", blocks, callers, replies)
 
+# ZenUML cloud annotators from zenuml.md's annotator chart (AWS, Azure and
+# Google Cloud), as "name caption color" rows. Natively each draws as a tile in
+# its provider's category colour with a short caption; the vendor artwork
+# itself is not reproduced.
+char* mm_n_zen_icons():
+	return c"cloudwatch CW e7157b|cloudfront CF 8c4fff|cognito Cog dd344c|dynamodb DDB 4d72f3|ebs EBS 7aa116|ec2 EC2 ed7100|ecs ECS ed7100|efs EFS 7aa116|elasticache EC 4d72f3|elasticbeantalk EB ed7100|elasticfilesystem EFS 7aa116|glacier Gla 7aa116|iam IAM dd344c|kinesis Kin 8c4fff|lambda Fn ed7100|lightsail LS ed7100|rds RDS 4d72f3|redshift RS 8c4fff|s3 S3 7aa116|sns SNS e7157b|sqs SQS e7157b|sagemaker SM 01a88d|vpc VPC 8c4fff|azureactivedirectory AAD 0078d4|azurebackup Bak 0078d4|azurecdn CDN 0078d4|azuredatafactory ADF 0078d4|azuredevops ADO 0078d4|azurefunction AF 0078d4|azuresql SQL 0078d4|cosmosdb CDB 0078d4|logicapps LA 0078d4|virtualmachine VM 0078d4|bigtable BT 4285f4|bigquery BQ 4285f4|cloudcdn CDN 4285f4|clouddns DNS 4285f4|cloudinterconnect IC 4285f4|cloudloadbalancing LB 4285f4|cloudsql SQL 4285f4|cloudstorage GCS 4285f4|datalab DL 4285f4|dataproc DP 4285f4|googleiam IAM 4285f4|googlesecurity Sec 4285f4|googlevpc VPC 4285f4|pubsub PS 4285f4|securityscanner SS 4285f4|stackdriver SD 4285f4|visionapi VAI 4285f4"
+
+# The owned caption of a ZenUML cloud annotator (case-insensitive) and its
+# tile colour in *color, or 0 when kind is no cloud annotator.
+char* mm_n_zen_icon(char* kind, int* color):
+	char* table = mm_n_zen_icons()
+	int length = strlen(kind)
+	int at = 0
+	while (table[at] != 0):
+		int same = 1
+		for i in range(length):
+			if (same && tolower(kind[i]) != table[at + i]): same = 0
+		if (same && table[at + length] == ' '):
+			int start = at + length + 1
+			int stop = start
+			while (table[stop] != ' '): stop = stop + 1
+			int value = 0
+			for i in range(6): value = value * 16 + mm_style_hex(table[stop + 1 + i])
+			*color = value
+			return str_copy_range(table, start, stop)
+		while (table[at] != 0 && table[at] != '|'): at = at + 1
+		if (table[at] == '|'): at = at + 1
+	return 0
+
+# A ZenUML participant declaration after its optional `@Annotation`:
+# `[<<Stereotype>>] name [width] [as Label] [#color]` (the ZenUML grammar's
+# participant rule). The stereotype is kept in node.role, the width in
+# node.value_x and the colour as the node's fill.
+void mm_n_zen_participant(mm_parser* p, char* annotation, char* text):
+	char* rest = mm_n_trim(text)
+	char* stereotype = 0
+	int color = -3
+	int width = 0
+	if (mm_n_prefix(rest, c"<<")):
+		int close = index_of(rest, c">>")
+		if (close >= 0): stereotype = mm_n_part(rest, 2, close)
+		if (close < 0 || stereotype[0] == 0 || mm_n_method(stereotype) == 0 || index_of(stereotype, c"(") >= 0):
+			mm_error(p.doc, p.pos, c"ZenUML stereotype requires <<Name>>")
+			if (stereotype != 0): free(stereotype)
+			free(rest)
+			return
+		char* after = mm_n_trim(rest + close + 2)
+		free(rest)
+		rest = after
+	int length = strlen(rest)
+	int hash = length - 1
+	while (hash > 0 && rest[hash] != '#' && rest[hash] != ' ' && rest[hash] != 9): hash = hash - 1
+	if (hash > 0 && rest[hash] == '#' && (rest[hash - 1] == ' ' || rest[hash - 1] == 9)):
+		color = mm_style_color(rest + hash)
+		if (color < 0):
+			mm_error(p.doc, p.pos, c"ZenUML participant colour must be #rgb or #rrggbb")
+			if (stereotype != 0): free(stereotype)
+			free(rest)
+			return
+		rest[hash] = 0
+		char* before = mm_n_trim(rest)
+		free(rest)
+		rest = before
+	# A width follows the name: `name 200 [as Label]`.
+	int word = 0
+	while (rest[word] != 0 && rest[word] != ' ' && rest[word] != 9): word = word + 1
+	int digits = word
+	while (rest[digits] == ' ' || rest[digits] == 9): digits = digits + 1
+	int number = digits
+	while (rest[number] >= '0' && rest[number] <= '9'): number = number + 1
+	if (number > digits && (rest[number] == 0 || rest[number] == ' ' || rest[number] == 9)):
+		if (number - digits > 4): width = 10000
+		else:
+			for i in range(digits, number): width = width * 10 + rest[i] - '0'
+		if (width < 1 || width > 2000):
+			mm_error(p.doc, p.pos, c"ZenUML participant width must be 1 to 2000")
+			if (stereotype != 0): free(stereotype)
+			free(rest)
+			return
+		string_builder* without = string_new()
+		for i in range(word): string_append_char(without, rest[i])
+		string_append(without, rest + number)
+		free(rest)
+		rest = without.data
+		free(without)
+	int actor = 0
+	if (annotation != 0):
+		char* lower = strclone(annotation)
+		for i in range(strlen(lower)): lower[i] = tolower(lower[i])
+		actor = strcmp(lower, c"actor") == 0
+		free(lower)
+	int index = mm_n_declare(p, rest, actor)
+	free(rest)
+	if (index < 0 || p.doc.error != 0):
+		if (stereotype != 0): free(stereotype)
+		return
+	mm_node* node = p.doc.nodes[index]
+	if (stereotype != 0):
+		free(node.role)
+		node.role = stereotype
+	if (width > 0): node.value_x = width
+	if (color >= 0):
+		node.style.mask = node.style.mask | MM_STYLE_FILL
+		node.style.fill = color
+	if (annotation == 0 || actor): return
+	free(node.annotation)
+	node.annotation = strclone(annotation)
+	# Annotators with a UML symbol draw it, cloud annotators an icon tile;
+	# others keep the stereotype line.
+	char* lower = strclone(annotation)
+	for i in range(strlen(lower)): lower[i] = tolower(lower[i])
+	int tile = 0
+	char* caption = mm_n_zen_icon(lower, &tile)
+	if (strcmp(lower, c"boundary") == 0): node.shape = 2
+	else if (strcmp(lower, c"control") == 0): node.shape = 3
+	else if (strcmp(lower, c"entity") == 0): node.shape = 4
+	else if (strcmp(lower, c"database") == 0): node.shape = 5
+	else if (strcmp(lower, c"collections") == 0 || strcmp(lower, c"collection") == 0): node.shape = 6
+	else if (strcmp(lower, c"queue") == 0): node.shape = 7
+	else if (caption != 0): node.shape = 8
+	if (caption != 0): free(caption)
+	free(lower)
+
 # ZenUML sync calls are nested by braces and reuse the native lifeline model.
 void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, list[char*] replies):
 	if (mm_n_prefix(text, c"//")): return
@@ -1857,19 +2010,7 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 			mm_error(p.doc, p.pos, c"unsupported ZenUML annotation")
 			return
 		char* annotation = str_copy_range(text, 1, at)
-		int actor = strcmp(annotation, c"Actor") == 0
-		int index = mm_n_declare(p, text + at + 1, actor)
-		if (index >= 0 && actor == 0):
-			mm_node* node = p.doc.nodes[index]
-			free(node.annotation)
-			node.annotation = strclone(annotation)
-			# Annotators with a UML symbol draw it; others keep the stereotype line.
-			if (strcmp(annotation, c"Boundary") == 0): node.shape = 2
-			else if (strcmp(annotation, c"Control") == 0): node.shape = 3
-			else if (strcmp(annotation, c"Entity") == 0): node.shape = 4
-			else if (strcmp(annotation, c"Database") == 0): node.shape = 5
-			else if (strcmp(annotation, c"Collections") == 0 || strcmp(annotation, c"Collection") == 0): node.shape = 6
-			else if (strcmp(annotation, c"Queue") == 0): node.shape = 7
+		mm_n_zen_participant(p, annotation, text + at + 1)
 		free(annotation)
 		return
 	if (mm_n_prefix(text, c"return ")):
@@ -1930,7 +2071,7 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 	int dot = index_of(text, c".")
 	if (dot < 0 && p.doc.error == 0):
 		if (reply[0] != 0): mm_error(p.doc, p.pos, c"ZenUML assignment requires a call")
-		else: mm_n_declare(p, text, 0)
+		else: mm_n_zen_participant(p, 0, text)
 	if (dot < 0 || p.doc.error != 0):
 		free(reply)
 		return

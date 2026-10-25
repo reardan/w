@@ -164,7 +164,7 @@ void mm_style_look(mm_document* d, mm_scene* scene):
 	scene.has_effects = 1
 	scene.shadow_dx = mm_theme_scalar(d.theme, 2)
 	scene.shadow_dy = mm_theme_scalar(d.theme, 3)
-	scene.shadow_blur = 2
+	scene.shadow_blur = mm_theme_scalar(d.theme, 7)
 	scene.shadow_color = mm_theme_scalar(d.theme, 4)
 	scene.shadow_alpha = mm_theme_scalar(d.theme, 5)
 	scene.gradient_start = values[MM_THEME_GRADIENT_START]
@@ -177,8 +177,12 @@ void mm_style_look(mm_document* d, mm_scene* scene):
 
 # Fonts apply with or without a theme: the configured fontFamily becomes the
 # SVG default and font-family styles give primitives their own family.
+# A themed document without fontFamily names its theme's upstream family; text
+# is still measured with the bundled metric-compatible Liberation Sans (the
+# Arial every theme family falls back to), so SVG layout is sized for Arial.
 void mm_style_fonts(mm_document* d, mm_scene* scene):
 	if (d.font_family != 0 && scene.font_family == 0): scene.font_family = strclone(d.font_family)
+	if (scene.font_family == 0 && d.theme != 0 && d.theme_values != 0): scene.font_family = strclone(mm_theme_font_family(d.theme))
 	for mm_primitive* primitive in scene.items:
 		if ((primitive.style.mask & MM_STYLE_FAMILY) == 0 || primitive.font != 0): continue
 		int family = primitive.style.family
@@ -186,6 +190,9 @@ void mm_style_fonts(mm_document* d, mm_scene* scene):
 
 void mm_style_scene(mm_document* d, mm_scene* scene):
 	mm_style_fonts(d, scene)
+	# `look: handDrawn` roughens every stroked primitive at draw time (rough.w).
+	scene.hand_drawn = d.look == 2
+	scene.hand_drawn_seed = mm_config_number(d, c"handDrawnSeed", 0)
 	if (d.theme == 0 || d.theme_values == 0): return
 	list[int] values = d.theme_values
 	scene.has_background = 1

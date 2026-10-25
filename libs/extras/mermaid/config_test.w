@@ -284,7 +284,7 @@ void test_mermaid_configuration_diagnostics():
 	config_reject(c"%%{init: {'theme': 'dark', 'theme': 'forest'}}%%\nflowchart LR\nA\n", c"duplicate theme setting")
 	config_reject(c"%%{init: {'fontFamily': 'serif;x'}}%%\nflowchart LR\nA\n", c"fontFamily takes a CSS font-family list of names, quotes, commas and spaces")
 	config_reject(c"%%{init: {'a': {'b': {'c': {'d': {'e': {'f': {'g': {'h': 1}}}}}}}}}%%\nflowchart LR\nA\n", c"configuration nesting too deep")
-	config_reject(c"%%{init: {'look': 'handDrawn'}}%%\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo")
+	config_reject(c"%%{init: {'look': 'sketch'}}%%\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo, handDrawn")
 	config_reject(c"%%{init: {'flowchart': {'curve': 'cardinal'}}}%%\nflowchart LR\nA\n", c"unsupported flowchart curve; supported: basis, linear, step, stepBefore, stepAfter")
 	config_reject(c"%%{init: {'flowchart': {'nodeSpacing': 501}}}%%\nflowchart LR\nA\n", c"flowchart spacing must be an integer from 0 to 500")
 	config_reject(c"%%{init: {'flowchart': 5}}%%\nflowchart LR\nA\n", c"configuration section must be a mapping")

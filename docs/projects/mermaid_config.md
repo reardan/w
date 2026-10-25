@@ -114,6 +114,7 @@ key switches to the upstream meaning.
 | Key | Values | Effect |
 | --- | --- | --- |
 | `wrap` | boolean | Sequence message wrapping when `sequence.wrap` is unset (`%%{wrap}%%` sets it) |
+| `handDrawnSeed` | integer 0–1000000000 | Seed of `look: handDrawn` strokes; 0 (default) derives a fixed seed per shape ([mermaid_styling.md](mermaid_styling.md)) |
 
 ### Sequence (`sequence.*`)
 

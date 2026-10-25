@@ -3,6 +3,7 @@
 import libs.extras.mermaid.model
 import lib.fmath
 import libs.extras.mermaid.text_metrics
+import libs.extras.mermaid.rough
 
 const int MM_LINE = 1
 const int MM_BOX = 2
@@ -136,6 +137,10 @@ struct mm_scene:
 	# label placement (null otherwise), and 1 to draw edge paths only.
 	mm_label_grid* labels
 	int path_only
+	# `look: handDrawn`: non-text primitives draw as seeded rough.js-style
+	# strokes and hachure fills (rough.w); hand_drawn_seed is handDrawnSeed.
+	int hand_drawn
+	int hand_drawn_seed
 
 void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, char* text):
 	mm_primitive* p = new mm_primitive()
@@ -362,6 +367,115 @@ void mm_svg_defs(string_builder* out, mm_scene* scene):
 	mm_svg_color(out, c"stop-color", scene.gradient_stop)
 	string_append(out, c"/></linearGradient></defs>\n")
 
+# A tenth-of-a-pixel coordinate as an SVG number.
+void mm_svg_tenths(string_builder* out, int value):
+	if (value < 0):
+		string_append_char(out, '-')
+		value = 0 - value
+	string_append_int(out, value / 10)
+	if (value % 10):
+		string_append_char(out, '.')
+		string_append_char(out, '0' + value % 10)
+
+# Polylines ([count, x, y, ...] runs) as one path's d attribute.
+void mm_svg_polylines(string_builder* out, list[int] runs):
+	string_append(out, c" d=\"")
+	int at = 0
+	while (at < runs.length):
+		int count = runs[at]
+		for i in range(count):
+			if (i == 0): string_append_char(out, 'M')
+			else: string_append(out, c" L")
+			mm_svg_tenths(out, runs[at + 1 + i * 2])
+			string_append_char(out, ' ')
+			mm_svg_tenths(out, runs[at + 2 + i * 2])
+		string_append_char(out, ' ')
+		at = at + 1 + count * 2
+	string_append_char(out, '"')
+
+# Whether a primitive draws hand-drawn: shapes with a stroke (strokeless
+# label backgrounds stay plain).
+int mm_rough_drawn(mm_scene* scene, mm_primitive* p):
+	if (scene.hand_drawn == 0 || p.kind == MM_TEXT): return 0
+	return mm_paint_stroke(p) >= 0
+
+# Strokes and hachure of one hand-drawn primitive; index seeds it. Large
+# filled shapes are hatched, small ones keep a solid fill under the strokes.
+mm_rough* mm_rough_primitive(mm_scene* scene, mm_primitive* p, int index, int* solid):
+	mm_rough* r = mm_rough_new(mm_rough_seed(scene.hand_drawn_seed, index))
+	int x = p.x
+	int y = p.y
+	int x2 = p.x2
+	int y2 = p.y2
+	if (p.kind == MM_POLYGON && p.points != 0 && p.points.length >= 2):
+		x = p.points[0]
+		y = p.points[1]
+		x2 = x
+		y2 = y
+		for i in range(p.points.length / 2):
+			if (p.points[i * 2] < x): x = p.points[i * 2]
+			if (p.points[i * 2] > x2): x2 = p.points[i * 2]
+			if (p.points[i * 2 + 1] < y): y = p.points[i * 2 + 1]
+			if (p.points[i * 2 + 1] > y2): y2 = p.points[i * 2 + 1]
+	int fill = -1
+	if (p.kind != MM_LINE): fill = mm_paint_fill(p)
+	int hatch = fill >= 0 && x2 - x >= 12 && y2 - y >= 12
+	*solid = fill >= 0 && hatch == 0
+	mm_rough_shape(r, p.kind, p.x, p.y, p.x2, p.y2, mm_paint_radius(p), p.points, hatch)
+	return r
+
+void mm_svg_rough(string_builder* out, mm_scene* scene, mm_primitive* p, int index):
+	int solid = 0
+	mm_rough* r = mm_rough_primitive(scene, p, index, &solid)
+	string_append(out, c"<g")
+	if (p.style.mask & 32): mm_svg_fraction(out, c"opacity", p.style.opacity)
+	if (p.style.mask & 2048): mm_svg_fraction(out, c"fill-opacity", p.style.fill_opacity)
+	string_append(out, c">")
+	int fill = mm_paint_fill(p)
+	if (solid):
+		# Small filled shapes (arrowheads, dots) keep a solid fill.
+		if (p.kind == MM_POLYGON):
+			string_append(out, c"<polygon")
+			mm_svg_color(out, c"fill", fill)
+			string_append(out, c" stroke=\"none\" points=\"")
+			for i in range(p.points.length):
+				string_append_int(out, p.points[i])
+				if (i % 2 == 0): string_append_char(out, ',')
+				else: string_append_char(out, ' ')
+			string_append(out, c"\"/>")
+		else if (p.kind == MM_CIRCLE):
+			string_append(out, c"<circle")
+			mm_svg_color(out, c"fill", fill)
+			mm_svg_number(out, c"cx", (p.x + p.x2) / 2)
+			mm_svg_number(out, c"cy", (p.y + p.y2) / 2)
+			mm_svg_number(out, c"r", (p.x2 - p.x) / 2)
+			string_append(out, c"/>")
+		else:
+			string_append(out, c"<rect")
+			mm_svg_color(out, c"fill", fill)
+			mm_svg_number(out, c"x", p.x)
+			mm_svg_number(out, c"y", p.y)
+			mm_svg_number(out, c"width", p.x2 - p.x)
+			mm_svg_number(out, c"height", p.y2 - p.y)
+			string_append(out, c"/>")
+	if (r.fills.length > 0):
+		# Hachure: fillWeight 1.5 strokes in the fill colour.
+		string_append(out, c"<path fill=\"none\"")
+		mm_svg_color(out, c"stroke", fill)
+		string_append(out, c" stroke-width=\"1.5\" stroke-linecap=\"round\"")
+		mm_svg_polylines(out, r.fills)
+		string_append(out, c"/>")
+	string_append(out, c"<path fill=\"none\"")
+	int stroke = mm_paint_stroke(p)
+	if ((p.effects & 2) && stroke >= 0): string_append(out, c" stroke=\"url(#mermaid-gradient)\"")
+	else: mm_svg_color(out, c"stroke", stroke)
+	mm_svg_number(out, c"stroke-width", mm_paint_width(p))
+	string_append(out, c" stroke-linecap=\"round\" stroke-linejoin=\"round\"")
+	mm_svg_dash(out, p)
+	mm_svg_polylines(out, r.strokes)
+	string_append(out, c"/></g>\n")
+	mm_rough_free(r)
+
 char* mm_svg(mm_scene* scene):
 	if (scene == 0): return 0
 	string_builder* out = string_from(c"<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-labelledby=\"mermaid-title mermaid-description\" viewBox=\"0 0 ")
@@ -380,8 +494,10 @@ char* mm_svg(mm_scene* scene):
 		mm_svg_color(out, c"fill", scene.background)
 		string_append(out, c"/>\n")
 	string_append(out, c"<g>\n")
-	for mm_primitive* p in scene.items:
-		if (p.kind == MM_LINE):
+	for index in range(scene.items.length):
+		mm_primitive* p = scene.items[index]
+		if (mm_rough_drawn(scene, p)): mm_svg_rough(out, scene, p, index)
+		else if (p.kind == MM_LINE):
 			string_append(out, c"<line")
 			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x1", p.x)

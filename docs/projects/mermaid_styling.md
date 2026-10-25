@@ -133,7 +133,8 @@ layout and flowchart settings.
 | --- | --- |
 | `title` (frontmatter only) | scalar string |
 | `theme` | `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, `redux-dark-color` |
-| `look` | `classic`, `neo` (drop shadows and gradient outlines, see below) |
+| `look` | `classic`, `neo` (drop shadows and gradient outlines), `handDrawn` (seeded sketch strokes); see below |
+| `handDrawnSeed` | integer 0–1000000000 (0: a fixed per-shape seed) |
 | `fontFamily`, `fontSize`, `themeCSS` | see Fonts and themeCSS above |
 | `layout` | `dagre` (native layered), `force`, `elk` (graph families only; drawn with the native layered layout, see below) |
 | `themeVariables.*` | see below; any theme |
@@ -155,7 +156,7 @@ elk layouts are only supported for graph diagrams`.
 
 Keys that are not supported natively — unsupported diagram settings — are
 ignored deterministically and recorded in `mm_document.config_ignored`;
-invalid values of supported keys, such as `look: handDrawn`, produce a
+invalid values of supported keys, such as `look: sketch`, produce a
 diagnostic.
 
 ### Themes
@@ -166,15 +167,43 @@ theme background), including the redux and neo families. `dark`, `neo-dark`,
 `redux-dark` and `redux-dark-color` are dark modes and paint a dark
 preview/SVG background; `base` paints its `#f4f4f4` background. Themes also set
 the label font size (16px, 14px for neo/redux) and the node stroke width (1px,
-2px for neo/redux); upstream's theme `fontFamily` is not applied, so text keeps
-the metric-compatible default face unless `fontFamily` is configured.
-A document without any configuration keeps the native palette.
+2px for neo/redux) and name upstream's theme `fontFamily` as the SVG default
+face: `"trebuchet ms", verdana, arial, sans-serif` for the classic five,
+`arial, sans-serif` for neo/neo-dark and `"Recursive Variable", arial,
+sans-serif` for the redux family; a configured `fontFamily` wins. Fallback:
+the only bundled native face is Liberation Sans, metric-compatible with the
+Arial every theme family lists, so text is measured (and natively drawn) with
+Arial advances: exact for neo, while a browser that has Trebuchet MS or
+Recursive installed draws slightly different widths inside the same boxes.
+A document without any configuration keeps the native palette and the native
+`Liberation Sans, Arial, Helvetica, sans-serif` face.
 
 `look: neo` gives themed nodes, clusters and sequence actors the theme's drop
 shadow (an SVG `mermaid-drop-shadow` filter; an offset shadow box natively) and,
 on themes that use it, a `gradientStart` → `gradientStop` outline
-(`mermaid-gradient`; natively its first stop). The redux themes name an SVG
-filter upstream; here they use the neo drop shadow.
+(`mermaid-gradient`; natively its first stop). The classic and neo themes use
+their `dropShadow` CSS `drop-shadow()` values; the redux themes name
+`url(#drop-shadow)`, the filter upstream's `rendering-util/insertLookDefs.ts`
+appends: an unblurred `feDropShadow` offset 4px right and down at 0.06
+opacity, black on `redux`/`redux-color` and white on the dark redux themes
+(`mermaid-drop-shadow` in SVG, the same offset translucent box natively).
+
+`look: handDrawn` draws every stroked shape (nodes, clusters, edges, arrow
+heads, actors, chart marks) the way upstream's rough.js renderer does with
+mermaid's options (roughness 0.7, bowing 1, hachure fill with a 1.5px gap at
+-41° and 1.5px weight): each outline edge is two bowed, jittered strokes,
+circles are two jittered closed curves, and large fills become hachure lines
+clipped to the shape (shapes under 12px keep a solid fill). Text is not
+roughened. The jitter comes from rough.js's Park–Miller generator seeded with
+`handDrawnSeed`, which restarts at that seed for every shape as upstream
+passes it to each rough.js call; the default 0 (a fresh random seed upstream)
+derives a fixed seed per primitive instead, so the same document always
+draws the same strokes. The generator call order is native, so the strokes
+are rough.js-like rather than byte-identical to upstream's. SVG export emits
+the strokes and hachure as paths; the native preview draws the same seeded
+strokes over a solid fill (at upstream's gap and weight the hachure covers
+the shape). The look applies with every theme; it replaces the neo shadow
+and gradient.
 
 ### Theme variables
 
@@ -253,8 +282,8 @@ oriented. Self-loops remain orthogonal.
 The source remains byte-for-byte saveable, including unsupported styles and
 configuration. Invalid styles or configuration suppress the preview. Not
 supported: selectors beyond `.class` in `themeCSS`, CSS properties outside the
-table above, loading font families natively, the hand-drawn look, upstream's
-SVG filters for redux, TreeView icons, arbitrary diagram configuration and
+table above, loading font families natively (themes name upstream's
+families, metrics stay Arial-compatible), TreeView icons, arbitrary diagram configuration and
 external stylesheets. Classes refer to existing node identifiers; quoted ER
 display aliases are not style identifiers.
 
@@ -270,9 +299,18 @@ look, fontSize, themeCSS), [states.mmd](../../examples/mermaid/states.mmd),
 [treemap.mmd](../../examples/mermaid/treemap.mmd),
 [venn.mmd](../../examples/mermaid/venn.mmd),
 [radar.mmd](../../examples/mermaid/radar.mmd) and
-[packet.mmd](../../examples/mermaid/packet.mmd).
+[packet.mmd](../../examples/mermaid/packet.mmd);
+[theme_redux.mmd](../../examples/mermaid/theme_redux.mmd) (redux filter) and
+[look_hand_drawn.mmd](../../examples/mermaid/look_hand_drawn.mmd).
 
 ## Checks
+
+`./wbuild look_test look_64_test` covers the redux filters (light and dark),
+the neo shadow, each theme family and the `fontFamily` override, unchanged
+metrics, `look: handDrawn` parsing, canonical round trip and seed validation,
+deterministic and seed-dependent SVG strokes, hachure bounds and every family
+drawing by hand; `mermaid_style_native_test` checks the native hand-drawn
+render is deterministic and seed-dependent.
 
 `./wbuild style_test style_64_test mermaid_style_native_test` covers style
 precedence, forward definitions, all four graph families, fillable shapes,
@@ -282,7 +320,7 @@ variables, malformed input, truncation, budgets and owned scene lifetime.
 property (through `style`, `classDef` + `class` and `:::`), `themeCSS`, each
 font key, every theme with the neo look, every theme variable, each family
 styling form, the rich labels, and the deliberately unsupported options
-(`look: handDrawn`, other CSS properties and selectors, out-of-range font sizes, TreeView icons, styled start states, unmatched data
+(`look: sketch`, other CSS properties and selectors, out-of-range font sizes, TreeView icons, styled start states, unmatched data
 style targets).
 `./wbuild config_test config_64_test` covers palette derivation, upstream theme
 palettes, variables with every theme and dark mode, pie/cScale series colors,

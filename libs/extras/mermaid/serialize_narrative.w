@@ -256,21 +256,16 @@ void mm_sn_sequence(mm_serializer* out, mm_document* d):
 			mm_sn_need(&w, e.from_node, depth == 0)
 			mm_sn_need(&w, e.to_node, depth == 0)
 			mm_sn_number(&w, i)
-			list[char*] solid = list[char*]{c"->", c"->>", c"-x", c"-)", c"<<->>"}
-			list[char*] dashed = list[char*]{c"-->", c"-->>", c"--x", c"--)", c"<<-->>"}
-			if (e.arrow < 0 || e.arrow > 4 || e.dashed < 0 || e.dashed > 1 || e.central < 0 || e.central > 3 || e.detail[0] != 0): out.failed = 1
+			if (e.arrow < 0 || e.arrow >= MM_N_ARROW_KINDS || e.dashed < 0 || e.dashed > 1 || e.central < 0 || e.central > 3 || e.detail[0] != 0): out.failed = 1
 			else:
 				mm_out(out, d.nodes[e.from_node].id)
 				if (e.central & 1): mm_out(out, c"()")
-				if (e.dashed): mm_out(out, dashed[e.arrow])
-				else: mm_out(out, solid[e.arrow])
+				mm_out(out, mm_n_arrow_token(e.arrow, e.dashed))
 				if (e.central & 2): mm_out(out, c"()")
 				mm_out(out, d.nodes[e.to_node].id)
 				mm_out(out, c": ")
 				mm_sn_text(out, d, e.label)
 				mm_out_line(out)
-			__w_list_free(cast(__w_list*, solid))
-			__w_list_free(cast(__w_list*, dashed))
 		else if (k == MM_N_NOTE):
 			mm_sn_need(&w, e.from_node, depth == 0)
 			mm_sn_need(&w, e.to_node, depth == 0)
@@ -717,14 +712,29 @@ void mm_sz_declare(mm_sz_writer* w, int index):
 		mm_out_char(out, 32)
 	else if (n.shape == 1): mm_out(out, c"@Actor ")
 	else if (n.shape != 0): out.failed = 1
+	if (n.role[0] != 0):
+		if (index_of(n.role, c">") >= 0 || index_of(n.role, c"(") >= 0 || mm_serialize_is_id(n.role) == 0): out.failed = 1
+		mm_out(out, c"<<")
+		mm_out(out, n.role)
+		mm_out(out, c">> ")
 	mm_out(out, n.id)
+	if (n.value_x != 0):
+		if (n.value_x < 1 || n.value_x > 2000): out.failed = 1
+		mm_out_char(out, 32)
+		mm_out_int(out, n.value_x)
 	if (strcmp(n.label, n.id) != 0):
 		char* label = n.label
 		if (label[0] == 0 || (label[0] & 255) <= 32 || (label[strlen(label) - 1] & 255) <= 32): out.failed = 1
 		if (n.annotation[0] == 0 && n.shape == 0 && (index_of(label, c".") >= 0 || index_of(label, c"->") >= 0)): out.failed = 1
 		if (index_of(label, c"{") >= 0 || index_of(label, c"}") >= 0 || index_of(label, c";") >= 0): out.failed = 1
+		if (index_of(label, c"#") >= 0): out.failed = 1
 		mm_out(out, c" as ")
 		mm_out_plain(out, label, 0)
+	if (n.style.mask != 0):
+		if (n.style.mask != MM_STYLE_FILL || n.style.fill < 0): out.failed = 1
+		mm_out(out, c" #")
+		char* digits = c"0123456789abcdef"
+		for shift in range(6): mm_out_char(out, digits[(n.style.fill >> (20 - shift * 4)) & 15])
 	mm_out_line(out)
 
 # Creates node index if this statement is its first mention; implicit
@@ -742,7 +752,7 @@ void mm_sz_need(mm_sz_writer* w, int index, int implicit):
 		if (implicit == 0): w.out.failed = 1
 		return
 	mm_node* n = w.d.nodes[index]
-	if (strcmp(n.label, n.id) != 0 || n.shape != 0 || n.annotation[0] != 0): w.after.push(index)
+	if (strcmp(n.label, n.id) != 0 || n.shape != 0 || n.annotation[0] != 0 || n.role[0] != 0 || n.value_x != 0 || n.style.mask != 0): w.after.push(index)
 
 # Declarations of the participants the last statement created.
 void mm_sz_flush(mm_sz_writer* w):
