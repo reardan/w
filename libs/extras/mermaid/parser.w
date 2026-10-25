@@ -518,6 +518,7 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	d.edge_curve = envelope.edge_curve
 	d.look = envelope.look
 	d.usecase_rotate = envelope.usecase_rotate
+	d.radar_tension = envelope.radar_tension
 	# UpdateLayoutConfig statements in the diagram win over c4 configuration.
 	if (d.c4_shape_in_row == 0): d.c4_shape_in_row = envelope.c4_shape_in_row
 	if (d.c4_boundary_in_row == 0): d.c4_boundary_in_row = envelope.c4_boundary_in_row

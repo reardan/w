@@ -443,10 +443,50 @@ int mm_config_family_key(mm_document* d, mm_config_entry* e, char* key):
 	else: mm_error(d, e.offset, c"unsupported c4 setting")
 	return 1
 
+# Non-negative decimal with at most three fractional digits, in thousandths
+# (upper bound inclusive); -1 when malformed or out of range.
+int mm_config_milli(char* value, int high):
+	int i = 0
+	int result = 0
+	int digits = 0
+	while (value[i] >= '0' && value[i] <= '9'):
+		if (result > high): return -1
+		result = result * 10 + value[i] - '0'
+		digits = digits + 1
+		i = i + 1
+	result = result * 1000
+	if (value[i] == '.'):
+		i = i + 1
+		int scale = 100
+		while (value[i] >= '0' && value[i] <= '9'):
+			if (scale == 0): return -1
+			result = result + (value[i] - '0') * scale
+			scale = scale / 10
+			digits = digits + 1
+			i = i + 1
+	if (digits == 0 || value[i] != 0 || result > high): return -1
+	return result
+
+# `radar.curveTension` (closed-spline tension of circle-graticule curves).
+# Returns 1 when handled; other radar settings fall through as unsupported.
+int mm_config_radar_key(mm_document* d, mm_config_entry* e, char* key):
+	if (strcmp(key, c"radar") == 0):
+		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
+		return 1
+	if (strcmp(key, c"radar.curveTension") != 0): return 0
+	if (mm_config_scalar_entry(d, e) == 0): return 1
+	int tension = mm_config_milli(e.value, 2000)
+	if (tension < 0): mm_error(d, e.offset, c"curveTension must be a number from 0 to 2")
+	else:
+		d.radar_tension = tension
+		d.config_mask = d.config_mask | 4
+	return 1
+
 # key is the path below "config.".
 void mm_config_key(mm_document* d, mm_config_entry* e, char* key, list[int] user, int* theme, int* dark):
 	char* value = e.value
 	if (mm_config_family_key(d, e, key)): return
+	if (mm_config_radar_key(d, e, key)): return
 	if (strcmp(key, c"packet") == 0 || strcmp(key, c"themeVariables") == 0 || strcmp(key, c"flowchart") == 0 || strcmp(key, c"kanban") == 0):
 		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
 	else if (strcmp(key, c"theme") == 0):

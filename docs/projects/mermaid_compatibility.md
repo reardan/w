@@ -97,20 +97,23 @@ Details, numeric precision and family-specific budgets: [Data diagrams](mermaid_
 | Quadrant — `quadrantChart` | Normalized points, title, single/dual axis endpoints, hyphenated labels, point styles and forward classes | Broader chart configuration and rich labels | [quadrant.mmd](../../examples/mermaid/quadrant.mmd) |
 | XY — `xychart-beta` | Categorical/numeric/inferred x axes, numeric y range, bars/lines, signed values and horizontal layout | Additional chart configuration (series follow `cScale*`) | [xy.mmd](../../examples/mermaid/xy.mmd) |
 | Sankey — `sankey-beta` | Multiline quoted CSV, DAG validation, aggregation, smooth proportional ribbons and weighted ordering | Global crossing optimization and configuration | [sankey.mmd](../../examples/mermaid/sankey.mmd) |
-| Radar — `radar-beta` | Axes/curves, positional/keyed values, ranges, graticules, ticks and legend | Smooth curves and custom per-series styles (series follow `cScale*`) | [radar.mmd](../../examples/mermaid/radar.mmd) |
+| Radar — `radar-beta` | Axes/curves, positional/keyed values, ranges, graticules, ticks, legend, and upstream smooth closed curves on circle graticules (`radar.curveTension`, default 0.17) | Custom per-series styles (series follow `cScale*`) and the other radar configuration keys | [radar.mmd](../../examples/mermaid/radar.mmd), [radar-smooth.mmd](../../examples/mermaid/radar-smooth.mmd) |
 | Treemap — `treemap-beta` | Indented groups/leaves, aggregate weights, squarified subdivision and `classDef`/`:::class` cells | `style` statements and per-depth palettes; tiny cells use a hierarchy key | [treemap.mmd](../../examples/mermaid/treemap.mmd) |
-| Venn — `venn-beta` | One to three named sets, declared intersections, text nodes and explicit areas for one/two sets | Explicit sizes for three sets, styles and more than three sets | [venn.mmd](../../examples/mermaid/venn.mmd) |
+| Venn — `venn-beta` | One to eight named sets, declared intersections, text nodes and explicit areas; three sized sets and four or more sets use an area-proportional pairwise layout with region-aware labels | Styles; higher-order region areas are labeled but not fitted | [venn.mmd](../../examples/mermaid/venn.mmd), [venn-sizes.mmd](../../examples/mermaid/venn-sizes.mmd) |
 | Packet — `packet`, `packet-beta` | Absolute/relative bit fields, title, configurable 1–128-bit rows, ascending/descending order and proportional widths | Custom field styles and other packet configuration | [packet.mmd](../../examples/mermaid/packet.mmd) |
 
 ## Grammar and agent workflows
 
 | Family / headers | Implemented core | Important remaining gaps | Details and examples |
 | --- | --- | --- | --- |
-| Railroad — `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Owned grammar trees, EBNF exceptions, ABNF incremental rules/case semantics, numeric/repeat semantics, PEG ordered choice/predicates/classes | Extended escapes, configuration and exact curved geometry | [Reference](mermaid_railroad.md); [IR](../../examples/mermaid/railroad.mmd), [EBNF](../../examples/mermaid/railroad-ebnf.mmd), [ABNF](../../examples/mermaid/railroad-abnf.mmd), [PEG](../../examples/mermaid/railroad-peg.mmd) |
+| Railroad — `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Owned grammar trees, EBNF exceptions, ABNF incremental rules/case semantics, numeric/repeat semantics, PEG ordered choice/predicates/classes, the upstream escape set per notation, upstream arc-radius geometry, linked rule references and optional semicolons at rule boundaries | Configuration and custom styling | [Reference](mermaid_railroad.md); [IR](../../examples/mermaid/railroad.mmd), [EBNF](../../examples/mermaid/railroad-ebnf.mmd), [ABNF](../../examples/mermaid/railroad-abnf.mmd), [PEG](../../examples/mermaid/railroad-peg.mmd), [escapes](../../examples/mermaid/railroad-escapes.mmd) |
 | Agentflow — `agentflow-beta` | Six roles, scalar node metadata, nested/global flows, connectors, sequence/reference/failure edges and directions | General YAML metadata, edge metadata/IDs, collapsed flows, algorithms, animation/curves and full shape inventory | [Reference](mermaid_agentflow.md); [agentflow.mmd](../../examples/mermaid/agentflow.mmd) |
 
-Railroad rules currently require terminating semicolons in every notation;
-references are not expanded. Agentflow metadata describes systems and remains
+Railroad rules may omit their terminating semicolon when the next rule head
+starts a new line (upstream requires it; every grammar upstream accepts keeps
+its meaning). References to rules of the same diagram link to that rule's row
+in SVG; like upstream they are drawn as boxes, never inlined, so recursive
+grammars stay finite. Agentflow metadata describes systems and remains
 inspectable in the owned model; loading a diagram does not execute instructions,
 connectors or external systems.
 

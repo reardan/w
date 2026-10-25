@@ -251,18 +251,37 @@ void mm_data_radar_render(mm_document* d, mm_scene* s):
 		mm_line(s, 300, 300, 300 + cast(int, fcos(angle) * 200.0), 300 + cast(int, fsin(angle) * 200.0), 0)
 		mm_text(s, 300 + cast(int, fcos(angle) * 225.0) - strlen(axis.label) * 4, 300 + cast(int, fsin(angle) * 225.0) - 8, axis.label)
 	int series = 0
+	# Upstream draws circle-graticule curves as a closed Catmull-Rom style
+	# spline: segment p1->p2 is a cubic with control points
+	# p1 + (p2 - p0) * tension and p2 - (p3 - p1) * tension (radar.curveTension,
+	# default 0.17). Polygon graticules keep straight edges.
+	float tension = 0.17
+	if (d.config_mask & 4): tension = cast(float, d.radar_tension) / 1000.0
+	list[int] px = new list[int]
+	list[int] py = new list[int]
 	for mm_data_item* item in c.items:
 		if (item.kind != 4): continue
 		int series_start = s.items.length
+		px.clear()
+		py.clear()
+		for i in range(count):
+			float a = cast(float, i) * 6.2831853 / cast(float, count) - 1.5707963
+			int r1 = mm_data_scale(item.values[i], c.low, c.high, 200)
+			px.push(300 + cast(int, fcos(a) * cast(float, r1)))
+			py.push(300 + cast(int, fsin(a) * cast(float, r1)))
 		for i in range(count):
 			int j = (i + 1) % count
-			float a = cast(float, i) * 6.2831853 / cast(float, count) - 1.5707963
-			float b = cast(float, j) * 6.2831853 / cast(float, count) - 1.5707963
-			int r1 = mm_data_scale(item.values[i], c.low, c.high, 200)
-			int r2 = mm_data_scale(item.values[j], c.low, c.high, 200)
-			int x = 300 + cast(int, fcos(a) * cast(float, r1))
-			int y = 300 + cast(int, fsin(a) * cast(float, r1))
-			mm_line(s, x, y, 300 + cast(int, fcos(b) * cast(float, r2)), 300 + cast(int, fsin(b) * cast(float, r2)), series % 2)
+			int x = px[i]
+			int y = py[i]
+			if (c.polygon == 0):
+				int h = (i + count - 1) % count
+				int k = (i + 2) % count
+				int c1x = x + cast(int, cast(float, px[j] - px[h]) * tension)
+				int c1y = y + cast(int, cast(float, py[j] - py[h]) * tension)
+				int c2x = px[j] - cast(int, cast(float, px[k] - x) * tension)
+				int c2y = py[j] - cast(int, cast(float, py[k] - y) * tension)
+				mm_style_bezier(s, x, y, c1x, c1y, c2x, c2y, px[j], py[j], series % 2)
+			else: mm_line(s, x, y, px[j], py[j], series % 2)
 			mm_draw(s, MM_CIRCLE, x - 3, y - 3, x + 3, y + 3, series % 2, c"")
 		if (c.legend):
 			mm_line(s, 580, 100 + series * 28, 620, 100 + series * 28, series % 2)
@@ -272,6 +291,8 @@ void mm_data_radar_render(mm_document* d, mm_scene* s):
 	mm_data_value_text(s, 310, 300, c.low)
 	mm_data_value_text(s, 310, 100, c.high)
 	__w_list_free(cast(__w_list*, axes))
+	__w_list_free(cast(__w_list*, px))
+	__w_list_free(cast(__w_list*, py))
 
 float mm_data_tree_weight(mm_data_chart* c, int index):
 	mm_data_item* item = c.items[index]
@@ -444,7 +465,262 @@ void mm_data_venn_texts(mm_document* d, mm_scene* s, int parent, int x, int y):
 		mm_text(s, x - strlen(item.label) * 4, y, item.label)
 		y = y + 20
 
+# Distance between circle centers whose lens has the given area (bisection).
+float mm_venn_target(float first, float second, float area):
+	float low = first - second
+	if (low < 0.0): low = 0.0 - low
+	float high = first + second
+	for i in range(48):
+		float middle = (low + high) / 2.0
+		if (mm_data_venn_overlap(first, second, middle) > area): low = middle
+		else: high = middle
+	return (low + high) / 2.0
+
+# Pairwise stress of a layout. kinds: 0 exact target, 1 disjoint (only
+# closer than the target is penalized), 2 nested (only farther is penalized).
+# Only the first `limit` sets in `order` take part (greedy placement).
+float mm_venn_loss(list[float] xs, list[float] ys, list[float] targets, list[int] kinds, list[int] order, int limit, int n):
+	float loss = 0.0
+	for a in range(limit):
+		for b in range(a + 1, limit):
+			int i = order[a]
+			int j = order[b]
+			float dx = xs[i] - xs[j]
+			float dy = ys[i] - ys[j]
+			float distance = fsqrt(dx * dx + dy * dy)
+			float diff = distance - targets[i * n + j]
+			int kind = kinds[i * n + j]
+			if ((kind == 1 && diff > 0.0) || (kind == 2 && diff < 0.0)): diff = 0.0
+			loss = loss + diff * diff
+	return loss
+
+# Best label point of a region: inside every member circle and outside every
+# other one, maximizing the clearance to the nearest boundary (grid search
+# with two refinements). Returns the clearance; the point is pushed to out.
+float mm_venn_region_point(list[float] xs, list[float] ys, list[float] rs, int n, list[int] members, list[float] out):
+	int smallest = members[0]
+	for int m in members:
+		if (rs[m] < rs[smallest]): smallest = m
+	float cx = xs[smallest]
+	float cy = ys[smallest]
+	float extent = rs[smallest]
+	float best = -1000000.0
+	float bx = cx
+	float by = cy
+	for round in range(3):
+		for gy in range(21):
+			for gx in range(21):
+				float x = cx + extent * (cast(float, gx) / 10.0 - 1.0)
+				float y = cy + extent * (cast(float, gy) / 10.0 - 1.0)
+				float score = 1000000.0
+				for i in range(n):
+					float dx = x - xs[i]
+					float dy = y - ys[i]
+					float margin = fsqrt(dx * dx + dy * dy) - rs[i]
+					if (members.index(i) >= 0): margin = 0.0 - margin
+					if (margin < score): score = margin
+				if (score > best):
+					best = score
+					bx = x
+					by = y
+		cx = bx
+		cy = by
+		extent = extent / 5.0
+	out.push(bx)
+	out.push(by)
+	return best
+
+# Upstream (venn.js) style layout for three sized sets and for four to eight
+# sets: radii follow set sizes, pairwise target distances follow the sizes of
+# two-set unions (unions of three or more sets imply missing pairs at a
+# quarter of the smaller set, as upstream does), and centers are placed
+# greedily then refined by constrained gradient descent on the pairwise
+# distance stress. Higher-order region areas are labeled, not fitted.
+void mm_data_venn_general(mm_document* d, mm_scene* s, list[int] ids):
+	int n = ids.length
+	list[float] rs = new list[float]
+	list[float] xs = new list[float]
+	list[float] ys = new list[float]
+	list[float] overlap = new list[float]
+	list[float] targets = new list[float]
+	list[int] kinds = new list[int]
+	for i in range(n):
+		mm_data_item* set_item = d.data.items[ids[i]]
+		rs.push(fsqrt(cast(float, set_item.a) / 1000.0 / 3.14159265))
+		xs.push(0.0)
+		ys.push(0.0)
+	for i in range(n * n):
+		overlap.push(-1.0)
+		targets.push(0.0)
+		kinds.push(0)
+	for pass in range(2):
+		for mm_data_item* item in d.data.items:
+			if (item.kind != 7): continue
+			if ((pass == 0) != (item.values.length == 2)): continue
+			for int a in item.values:
+				for int b in item.values:
+					int i = ids.index(a)
+					int j = ids.index(b)
+					if (i == j || overlap[i * n + j] >= 0.0): continue
+					if (pass == 0): overlap[i * n + j] = cast(float, item.a) / 1000.0
+					else:
+						mm_data_item* first = d.data.items[a]
+						mm_data_item* second = d.data.items[b]
+						int smaller = first.a
+						if (second.a < smaller): smaller = second.a
+						overlap[i * n + j] = cast(float, smaller) / 4000.0
+	list[float] totals = new list[float]
+	for i in range(n):
+		float total = 0.0
+		for j in range(n):
+			if (i == j): continue
+			float area = overlap[i * n + j]
+			if (area < 0.0): area = 0.0
+			total = total + area
+			float small = rs[i]
+			if (rs[j] < small): small = rs[j]
+			float full = 3.14159265 * small * small
+			if (area <= 0.0):
+				targets[i * n + j] = rs[i] + rs[j]
+				kinds[i * n + j] = 1
+			else if (area >= full * 0.999):
+				float nested = rs[i] - rs[j]
+				if (nested < 0.0): nested = 0.0 - nested
+				targets[i * n + j] = nested
+				kinds[i * n + j] = 2
+			else: targets[i * n + j] = mm_venn_target(rs[i], rs[j], area)
+		totals.push(total)
+	# Greedy placement, most-overlapping set first.
+	list[int] order = new list[int]
+	for k in range(n):
+		int pick = -1
+		for i in range(n):
+			if (order.index(i) >= 0): continue
+			if (pick < 0 || totals[i] > totals[pick]): pick = i
+		order.push(pick)
+	for k in range(1, n):
+		int current = order[k]
+		float best = -1.0
+		float best_x = 0.0
+		float best_y = 0.0
+		for p in range(k):
+			int placed = order[p]
+			for step in range(24):
+				float angle = cast(float, step) * 6.2831853 / 24.0
+				xs[current] = xs[placed] + fcos(angle) * targets[current * n + placed]
+				ys[current] = ys[placed] + fsin(angle) * targets[current * n + placed]
+				float loss = mm_venn_loss(xs, ys, targets, kinds, order, k + 1, n)
+				if (best < 0.0 || loss < best - 0.0000001):
+					best = loss
+					best_x = xs[current]
+					best_y = ys[current]
+		xs[current] = best_x
+		ys[current] = best_y
+	# Constrained gradient descent with a shrinking step.
+	float rate = 0.1
+	float loss = mm_venn_loss(xs, ys, targets, kinds, order, n, n)
+	list[float] gx = new list[float]
+	list[float] gy = new list[float]
+	for i in range(n):
+		gx.push(0.0)
+		gy.push(0.0)
+	for iteration in range(400):
+		if (loss < 0.000001 || rate < 0.00001): break
+		for i in range(n):
+			gx[i] = 0.0
+			gy[i] = 0.0
+		for i in range(n):
+			for j in range(i + 1, n):
+				float dx = xs[i] - xs[j]
+				float dy = ys[i] - ys[j]
+				float distance = fsqrt(dx * dx + dy * dy)
+				if (distance < 0.000001): distance = 0.000001
+				float diff = distance - targets[i * n + j]
+				int kind = kinds[i * n + j]
+				if ((kind == 1 && diff > 0.0) || (kind == 2 && diff < 0.0)): continue
+				float factor = 2.0 * diff / distance
+				gx[i] = gx[i] + factor * dx
+				gy[i] = gy[i] + factor * dy
+				gx[j] = gx[j] - factor * dx
+				gy[j] = gy[j] - factor * dy
+		for i in range(n):
+			xs[i] = xs[i] - rate * gx[i]
+			ys[i] = ys[i] - rate * gy[i]
+		float next = mm_venn_loss(xs, ys, targets, kinds, order, n, n)
+		if (next > loss):
+			for i in range(n):
+				xs[i] = xs[i] + rate * gx[i]
+				ys[i] = ys[i] + rate * gy[i]
+			rate = rate / 2.0
+		else:
+			loss = next
+			rate = rate * 1.1
+	# Fit into the drawing area (900 x 540 at (60, 70)).
+	float left = 1000000.0
+	float top = 1000000.0
+	float right = -1000000.0
+	float bottom = -1000000.0
+	for i in range(n):
+		if (xs[i] - rs[i] < left): left = xs[i] - rs[i]
+		if (ys[i] - rs[i] < top): top = ys[i] - rs[i]
+		if (xs[i] + rs[i] > right): right = xs[i] + rs[i]
+		if (ys[i] + rs[i] > bottom): bottom = ys[i] + rs[i]
+	float scale = 900.0 / (right - left)
+	if (540.0 / (bottom - top) < scale): scale = 540.0 / (bottom - top)
+	for i in range(n):
+		xs[i] = 60.0 + (xs[i] - left) * scale
+		ys[i] = 70.0 + (ys[i] - top) * scale
+		rs[i] = rs[i] * scale
+		if (rs[i] < 1.0): rs[i] = 1.0
+	list[float] point = new list[float]
+	list[int] members = new list[int]
+	for i in range(n):
+		mm_data_item* item = d.data.items[ids[i]]
+		mm_ellipse(s, cast(int, xs[i]), cast(int, ys[i]), cast(int, rs[i]), cast(int, rs[i]))
+		members.clear()
+		members.push(i)
+		point.clear()
+		mm_venn_region_point(xs, ys, rs, n, members, point)
+		int x = cast(int, point[0])
+		int y = cast(int, point[1])
+		mm_text(s, x - mm_text_width(item.label, 0) / 2, y - 8, item.label)
+		mm_data_venn_texts(d, s, ids[i], x, y + 14)
+	for item_index in range(d.data.items.length):
+		mm_data_item* item = d.data.items[item_index]
+		if (item.kind != 7): continue
+		members.clear()
+		for int value in item.values: members.push(ids.index(value))
+		point.clear()
+		mm_venn_region_point(xs, ys, rs, n, members, point)
+		int x = cast(int, point[0])
+		int y = cast(int, point[1])
+		mm_text(s, x - mm_text_width(item.label, 0) / 2, y - 8, item.label)
+		mm_data_venn_texts(d, s, item_index, x, y + 14)
+	__w_list_free(cast(__w_list*, rs))
+	__w_list_free(cast(__w_list*, xs))
+	__w_list_free(cast(__w_list*, ys))
+	__w_list_free(cast(__w_list*, overlap))
+	__w_list_free(cast(__w_list*, targets))
+	__w_list_free(cast(__w_list*, kinds))
+	__w_list_free(cast(__w_list*, totals))
+	__w_list_free(cast(__w_list*, order))
+	__w_list_free(cast(__w_list*, gx))
+	__w_list_free(cast(__w_list*, gy))
+	__w_list_free(cast(__w_list*, point))
+	__w_list_free(cast(__w_list*, members))
+
 void mm_data_venn_render(mm_document* d, mm_scene* s):
+	list[int] general = new list[int]
+	int general_sized = 0
+	for i in range(d.data.items.length):
+		mm_data_item* item = d.data.items[i]
+		if (item.kind == 6): general.push(i)
+		if ((item.kind == 6 || item.kind == 7) && item.b): general_sized = 1
+	if (general.length > 3 || (general_sized && general.length == 3)):
+		mm_data_venn_general(d, s, general)
+		__w_list_free(cast(__w_list*, general))
+		return
+	__w_list_free(cast(__w_list*, general))
 	list[int] ids = new list[int]
 	list[int] xs = new list[int]
 	list[int] ys = new list[int]

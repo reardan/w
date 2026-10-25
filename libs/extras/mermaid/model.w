@@ -22,6 +22,11 @@ struct mm_rail_expr:
 	int maximum
 	int width
 	int height
+	# Layout: rail offset from the top (up) and extent below it (down).
+	int up
+	int down
+	# References: 1-based index of the rule defined in this diagram, 0 when external.
+	int target
 
 struct mm_rail_rule:
 	char* name
@@ -270,6 +275,8 @@ struct mm_document:
 	list[int] arch_align
 	# Use case `colorScheme: rotate` (0 = role colours).
 	int usecase_rotate
+	# `config: radar: curveTension:` in thousandths; valid when config_mask bit 4 is set.
+	int radar_tension
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()

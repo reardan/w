@@ -334,7 +334,7 @@ quadrant/quadrantChart_002.mmd	unsupported	error 3:1: unsupported configuration 
 quadrant/quadrantChart_003.mmd	supported	ok
 radar/radar_001.mmd	supported	ok
 radar/radar_002.mmd	supported	ok
-radar/radar_003.mmd	unsupported	error 3:1: unsupported configuration key
+radar/radar_003.mmd	unsupported	error unsupported configuration key
 railroad/railroad_001.mmd	supported	ok
 railroad/railroad_002.mmd	supported	ok
 railroad/railroad_003.mmd	supported	ok

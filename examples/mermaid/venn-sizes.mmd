@@ -1,0 +1,11 @@
+venn-beta
+title Platform teams
+set Web["Web"]:20
+  text react["React"]
+set Api["API"]:14
+set Data["Data"]:10
+set Ops["Ops"]:6
+union Web,Api["Contracts"]:5
+union Api,Data["Schemas"]:3
+union Data,Ops["Pipelines"]:2
+union Web,Api,Data["Shared models"]:1

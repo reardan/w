@@ -137,7 +137,7 @@ void test_data_venn_regions_and_aliases():
 	mm_document_free(d)
 	data_bad(c"venn-beta\nset A\nunion A,B[\"x\"]\n")
 	data_bad(c"venn-beta\nset A\nunion A,A[\"x\"]\n")
-	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\n")
+	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\nset E\nset F\nset G\nset H\nset I\n")
 
 void test_data_packet_ranges_and_wrapping():
 	mm_document* d = data_parse(c"packet-beta\n+16: \"Source\"\n+16: \"Destination\"\n32-79: \"Payload\"\n")
@@ -551,7 +551,6 @@ void test_data_venn_sizes_and_text_nodes():
 	data_bad(c"venn-beta\ntext A[\"No parent\"]\n")
 	data_bad(c"venn-beta\nset A:0\n")
 	data_bad(c"venn-beta\nset A:2\nset B:1\nunion A,B[\"Too large\"]:3\n")
-	data_bad(c"venn-beta\nset A:10\nset B:10\nset C:10\n")
 	data_bad(c"venn-beta\nset A\n  text A[\"Duplicate\"]\n")
 
 void test_data_new_syntax_prefixes():

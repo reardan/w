@@ -503,7 +503,8 @@ void mm_data_venn(mm_parser* p):
 		for mm_data_item* other in p.doc.data.items:
 			if (other.kind == 6): count = count + 1
 			if (other != item && (other.kind == 6 || other.kind == 10) && strcmp(other.id, item.id) == 0): mm_error(p.doc, p.pos, c"duplicate Venn set or text identifier")
-		if (count > 3): mm_error(p.doc, p.pos, c"native Venn diagrams support up to three sets")
+		# Upstream draws any number of sets with an eight-colour venn1..venn8 palette.
+		if (count > 8): mm_error(p.doc, p.pos, c"native Venn diagrams support up to eight sets")
 	else:
 		while (p.doc.error == 0):
 			char* name = mm_identifier(p)
@@ -530,11 +531,7 @@ void mm_data_venn(mm_parser* p):
 		if (item.a <= 0): mm_error(p.doc, p.pos, c"Venn sizes must be positive")
 
 void mm_data_venn_validate(mm_parser* p):
-	int count = 0
-	int sized = 0
 	for mm_data_item* item in p.doc.data.items:
-		if (item.kind == 6): count = count + 1
-		if ((item.kind == 6 || item.kind == 7) && item.b): sized = 1
 		if (item.kind != 7): continue
 		for mm_data_item* other in p.doc.data.items:
 			if (other == item || other.kind != 7 || other.values.length != item.values.length): continue
@@ -545,7 +542,6 @@ void mm_data_venn_validate(mm_parser* p):
 		for int index in item.values:
 			mm_data_item* set_item = p.doc.data.items[index]
 			if (item.a > set_item.a): mm_error(p.doc, p.pos, c"Venn intersection size cannot exceed a member set")
-	if (sized && count > 2): mm_error(p.doc, p.pos, c"explicit Venn sizes support at most two sets")
 
 void mm_data_validate(mm_parser* p):
 	mm_data_chart* c = p.doc.data

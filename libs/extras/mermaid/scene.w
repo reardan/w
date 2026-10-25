@@ -25,6 +25,8 @@ struct mm_primitive:
 	int text_style
 	# Optional owned hyperlink for SVG text; native renderers ignore it.
 	char* href
+	# Optional owned SVG element id (an in-document link target); native renderers ignore it.
+	char* anchor
 	# Theme role (MM_ROLE_* in style_render.w) and categorical series index.
 	int role
 	int series
@@ -108,6 +110,7 @@ void mm_scene_free(mm_scene* s):
 		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
 		free(p.text)
 		if (p.href != 0): free(p.href)
+		if (p.anchor != 0): free(p.anchor)
 		free(p)
 	for mm_bounds* b in s.nodes: free(b)
 	__w_list_free(cast(__w_list*, s.items))
@@ -229,6 +232,10 @@ char* mm_svg(mm_scene* scene):
 				mm_xml(out, p.href)
 				string_append(out, c"\">")
 			string_append(out, c"<text font-family=\"Liberation Sans, Arial, Helvetica, sans-serif\"")
+			if (p.anchor != 0):
+				string_append(out, c" id=\"")
+				mm_xml(out, p.anchor)
+				string_append_char(out, '"')
 			mm_svg_number(out, c"font-size", MM_TEXT_SIZE)
 			if (p.text_style & MM_TEXT_BOLD): string_append(out, c" font-weight=\"bold\"")
 			if (p.text_style & MM_TEXT_ITALIC): string_append(out, c" font-style=\"italic\"")
