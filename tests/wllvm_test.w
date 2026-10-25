@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_forms_fixture.w data=tests/wllvm_codec_fixture.w data=tests/wllvm_operator_fixture.w data=tests/debug_fixture.w data=tests/wllvm_control_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/wllvm_asm_fixture.w data=tests/tile_ptx.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_forms_fixture.w data=tests/wllvm_codec_fixture.w data=tests/wllvm_operator_fixture.w data=tests/debug_fixture.w data=tests/wllvm_control_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -207,6 +207,8 @@ void test_wllvm_rejects_unsupported_programs():
 	wllvm_test_reject(c"struct holder:\n\tint[2] items\nholder make():\n\tholder h\n\treturn h\nint main():\n\treturn make().items[1]\n")
 	wllvm_test_reject(c"int main():\n\traw_asm(c\"\\u00e9\")\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
+	# a called prototype without a body fails as the native link does
+	wllvm_test_reject(c"int missing(int x);\nint main():\n\treturn missing(1)\n")
 	wllvm_test_reject(c"int main():\n\treturn 0\n\traw_asm(c\"\\u00e9\")\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
@@ -330,6 +332,9 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_runtime_fixture.w", 21)
 	wllvm_test_differential(clang, c"tests/wllvm_math_fixture.w", 0)
 	wllvm_test_differential(clang, c"tests/wllvm_half_fixture.w", 50)
+	wllvm_test_differential(clang, c"tests/wllvm_asm_fixture.w", 18)
+	# tile programs: the launch ABI and the embedded PTX module
+	wllvm_test_differential(clang, c"tests/tile_ptx.w", 0)
 	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
 	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
 	wllvm_test_differential(clang, c"tests/wllvm_forms_fixture.w", 11)
@@ -431,6 +436,29 @@ void test_wllvm_library_trap_stub():
 	result = wllvm_test_run(list[char*]{native, c"trace"})
 	assert1((result.status != 0) && (result.status != 5))
 	process_result_free(result)
+	unlink(input)
+	unlink(native)
+	free(input)
+	free(native)
+	free(clang)
+
+
+# A c_lib missing at build time still links, and the program fails at load
+# naming it (status 127), as the native image's DT_NEEDED entry does.
+void test_wllvm_missing_library_fails_at_load():
+	char* clang = process_which(c"clang")
+	if clang == 0: return
+	char* input = wllvm_test_path(c".w")
+	char* native = wllvm_test_path(c".native")
+	assert1(file_write_text(input, c"import lib.lib\nc_lib \"libc.so.6\"\nc_lib \"libwllvm_missing.so.1\"\nextern int wllvm_missing_call(int x)\nextern int wllvm_getuid() = \"getuid\"\nint main():\n\tif (wllvm_getuid() < 0): return wllvm_missing_call(1)\n\treturn 3\n"))
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"--cc", clang, input, c"-o", native}))
+	process_result* result = wllvm_test_run(list[char*]{native})
+	assert_equal(127, result.status)
+	assert_contains(result.stderr_text, c"libwllvm_missing.so.1")
+	process_result_free(result)
+	char* stub = strjoin(native, c".wllvm.0.so")
+	assert_equal(0, path_exists(stub))
+	free(stub)
 	unlink(input)
 	unlink(native)
 	free(input)

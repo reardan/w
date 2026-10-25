@@ -14,6 +14,7 @@ import tools.wllvm_emit
 import lib.stat
 import lib.process
 import lib.env
+import lib.str
 
 
 int wllvm_error(char* message):
@@ -117,6 +118,67 @@ int wllvm_map_image(char* path):
 	return failed
 
 
+# Run clang with args; *out gets the result (0 when clang cannot start).
+# Returns its exit status, or -1.
+int wllvm_clang(char* path, list[char*] args, process_result** out):
+	char** vector = strv_new(args.length)
+	for i in range(args.length): strv_set(vector, i, args[i])
+	process_result* result = process_run(path, vector, 0, 0, 600000)
+	free(cast(void*, vector))
+	*out = result
+	if (result == 0): return -1
+	return result.status
+
+
+# Whether the linker finds a c_lib soname (one with a slash names a file).
+int wllvm_library_found(char* path, char* soname):
+	if (contains(soname, c"/")): return path_exists(soname)
+	char* query = strjoin(c"-print-file-name=", soname)
+	list[char*] args = list[char*]{path, query}
+	if (llvm_arm64): args.push(c"--target=aarch64-linux-gnu")
+	process_result* result = 0
+	int found = 0
+	# A name clang cannot find comes back unchanged, without a directory.
+	if (wllvm_clang(path, args, &result) == 0): found = (result.stdout_text != 0) && contains(result.stdout_text, c"/")
+	if (result != 0): process_result_free(result)
+	args.free()
+	free(query)
+	return found
+
+
+# The native image names every c_lib as DT_NEEDED whether or not the
+# library exists at build time, so a missing one fails at load (status 127)
+# rather than at link. An empty shared object with that soname does the
+# same here: the link records the name, the imports stay unresolved, and
+# the loader reports the missing library as it does natively. Returns the
+# stub's path next to output, or 0 after a diagnostic.
+char* wllvm_library_stub(char* path, char* soname, char* output, int index):
+	string_builder* name = string_new()
+	string_append(name, output)
+	string_append(name, c".wllvm.")
+	string_append_int(name, index)
+	string_append(name, c".so")
+	char* stub = strjoin(name.data, c"")
+	string_free(name)
+	char* flag = strjoin(c"-Wl,-soname,", soname)
+	list[char*] args = list[char*]{path, c"-x", c"c", c"/dev/null", c"-shared", c"-nostdlib", flag, c"-o", stub}
+	if (llvm_arm64):
+		args.push(c"--target=aarch64-linux-gnu")
+		args.push(c"-fuse-ld=lld")
+	process_result* result = 0
+	int status = wllvm_clang(path, args, &result)
+	if (result != 0):
+		if (status != 0): print_error(result.stderr_text)
+		process_result_free(result)
+	args.free()
+	free(flag)
+	if (status == 0): return stub
+	unlink(stub)
+	free(stub)
+	wllvm_error(c"could not build a stand-in for a missing C library")
+	return 0
+
+
 # Build output from ir with clang; clang's diagnostics pass through. Shrink
 # wrapping stays off so every prologue starts its function, where the
 # trace reader looks for the frame-pointer push. A
@@ -126,9 +188,22 @@ int wllvm_map_image(char* path):
 # C atexit handlers or a stdio flush, as the native backends do.
 int wllvm_link(char* path, char* level, char* ir, char* output):
 	list[char*] args = list[char*]{path, level, c"-Wno-override-module", c"-mllvm", c"-enable-shrink-wrap=false", c"-o", output, ir}
+	list[char*] stubs = new list[char*]
 	if (llvm_dynamic):
 		args.push(c"-nostartfiles")
-		for soname in llvm_link_libraries: args.push(strjoin(c"-l:", soname))
+		for soname in llvm_link_libraries:
+			if (wllvm_library_found(path, soname)):
+				args.push(strjoin(c"-l:", soname))
+				continue
+			char* stub = wllvm_library_stub(path, soname, output, stubs.length)
+			if (stub == 0):
+				for made in stubs: unlink(made)
+				stubs.free()
+				args.free()
+				return 1
+			stubs.push(stub)
+			args.push(stub)
+		if (stubs.length > 0): args.push(c"-Wl,--unresolved-symbols=ignore-all")
 	else:
 		args.push(c"-static")
 		args.push(c"-nostdlib")
@@ -142,11 +217,11 @@ int wllvm_link(char* path, char* level, char* ir, char* output):
 		# gives every PT_LOAD the one vaddr - offset wllvm_map_image needs.
 		args.push(c"-Wl,-z,max-page-size=4096")
 		args.push(c"-Wl,-z,separate-loadable-segments")
-	char** vector = strv_new(args.length)
-	for i in range(args.length): strv_set(vector, i, args[i])
-	process_result* result = process_run(path, vector, 0, 0, 600000)
-	free(cast(void*, vector))
+	process_result* result = 0
+	wllvm_clang(path, args, &result)
 	args.free()
+	for made in stubs: unlink(made)
+	stubs.free()
 	if (result == 0): return wllvm_error(c"could not run clang")
 	print_error(result.stdout_text)
 	print_error(result.stderr_text)
@@ -217,18 +292,28 @@ int main(int argc, int argv):
 	retained_query_mode = 1
 	# Use the production analysis path and preserve its diagnostics. No LLVM
 	# output is opened until both semantic analysis and subset validation pass.
-	# Functions with asm blocks compile their portable W bodies (--no-asm),
-	# which grammar/asm_function.w requires to be equivalent.
+	# An x64 asm block that is a whole function body lowers from its
+	# assembled bytes (llvm_asm_shim), as natively. AArch64 blocks run on
+	# the W stack, so there functions with asm blocks compile their
+	# portable W bodies (--no-asm), which grammar/asm_function.w requires to
+	# be equivalent.
 	char* args = cast(char*, malloc(6 * __word_size__))
 	save_ptr(args, cast(int, compiler_argv0))
 	llvm_arm64 = strcmp(arch, c"arm64") == 0
 	save_ptr(args + __word_size__, cast(int, arch))
 	save_ptr(args + 2 * __word_size__, cast(int, c"--quiet"))
 	save_ptr(args + 3 * __word_size__, cast(int, c"--ast-required"))
-	save_ptr(args + 4 * __word_size__, cast(int, c"--no-asm"))
-	save_ptr(args + 5 * __word_size__, cast(int, input))
-	int status = link_impl(6, cast(int, args), 1, 1)
+	int count = 5
+	if (llvm_arm64):
+		save_ptr(args + 4 * __word_size__, cast(int, c"--no-asm"))
+		count = 6
+	save_ptr(args + (count - 1) * __word_size__, cast(int, input))
+	int status = link_impl(count, cast(int, args), 1, 1)
 	free(args)
+	# The analysis ran in check mode, which leaves a called prototype
+	# without a body to the link; this is the link (exits 1 with the
+	# native diagnostic).
+	if (status == 0): undefined_function_check()
 	if (status == 0):
 		if (llvm_emit(input, ir) == 0): status = 1
 	retained_clear()

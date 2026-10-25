@@ -2,8 +2,8 @@
 # operator overloads (record and scalar results, mixed operand types),
 # methods returning records, ndarray comma indexing (read, write and
 # compound, float and int elements), a global named operator, bare
-# println(), float32 print, and an asm function (wllvm compiles its
-# portable body). Output and exit status must match exactly.
+# println(), float32 print, and an asm function (lowered from its
+# assembled block). Output and exit status must match exactly.
 import lib.lib
 import lib.ndarray
 

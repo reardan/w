@@ -1150,9 +1150,10 @@ int llvm_enum_constant(int binding, int* value):
 # --- symbols, line tables and runtime stubs ----------------------------------
 # Functions keep their W names as ELF symbols: lib/stack_trace.w reads them
 # from the mapped image, and its walk ends at the frame named main. A name
-# defined twice, or one the module runtime reserves, gets a ".<linkage>"
-# suffix. Statements leave line markers that become !dbg locations, so the
-# DWARF 2 line table the native trace reader parses maps code to W lines.
+# defined twice, or one the module runtime or a C import reserves, gets a
+# ".<linkage>" suffix. Statements leave line markers that become !dbg
+# locations, so the DWARF 2 line table the native trace reader parses maps
+# code to W lines.
 
 map[char*, int] llvm_symbol_owner
 map[int, char*] llvm_symbols
@@ -1169,7 +1170,12 @@ map[char*, int] llvm_runtime_used
 
 int llvm_symbol_reserved(char* name):
 	if (starts_with(name, c"__wllvm_") || starts_with(name, c"llvm.")): return 1
-	return (strcmp(name, c"memset") == 0) || (strcmp(name, c"memcpy") == 0) || (strcmp(name, c"memmove") == 0) || (strcmp(name, c"_start") == 0) || (strcmp(name, c"__w_test_main") == 0)
+	if ((strcmp(name, c"memset") == 0) || (strcmp(name, c"memcpy") == 0) || (strcmp(name, c"memmove") == 0) || (strcmp(name, c"_start") == 0) || (strcmp(name, c"__w_test_main") == 0)): return 1
+	# A W wrapper named like the library symbol it imports
+	# (`extern int raw() = "name"` beside `int name()`) keeps it separate.
+	for i in range(dyn_import_count):
+		if (strcmp(name, dyn_import_name(i)) == 0): return 1
+	return 0
 
 
 void llvm_symbol_claim(int linkage, char* name):
@@ -2002,6 +2008,81 @@ map[int, int] llvm_import_thunks
 string_builder* llvm_thunk_code
 
 
+# The asm block (grammar/asm_function.w's retained bytes) that replaced
+# the body of binding's function, or -1. The front end retains no function
+# node for such a function. Only x86-64 blocks lower: the native AArch64
+# convention runs on the W stack in x28.
+int llvm_asm_block(int binding):
+	if ((asm_retained_ready == 0) || llvm_arm64 || (binding < 0)): return -1
+	int origin = retained_bindings[binding].origin
+	for i in range(asm_retained_symbols.length):
+		if (asm_retained_symbols[i] == origin): return i
+	return -1
+
+
+map[int, int] llvm_asm_shims
+
+
+# A function whose asm block is its whole body: the block's bytes become
+# module assembly, called from a module-assembly SysV shim that pushes
+# the arguments the way the native x64 convention passes them (the first
+# deepest) and pops them on return. The block keeps rbx, rbp and r12-r15
+# as SysV does and returns in rax, so the shim is an ordinary W-ABI
+# function. Returns its name, or 0 after a diagnostic.
+char* llvm_asm_shim(int id, int binding, int block):
+	retained_binding* function = retained_bindings[binding]
+	char* name = llvm_name(c"@__wllvm_asmfn_", function.linkage)
+	if (function.linkage in llvm_asm_shims): return name
+	int count = function.parameters.length
+	int records = llvm_class(function.return_type) == llvm_class_struct
+	for i in range(count):
+		if (llvm_class(function.parameters[i]) == llvm_class_struct): records = 1
+	if (records):
+		llvm_error_at(id, c"record passed to or from an asm function", function.name)
+		return 0
+	llvm_asm_shims[function.linkage] = 1
+	string_builder* out = llvm_thunk_code
+	string_append(out, c"declare i64 ")
+	string_append(out, name)
+	string_append(out, c"(")
+	for k in range(count):
+		if (k > 0): string_append(out, c", ")
+		string_append(out, c"i64")
+	string_append(out, c")\x0amodule asm \".pushsection .text\"\x0amodule asm \"__wllvm_asmfn_")
+	string_append_int(out, function.linkage)
+	string_append(out, c":\"\x0amodule asm \"  pushq %rbp\"\x0amodule asm \"  movq %rsp, %rbp\"\x0a")
+	list[char*] registers = list[char*]{c"rdi", c"rsi", c"rdx", c"rcx", c"r8", c"r9"}
+	for k in range(count):
+		if (k < 6):
+			string_append(out, c"module asm \"  pushq %")
+			string_append(out, registers[k])
+		else:
+			string_append(out, c"module asm \"  pushq ")
+			string_append_int(out, 16 + 8 * (k - 6))
+			string_append(out, c"(%rbp)")
+		string_append(out, c"\"\x0a")
+	registers.free()
+	string_append(out, c"module asm \"  callq __wllvm_asm_")
+	string_append_int(out, function.linkage)
+	string_append(out, c"\"\x0amodule asm \"  leave\"\x0amodule asm \"  retq\"\x0amodule asm \"__wllvm_asm_")
+	string_append_int(out, function.linkage)
+	string_append(out, c":\"\x0a")
+	char* bytes = cast(char*, asm_retained_code[block])
+	int size = asm_retained_sizes[block]
+	int i = 0
+	while (i < size):
+		string_append(out, c"module asm \"  .byte ")
+		int line = 0
+		while ((i < size) && (line < 16)):
+			if (line > 0): string_append(out, c",")
+			string_append_int(out, bytes[i] & 255)
+			i = i + 1
+			line = line + 1
+		string_append(out, c"\"\x0a")
+	string_append(out, c"module asm \".popsection\"\x0a\x0a")
+	return name
+
+
 char* llvm_import_thunk(int id, int binding, int import):
 	char* name = llvm_name(c"@wllvm.cthunk.", binding)
 	if (binding in llvm_import_thunks): return name
@@ -2248,6 +2329,28 @@ char* llvm_call(int group, int id, retained_node* node):
 				types.free()
 				operands.free()
 				return stub_result
+			int asm_block = llvm_asm_block(node.binding)
+			if (asm_block >= 0):
+				char* shim = llvm_asm_shim(id, node.binding, asm_block)
+				char* asm_result = c"0"
+				if (shim != 0):
+					retained_binding* asm_callee = retained_bindings[node.binding]
+					for i in range(values.length): values[i] = llvm_convert(id, values[i], types[i], asm_callee.parameters[i])
+					asm_result = llvm_temp()
+					llvm_put(c"  ")
+					llvm_put(asm_result)
+					llvm_put(c" = call i64 ")
+					llvm_put(shim)
+					llvm_put(c"(")
+					for i in range(values.length):
+						if (i > 0): llvm_put(c", ")
+						llvm_put(c"i64 ")
+						llvm_put(values[i])
+					llvm_put(c")\x0a")
+				values.free()
+				types.free()
+				operands.free()
+				return asm_result
 			int import = -1
 			if ((node.op != 'G') && (node.op != 'W')): import = llvm_import_of(node.binding)
 			# libm itself where the program links dynamically; inline where
@@ -2554,6 +2657,11 @@ char* llvm_value_inner(int group, int operand):
 			if (llvm_c_constant(node.binding, &value)): return llvm_number(value)
 			int linkage = retained_bindings[node.binding].linkage
 			if (linkage in llvm_functions): return llvm_constant_address(llvm_function_symbol(linkage))
+			int asm_block = llvm_asm_block(node.binding)
+			if (asm_block >= 0):
+				char* shim = llvm_asm_shim(id, node.binding, asm_block)
+				if (shim == 0): return c"0"
+				return llvm_constant_address(shim)
 			int import = llvm_import_of(node.binding)
 			if ((import >= 0) && (load_int(table + retained_bindings[node.binding].origin + 10) == 2)): return llvm_constant_address(llvm_import_thunk(id, node.binding, import))
 			llvm_error_at(id, c"reference to", node.binding_name)
@@ -5056,6 +5164,88 @@ void llvm_gpu_for(int id, retained_node* node):
 	seen.free()
 
 
+# Host side of a tile program 'gpu[W] for tile in range(bound)'
+# (grammar/ast_tile.w, code_generator/tile_host.w): the retained statement
+# carries the analyzed tile_program. The header is a pure integer tree over
+# literals and captured host locals; the launch passes the kernel name,
+# the bound, the plan's logical width and threads, and the bound and the
+# captures as last-first cells.
+char* llvm_tile_capture(int id, tile_binding* binding):
+	for b in range(retained_bindings.length):
+		if ((b in llvm_locals) && (retained_bindings[b].origin == binding.host_symbol)):
+			int type = retained_bindings[b].type
+			if (llvm_class(type) != llvm_class_word):
+				llvm_error_at(id, c"tile capture of", binding.name)
+				return c"0"
+			return llvm_load(type, llvm_name(c"%v", b))
+	llvm_error_at(id, c"tile capture of", binding.name)
+	return c"0"
+
+
+char* llvm_tile_expression(int id, tile_node* node):
+	if (node.kind == tile_literal): return llvm_number(node.value)
+	if (node.kind == tile_reference): return llvm_tile_capture(id, node.binding)
+	if (node.kind == tile_unary):
+		char* operand = llvm_tile_expression(id, node.left)
+		if (node.op == '-'): return llvm_instruction(c"sub", c"0", operand)
+		if (node.op == '!'): return llvm_extend(llvm_instruction(c"icmp eq", operand, c"0"))
+		return operand
+	if ((node.kind == tile_binary) && ((node.op == tile_op_and) || (node.op == tile_op_or))):
+		# Short-circuit to 0/1, as the native header does.
+		char* first = llvm_bool(llvm_tile_expression(id, node.left))
+		int first_block = llvm_block
+		int rest = llvm_label_new()
+		int end = llvm_label_new()
+		if (node.op == tile_op_and): llvm_cond_branch(first, rest, end)
+		else: llvm_cond_branch(first, end, rest)
+		llvm_label(rest)
+		char* second = llvm_bool(llvm_tile_expression(id, node.right))
+		int second_block = llvm_block
+		llvm_branch(end)
+		llvm_label(end)
+		char* merged = llvm_temp()
+		llvm_put(c"  ")
+		llvm_put(merged)
+		llvm_put(c" = phi i1 [ ")
+		llvm_put(first)
+		llvm_put(c", %b")
+		llvm_put(llvm_number(first_block))
+		llvm_put(c" ], [ ")
+		llvm_put(second)
+		llvm_put(c", %b")
+		llvm_put(llvm_number(second_block))
+		llvm_put(c" ]\x0a")
+		return llvm_extend(merged)
+	if (node.kind == tile_binary):
+		char* left = llvm_tile_expression(id, node.left)
+		char* right = llvm_tile_expression(id, node.right)
+		int op = node.op
+		if (op == '<'): op = 0x9c
+		else if (op == '>'): op = 0x9f
+		else if (op == tile_op_le): op = 0x9e
+		else if (op == tile_op_ge): op = 0x9d
+		else if (op == tile_op_eq): op = 0x94
+		else if (op == tile_op_ne): op = 0x95
+		return llvm_binary(id, op, 0, left, right)
+	llvm_error(id, c"tile header expression")
+	return c"0"
+
+
+void llvm_gpu_tiles(int id, tile_program* program):
+	list[char*] values = new list[char*]
+	values.push(llvm_tile_expression(id, program.bound))
+	tile_binding* binding = program.bindings
+	while (binding != 0):
+		if (binding.kind == tile_binding_capture): values.push(llvm_tile_capture(id, binding))
+		binding = binding.next
+	if (llvm_failed == 0):
+		char* cells = llvm_gpu_cells(values)
+		list[char*] arguments = list[char*]{llvm_gpu_name(program.kernel_name), values[0], llvm_number(program.plan.logical_width), llvm_number(program.plan.threads), cells, llvm_number(values.length)}
+		llvm_helper_call(id, c"__w_gpu_launch_tiles", arguments)
+		arguments.free()
+	values.free()
+
+
 int llvm_form_statement(int id, retained_node* node):
 	if (strcmp(node.name, c"debugger") == 0):
 		# int3, as the native statement (SIGTRAP outside a debugger)
@@ -5072,6 +5262,9 @@ int llvm_form_statement(int id, retained_node* node):
 		if (first.start > node.start + 6):
 			llvm_launch(id, node)
 			return 1
+	if ((strcmp(node.name, c"gpu") == 0) && (retained_record_at(id).tile_payload != 0)):
+		llvm_gpu_tiles(id, cast(tile_program*, retained_record_at(id).tile_payload))
+		return 1
 	if (llvm_is_gpu_for(id)):
 		llvm_gpu_for(id, node)
 		return 1
@@ -5863,6 +6056,7 @@ void llvm_free_tables():
 	llvm_tls_offsets.free()
 	string_free(llvm_imports)
 	string_free(llvm_thunk_code)
+	llvm_asm_shims.free()
 	llvm_import_thunks.free()
 	llvm_import_cache.free()
 	llvm_imports_declared.free()
@@ -5900,6 +6094,7 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_link_libraries = new list[char*]
 	llvm_import_thunks = new map[int, int]
 	llvm_thunk_code = string_new()
+	llvm_asm_shims = new map[int, int]
 	llvm_uses_gen_switch = 0
 	llvm_uses_debugtrap = 0
 	if (llvm_codec_descs != 0): llvm_codec_descs.free()

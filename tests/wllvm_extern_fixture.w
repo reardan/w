@@ -30,6 +30,12 @@ extern void* stdout
 type text_fn = fn(char*) -> int
 type int_fn = fn(int) -> int
 extern int labs(int x)
+# A W wrapper named like the library symbol it imports.
+extern int tolower_raw(int c) = "tolower"
+
+
+int tolower(int c):
+	return tolower_raw(c)
 
 
 # Imports passed as W function values.
@@ -63,6 +69,7 @@ int main(int argc, int argv):
 	# Narrow parameters and results: the int32 result sign-extends.
 	total = total + abs(0 - 7)
 	total = total + toupper('a') - 'A'
+	total = total + tolower('A') - 'a'
 	char* text = c"hello"
 	char* hit = cast(char*, memchr(text, 'l', 5))
 	total = total + cast(int, hit - text)

@@ -88,7 +88,15 @@ must be flushed explicitly (`fflush(0)`), exactly as natively. The link
 names every `c_lib` the program declares (`-l:libc.so.6 -l:libm.so.6`),
 since the native image lists each as `DT_NEEDED` and the loader resolves
 an import in any of them; the IR's header comment repeats that command
-for `--emit-llvm` output.
+for `--emit-llvm` output. A `c_lib` the linker cannot find (`libcuda.so.1`
+on a machine without CUDA, a path to a library not built yet) still gets
+its `DT_NEEDED` entry, as natively: wllvm links an empty stand-in shared
+object with that soname, leaves the imports unresolved, and deletes it,
+so the program fails at load with status 127 naming the library instead
+of failing to link. A W function named like a library symbol it imports
+(`extern int raw(int c) = "tolower"` beside `int tolower(int c)`) keeps a
+`.<linkage>` suffix, so the W definition and the import stay separate
+symbols.
 
 An imported object is the library's own storage rather than a COPY of it
 sized by its W type, so its W type must match the C object: `extern int
@@ -294,6 +302,20 @@ point, and the output file is left untouched.
   `debugger` statement (`llvm.debugtrap`, the native `int3`), and
   `raw_asm(c"...")` (its bytes as an inline-assembly `.byte` directive
   clobbering the caller-saved registers).
+- Assembly function bodies (docs/projects/asm_functions.md): a block that
+  falls through to `portable` is only a fast path, so its W body lowers.
+  A block that is the whole function leaves no retained body; the front
+  end keeps its assembled x64 bytes (`asm_retained_*`,
+  grammar/asm_function.w), and wllvm emits them as module assembly behind
+  a SysV shim, `__wllvm_asmfn_<linkage>`, that pushes the arguments in the
+  native order (the first deepest, past the sixth from the caller's
+  stack), calls the block and pops them. The block's `ret` returns to the
+  shim and its saved registers are SysV's, so the shim is an ordinary
+  function value too. AArch64 blocks run on the W stack in x28, so an
+  arm64 build compiles every function from its portable W body
+  (`--no-asm`; `grammar/asm_function.w` requires the two to agree).
+- A called prototype that no module defines fails with the native
+  link's `declared but never defined` diagnostic.
 - The json and protobuf codecs (`to_json`/`from_json`,
   `to_proto`/`from_proto`/`proto_descriptor`): the retained node keeps the
   compiler type index, so wllvm walks the same type table as
@@ -307,12 +329,15 @@ point, and the output file is left untouched.
 - Operator overloads (`a + b` on a record value calls the resolved
   `op$+$T$U` function, a record result through a caller buffer), ndarray
   comma indexing (`m[i, j]` reads through `T_at<n>`, writes and `op=`
-  through `T_set<n>`, every operand evaluated once), and functions with
-  `asm` blocks, which wllvm compiles from their portable W bodies
-  (`--no-asm`; `grammar/asm_function.w` requires the two to agree).
+  through `T_set<n>`, every operand evaluated once).
 - GPU host code: `launch k[grid, block](args)` calls
   `__w_gpu_launch_raw` and `gpu for` calls `__w_gpu_launch` with the
-  native argument cells (last argument first) and kernel names. The
+  native argument cells (last argument first) and kernel names, and a
+  tile program (`gpu[W] for tile in range(bound)`, grammar/ast_tile.w)
+  calls `__w_gpu_launch_tiles` with the name, the bound, the plan's
+  logical width and threads, and the bound and captures as cells: the
+  retained statement carries the analyzed `tile_program`, whose integer
+  header (`&&`/`||` short-circuiting) lowers like the native one. The
   kernels' PTX is the text the in-process front end already produced
   (`code_generator/ptx.w`), and a call of `__w_ptx_module` returns it as a
   constant, byte-identical to the native embedding. As natively, running
@@ -501,9 +526,12 @@ rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_generator_fixture.w`, `tests/wllvm_forms_fixture.w`
 (methods, `new T[n]`, `?`, `var`, variadics, a generic iterable,
 `raw_asm`, an alias statement and GPU-free launch stand-ins),
+`tests/wllvm_asm_fixture.w` (whole-body x64 asm functions: eight
+arguments, labels, a function value, a `portable` fall-through),
+`tests/tile_ptx.w` (tile launches and the embedded PTX module),
 `tests/wllvm_codec_fixture.w` (json and protobuf round trips),
 `tests/wllvm_operator_fixture.w` (operator overloads, ndarray indexing,
-asm functions' portable bodies),
+an asm function),
 `tests/wllvm_generic_fixture.w` (generics and checked owners),
 `tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
 variadic, float and narrow-integer signatures, an alias, an imported
