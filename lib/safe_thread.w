@@ -14,7 +14,8 @@
 # - Success returns a present handle. The child thread receives the
 #   payload and passes it to entry exactly once; entry's own parameter
 #   cleanup destroys it on the child. The parent never sees it again.
-# - Failure (live-thread limit reached, or clone failed) returns an
+# - Failure (live-thread limit reached, or the stack mmap or clone
+#   failed, after which lib/thread.w has nothing mapped) returns an
 #   absent handle. The payload never reached a thread; this function
 #   destroys it before returning, through the ordinary recursive
 #   owner cleanup of its parameter.
@@ -31,7 +32,7 @@
 #   entry(left) then entry(right) run on the caller with the same result.
 #
 # Memory ordering: the child stores `result` before lib/thread.w's
-# worker publishes done = 1 and exits; thread_join observes done and the
+# worker publishes done = 1 (an atomic_store) and exits; thread_join observes done and the
 # kernel's exit-time CLEARTID store before the handle is read here, so the
 # result is visible (x86-TSO plus the futex syscalls). No other memory is
 # shared: the payload's whole owned graph is reachable only by the child.

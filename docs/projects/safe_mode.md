@@ -1466,8 +1466,9 @@ supply both type arguments (`safe_thread_spawn[Worker, Job](run_job, job)`).
   `entry` exactly once, and `entry`'s parameter cleanup destroys it on the
   child.
 - **Failure** returns an absent handle. This happens when 64 checked threads
-  are already live (spawned but not joined) or when `clone` fails. The
-  payload never reached a thread; the runtime destroys it before returning.
+  are already live (spawned but not joined) or when the thread's stack
+  `mmap` or its `clone` fails. The payload never reached a thread; the
+  runtime destroys it before returning (`tests/thread_spawn_failure_test.w`).
   The handle must be tested before it can be joined.
 - **Join** (`safe_thread_join(own WSafeThread*)`) consumes the handle, waits for
   the child to finish and returns `entry`'s result.

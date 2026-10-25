@@ -88,13 +88,19 @@ smaller and testable.
 
 **Join without spinning.** The worker stores `done = 1` and
 `FUTEX_WAKE`s it after the user function returns; `thread_join` loops
-`while (done == 0) FUTEX_WAIT(&done, 0)`. No atomics are needed:
+`while (atomic_load(&done) == 0) FUTEX_WAIT(&done, 0)`. No
+read-modify-write atomics are needed:
 
 - each word (`done`, `thread_spawn_ack`) has exactly one writer and
   one waiter and makes a single 0 -> 1 transition;
-- W's single-pass codegen emits a real load/store per access (nothing
-  is cached in registers across statements), so plain word accesses
-  behave as volatile;
+- the words are written with `atomic_store` and read with
+  `atomic_load`, which lower to the same plain `mov` on x86/x64 but are
+  ordering operations to the compiler (register promotion never
+  touches them anyway: it only promotes locals that are never
+  address-taken, and the pipeline has no load CSE or loop-invariant
+  code motion). `tests/thread_wait_reload_test.w` checks in the
+  produced code that every futex wait loop re-reads its word, under
+  the default options, `--inline` and `--profile-use`;
 - x86-TSO makes stores visible in program order, so the worker's data
   writes precede its visible `done = 1`;
 - the kernel re-reads the futex word atomically: `FUTEX_WAIT` with
@@ -137,8 +143,9 @@ worker runs one callback per chunk of its span, stores `done = 1` and
 wakes that; the caller runs chunk 0 and futex-waits on each posted
 slot's `done`. Every mailbox word keeps the module's
 one-writer/one-waiter discipline (`go`: main writes, its worker
-waits; `done`: the worker writes, main waits), so the plain-store
-x86-TSO argument covers the pool with no new atomics: a worker reads
+waits; `done`: the worker writes, main waits), accessed with
+`atomic_load`/`atomic_store`, so the x86-TSO argument covers the pool
+with no read-modify-write atomics: a worker reads
 job fields only between observing a `go` bump and storing `done`, a
 window in which the main thread never writes them, and the `go`
 sequence makes a late-parking worker immune to job confusion (like
@@ -188,13 +195,14 @@ signal between snapshot and park makes the wait return immediately —
 no lost wakeups, but wakes may be spurious and the predicate must be
 re-checked in a loop.
 
-**Constraints.** Main thread only for spawn/join/parallel_for and
-thread_pool_init/thread_pool_shutdown (the handoff and pool globals
-are unsynchronized), except the two sanctioned nested parallel_for
-cases above; never call thread_pool_shutdown from a callback. Worker
-functions must not spawn. They may allocate (see Allocator below), and
-any thread may lock/unlock/wait/signal a mutex/condvar and use the
-atomics.
+**Constraints.** Any thread may spawn and join: the spawn lock
+serializes the handoff globals, and join only futex-waits, munmaps and
+frees. Main thread only for parallel_for and
+thread_pool_init/thread_pool_shutdown (the pool globals are
+unsynchronized), except the two sanctioned nested parallel_for cases
+above; never call thread_pool_shutdown from a callback. Worker
+functions may allocate (see Allocator below), and any thread may
+lock/unlock/wait/signal a mutex/condvar and use the atomics.
 
 **Thread-local storage.** `thread_entry` installs each spawned
 thread's `thread_local` block, which is the bottom of its own stack
@@ -270,13 +278,14 @@ implementation details must not be assumed by portable application code:
 - **`wmutex` / `wcond`** give the usual guarantee: everything written
   before `mutex_unlock` is visible to the next `mutex_lock` holder
   (lock is a `lock cmpxchg`, unlock a `lock xadd` plus, on the
-  contended path, a plain store after it). Futex waits re-check their
+  contended path, an `atomic_store` of 0 after it). Futex waits re-check their
   word in the kernel, so wakes are never lost. Prefer a mutex (never
   held across a task await) or a channel/executor to hand-rolled
   flags.
 - **One-writer/one-waiter flags** (`wthread.done`, the pool mailboxes,
   lib/thread_heap.w's remote-free stack, which pushes with
-  `atomic_cas`) rely on TSO's plain-store-is-release. They are correct
+  `atomic_cas`) rely on TSO's plain-store-is-release (their
+  `atomic_store`/`atomic_load` are plain `mov`s on x86/x64). They are correct
   on x86/x64 only.
 
 The import-free word access and fence intrinsics are portable across
