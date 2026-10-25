@@ -226,3 +226,18 @@ imports them needs one `./wbuild` first.
   in July 2026.)
 - Design docs for major features live in `docs/projects/*.md`;
   `docs/todo.txt` tracks the working/missing inventory.
+
+## Working on GitHub issues
+
+- When asked to implement an issue, keep working until the issue is fully
+  complete. Don't stop after a first slice and don't block waiting on the
+  maintainer: make reasonable calls, note them, and split independent parts
+  of the work across parallel subagents so the work keeps moving.
+- A PR says `Closes #N` only when nothing in the issue remains; otherwise
+  use `Part of #N`.
+- If the work can't be fully completed (it needs a Mac, the ssh host `w`,
+  a human review, ...), post a comment on the issue that states what was
+  accomplished so far, the concrete next steps, and whether the issue
+  should be broken into smaller issues — suggest the breakdown when it
+  should.
+- Never report an issue as done while it is still open.
