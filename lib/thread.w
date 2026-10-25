@@ -17,20 +17,36 @@ word, which the worker sets and futex-wakes when its function returns.
 Other targets stay unsupported: arm64 has no thread_create stub yet and
 Darwin threads need bsdthread_create (see threads.md staging).
 
-Why plain word stores suffice (no atomics): every synchronization word
-here (`thread_spawn_ack`, each wthread's `done` and `exited`) has
-exactly one writer and one waiter and makes a single one-shot
-transition (0 -> 1 for ack/done, 1 -> 0 for the kernel-cleared
-exited). W's single-pass codegen emits a real load for every read and
-a real store for every write (nothing is cached in registers across
-statements), and x86-TSO makes stores visible in program order, so the
-worker's writes to user data are visible to a joiner that has observed
-done == 1. The futex syscall re-reads the word atomically in the
-kernel: FUTEX_WAIT with the stale expected value returns immediately
-if the word has already flipped, so the wake cannot be lost. On x86-64
-an int is 8 bytes while futex words are 32-bit; the kernel sees the
-low half (the first 4 bytes, little endian), which carries the full
-0/1 value.
+Synchronization words: every word here that one thread publishes and
+another waits on (`thread_spawn_ack`, `thread_spawn_lock_word`'s
+release, each wthread's `done` and `exited`, the pool mailboxes'
+`go`/`done`, and wmutex's unlock store) is written with atomic_store
+and read with atomic_load (grammar/atomic_builtin.w). On x86/x64 both
+lower to the same plain `mov` a field access would, so the bytes match
+the old plain-access protocol; what the intrinsics add is that the
+compiler treats each one as an ordering operation (it kills the
+peephole load/store notes, atomic_notes_reset), and they would become
+ldar/stlr on a weaker-ordered port. The plain accesses used to be safe
+for a narrower reason than "nothing is cached": register promotion is
+on by default, but compiler/regalloc_scan.w promotes only word-sized
+locals and arguments that are never address-taken, and every
+synchronization word is a global or is reached through a pointer, and
+the pipeline has no load CSE or loop-invariant code motion. A future
+pass that cached a load through an unchanged pointer across a loop
+iteration would make thread_wait_word spin on a stale 0, so
+tests/thread_wait_reload_test.w pins the reload: it decodes this
+module's futex wait loops in the produced binary, under the default
+options, --inline and --profile-use on x86 and x64, and fails unless
+each loop re-reads its word from memory. Each one-shot word has
+exactly one writer and one waiter (0 -> 1 for ack/done, 1 -> 0 for
+the kernel-cleared exited), and x86-TSO makes stores visible in
+program order, so the worker's writes to user data are visible to a
+joiner that has observed done == 1. The futex syscall re-reads the
+word atomically in the kernel: FUTEX_WAIT with the stale expected
+value returns immediately if the word has already flipped, so the wake
+cannot be lost. On x86-64 an int is 8 bytes while futex words are
+32-bit; the kernel sees the low half (the first 4 bytes, little
+endian), which carries the full 0/1 value.
 
 Reclamation: thread_join munmaps the worker's 4MB stack and frees the
 wthread handle. done == 1 only means the worker *function* returned -
@@ -78,14 +94,20 @@ counter: cond_wait snapshots it under the mutex and futex-waits while
 it still holds the snapshot, so a signal between the snapshot and the
 park flips the counter and the wait returns immediately — the wake
 cannot be lost. These are the multi-writer primitives: ANY thread may
-use them (unlike spawn/join), and the lock-prefixed atomics are full
+use them, and the lock-prefixed atomics are full
 barriers, so a critical section's stores are visible to the next
 holder.
 
 Constraints (MVP; see threads.md for staging):
-- Only the main thread may call thread_spawn, thread_join,
-  parallel_for, thread_pool_init and thread_pool_shutdown: the handoff
-  and pool globals are unsynchronized. Two
+- Any thread may call thread_spawn and thread_join. The spawn lock
+  serializes the handoff globals, thread_heap_install is idempotent
+  once the first spawn has run, and thread_join only futex-waits,
+  munmaps and frees, so a worker may spawn helpers and join handles
+  another thread spawned (lib/task_runtime.w and the checked runtime,
+  lib/safe_thread.w, rely on both). Each handle is joined exactly
+  once, by one thread.
+- Only the main thread may call parallel_for, thread_pool_init and
+  thread_pool_shutdown: the pool globals are unsynchronized. Two
   nested parallel_for cases are sanctioned: a chunk callback running
   on the main thread (chunk 0) may call parallel_for again (it takes
   the spawn path while the pool is busy), and a callback on a pool
@@ -94,7 +116,7 @@ Constraints (MVP; see threads.md for staging):
 - Worker functions may allocate (malloc/new/list/map/strings/print
   formatting): from the first thread_spawn on, every spawned thread
   allocates from its own heap and any thread may free any block
-  (lib/thread_heap.w). They must not spawn.
+  (lib/thread_heap.w).
 - thread_join frees the handle: join each handle exactly once, and
   read any wthread fields (tid, stack_base) before joining.
 - cond_wait can wake spuriously (any bump wakes every parked
@@ -174,7 +196,7 @@ const int thread_futex_wake_op = 129
 # makes the syscall return immediately (EAGAIN); spurious wakeups
 # re-loop.
 void thread_wait_word(int* word):
-	while (*word == 0): sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
+	while (atomic_load(word) == 0): sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
 
 
 # Wake one waiter blocked on word (a no-op when nobody waits yet; the
@@ -196,10 +218,10 @@ void thread_wake_word(int* word):
 # the syscall makes FUTEX_WAIT return EAGAIN immediately, so the wake
 # cannot be lost.
 void thread_wait_word_clear(int* word):
-	int observed = *word
+	int observed = atomic_load(word)
 	while (observed != 0):
 		sys_futex(cast(int, word), 0, observed, 0)
-		observed = *word
+		observed = atomic_load(word)
 
 
 # Size of the stack thread_create mmaps for each worker
@@ -264,13 +286,13 @@ void thread_entry():
 	# stores 0 to t.exited and futex-wakes it, after the thread's last
 	# userspace instruction.
 	sys_set_tid_address(cast(int, &t.exited))
-	thread_spawn_ack = 1
+	atomic_store(&thread_spawn_ack, 1)
 	thread_wake_word(&thread_spawn_ack)
 	t.func(t.arg)
 	# Hand the heap to the next thread spawned; blocks it still owns
 	# stay valid and can be freed from any thread.
 	thread_heap_detach()
-	t.done = 1
+	atomic_store(&t.done, 1)
 	thread_wake_word(&t.done)
 	thread_exit(0)
 
@@ -284,13 +306,13 @@ void thread_spawn_lock():
 
 
 void thread_spawn_unlock():
-	thread_spawn_lock_word = 0
+	atomic_store(&thread_spawn_lock_word, 0)
 	thread_wake_word(&thread_spawn_lock_word)
 
 
 # Start func(arg) on a new thread. Returns a handle for thread_join,
-# or 0 when clone fails. Any thread may spawn; each handle is joined by
-# exactly one thread.
+# or 0 when the stack mmap or clone fails. Any thread may spawn; each
+# handle is joined by exactly one thread.
 wthread* thread_spawn(thread_fn* func, void* arg):
 	# Before the first clone, while this is the only thread: from here
 	# on malloc/free/realloc are per-thread (lib/thread_heap.w).
@@ -300,6 +322,11 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	thread_spawn_handoff = t
 	thread_spawn_ack = 0
 	int tid = thread_create(thread_entry)
+	# A negative tid is -errno, from a failed stack mmap or clone. The
+	# builtin reclaims its own stack on failure: it checks the mmap
+	# result before writing the entry slot (no store through an error
+	# value), and munmaps the fresh stack when clone fails, so there is
+	# no child and nothing mapped left to reclaim here.
 	if (tid <= 0):
 		thread_spawn_unlock()
 		free(cast(void*, t))
@@ -395,9 +422,10 @@ void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func,
 # sequence word and futex-wakes it; the worker runs its span of
 # chunks, stores `done` = 1 and wakes that. Every mailbox word keeps
 # this module's one-writer/one-waiter discipline (`go`: main writes,
-# its worker waits; `done`: the worker writes, main waits), so the
-# header's plain-store x86-TSO argument covers the pool with no new
-# atomics. The worker reads job fields only between observing a `go`
+# its worker waits; `done`: the worker writes, main waits), written
+# with atomic_store and read with atomic_load like the header's other
+# synchronization words, so the header's x86-TSO argument covers the
+# pool with no read-modify-write atomics. The worker reads job fields only between observing a `go`
 # bump and storing `done` - a window in which main never writes them,
 # because main posts a slot's next job only after having observed the
 # previous `done`. `go` is a sequence (not a flag) so a worker that
@@ -440,8 +468,8 @@ void thread_pool_worker(void* p):
 		# The kernel re-checks the word atomically, so a bump between
 		# the load and the syscall returns immediately (EAGAIN) - the
 		# wake cannot be lost; a spurious wake just re-loops.
-		while (slot.go == seen): sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
-		seen = slot.go
+		while (atomic_load(&slot.go) == seen): sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
+		seen = atomic_load(&slot.go)
 		parallel_for_fn* func = slot.func
 		if (cast(int, func) == 0): return
 		void* arg = slot.arg
@@ -453,7 +481,7 @@ void thread_pool_worker(void* p):
 			int c0 = job_start + thread_chunk_offset(job_len, job_chunks, k)
 			int c1 = job_start + thread_chunk_offset(job_len, job_chunks, k + 1)
 			func(c0, c1, arg)
-		slot.done = 1
+		atomic_store(&slot.done, 1)
 		thread_wake_word(&slot.done)
 
 
@@ -533,7 +561,7 @@ void thread_pool_shutdown():
 	while (w < thread_pool_size):
 		wpool_slot* slot = thread_pool_slots[w]
 		slot.func = cast(parallel_for_fn*, 0)
-		slot.go = slot.go + 1
+		atomic_store(&slot.go, slot.go + 1)
 		thread_wake_word(&slot.go)
 		thread_join(thread_pool_threads[w])
 		free(cast(void*, slot))
@@ -602,8 +630,8 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		slot.job_chunks = nthreads
 		slot.chunk_lo = 1 + thread_chunk_offset(nthreads - 1, nworkers, w)
 		slot.chunk_hi = 1 + thread_chunk_offset(nthreads - 1, nworkers, w + 1)
-		slot.done = 0
-		slot.go = slot.go + 1
+		atomic_store(&slot.done, 0)
+		atomic_store(&slot.go, slot.go + 1)
 		thread_wake_word(&slot.go)
 		w = w + 1
 	func(start, start + thread_chunk_offset(len, nthreads, 1), arg)
@@ -647,7 +675,7 @@ void mutex_unlock(wmutex* m):
 	# exist — release the word and wake one, which retakes it as 2 (see
 	# mutex_lock), keeping the wake chain alive for the rest.
 	if (atomic_add(&m.word, 0 - 1) != 1):
-		m.word = 0
+		atomic_store(&m.word, 0)
 		thread_wake_word(&m.word)
 
 

@@ -100,17 +100,35 @@ void define_asm_functions_x64():
 	# The call targets stack_create, emitted immediately after.
 	# The child zeroes rbp so its frame-pointer chain ends at the thread
 	# function instead of running into the parent's frames.
+	# Failure returns -errno with nothing left mapped: an mmap error
+	# (an unsigned value above -4096) returns before the entry slot is
+	# written through it, and a failed clone munmaps the fresh stack.
 	sym_define_declare_global_function(c"thread_create")
 	int stack_call = codepos
 	emit(5, c"\xe8....") # patched once the variable-width stub is emitted
+	x64_asm(c"cmp rax,-4096")
+	int mmap_failed = asm_text_jump8_begin(ASM_ARCH_X64, c"ja .+2")   # mmap error: return it
 	x64_asm(c"lea rcx,[rax+0x3ffff0]; mov rdx,[rsp+8]; mov [rcx],rdx")
 	x64_asm(c"mov edi,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
 	x64_asm(c"mov rsi,rcx")
+	# The parent's copy of the stack top, for the munmap below; the
+	# child starts on the new stack and never sees this push.
+	x64_asm(c"push rcx")
 	x64_asm(c"mov eax,0x38")   # clone
 	x64_runtime_syscall()
-	x64_asm(c"test eax,eax")
-	x64_asm(c"jne .+4")   # parent: keep rbp
+	x64_asm(c"test rax,rax")
+	x64_asm(c"jne .+5")   # parent: keep rbp, skip the child's ret
 	x64_asm(c"xor ebp,ebp")   # child: the frame-pointer chain ends here
+	x64_asm(c"ret")
+	x64_asm(c"pop rcx")   # parent: the stack top (base + 0x3ffff0)
+	int started = asm_text_jump8_begin(ASM_ARCH_X64, c"jg .+2")   # tid > 0
+	# clone failed: unmap the fresh stack
+	x64_asm(c"push rax; lea rdi,[rcx-0x3ffff0]; mov esi,0x400000")
+	x64_asm(c"mov eax,0xb")   # munmap
+	x64_runtime_syscall()
+	x64_asm(c"pop rax")   # return -errno
+	asm_text_jump8_end(mmap_failed)
+	asm_text_jump8_end(started)
 	x64_asm(c"ret")
 
 	# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
