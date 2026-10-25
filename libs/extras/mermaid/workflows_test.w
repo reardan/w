@@ -272,3 +272,80 @@ void test_workflow_shape_catalogue():
 	mm_document_free(d)
 	string_free(text)
 	__w_list_free(cast(__w_list*, names))
+
+# Link segments (axis-aligned lines longer than any marker stroke) that
+# enter a step box's interior; the stress fixtures use plain rectangles,
+# whose outlines are boxes, so every such line is a link segment.
+int workflow_link_hits(mm_document* d, mm_scene* s):
+	int hits = 0
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_LINE || (p.x != p.x2 && p.y != p.y2)): continue
+		int x0 = p.x
+		int x1 = p.x2
+		if (x1 < x0):
+			x0 = p.x2
+			x1 = p.x
+		int y0 = p.y
+		int y1 = p.y2
+		if (y1 < y0):
+			y0 = p.y2
+			y1 = p.y
+		if (x1 - x0 + y1 - y0 < 16): continue
+		for i in range(d.nodes.length):
+			mm_node* n = d.nodes[i]
+			if (n.group): continue
+			mm_bounds* b = s.nodes[i]
+			if (x0 < b.x + b.w - 2 && x1 > b.x + 2 && y0 < b.y + b.h - 2 && y1 > b.y + 2): hits = hits + 1
+	return hits
+
+int workflow_is_label(list[char*] labels, char* text):
+	for char* label in labels:
+		if (strcmp(label, text) == 0): return 1
+	return 0
+
+# Labels that overlap a step box or another label.
+int workflow_label_hits(mm_document* d, mm_scene* s, list[char*] labels):
+	int hits = 0
+	for i in range(s.items.length):
+		mm_primitive* p = s.items[i]
+		if (p.kind != MM_TEXT || workflow_is_label(labels, p.text) == 0): continue
+		int x1 = p.x + mm_text_width(p.text, 0)
+		int y1 = p.y + MM_TEXT_LINE
+		for k in range(d.nodes.length):
+			mm_node* n = d.nodes[k]
+			mm_bounds* b = s.nodes[k]
+			if (n.group == 0 && p.x < b.x + b.w && x1 > b.x && p.y < b.y + b.h && y1 > b.y): hits = hits + 1
+		for j in range(i + 1, s.items.length):
+			mm_primitive* q = s.items[j]
+			if (q.kind != MM_TEXT || workflow_is_label(labels, q.text) == 0): continue
+			if (p.x < q.x + mm_text_width(q.text, 0) && x1 > q.x && p.y < q.y + MM_TEXT_LINE && y1 > q.y): hits = hits + 1
+	return hits
+
+void test_workflow_cross_lane_routing_avoids_steps():
+	# Rank-skipping, backward and cross-lane handoffs over three lanes: the
+	# former midpoint elbows ran through a2/a3 and b1; routed links use the
+	# inter-column channels and clear tracks, in every direction.
+	char* body = c"\nsubgraph A\na1\na2\na3\nend\nsubgraph B\nb1\nb2\nend\nsubgraph C\nc1\nend\na1 --> a2 --> a3 --> c1\na1 -->|first| b1 --> b2\na1 -->|skip| c1\nb2 -->|back| a1\nc1 -->|handoff| b1\na2 -->|across| b2\n"
+	list[char*] directions = list[char*]{c"LR", c"TB", c"RL", c"BT"}
+	list[char*] labels = list[char*]{c"first", c"skip", c"back", c"handoff", c"across"}
+	for char* direction in directions:
+		string_builder* text = string_from(c"swimlane-beta ")
+		string_append(text, direction)
+		string_append(text, body)
+		mm_document* d = mm_parse(text.data, text.length)
+		asserts(c"routing fixture parses", d.error == 0)
+		mm_scene* s = mm_render(d)
+		assert_equal(0, workflow_link_hits(d, s))
+		assert_equal(0, workflow_label_hits(d, s, labels))
+		char* first = mm_svg(s)
+		mm_scene* again = mm_render(d)
+		char* second = mm_svg(again)
+		assert_strings_equal(first, second)
+		free(first)
+		free(second)
+		mm_scene_free(again)
+		mm_scene_free(s)
+		mm_document_free(d)
+		string_free(text)
+	__w_list_free(cast(__w_list*, directions))
+	__w_list_free(cast(__w_list*, labels))
