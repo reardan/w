@@ -43,7 +43,14 @@ The executable keeps W's no-C-runtime model. The module defines `_start`
 (mmap-based) lower like any other W code. The module also defines
 `memset`, `memcpy` and `memmove`, which LLVM may call for large copies,
 as loops marked `"no-builtins"`, with hidden visibility. A program
-without C imports links statically against nothing.
+without C imports links statically against nothing. The runtime
+functions the native backends write in assembly
+(`code_generator/x64_asm.w`) are module-asm twins with the SysV argument
+registers and the same memory layouts: `repl_setjmp`/`setjmp` (declared
+`returns_twice`), `repl_longjmp`/`longjmp`, `thread_create`,
+`stack_create` and `__w_tls_set`; `__w_tls_size()` reads the block size
+the module settles once every function is emitted. These and
+`thread_local` globals (`gs:[0]`) are x86-64 only; AArch64 rejects them.
 
 ### C imports
 
@@ -133,45 +140,40 @@ When a reachable function from an imported module falls outside the
 subset, wllvm replaces its body with `llvm.trap` and prints a note:
 
 ```
-wllvm: note: print_stack_trace traps if called: .../lib/stack_trace.w:873:2: wllvm: unsupported call to a function without a W body 'repl_setjmp'
+wllvm: note: print_registers traps if called: .../lib/context_x86_64.w:36:2: wllvm: unsupported call to a function without a W body 'get_context'
 ```
 
-The program still builds; it traps only if that function actually runs.
-In practice this is the stack-trace path of the allocator's fatal errors
-and of failed assertions. Functions of the input module never degrade:
+The program still builds; it traps only if that function actually runs,
+and a trace through the trap names the function at its own line.
+Functions of the input module never degrade:
 anything unsupported there is an error, with the call path from the entry
 point, and the output file is left untouched.
 
 ## Supported subset
 
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
-  enums, pointers of any level, function values and aliases of them,
-  `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]`, slice handles, the built-in `list[T]`, `map[K, V]` and
+  enums, `float32` (`float`) and `float64`, the storage-only `float16` and
+  `bfloat16`, pointers of any level, function values and aliases of them,
+  `string` handles, records (structs whose fields are all of these,
+  fixed-array fields included), fixed arrays `T[N]`, slices `T[]` and
+  slice values, generator handles, the built-in `list[T]`, `map[K, V]` and
   `set[T]` containers of any of these, generic records (`pair[int]`), and
   checked pointers (`own`, `optown`, `ref`, `refmut`, `optref`,
   `optrefmut`) with checked slices (`ref T[]`) and borrowed records as
   locals and fields.
-  enums, `float32` (`float`) and `float64`, pointers of any level,
-  function values and aliases of them, `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]` and slice handles.
-  arrays `T[N]`, slices `T[]` and slice values, and the built-in `list[T]`, `map[K, V]`
-  and `set[T]` containers of any of these.
-  `string` handles, records (structs whose fields are all of these,
-  fixed-array fields included), fixed arrays `T[N]`, slices `T[]` and
-  slice values, generator handles, and the built-in `list[T]`,
-  `map[K, V]` and `set[T]` containers of any of these.
 - Locals with or without initializers (storage is zeroed at the
   declaration, as are fixed-array headers; a record's fixed-array fields
   get their inline headers wherever a record comes into being: its
   declaration, `new`, a record copy and a global's initializer),
-  parameters, globals with
-  constant, C string, `&global` or function initializers, and `const`
-  globals.
+  parameters, globals with constant, C string, `&global` or function
+  initializers, `const` globals, and `thread_local` globals (offsets in
+  one per-thread block reached through `gs:[0]`, the main thread's block
+  in `.data` and installed before the entry runs, as natively).
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and
-  compound assignments, `++`/`--`, address-of, dereference, field access,
+  compound assignments (`<<=` and `>>=` included), `++`/`--`, address-of,
+  dereference, field access,
   pointer subscripts, bounds-checked array, slice and string subscripts,
   ranges `a[i:j]`/`a[i:]`/`a[:j]` over arrays, slices and strings (a
   bounds-checked, freshly allocated `{data, length}` descriptor, as the
@@ -200,16 +202,37 @@ point, and the output file is left untouched.
 - Floats: literals, arithmetic, comparisons, unary minus, compound
   assignment and `++`/`--`, implicit and `cast` conversions between
   integers, `float32` and `float64`, and mixed integer/float operands, all
-  with the native backend's SSE semantics (see below).
+  with the native backend's SSE semantics (see below). A `float16` or
+  `bfloat16` value is a `float32` rounded to the type: loads widen and
+  stores narrow, `float16` with `vcvtph2ps`/`vcvtps2ph` on x86-64 (F16C)
+  and `fpext`/`fptrunc` of `half` (`fcvt`) on AArch64, nearest-even like
+  the native backends, and `bfloat16` with
+  `code_generator/bfloat.w`'s integer rounding.
+- C math calls: `sqrt`, `fabs`, `floor`, `ceil`, `trunc`, `fmin`, `fmax`,
+  `copysign` and their `float32` `...f` forms, declared `extern` or
+  through `c_import`. On x86-64 they are ordinary C imports (libm, linked
+  dynamically, below); on AArch64, whose dynamic links are not covered,
+  and for a declaration with no import behind it, they lower inline with
+  libm's bits:
+  `llvm.sqrt`, `llvm.minnum`/`llvm.maxnum`, sign-mask arithmetic, and a
+  `cvtt` round trip below 2^52 (2^23) for the roundings, so neither SSE4.1
+  nor libm is needed. Other libm functions (`pow`, `fmod`, `fma`, ...)
+  stay unsupported.
 - f-strings, with every value type the native lowering accepts except
   `var` (integers, `char`, `bool`, enums, `char*`, `string`, `float32`,
   `float64`) and the `{value:spec}` format mini-language, through the same
   `__w_template_*` runtime calls; a string literal or f-string passed
   where a `char*` is wanted decays to its data pointer.
 - `lib/testing.w` programs: wllvm builds `__w_test_main` from the retained
-  forest the way the native driver synthesizes it (compiler/test_registry.w).
-  Their crash handler reaches the `stack_trace_collect` trap stub when it
-  installs, so run them with `W_CRASH_TRACE=0`.
+  forest the way the native driver synthesizes it (compiler/test_registry.w),
+  as a private symbol like native's zero-sized one, and their crash
+  handler installs normally.
+- `setjmp`/`longjmp`, threads (`lib/thread.w`, raw `thread_create`) and
+  `lib/stack_trace.w` / `lib/crash.w` traces (below).
+- Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
+  to three arguments, `break`, `continue`, `pass`, `return`, `unsafe:`
+  blocks, inferred declarations (`name := value`) and expression
+  statements.
 - Containers: `new list[T]`/`new map[K, V]`/`new set[T]`, map defaults
   (`new map[K, V](value)`, a factory, or an empty inner container),
   `list[T]{...}`/`map[K, V]{k: v}`/`set[T]{...}` literals, `l[i]` as a
@@ -230,9 +253,55 @@ point, and the output file is left untouched.
   address, then every value, then the stores) and expression statements.
 
 Division and remainder guard zero divisors and signed minimum divided by
-minus one, and an out-of-range array subscript traps; LLVM traps report a
-different signal (SIGILL) from the native backend's. Calls and operands
-preserve evaluation order.
+minus one and then divide by zero, raising SIGFPE as the native `idiv`
+does; an out-of-range array subscript traps with SIGILL (`llvm.trap`).
+Calls and operands preserve evaluation order.
+
+Two native memory behaviors are kept explicitly. In a function that calls
+`setjmp`, every load and store is volatile, so a `longjmp` back sees each
+local's latest value (native locals always live in memory). In a program
+that starts threads, every load and store of a global is volatile, so a
+thread spinning on a flag another thread sets rereads it.
+
+### Stack traces and crash reports
+
+`lib/stack_trace.w` symbolizes from the running image: it walks the
+frame-pointer chain, finds functions in the mapped `.symtab` and lines in
+a DWARF 2 `.debug_line`, and stops at the frame named `main`. wllvm
+produces that image:
+
+- Functions keep their W names as ELF symbols (`@"name"`); a name defined
+  twice, or `memset`/`memcpy`/`memmove`/`_start`, gets a `.<linkage>`
+  suffix.
+- Every function has `"frame-pointer"="all"`, `"disable-tail-calls"` and
+  `null_pointer_is_valid` (a null read faults as natively instead of
+  becoming LLVM undefined behavior); clang runs with shrink wrapping off,
+  so each prologue starts its function. Once a program reaches
+  `lib/stack_trace.w` (every `lib/testing.w` program does, through the
+  crash handler), every function is also `noinline`, so `-O2` keeps the
+  frames a trace shows.
+- Statements leave line markers that become `!dbg` locations in a
+  line-tables-only compile unit with `"Dwarf Version"` 2.
+- Globals live in `.data` (no `.bss`), and after linking `tools/wllvm.w`
+  extends the last `PT_LOAD` to the end of the file, so the section
+  headers, `.symtab` and `.debug_line` are mapped at the image base plus
+  their file offset, where the reader looks. It does so only when every
+  `PT_LOAD` shares one address-to-offset delta and the first maps the ELF
+  header: GNU ld's default static layout (clang's default linker here).
+  Other layouts, `lld` among them, and IR linked by hand are left alone,
+  and traces then print nothing, like a native binary without symbols.
+- The lib/signal.w handler thunk passes `(sig, &uc_mcontext)` in rdi/rsi
+  on an aligned stack as well as on the W stack, and `st_call_site` also
+  accepts LLVM's indirect call forms (`call *%reg`, `call *rel32(%rip)`).
+
+With that, `print_stack_trace`, `stack_trace_collect` and the
+`lib/crash.w` report match native frame for frame and line for line
+(`stack_trace_test`, `stack_trace_chain_test`, `crash_install_test` and
+the `crash_*_fixture` programs compare equal). What differs: a frame's
+file is the base name (`crash_deep_chain_fixture.w:29`), since LLVM's
+DWARF 2 file table splits the directory off and the reader prints only
+the entry's name; register values, addresses and the build-id differ as
+they do between any two builds.
 
 A float value travels in its 64-bit word as its bit pattern (a `float32`
 in the low 32 bits) and is bitcast around each LLVM `float`/`double`
@@ -259,14 +328,12 @@ operand before the second, and the default NaN is positive (`0x7ff8...`,
 native arm64 build. Generators are rejected on AArch64: their entry thunk
 and `gen_switch` follow the x86-64 stack layout.
 
-Not yet supported, and rejected with a diagnostic: the storage-only
-`float16`/`bfloat16`, `var`, records passed or returned by value
-(including checked slices and borrowed records crossing a call),
-`switch`, `defer`, `goto`, GPU code, and the remaining assembly stubs
-(`repl_setjmp`,
-`thread_create`, ...). A container trap (out-of-range index, missing
-key) prints its message and then reaches the `print_stack_trace` trap
-stub.
+Not yet supported, and rejected with a diagnostic: `var`, records
+passed or returned by value (including checked slices and borrowed records
+crossing a call), `switch`, `defer`, `goto`, GPU code, the `debugger`
+statement, and the `get_context`/`store_context` stubs. A container trap
+(out-of-range index, missing key) prints its message and then the stack
+trace.
 
 Generators are stackful coroutines (`lib/generator.w`) and lower with the
 native runtime unchanged. The body is an ordinary function whose last
@@ -340,10 +407,17 @@ rejected input. When `clang` is on `PATH`, it also builds
 variadic, float and narrow-integer signatures, an alias, an imported
 object and a `c_import` constant; linked dynamically),
 `tests/wllvm_float_fixture.w` (floats, NaN and conversion edge cases,
-f-strings) and `tests/wllvm_registry_fixture.w` (the synthesized test
-registry) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
+f-strings), `tests/wllvm_registry_fixture.w` (the synthesized test
+registry), `tests/wllvm_runtime_fixture.w` (`setjmp`/`longjmp`, a thread,
+`stack_trace_collect` frames and lines, compound shifts, `float16` and
+`bfloat16` storage) and `tests/wllvm_math_fixture.w` (the C math calls,
+bit for bit against libm) and `tests/wllvm_half_fixture.w` (`float16` and
+`bfloat16` rounding, overflow and NaN payloads; also run on AArch64) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
-checks the division and bounds traps, and checks that a library trap stub
+checks the division and bounds traps, checks that the crash reporter
+prints the native frames and lines for `tests/crash_deep_chain_fixture.w`
+(without the heuristic-scan note) and SIGFPE for
+`tests/crash_div_zero_fixture.w`, and checks that a library trap stub
 leaves the rest of the program working. Without Clang it reports the
 native comparison as skipped; the structural and rejection checks still
 run. No LLVM dependency is added to the seed or the production compiler's
@@ -351,8 +425,8 @@ import graph.
 
 ## Next steps
 
-1. Records by value (copy-in parameters, caller-provided result buffers),
-   floats, f-strings and `switch`.
+1. Records by value (copy-in parameters, caller-provided result buffers)
+   and `switch`.
 2. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
    and code signing) and win64 would need their own entry and system-call
    layers.

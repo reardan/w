@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -119,6 +119,19 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"c\"specs [\\00\"")
 	unlink(first)
 	free(a)
+	# Runtime stubs in module asm; W symbol names; DWARF 2 line tables.
+	wllvm_test_emit(c"tests/wllvm_runtime_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"declare i64 @__wllvm_repl_setjmp(i64) returns_twice")
+	assert_contains(a, c"module asm \"__wllvm_thread_create:\"")
+	assert_contains(a, c"define internal i64 @\"main\"(")
+	assert_contains(a, c"!{i32 7, !\"Dwarf Version\", i32 2}")
+	assert_contains(a, c"\"frame-pointer\"=\"all\"")
+	assert_contains(a, c"load volatile i64")
+	assert_contains(a, c"vcvtps2ph")
+	unlink(first)
+	free(a)
 	# Generators: module-assembly gen_switch and realigning entry thunks.
 	wllvm_test_emit(c"tests/wllvm_generator_fixture.w", first)
 	a = file_read_text(first)
@@ -157,12 +170,10 @@ void wllvm_test_reject(char* source):
 
 
 void test_wllvm_rejects_unsupported_programs():
-	wllvm_test_reject(c"float16 value(float16 x):\n\treturn x\nint main():\n\treturn 0\n")
-	# assembly stubs other than gen_switch have no LLVM lowering
-	wllvm_test_reject(c"int main():\n\treturn repl_setjmp(0)\n")
+	wllvm_test_reject(c"int main():\n\tdebugger\n\treturn 0\n")
 	wllvm_test_reject(c"struct Point:\n\tint x\nint first(Point p):\n\treturn p.x\nint main():\n\tPoint p\n\treturn first(p)\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
-	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat16 f = 1.0\n")
+	wllvm_test_reject(c"int main():\n\treturn 0\n\tdebugger\n")
 	wllvm_test_reject(c"int main():\n\tdefer main()\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
@@ -283,8 +294,38 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
 	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
 	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_runtime_fixture.w", 21)
+	wllvm_test_differential(clang, c"tests/wllvm_math_fixture.w", 0)
+	wllvm_test_differential(clang, c"tests/wllvm_half_fixture.w", 50)
 	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
 	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
+	free(clang)
+
+
+# The lib/crash.w reporter in a wllvm build: the same frames and lines as
+# the native crash_trace_x64_test expects, from an exact frame-pointer
+# walk (no heuristic note), and SIGFPE for a division by zero.
+void wllvm_test_crash(char* clang, char* fixture, int signal, list[char*] expected):
+	char* native = wllvm_test_path(c".native")
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"-O2", c"--cc", clang, fixture, c"-o", native}))
+	process_result* result = wllvm_test_run(list[char*]{native})
+	assert_equal(128 + signal, result.status)
+	for text in expected: assert_contains(result.stderr_text, text)
+	assert1(contains(result.stderr_text, c"heuristic") == 0)
+	process_result_free(result)
+	unlink(native)
+	free(native)
+
+
+void test_wllvm_crash_traces():
+	char* clang = process_which(c"clang")
+	if clang == 0: return
+	list[char*] chain = list[char*]{c"fatal signal: SIGSEGV", c"build-id: ", c"stack trace (most recent call first):\n  at crash_level6 (", c"crash_deep_chain_fixture.w:29)\n  at crash_level5 (", c"crash_deep_chain_fixture.w:33)\n  at crash_level4 (", c"crash_deep_chain_fixture.w:37)\n  at crash_level3 (", c"crash_deep_chain_fixture.w:41)\n  at crash_level2 (", c"crash_deep_chain_fixture.w:45)\n  at crash_level1 (", c"crash_deep_chain_fixture.w:49)\n  at main (", c"crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11"}
+	wllvm_test_crash(clang, c"tests/crash_deep_chain_fixture.w", 11, chain)
+	chain.free()
+	list[char*] divide = list[char*]{c"fatal signal: SIGFPE (arithmetic exception)", c"at crash_divide (", c"crash_div_zero_fixture.w:13)\n  at main (", c"terminating with the default action for signal 8"}
+	wllvm_test_crash(clang, c"tests/crash_div_zero_fixture.w", 8, divide)
+	divide.free()
 	free(clang)
 
 
@@ -336,10 +377,10 @@ void test_wllvm_library_trap_stub():
 	if clang == 0: return
 	char* input = wllvm_test_path(c".w")
 	char* native = wllvm_test_path(c".native")
-	assert1(file_write_text(input, c"import lib.stack_trace\nint main(int argc, int argv):\n\tif (argc > 1): print_stack_trace()\n\treturn 5\n"))
+	assert1(file_write_text(input, c"import lib.lib\nimport lib.context_x86_64\nint main(int argc, int argv):\n\tif (argc > 1): print_registers()\n\treturn 5\n"))
 	process_result* built = wllvm_test_run(list[char*]{c"bin/wllvm", c"--cc", clang, input, c"-o", native})
 	assert_equal(0, built.status)
-	assert_contains(built.stderr_text, c"wllvm: note: print_stack_trace traps if called")
+	assert_contains(built.stderr_text, c"wllvm: note: print_registers traps if called")
 	process_result_free(built)
 	process_result* result = wllvm_test_run(list[char*]{native})
 	assert_equal(5, result.status)
@@ -369,6 +410,18 @@ void test_wllvm_arm64_target():
 	assert_equal(-1, index_of(text, c"\"syscall\""))
 	free(text)
 	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"--target", c"arm64", c"tests/wllvm_scalar_fixture.w", c"-o", ir}))
+	# float16 converts with fcvt, and C math lowers inline rather than
+	# through an AArch64 libm.
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_half_fixture.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c" to half")
+	assert_equal(-1, index_of(text, c"vcvtps2ph"))
+	free(text)
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_math_fixture.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c"call double @llvm.sqrt.f64(")
+	assert_equal(-1, index_of(text, c"declare double @\"sqrt\""))
+	free(text)
 	unlink(ir)
 	free(ir)
 	char* clang = process_which(c"clang")
@@ -378,7 +431,7 @@ void test_wllvm_arm64_target():
 	if ((clang == 0) || (lld == 0) || (qemu == 0)):
 		println(c"wllvm: clang, ld.lld or qemu-aarch64 unavailable; arm64 run skipped")
 		return
-	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w"}
+	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w", c"tests/wllvm_half_fixture.w"}
 	for fixture in fixtures:
 		char* native = wllvm_test_path(c".arm64")
 		char* reference = wllvm_test_path(c".arm64ref")
