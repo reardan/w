@@ -127,4 +127,3 @@ kernel ptx_for(ptx_cell* cells, int n):
 
 int main():
 	return 0
-

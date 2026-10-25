@@ -342,7 +342,6 @@ void test_mutual_tls_rejects_duplicate_request_extension_at_end():
 	tls_conn_free(c)
 
 
-
 void test_mutual_tls_rejects_server_only_issuer_and_trust_anchor():
 	mt_exchange(14)
 	mt_exchange(15)

@@ -200,4 +200,3 @@ void test_scoped_defer_34():
 
 void test_scoped_defer_35():
 	scoped_defer_case(c"int observe(ref int* value):\n\treturn *value\n\nint main():\n\tint value = 0\n\tfor i in range(2):\n\t\tref int* view = &value\n\t\tdefer: observe(view)\n\t\tvalue = i\n\t\tcontinue\n\treturn 0\n", c"borrow")
-

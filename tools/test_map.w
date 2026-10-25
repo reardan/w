@@ -889,7 +889,6 @@ void wtest_ensure_roots():
 				wtest_roots.push(root)
 
 
-
 /* Closure computation, memoized per run and cached across runs.
 
 The cache file (bin/.wtest_deps_cache; tools/deps_cache.w holds the

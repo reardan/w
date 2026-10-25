@@ -2,7 +2,7 @@ import code_generator.code_emitter
 import code_generator.elf_all
 
 
-int sym_address(char *s);  /* from symbol_table.w */
+int sym_address(char* s);  /* from symbol_table.w */
 void elf_emit_dynamic();   /* from elf_dynamic.w */
 
 
@@ -32,7 +32,6 @@ void elf_sym_table_entry(int name, int address, int size, int binding, int symty
 	emit_int8(info) /* info */
 	emit_int8(0) /* other: visibility */
 	emit_int16(type) /* shndx: index into section header table */
-
 
 
 void elf_start():

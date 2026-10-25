@@ -401,7 +401,6 @@ void test_facos_golden():
 	assert_fulp(cast(int, 0x3f060a92), facos(float_from_bits(cast(int, 0x3f5db3d7))), 3)    # facos(0.866025388) = 0.52359879
 
 
-
 void test_fexp_edge_cases():
 	# NaN in -> NaN out
 	assert_equal(1, fis_nan(fexp(float_from_bits(0x7fc00000))))

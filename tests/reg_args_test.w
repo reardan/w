@@ -140,7 +140,7 @@ void test_simple():
 	int y = 5
 	assert_equal(456, add3(x, y, x + 2))
 	assert_equal(98, pick(c"abc", 1))
-	assert_equal(1*1 + 2*2 + 3*3 + 4*4 + 5*5 + 6*6, six(1, 2, 3, 4, 5, 6))
+	assert_equal(1 * 1 + 2 * 2 + 3 * 3 + 4 * 4 + 5 * 5 + 6 * 6, six(1, 2, 3, 4, 5, 6))
 	assert_equal(3, one(2))
 
 

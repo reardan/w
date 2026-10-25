@@ -94,8 +94,6 @@ void reference_field_case(char* source, char* diagnostic, int relaxed = 0, int s
 	free(full)
 
 
-
-
 void test_reference_field_0():
 	reference_field_case(c"struct View:\n\town int* stored\n\tref[data] int* data\n\tint tag\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] View* view = new View(new int, &x, 7)\n\tview.data = &y\n\tref int* p = view.data\n\treturn *p - 4\n", 0)
 	reference_field_case(c"struct View:\n\town int* stored\n\trefmut[data] int* data\n\tint tag\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] View* view = new View(new int, &x, 7)\n\tview.data = &y\n\trefmut int* p = view.data\n\t*p = 9\n\treturn y - 9\n", 0)

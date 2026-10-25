@@ -91,7 +91,6 @@ void test_quad():
 	assert_equal_hex(3, *pt.x)*/
 
 
-
 struct mixed:
 	int32 a
 	int16 b

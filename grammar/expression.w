@@ -285,7 +285,7 @@ int expression():
 			type_print(type)
 			print_int(c"expression() type: ", type)
 			print_int(c"expression() type2: ", type2)
-		
+
 		type2 = promote(type2)
 		check_value_conversion(c"assignment", 0, 0, type, type2)
 		coerce(type, type2)

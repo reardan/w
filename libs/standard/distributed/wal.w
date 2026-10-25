@@ -654,6 +654,5 @@ wal* wal_open_fail(wal_recovery* rep, int fd, int status):
 	return wal_open_fail_with_ops(cast(file_ops*, 0), rep, fd, status)
 
 
-
 wal_reader* wal_reader_open(char* path):
 	return wal_reader_open_with_ops(cast(file_ops*, 0), path)

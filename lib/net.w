@@ -168,7 +168,6 @@ unlink(path) when shutting down, and socket_bind_unix_replacing_stale
 handles the crashed-predecessor case at startup. */
 
 
-
 # Longest usable path (excluding its NUL): the tightest sun_path across
 # supported targets (Darwin's 104 bytes; Linux would allow 107).
 const int SOCKADDR_UN_PATH_MAX = 103

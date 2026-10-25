@@ -1923,8 +1923,6 @@ int wexec_cache_push_enabled():
 	return strcmp(raw, c"1") == 0
 
 
-
-
 # One warning line per process, the first time the remote cache proves
 # unreachable (a transport failure or a corrupt bundle -- not a plain
 # 404 miss); silent after that.

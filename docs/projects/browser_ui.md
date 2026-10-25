@@ -111,6 +111,6 @@ glyph or caret positions. The host still selects scripts/fonts and line breaks.
 `ui_shaped_caret_x` and `ui_shaped_offset_from_x` place grapheme carets over a
 shaped run. Ordinary widget drawing still uses codepoint lookup and pair
 kerning, with combining marks placed on their base. `graphics.ui.itemize` splits a
-paragraph into bidi, script and face runs and shapes them; line breaking
-remains the host's job. See [shaping](text_shaping.md) for font
+paragraph into bidi, script and face runs and shapes them, and wraps it into
+reordered, reshaped lines at UAX #14 break opportunities (`lib.linebreak`). See [shaping](text_shaping.md) for font
 coverage, optional dependencies and explicit limits.

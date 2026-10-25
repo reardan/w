@@ -80,4 +80,3 @@ void test_ptx_kernel_module_dump():
 	unlink(dump_path)
 	unlink(out_path)
 	process_result_free(result)
-

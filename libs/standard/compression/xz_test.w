@@ -419,7 +419,6 @@ void test_max_output_cap():
 	assert_equal(XZ_ERR_TOO_LARGE, err)
 
 
-
 int fuzz_seed
 
 

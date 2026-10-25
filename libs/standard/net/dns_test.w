@@ -717,7 +717,6 @@ void test_dns_cache_capacity_and_flush_generation():
 	asserts(c"in-flight lookup survived flush", dns_cache_answers == 0)
 
 
-
 void test_dns_cache_monotonic_signed_wrap():
 	dns_cache_clear()
 	dns_cache_store(c"wrap.example", 42, dns_result_ok, 60, dns_cache_generation)
@@ -732,7 +731,6 @@ void test_dns_cache_monotonic_signed_wrap():
 	dns_cache_clear()
 
 
-
 void test_dns_cache_hosts_reload_overrides_negative():
 	dns_cache_test_files()
 	int server = 0
@@ -745,7 +743,6 @@ void test_dns_cache_hosts_reload_overrides_negative():
 	assert_equal_hex(0x0a010203, ip)
 	asserts(c"hosts reload retained NXDOMAIN", dns_cache_answers == 0)
 	dns_cache_test_join(pid, server)
-
 
 
 void test_dns_cache_long_idle_does_not_revive_expired_entries():

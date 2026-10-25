@@ -19,7 +19,7 @@ void a64(int w);
 int op(int msb, int low);
 void arm64_cset(int cond);
 int arm64_setcc_cond(int setcc);
-void error(char *s);
+void error(char* s);
 
 
 ########################### GPR <-> XMM transfers ############################

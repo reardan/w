@@ -72,4 +72,3 @@ void test_field_function_pointer_precedence():
 	method_runner runner
 	runner.run = cast(int*, method_runner_field_run)
 	assert_equal(77, runner.run())
-

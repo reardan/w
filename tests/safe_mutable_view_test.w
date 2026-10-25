@@ -94,11 +94,6 @@ void mutable_view_case(char* source, char* diagnostic, int relaxed = 0, int seed
 	free(full)
 
 
-
-
-
-
-
 void test_mutable_view_0():
 	mutable_view_case(c"struct View:\n\town int* stored\n\trefmut[data] int* data\n\tint tag\nint main():\n\tint x = 3\n\town[a] View* owner = new View(new int, &x, 7)\n\trefmut View* view = owner\n\tview.tag = 9\n\trefmut int* data = view.data\n\t*data = 8\n\treturn x - 8\n", 0)
 	mutable_view_case(c"struct View:\n\town int* stored\n\trefmut[data] int* data\n\tint tag\nvoid change(refmut View* view):\n\tview.tag = 9\n\trefmut int* data = view.data\n\t*data = 8\nint main():\n\tint x = 3\n\town[a] View* owner = new View(new int, &x, 7)\n\tchange(owner)\n\tint tag = owner.tag\n\treturn x + tag - 17\n", 0)

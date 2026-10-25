@@ -5,7 +5,7 @@ import lib.termios
 
 # tokenizer
 int nextc
-char *token
+char* token
 int token_size
 int token_newline
 int tab_level
@@ -402,7 +402,7 @@ int analysis_probe_depth
 int analysis_probe_error_status
 
 
-void warning(char *s):
+void warning(char* s):
 	if (analysis_probe_depth):
 		diag_clear()
 		diag_clear_help()
@@ -440,7 +440,7 @@ type __analysis_probe_error_status_callback = fn() -> int
 char* partial_output_path
 
 
-void error(char *s):
+void error(char* s):
 	if (partial_output_path != 0):
 		unlink(partial_output_path)
 		partial_output_path = 0
@@ -589,7 +589,7 @@ int get_character():
 	int c = getc()
 
 	# Handle Newline
-	if(nextc == 10):
+	if (nextc == 10):
 		tab_level = 0
 		line_number = line_number + 1
 		column_number = 0
@@ -602,7 +602,7 @@ int get_character():
 		if ((nextc & 192) != 128): column_number = column_number + 1
 
 	# Handle Tab
-	if(nextc == 9): tab_level = tab_level + 1
+	if (nextc == 9): tab_level = tab_level + 1
 
 	# A last line without a newline is invisible to tab_level-based scoping
 	# and can end an indented block with a confusing parse error, so flag it.
@@ -777,11 +777,11 @@ void take_ident_run():
 
 
 # Read UNTIL end of line or end of file
-# (but NOT the newline itself) 
+# (but NOT the newline itself)
 # Also append a 0 so the string is zero terminated
 void read_until_end():
 	while ((nextc != 10) && (nextc != 0) && (nextc != -1)): takechar()
-	
+
 	token[token_i] = 0
 	token_i = token_i + 1
 
@@ -846,7 +846,7 @@ void get_token():
 		w = 0
 		while ((nextc == ' ') || (nextc == 9) || (nextc == 10)):
 			prev_whitespace = nextc
-			if(nextc == 10): token_newline = 1
+			if (nextc == 10): token_newline = 1
 
 			nextc = get_character()
 
@@ -976,7 +976,7 @@ void get_token():
 			else if (nextc == '#'):
 				takechar()
 				nextc = get_character()
-				while((nextc != 10) && (nextc != -1)): nextc = get_character()
+				while ((nextc != 10) && (nextc != -1)): nextc = get_character()
 
 				# nextc = get_character()
 				w = 1
@@ -1061,7 +1061,7 @@ void tokenizer_snapshot_restore(tokenizer_snapshot* s, char* text):
 # The grammar tries alternatives in sequence (accept("&"), accept("*"),
 # ...), so almost every call mismatches on the first byte: reject that
 # case before entering the compare loop.
-int peek(char *s):
+int peek(char* s):
 	int c = s[0]
 	if (c != token[0]): return 0
 	if (c == 0): return 1
@@ -1071,7 +1071,7 @@ int peek(char *s):
 	return s[i] == token[i]
 
 
-int accept(char *s):
+int accept(char* s):
 	# Same first-byte rejection as peek(), without the extra call
 	if (s[0] != token[0]): return 0
 	if (peek(s)):
@@ -1081,7 +1081,7 @@ int accept(char *s):
 	else: return 0
 
 
-void expect(char *s):
+void expect(char* s):
 	if (accept(s) == 0):
 		diag_part(c"'")
 		diag_part(s)
@@ -1089,9 +1089,9 @@ void expect(char *s):
 		error3(token, c"'", c"")
 
 
-void expect_or_newline(char *s):
+void expect_or_newline(char* s):
 	# End of file also ends the statement, like a newline would
-	if((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
+	if ((accept(s) == 0) & (token_newline == 0) & (token[0] != 0)):
 		diag_part(c"'")
 		diag_part(s)
 		diag_part(c"' expected, found '")

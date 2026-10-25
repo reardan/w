@@ -271,7 +271,6 @@ int wcov_suite_load(wcov_state* st, list[char*] dirs, list[wcov_suite_build*] bu
 	return loaded
 
 
-
 int wcov_suite_main():
 	char* out = c"bin/coverage"
 	char* baseline = 0

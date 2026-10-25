@@ -24,5 +24,3 @@ void test_wexec_rejected_sandbox_preserves_atomic_staging():
 	unlink(path.data)
 	string_free(path)
 	json_free(step)
-
-

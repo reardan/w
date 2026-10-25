@@ -1747,8 +1747,6 @@ char* pg_generate_ast_parser(pg_grammar* grammar):
 	return pg_source_take(writer)
 
 
-
-
 # Stateful generation deliberately avoids FIRST guards and left factoring:
 # these optimizations cannot observe a token before entering its lexical goal.
 int pg_stateful_unique_name(map[char*, int] names, char* name):

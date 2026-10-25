@@ -94,8 +94,6 @@ void disjoint_field_case(char* source, char* diagnostic, int relaxed = 0, int se
 	free(full)
 
 
-
-
 void test_disjoint_field_0():
 	disjoint_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\trefmut int* p = pair.first\n\trefmut int* q = pair.second\n\t*p = 7\n\t*q = 8\n\treturn *p + *q - 15\n", 0)
 	disjoint_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\trefmut int* p = pair.first\n\trefmut int* q = pair.first\n\t*p = 7\n\treturn *q\n", c"conflicting")

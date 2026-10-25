@@ -6,7 +6,7 @@ struct MutableViewLeaf:
 
 
 struct MutableViewOuter:
-	own[left,right] MutableViewLeaf* child
+	own[left, right] MutableViewLeaf* child
 
 
 refmut[a] int* mutable_view_data(refmut[a] MutableViewOuter* view):

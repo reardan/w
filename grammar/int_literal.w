@@ -88,7 +88,7 @@ int int_literal_value(int negative):
 		int_literal_width_check()
 		n = from_hex(token + 2)
 		int_literal_bit31_check(n)
-		if (negative): n = 0-n
+		if (negative): n = 0 - n
 		return int_literal_wrap32(n)
 
 	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
@@ -100,7 +100,7 @@ int int_literal_value(int negative):
 			n = (n << 1) + token[i] - '0'
 			i = i + 1
 		int_literal_bit31_check(n)
-		if (negative): n = 0-n
+		if (negative): n = 0 - n
 		return int_literal_wrap32(n)
 
 	int_literal_decimal_check()
@@ -111,7 +111,7 @@ int int_literal_value(int negative):
 		i = i + 1
 
 	# Handle negative
-	if (negative): n = 0-n
+	if (negative): n = 0 - n
 	return int_literal_wrap32(n)
 
 

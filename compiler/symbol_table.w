@@ -2,7 +2,7 @@
 table: stack of symbols
 symbol format:
 string: symbol
-char: \0 
+char: \0
 char: [DULA]
 int: 2: address
 int: 6: type
@@ -26,7 +26,7 @@ int: 146: register a promoted local lives in (hardware number: x86 esi 6 /
           edi 7, x64 r12-r15), 0 for a stack-resident local
           (docs/projects/register_allocation_pgo.md §2.2)
 */
-char *table
+char* table
 int table_size
 int table_pos
 int stack_pos
@@ -241,7 +241,7 @@ void sym_info(int symbol):
 	int t = cast(int, table) + symbol
 	print_hex0(c"address: ", load_int(t + 2))
 	print_error(c", visibility: ")
-	put_error(load_i(t + 1 ,1))
+	put_error(load_i(t + 1, 1))
 	print_int0(c", type: ", load_int(t + 6))
 	print_int0(c", symtype: ", load_int(t + 10))
 	print_int0(c", size: ", load_int(t + 14))
@@ -256,7 +256,7 @@ void sym_info(int symbol):
 # sym_index_selfcheck compares against: it depends on nothing but the
 # blob and the offsets, so it is the thing to trust when the two
 # disagree.
-int sym_index_scan(char *s):
+int sym_index_scan(char* s):
 	int i = sym_index_count
 	while (i > 0):
 		i = i - 1
@@ -313,7 +313,7 @@ int sym_record_live(char* name, int t):
 void inline_note_lookup(char* s, int found);   /* compiler/inline_table.w */
 void inline_const_note(int t);   /* grammar/inline_call.w */
 
-int sym_lookup(char *s):
+int sym_lookup(char* s):
 	sym_index_sync()
 	sym_lookup_calls = sym_lookup_calls + 1
 	int found = -1
@@ -332,7 +332,7 @@ int sym_lookup(char *s):
 	return found
 
 
-int sym_address(char *s):
+int sym_address(char* s):
 	int t = sym_lookup(s)
 	if (t < 0): return 0
 	return load_int(table + t + 2)
@@ -347,7 +347,7 @@ int sym_defined_address(char* s):
 	return load_int(table + t + 2)
 
 
-int sym_symtype(char *s):
+int sym_symtype(char* s):
 	int t = sym_lookup(s)
 	if (t < 0): return 0
 	return load_int(table + t + 10)
@@ -461,7 +461,7 @@ void retained_local_note(int sym);
 int regalloc_declare(int t, char* name, int type);
 
 int pointer_indirection
-void sym_declare(char *s, int type, int visibility, int value, int symtype):
+void sym_declare(char* s, int type, int visibility, int value, int symtype):
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print_string0(c": sym_declare('", s)
@@ -544,8 +544,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 			retained_local_note(t)
 
 
-char *last_global_declaration
-int sym_declare_global(char *s, int type, int symtype):
+char* last_global_declaration
+int sym_declare_global(char* s, int type, int symtype):
 	strcpy(last_global_declaration, s)
 	int current_symbol = sym_lookup(s)
 	if (current_symbol < 0):

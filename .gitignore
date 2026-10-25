@@ -30,6 +30,7 @@ log/*.core
 /libs/standard/text/unicodedata_data.w
 /graphics/ui/font_data.w
 /lib/unicode_text_data.w
+/lib/linebreak_data.w
 /libs/extras/protobuf/generated_proto_parser.w
 /tests/protobuf/common_pb.w
 /tests/protobuf/sample_pb.w

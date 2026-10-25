@@ -58,11 +58,11 @@ struct asm_operand:
 	int scale
 	int disp
 	int disp_size # encoded displacement width for kind mem: 0 none/auto,
-	              # 1 disp8, 4 disp32 (lets the encoder reproduce the exact
-	              # bytes a decoder saw, even non-minimal forms)
+				  # 1 disp8, 4 disp32 (lets the encoder reproduce the exact
+				  # bytes a decoder saw, even non-minimal forms)
 	int imm
 	int imm_hi    # high 32 bits of a 64-bit immediate (movabs); W's int is
-	              # 32-bit, so an imm64 is carried as imm (low) + imm_hi (high)
+				  # 32-bit, so an imm64 is carried as imm (low) + imm_hi (high)
 	int size      # operand size in bytes (1/2/4/8); 0 = arch default
 	char* label
 
@@ -93,9 +93,9 @@ struct asm_insn:
 	int length
 	int branch_target   # absolute target for rel branches; -1 otherwise
 	int raw             # raw 32-bit word for arm64 opaque-passthrough forms
-	                    # (recognized mnemonic but operands not modeled); 0
-	                    # for modeled/x86 instructions. Encoders that see a
-	                    # nonzero raw on an opaque insn re-emit it verbatim.
+						# (recognized mnemonic but operands not modeled); 0
+						# for modeled/x86 instructions. Encoders that see a
+						# nonzero raw on an opaque insn re-emit it verbatim.
 	char* mnemonic
 	asm_operand op1
 	asm_operand op2
