@@ -373,9 +373,80 @@ int mm_config_scalar_entry(mm_document* d, mm_config_entry* e):
 	if (e.map): mm_error(d, e.offset, c"configuration value must be a scalar")
 	return e.map == 0
 
+int mm_in_config_words(char* value, char* options):
+	string_builder* needle = string_from(c"|")
+	string_append(needle, value)
+	string_append_char(needle, '|')
+	int found = index_of(options, needle.data) >= 0
+	string_free(needle)
+	return found
+
+int mm_config_bool(mm_document* d, mm_config_entry* e):
+	if (strcmp(e.value, c"true") == 0): return 1
+	if (strcmp(e.value, c"false") == 0): return 0
+	mm_error(d, e.offset, c"configuration value must be true or false")
+	return 0
+
+# Decimal number such as 1.5 or -0.25 (validated, not stored).
+void mm_config_number(mm_document* d, mm_config_entry* e):
+	char* v = e.value
+	int i = 0
+	if (v[0] == '-'): i = 1
+	int digits = 0
+	int dot = 0
+	while (v[i] != 0):
+		if (v[i] == '.' && dot == 0): dot = 1
+		else if (v[i] >= '0' && v[i] <= '9'): digits = digits + 1
+		else: digits = -1000
+		i = i + 1
+	if (digits <= 0): mm_error(d, e.offset, c"configuration value must be a number")
+
+# Architecture, use case and C4 diagram sections. Returns 1 when handled.
+# Spacing keys set the shared node/rank spacing; font and fcose tuning
+# keys are validated but the native renderer keeps its own metrics and
+# deterministic layout.
+int mm_config_family_key(mm_document* d, mm_config_entry* e, char* key):
+	if (strcmp(key, c"architecture") == 0 || strcmp(key, c"usecase") == 0 || strcmp(key, c"c4") == 0):
+		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
+		return 1
+	int architecture = index_of(key, c"architecture.") == 0
+	int usecase = index_of(key, c"usecase.") == 0
+	int c4 = index_of(key, c"c4.") == 0
+	if (architecture == 0 && usecase == 0 && c4 == 0): return 0
+	if (mm_config_scalar_entry(d, e) == 0): return 1
+	char* name = key + index_of(key, c".") + 1
+	if ((architecture && strcmp(name, c"nodeSeparation") == 0) || (usecase && strcmp(name, c"nodeSpacing") == 0)):
+		int spacing = mm_config_int(e.value, 0, 500)
+		if (spacing < 0): mm_error(d, e.offset, c"spacing must be an integer from 0 to 500")
+		d.node_spacing = spacing
+		d.config_mask = d.config_mask | 1
+	else if (usecase && strcmp(name, c"rankSpacing") == 0):
+		int spacing = mm_config_int(e.value, 0, 500)
+		if (spacing < 0): mm_error(d, e.offset, c"spacing must be an integer from 0 to 500")
+		d.rank_spacing = spacing
+		d.config_mask = d.config_mask | 2
+	else if (usecase && strcmp(name, c"colorScheme") == 0):
+		if (strcmp(e.value, c"rotate") == 0): d.usecase_rotate = 1
+		else if (strcmp(e.value, c"role") == 0): d.usecase_rotate = 0
+		else: mm_error(d, e.offset, c"colorScheme must be role or rotate")
+	else if (c4 && (strcmp(name, c"c4ShapeInRow") == 0 || strcmp(name, c"c4BoundaryInRow") == 0)):
+		int count = mm_config_int(e.value, 1, 64)
+		if (count < 0): mm_error(d, e.offset, c"C4 row counts must be integers from 1 to 64")
+		else if (strcmp(name, c"c4ShapeInRow") == 0): d.c4_shape_in_row = count
+		else: d.c4_boundary_in_row = count
+	else if ((architecture && strcmp(name, c"randomize") == 0) || strcmp(name, c"useMaxWidth") == 0 || (c4 && strcmp(name, c"wrap") == 0)): mm_config_bool(d, e)
+	else if ((architecture && mm_in_config_words(name, c"|idealEdgeLengthMultiplier|edgeElasticity|")) || (architecture && mm_in_config_words(name, c"|numIter|seed|iconSize|padding|fontSize|")) || (usecase && mm_in_config_words(name, c"|actorFontSize|usecaseFontSize|diagramPadding|")) || (c4 && mm_in_config_words(name, c"|diagramMarginX|diagramMarginY|c4ShapeMargin|c4ShapePadding|width|height|boxMargin|"))): mm_config_number(d, e)
+	else if (usecase && mm_in_config_words(name, c"|actorFontFamily|actorFontWeight|usecaseFontFamily|usecaseFontWeight|")):
+		if (e.value[0] == 0): mm_error(d, e.offset, c"expected a font setting")
+	else if (architecture): mm_error(d, e.offset, c"unsupported architecture setting")
+	else if (usecase): mm_error(d, e.offset, c"unsupported usecase setting")
+	else: mm_error(d, e.offset, c"unsupported c4 setting")
+	return 1
+
 # key is the path below "config.".
 void mm_config_key(mm_document* d, mm_config_entry* e, char* key, list[int] user, int* theme, int* dark):
 	char* value = e.value
+	if (mm_config_family_key(d, e, key)): return
 	if (strcmp(key, c"packet") == 0 || strcmp(key, c"themeVariables") == 0 || strcmp(key, c"flowchart") == 0 || strcmp(key, c"kanban") == 0):
 		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
 	else if (strcmp(key, c"theme") == 0):

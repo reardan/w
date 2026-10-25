@@ -201,6 +201,8 @@ struct mm_edge:
 	# Label displacement in pixels (C4 UpdateRelStyle $offsetX/$offsetY).
 	int label_dx
 	int label_dy
+	# Minimum rank distance requested by extra dashes (0 or 1 = adjacent).
+	int min_length
 
 # UML notes are annotations, not graph vertices.
 struct mm_note:
