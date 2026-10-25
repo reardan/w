@@ -14,7 +14,11 @@ positioned diagnostic and suppresses the preview.
   against declarations. Requirement fields render in compartments with type
   annotations. Containment uses a circle-plus endpoint and other relationships
   use labelled dashed dependency arrows. Node styles/classes and link styles are
-  supported; rich Markdown and broader configuration remain incomplete.
+  supported, including `name:::class` on a definition or as its own
+  statement. `direction TB|BT|LR|RL` sets the layout direction. Keywords are
+  case-insensitive as in upstream's lexer (`docRef`, `verifyMethod: Test`,
+  `Satisfies`); members keep their written spelling. Rich Markdown and
+  broader configuration remain incomplete.
 - **Mindmaps:** a single indentation-based tree with plain text, `[square]`,
   `(rounded)`, `((circle))`, `)cloud(`, `))bang((` and `{{hexagon}}` labels. A
   dedicated subtree-height layout keeps sibling branches separate. Nesting is
@@ -65,7 +69,7 @@ x64, including the guard allocator's leak checks.
   (`highlightBg` / `highlightStroke`). `config: treeView: showIcons: true` adds folder icons
   for directories (a trailing `/` or children) and file icons otherwise;
   `filenameIcons: { Dockerfile: docker }` maps whole names (extension maps
-  need dotted YAML keys, which the frontmatter reader does not accept yet).
+  are dotted YAML keys such as `.ts:`, or `ts:`; the longest suffix wins).
   `rowIndent` and `lineThickness` change the row indent and connector width,
   and `themeVariables: treeView:` `labelColor`, `lineColor`,
   `descriptionColor`, `iconColor`, `highlightBg` and `highlightStroke`
@@ -135,13 +139,23 @@ x64, including the guard allocator's leak checks.
   xmark → cross, info, warn/exclamation/alert → warning triangle,
   search/magnif → magnifier, code/terminal → `</>`, bulb/idea → bulb,
   link/chain, envelope/mail, calendar, lock/key, globe/earth/web, brain,
-  flag. Any other name draws a round badge with its first letter
+  flag, ban, spinner, camera, truck, twitter/bird, phone/mobile, trash,
+  pencil/edit, plus, minus, play, bell. Flowchart labels use the same table
+  for Font Awesome prefixes (`fa:fa-ban`, `fab:`/`fas:`/`far:`/`fal:`/`fak:`,
+  matched as upstream's `fa[bklrs]?:fa-[\w-]+`): each reference becomes a
+  pictogram in its place in the line instead of text. Any other name draws a round badge with its first letter
   (`logos:react` → `R`). No icon font or pack is downloaded or bundled.
 
 - **GitGraph:** commit IDs, normal/reverse/highlight shapes, tags, branch
   creation, checkout/switch and merge commits with two parents. Branch heads
   determine commit ancestry; a dedicated time/lane layout shows history.
-  Duplicate IDs/branches, unknown checkouts, empty/self/same-head merges fail.
+  `commit "text"` and `commit msg: "text"` keep the message as `msg`
+  metadata (upstream does not draw it either). A repeated commit id is
+  accepted as upstream's commit map does: the id is rebound to the newer
+  commit, so later cherry-picks resolve to it, and the older commit keeps
+  its label under an internal `<id>~N` id. Upstream then stops drawing the
+  older commit; it stays drawn here. A merge with an existing custom id,
+  duplicate branches, unknown checkouts and empty/self/same-head merges fail.
   The layout supports LR, TB and BT. `branch name order: N` sorts explicitly
   ordered branches after unspecified branches, with stable ties. `cherry-pick
   id: "source"` creates a new commit on the current branch and retains source
@@ -156,13 +170,18 @@ x64, including the guard allocator's leak checks.
   `> ]`, rhombus `{ }`, hexagon `{{ }}`, parallelograms `[/ /]`/`[\ \]` and
   trapezoids `[/ \]`/`[\ /]`. Block arrows `id<["label"]>(dir)` accept
   `right`, `left`, `up`, `down`, `x` (both horizontal) and `y` (both
-  vertical) and take spans like other blocks. `style`, `classDef`, `class`
+  vertical) and take spans like other blocks; a comma-separated list such
+  as `(x, down)` draws one arrow with a head per listed direction around a
+  central square. `block:id:2` spans a composite over two parent columns.
+  `A-- "X" -->B` (also `==` and `-.` openings) labels a link like
+  `A-->|X|B`. `style`, `classDef`, `class`
   and inline `:::class` use the shared style subset (fill, stroke, color,
   stroke-width) on blocks and composites, and `linkStyle` on links; styling
   an undeclared block fails. Span overflow and malformed blocks fail
   explicitly. Column widths grow by actual content, so one large label does
   not multiply across every column. Dotted/thick links and block-arrow
-  geometry beyond the six directions remain unsupported.
+  geometry other than the six directions and their combinations remain
+  unsupported.
 
 - **Architecture:** services, nested groups, junctions, all sixteen
   source/target port pairs, arrowheads at either end, and explicit

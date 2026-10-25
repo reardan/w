@@ -36,6 +36,18 @@ int mm_tree_color(mm_document* d, char* key, int fallback):
 	if (color < 0): return fallback
 	return color
 
+# Config value of prefix + name, where dots inside name are the escaped
+# MM_CONFIG_KEY_DOT of a YAML member key such as `.ts` or `README.md`.
+char* mm_tree_icon_lookup(mm_document* d, char* prefix, char* name):
+	if (name[0] == 0): return 0
+	string_builder* key = string_from(prefix)
+	for i in range(strlen(name)):
+		if (name[i] == '.'): string_append_char(key, MM_CONFIG_KEY_DOT)
+		else: string_append_char(key, name[i])
+	char* mapped = mm_config_value(d, key.data)
+	string_free(key)
+	return mapped
+
 # Icon reference for a row: an explicit `icon(...)` always ("" hides it);
 # with `showIcons`, filenameIcons / extensionIcons, then folder or file.
 char* mm_tree_icon(mm_document* d, int index, int show):
@@ -43,19 +55,14 @@ char* mm_tree_icon(mm_document* d, int index, int show):
 	for mm_property* property in n.metadata:
 		if (strcmp(property.key, c"icon") == 0): return property.value
 	if (show == 0): return c""
-	string_builder* key = string_from(c"treeView.filenameIcons.")
-	string_append(key, n.label)
-	char* mapped = mm_config_value(d, key.data)
-	string_free(key)
+	char* mapped = mm_tree_icon_lookup(d, c"treeView.filenameIcons.", n.label)
 	if (mapped != 0): return mapped
-	int dot = -1
-	for i in range(strlen(n.label)):
-		if (n.label[i] == '.'): dot = i
-	if (dot > 0):
-		key = string_from(c"treeView.extensionIcons.")
-		string_append(key, n.label + dot + 1)
-		mapped = mm_config_value(d, key.data)
-		string_free(key)
+	# Extension keys may be written with or without their dot (`.ts` or
+	# `ts`); longer multi-dot suffixes (`.d.ts`) win over shorter ones.
+	for i in range(1, strlen(n.label)):
+		if (n.label[i] != '.'): continue
+		mapped = mm_tree_icon_lookup(d, c"treeView.extensionIcons.", n.label + i)
+		if (mapped == 0): mapped = mm_tree_icon_lookup(d, c"treeView.extensionIcons.", n.label + i + 1)
 		if (mapped != 0): return mapped
 	int folder = n.label[strlen(n.label) - 1] == '/'
 	for mm_node* other in d.nodes:

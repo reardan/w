@@ -9,6 +9,18 @@ int mm_in_words(char* value, char* options):
 	string_free(needle)
 	return found
 
+# mm_in_words with ASCII case folded, for case-insensitive lexers
+# (requirementDiagram); options must be lowercase.
+int mm_in_words_folded(char* value, char* options):
+	char* folded = strclone(value)
+	int i = 0
+	while (folded[i] != 0):
+		folded[i] = tolower(folded[i])
+		i = i + 1
+	int found = mm_in_words(folded, options)
+	free(folded)
+	return found
+
 void mm_graph_member(mm_parser* p, mm_node* n, char* key, char* value):
 	if (p.doc.attribute_count >= 4096):
 		mm_error(p.doc, p.pos, c"property limit exceeded")
@@ -32,6 +44,14 @@ void mm_requirement_body(mm_parser* p):
 		if (mm_metadata(p) || mm_style_statement(p)):
 			mm_separators(p)
 			continue
+		# `direction TB|BT|LR|RL` (upstream lexes it anywhere on its line).
+		if (mm_style_keyword(p, c"direction")):
+			if (mm_direction(p) && strcmp(p.doc.direction, c"TD") == 0):
+				free(p.doc.direction)
+				p.doc.direction = strclone(c"TB")
+			if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported requirement syntax")
+			mm_separators(p)
+			continue
 		char* word = mm_identifier(p)
 		if (mm_in_words(word, c"|requirement|functionalRequirement|interfaceRequirement|performanceRequirement|physicalRequirement|designConstraint|element|")):
 			char* id = mm_identifier(p)
@@ -45,6 +65,8 @@ void mm_requirement_body(mm_parser* p):
 			n.declared = 1
 			free(n.annotation)
 			n.annotation = strclone(word)
+			# `name:::class` assigns classDef classes, as upstream setClass does.
+			if (mm_match(p, c":::")): mm_style_inline(p, n)
 			mm_space(p)
 			if (mm_match(p, c"{") == 0): mm_error(p.doc, p.pos, c"expected requirement property block")
 			mm_separators(p)
@@ -52,15 +74,18 @@ void mm_requirement_body(mm_parser* p):
 			while (mm_peek(p) != '}' && p.doc.error == 0):
 				char* key = mm_identifier(p)
 				int element = strcmp(word, c"element") == 0
-				if ((element && mm_in_words(key, c"|type|docref|") == 0) || (element == 0 && mm_in_words(key, c"|id|text|risk|verifymethod|") == 0)): mm_error(p.doc, p.pos, c"unsupported requirement property")
+				# Keywords are case-insensitive upstream (`docRef`, `verifyMethod`).
+				if ((element && mm_in_words_folded(key, c"|type|docref|") == 0) || (element == 0 && mm_in_words_folded(key, c"|id|text|risk|verifymethod|") == 0)): mm_error(p.doc, p.pos, c"unsupported requirement property")
+				char* folded_key = strclone(key)
+				for i in range(strlen(folded_key)): folded_key[i] = tolower(folded_key[i])
 				for char* prior in keys:
-					if (strcmp(prior, key) == 0): mm_error(p.doc, p.pos, c"duplicate requirement property")
-				keys.push(strclone(key))
+					if (strcmp(prior, folded_key) == 0): mm_error(p.doc, p.pos, c"duplicate requirement property")
+				keys.push(folded_key)
 				mm_space(p)
 				if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"expected property colon")
 				char* value = mm_property_value(p)
-				if (strcmp(key, c"risk") == 0 && mm_in_words(value, c"|low|medium|high|Low|Medium|High|") == 0): mm_error(p.doc, p.pos, c"expected risk low, medium or high")
-				if (strcmp(key, c"verifymethod") == 0 && mm_in_words(value, c"|analysis|inspection|test|demonstration|Analysis|Inspection|Test|Demonstration|") == 0): mm_error(p.doc, p.pos, c"invalid verification method")
+				if (strcmp(folded_key, c"risk") == 0 && mm_in_words_folded(value, c"|low|medium|high|") == 0): mm_error(p.doc, p.pos, c"expected risk low, medium or high")
+				if (strcmp(folded_key, c"verifymethod") == 0 && mm_in_words_folded(value, c"|analysis|inspection|test|demonstration|") == 0): mm_error(p.doc, p.pos, c"invalid verification method")
 				mm_graph_member(p, n, key, value)
 				free(key)
 				free(value)
@@ -71,11 +96,19 @@ void mm_requirement_body(mm_parser* p):
 			if (mm_match(p, c"}") == 0): mm_error(p.doc, p.pos, c"unterminated requirement block")
 		else:
 			int from = mm_add_node(p.doc, word, p.pos)
+			# A standalone `name:::class` statement assigns classes.
+			if (from >= 0 && mm_match(p, c":::")):
+				mm_style_inline(p, p.doc.nodes[from])
+				free(word)
+				if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported requirement syntax")
+				mm_separators(p)
+				continue
 			mm_space(p)
 			int reverse = mm_match(p, c"<-")
 			if (reverse == 0 && mm_match(p, c"-") == 0): mm_error(p.doc, p.pos, c"expected requirement relationship")
 			char* relation = mm_identifier(p)
-			if (mm_in_words(relation, c"|contains|copies|derives|satisfies|verifies|refines|traces|") == 0): mm_error(p.doc, p.pos, c"unknown requirement relationship")
+			for i in range(strlen(relation)): relation[i] = tolower(relation[i])
+			if (mm_in_words_folded(relation, c"|contains|copies|derives|satisfies|verifies|refines|traces|") == 0): mm_error(p.doc, p.pos, c"unknown requirement relationship")
 			mm_space(p)
 			if ((reverse && mm_match(p, c"-") == 0) || (reverse == 0 && mm_match(p, c"->") == 0)): mm_error(p.doc, p.pos, c"expected relationship arrow")
 			char* id = mm_identifier(p)
