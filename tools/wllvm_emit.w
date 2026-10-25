@@ -914,6 +914,7 @@ void llvm_generator_emit_runtime();
 int llvm_uses_debugtrap
 char* llvm_call1(int id, char* name, char* a);
 char* llvm_method_call(int group, int id, retained_node* node);
+char* llvm_direct_call(int group, int id, int linkage, list[int] operands);
 char* llvm_array_allocation(int group, int id, retained_node* node);
 char* llvm_propagate(int group, int id, retained_node* node);
 int llvm_is_var(int type);
@@ -928,6 +929,8 @@ char* llvm_ptx_module();
 map[int, char*] llvm_codec_descs
 int llvm_codec_globals
 char* llvm_codec(int group, int id, retained_node* node);
+char* llvm_overload(int group, int id, retained_node* node);
+char* llvm_ndarray(int group, int id, retained_node* node);
 # arrays inside records (defined after the generators)
 void llvm_init_array_fields(int type, char* address);
 int llvm_global_record_headers(int linkage, int type, string_builder* text);
@@ -2450,6 +2453,7 @@ char* llvm_prelude_helper(int index):
 	if (index == 0): return c"__w_print_int"
 	if (index == 1): return c"__w_print_cstr"
 	if (index == 2): return c"__w_print_str"
+	if (index == 3): return c"__w_print_float32"
 	if (index == 5): return c"__w_print_nl"
 	if (index == 9): return c"__w_max"
 	if (index == 10): return c"__w_min"
@@ -2586,8 +2590,11 @@ char* llvm_value_inner(int group, int operand);
 
 
 char* llvm_value(int group, int operand):
-	if (llvm_expression_depth >= 256):
-		llvm_error(llvm_node_id(group, operand), c"expression nesting beyond 256 nodes")
+	# The front end itself allows 1000 open ternaries
+	# (grammar/conditional_expr.w); deeper trees stop here, not on a
+	# stack overflow.
+	if (llvm_expression_depth >= 4096):
+		llvm_error(llvm_node_id(group, operand), c"expression nesting beyond 4096 nodes")
 		return c"0"
 	llvm_expression_depth = llvm_expression_depth + 1
 	char* result = llvm_value_inner(group, operand)
@@ -2845,7 +2852,8 @@ char* llvm_value_inner(int group, int operand):
 			arg = argument.next_arg
 			if (op == 'P'): arg = -1
 		char* result = c"0"
-		if ((op == 'y') || (node.left >= 0)): result = llvm_helper_call(id, name, values)
+		# println() alone is just the newline (name is __w_print_nl).
+		if ((op == 'y') || (node.left >= 0) || (node.value != 0)): result = llvm_helper_call(id, name, values)
 		if ((op == 'P') && (node.value != 0) && (node.left >= 0)):
 			values.free()
 			values = new list[char*]
@@ -2857,6 +2865,8 @@ char* llvm_value_inner(int group, int operand):
 	if (op == 'X'): return llvm_generator_create(group, id, &node)
 	if (op == 'z'): return llvm_method_call(group, id, &node)
 	if (op == 'x'): return llvm_codec(group, id, &node)
+	if (op == 'l'): return llvm_overload(group, id, &node)
+	if ((op == 128) || (op == 129) || (op == 130)): return llvm_ndarray(group, id, &node)
 	if (op == 'Y'): return llvm_array_allocation(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
@@ -4718,17 +4728,9 @@ int llvm_global_record_headers(int linkage, int type, string_builder* text):
 # receiver.method(args) (op 'z', UFCS): T_method(receiver, args...). A
 # record receiver passes its address, as a T* parameter takes it.
 char* llvm_method_call(int group, int id, retained_node* node):
-	int result_class = llvm_class(node.semantic_type)
-	if ((result_class != llvm_class_word) && (result_class != llvm_class_void)):
-		llvm_error(id, c"call result type")
-		return c"0"
 	if ((node.binding < 0) || ((retained_bindings[node.binding].linkage in llvm_functions) == 0)):
 		llvm_error(id, c"method without a W body")
 		return c"0"
-	int linkage = retained_bindings[node.binding].linkage
-	retained_node definition
-	retained_node_load(llvm_functions[linkage], &definition)
-	retained_binding* defined = retained_bindings[definition.binding]
 	list[int] operands = new list[int]
 	operands.push(node.right)
 	int arg = node.left
@@ -4737,32 +4739,8 @@ char* llvm_method_call(int group, int id, retained_node* node):
 		retained_node argument
 		retained_node_load(llvm_node_id(group, arg), &argument)
 		arg = argument.next_arg
-	list[char*] values = new list[char*]
-	for i in range(operands.length):
-		if (llvm_failed): break
-		values.push(llvm_value(group, operands[i]))
-	if (operands.length != defined.parameters.length): llvm_error_at(id, c"method argument count", defined.name)
-	if (llvm_failed):
-		operands.free()
-		values.free()
-		return c"0"
-	for i in range(values.length):
-		if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", defined.name)
-		values[i] = llvm_convert(id, values[i], llvm_operand_type(group, operands[i]), defined.parameters[i])
-		llvm_owner_move(group, operands[i], defined.parameters[i])
-	char* result = llvm_temp()
-	llvm_put(c"  ")
-	llvm_put(result)
-	llvm_put(c" = call i64 ")
-	llvm_put(llvm_function_symbol(linkage))
-	llvm_put(c"(")
-	for i in range(values.length):
-		if (i > 0): llvm_put(c", ")
-		llvm_put(c"i64 ")
-		llvm_put(values[i])
-	llvm_put(c")\x0a")
+	char* result = llvm_direct_call(group, id, retained_bindings[node.binding].linkage, operands)
 	operands.free()
-	values.free()
 	return result
 
 
@@ -5103,11 +5081,17 @@ int llvm_is_gpu_for(int id):
 	retained_node node
 	retained_node_load(id, &node)
 	if (strcmp(node.name, c"gpu") != 0): return 0
+	# 'gpu T* p = e' is a declaration with a gpu-qualified type: a loop
+	# also has its body statement.
+	int local = 0
+	int body = 0
 	int child = llvm_first[id]
 	while (child >= 0):
-		if (retained_node_kind(child) == retained_local): return 1
+		int kind = retained_node_kind(child)
+		if (kind == retained_local): local = 1
+		else if (kind != retained_expression_group): body = 1
 		child = llvm_next[child]
-	return 0
+	return local && body
 
 
 void llvm_gpu_for(int id, retained_node* node):
@@ -5449,6 +5433,126 @@ char* llvm_codec(int group, int id, retained_node* node):
 	if (kind == 2): return llvm_call2(id, c"pb_to_bytes", descriptor, argument)
 	if (kind == 3): return llvm_call2(id, c"pb_from_bytes", descriptor, argument)
 	return llvm_call3(id, c"pb_from_data", descriptor, argument, llvm_value(group, node.right))
+
+
+# --- operator overloads and ndarray indexing ----------------------------------
+# a + b on a record value calls the resolved 'op$+$T$U' function ('l',
+# operator_emit_binary): the two operands as its arguments, a record
+# result through a caller buffer.
+char* llvm_direct_call(int group, int id, int linkage, list[int] operands):
+	retained_node definition
+	retained_node_load(llvm_functions[linkage], &definition)
+	retained_binding* defined = retained_bindings[definition.binding]
+	if (operands.length != defined.parameters.length):
+		llvm_error_at(id, c"call argument count", defined.name)
+		return c"0"
+	list[char*] values = new list[char*]
+	for i in range(operands.length):
+		if (llvm_failed): break
+		values.push(llvm_value(group, operands[i]))
+	if (llvm_failed):
+		values.free()
+		return c"0"
+	for i in range(values.length):
+		if (llvm_parameter_ok(defined.parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", defined.name)
+		values[i] = llvm_convert(id, values[i], llvm_operand_type(group, operands[i]), defined.parameters[i])
+		llvm_owner_move(group, operands[i], defined.parameters[i])
+	char* buffer = 0
+	if (llvm_class(defined.return_type) == llvm_class_struct): buffer = llvm_address_value(llvm_record_buffer(defined.return_type))
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = call i64 ")
+	llvm_put(llvm_function_symbol(linkage))
+	llvm_put(c"(")
+	if (buffer != 0):
+		llvm_put(c"i64 ")
+		llvm_put(buffer)
+		if (values.length > 0): llvm_put(c", ")
+	for i in range(values.length):
+		if (i > 0): llvm_put(c", ")
+		llvm_put(c"i64 ")
+		llvm_put(values[i])
+	llvm_put(c")\x0a")
+	values.free()
+	if (buffer != 0): return buffer
+	return result
+
+
+char* llvm_overload(int group, int id, retained_node* node):
+	if ((node.binding < 0) || ((retained_bindings[node.binding].linkage in llvm_functions) == 0)):
+		llvm_error(id, c"operator without a W body")
+		return c"0"
+	list[int] operands = new list[int]
+	operands.push(node.left)
+	operands.push(node.right)
+	char* result = llvm_direct_call(group, id, retained_bindings[node.binding].linkage, operands)
+	operands.free()
+	return result
+
+
+# A named W function's parameter types, or 0 (with a diagnostic).
+retained_binding* llvm_named_function(int id, char* name):
+	if (((name in llvm_function_names) == 0) || ((llvm_function_names[name] in llvm_functions) == 0)):
+		llvm_error_at(id, c"call to a missing runtime helper", name)
+		return 0
+	retained_node definition
+	retained_node_load(llvm_functions[llvm_function_names[name]], &definition)
+	return retained_bindings[definition.binding]
+
+
+# m[i, j] (grammar/ndarray_index.w): T_at<n>(receiver, i, j) reads,
+# T_set<n>(receiver, i, j, value) writes, and op= reads, combines and
+# writes over the same operands, each evaluated once. A record receiver
+# passes its address, as binary1 does. The value is the stored one.
+char* llvm_ndarray(int group, int id, retained_node* node):
+	retained_node index
+	int index_id = id
+	if (node.op == 129): index_id = llvm_node_id(group, node.left)
+	retained_node_load(index_id, &index)
+	char* get_name = ndarray_accessor_name_for(index.value, index.high, c"_at")
+	retained_binding* getter = llvm_named_function(id, get_name)
+	if (getter == 0): return c"0"
+	list[char*] values = new list[char*]
+	values.push(llvm_value(group, index.left))
+	int arg = index.right
+	int integer = getter.parameters[1]
+	while ((arg >= 0) && (llvm_failed == 0)):
+		retained_node argument
+		retained_node_load(llvm_node_id(group, arg), &argument)
+		values.push(llvm_convert(id, llvm_value(group, arg), argument.semantic_type, integer))
+		arg = argument.next_arg
+	if (llvm_failed):
+		values.free()
+		return c"0"
+	if (node.op != 129):
+		char* read = llvm_helper_call(id, get_name, values)
+		values.free()
+		return read
+	char* set_name = ndarray_accessor_name_for(index.value, index.high, c"_set")
+	retained_binding* setter = llvm_named_function(id, set_name)
+	if (setter == 0):
+		values.free()
+		return c"0"
+	int want = setter.parameters[setter.parameters.length - 1]
+	int right_type = llvm_operand_type(group, node.right)
+	char* value = c"0"
+	if (node.value != 0):
+		int loaded = getter.return_type
+		char* before = llvm_helper_call(id, get_name, values)
+		value = llvm_value(group, node.right)
+		if (llvm_float_kind(loaded) || llvm_float_kind(right_type)):
+			int kind = 0
+			value = llvm_float_binary(id, node.value, before, loaded, value, right_type, &kind)
+			value = llvm_float_coerce(value, kind, llvm_float_kind(want))
+			right_type = want
+		else: value = llvm_binary(id, node.value, llvm_unsigned_word(loaded) || llvm_unsigned_word(right_type), before, value)
+	else: value = llvm_value(group, node.right)
+	value = llvm_convert(id, value, right_type, want)
+	values.push(value)
+	llvm_helper_call(id, set_name, values)
+	values.free()
+	return value
 
 
 void llvm_forms_emit_runtime():

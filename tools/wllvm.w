@@ -292,14 +292,23 @@ int main(int argc, int argv):
 	retained_query_mode = 1
 	# Use the production analysis path and preserve its diagnostics. No LLVM
 	# output is opened until both semantic analysis and subset validation pass.
-	char* args = cast(char*, malloc(5 * __word_size__))
+	# An x64 asm block that is a whole function body lowers from its
+	# assembled bytes (llvm_asm_shim), as natively. AArch64 blocks run on
+	# the W stack, so there functions with asm blocks compile their
+	# portable W bodies (--no-asm), which grammar/asm_function.w requires to
+	# be equivalent.
+	char* args = cast(char*, malloc(6 * __word_size__))
 	save_ptr(args, cast(int, compiler_argv0))
 	llvm_arm64 = strcmp(arch, c"arm64") == 0
 	save_ptr(args + __word_size__, cast(int, arch))
 	save_ptr(args + 2 * __word_size__, cast(int, c"--quiet"))
 	save_ptr(args + 3 * __word_size__, cast(int, c"--ast-required"))
-	save_ptr(args + 4 * __word_size__, cast(int, input))
-	int status = link_impl(5, cast(int, args), 1, 1)
+	int count = 5
+	if (llvm_arm64):
+		save_ptr(args + 4 * __word_size__, cast(int, c"--no-asm"))
+		count = 6
+	save_ptr(args + (count - 1) * __word_size__, cast(int, input))
+	int status = link_impl(count, cast(int, args), 1, 1)
 	free(args)
 	# The analysis ran in check mode, which leaves a called prototype
 	# without a body to the link; this is the link (exits 1 with the
