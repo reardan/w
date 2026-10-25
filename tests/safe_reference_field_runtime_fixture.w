@@ -2,7 +2,7 @@ import lib.memory_debug
 import tests.safe_reference_field_import_fixture
 
 
-type ReferenceUpdate = fn[a,b,c,d](own[a,b,c,d] ReferenceOwner*, ref[a] int[], ref[c] int*, ref[d] int*) -> own[a,b,c,d] ReferenceOwner*
+type ReferenceUpdate = fn[a, b, c, d](own[a, b, c, d] ReferenceOwner*, ref[a] int[], ref[c] int*, ref[d] int*) -> own[a, b, c, d] ReferenceOwner*
 
 
 int reference_exercise():
@@ -14,7 +14,7 @@ int reference_exercise():
 	int next = 5
 	int left = 6
 	int right = 7
-	own[a,b,c,d] ReferenceOwner* owner = reference_owner(first, &value, &left, &right)
+	own[a, b, c, d] ReferenceOwner* owner = reference_owner(first, &value, &left, &right)
 	ReferenceUpdate* update = reference_update
 	owner = update(owner, second, &left, &right)
 	for i in range(100):
@@ -23,7 +23,7 @@ int reference_exercise():
 		*p += 1
 		owner.pair = ReferencePair(reference_pass[int](&left), &right)
 		owner.items = second
-	ref[a,b] ReferencePair pair = owner.pair
+	ref[a, b] ReferencePair pair = owner.pair
 	ref int* p = pair.first
 	ref int* q = pair.second
 	int sum = *p + *q
@@ -36,7 +36,7 @@ int reference_exits(int early):
 	int value = 1
 	int left = 2
 	int right = 3
-	own[a,b,c,d] ReferenceOwner* owner = reference_owner(data, &value, &left, &right)
+	own[a, b, c, d] ReferenceOwner* owner = reference_owner(data, &value, &left, &right)
 	for i in range(3):
 		owner.items = data
 		owner.pair = ReferencePair(&left, &right)

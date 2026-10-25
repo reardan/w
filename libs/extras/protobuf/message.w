@@ -140,12 +140,12 @@ struct pb_field_desc:
 	int number    # wire field number
 	int kind      # PB_KIND_*
 	int offset    # byte offset into the struct (see tests/protobuf_test.w
-	              # for the cast(int, &s.field) - cast(int, &s) idiom
-	              # used to compute this without hand-counting field
-	              # widths, which differ by target)
+				  # for the cast(int, &s.field) - cast(int, &s) idiom
+				  # used to compute this without hand-counting field
+				  # widths, which differ by target)
 	int aux       # PB_KIND_MESSAGE: nested pb_message_desc*
-	              # PB_KIND_REPEATED: pb_value_desc*
-	              # otherwise: unused (0)
+				  # PB_KIND_REPEATED: pb_value_desc*
+				  # otherwise: unused (0)
 
 
 struct pb_message_desc:

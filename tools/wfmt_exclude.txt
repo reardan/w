@@ -1,0 +1,72 @@
+# Files the wfmt_check target (tools/wfmt.w) does not hold to wfmt's
+# style: one repo-relative path per line, a path ending in '/' skips the
+# directory. Generated sources stay as their generator writes them, and
+# fixtures whose exact bytes are the test (unterminated literals at end
+# of file, whitespace and column-sensitive diagnostics) stay as written.
+
+# Audited runtime sources: --safe pins their sha256 in
+# compiler/safe_runtime.w, so a reformat needs a re-audit
+code_generator/integer.w
+lib/__arch__/arm64/android.w
+lib/__arch__/arm64/context.w
+lib/__arch__/arm64/syscalls.w
+lib/__arch__/arm64_darwin/android.w
+lib/__arch__/arm64_darwin/context.w
+lib/__arch__/arm64_darwin/syscalls.w
+lib/__arch__/wasm/android.w
+lib/__arch__/wasm/context.w
+lib/__arch__/wasm/syscalls.w
+lib/__arch__/win64/android.w
+lib/__arch__/win64/context.w
+lib/__arch__/win64/syscalls.w
+lib/__arch__/x64/android.w
+lib/__arch__/x64/context.w
+lib/__arch__/x64/syscalls.w
+lib/__arch__/x86/android.w
+lib/__arch__/x86/context.w
+lib/__arch__/x86/syscalls.w
+lib/arm64/android_stat.w
+lib/arm64/context.w
+lib/arm64/syscalls.w
+lib/assert.w
+lib/context_aarch64.w
+lib/context_x86_64.w
+lib/darwin/context.w
+lib/darwin/stat_layout.w
+lib/darwin/syscalls.w
+lib/fs_flags_arm64.w
+lib/hex.w
+lib/lib.w
+lib/linux.w
+lib/memory.w
+lib/memory_debug.w
+lib/memory_freelist.w
+lib/not_android.w
+lib/page_size.w
+lib/safe_buffer.w
+lib/safe_foreign.w
+lib/safe_thread.w
+lib/signal.w
+lib/stack_trace.w
+lib/syscalls_linux_x86.w
+lib/thread.w
+lib/thread_heap.w
+lib/valgrind.w
+lib/win32_stubs.w
+structures/hash_table.w
+structures/prelude.w
+structures/w_list.w
+
+# Diagnostic fixtures whose expected output depends on their whitespace
+tests/warning_fixture.w
+
+# Generated (regenerate with their generators, don't reformat)
+libs/extras/c_import/generated_c_parser.w
+libs/standard/sql/generated_sql_parser.w
+
+# End inside an unterminated literal with no final newline
+tests/diagnostic_sites/unterm_error_fixture.w
+tests/diagnostic_sites/untermchar_error_fixture.w
+tests/prefixed_string_unterminated_fixture.w
+tests/template_string_unterminated_expr_fixture.w
+tests/template_string_unterminated_fixture.w

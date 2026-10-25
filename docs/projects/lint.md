@@ -183,8 +183,8 @@ parse point:
   callbacks.
 - `unused-local` counts any reference, so a local that is only ever
   assigned to still counts as used.
-- `--fix` covers whitespace only. A rewriting formatter (issue #25's
-  `wfmt`) still needs a lossless token stream the single-pass tokenizer
-  does not keep.
+- `--fix` covers whitespace only. The rewriting formatter is `bin/wfmt`
+  (issue #716, [wfmt.md](wfmt.md)), built on the ParserGenerator's
+  lossless token stream rather than the single-pass tokenizer.
 - `unreachable` does not know about calls that never return (`exit`,
   `error`), or an `if`/`else` whose branches all return.

@@ -2996,8 +2996,6 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 	wbg_error2(c"stale manifest: ", out_path)
 
 
-
-
 /* Generate the manifest in memory and return its rendered JSON text, or
 0 after printing an error. scan_tree = 0 skips the source-tree walk, so
 only build.base.json's own targets and its tool_targets come out: the

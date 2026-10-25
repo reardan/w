@@ -49,7 +49,7 @@ import lib.lib
 
 int type_get_pointer_level(int type_index);
 int type_float_kind(int t);
-void error(char *s);
+void error(char* s);
 void movd_xmm0_eax();
 void cvtss2sd_xmm0();
 void movq_rax_xmm0();

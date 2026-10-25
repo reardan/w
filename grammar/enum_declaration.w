@@ -24,7 +24,7 @@ int enum_declaration():
 		get_token()
 		expect(c":")
 		int value = 0
-		while(tab_level > start_tab_level):
+		while (tab_level > start_tab_level):
 			char* value_name = strclone(token)
 			int value_line = diag_token_line
 			int value_column = diag_token_column

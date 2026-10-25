@@ -79,7 +79,7 @@ struct dag_node:
 	list[dag_node*] parents
 	int generation         # 0 for a root; else 1 + max(parent generations)
 	int seq                # 0-based insertion index: dense, stable, and
-	                        # equal to this node's position in topo order
+							# equal to this node's position in topo order
 
 
 struct dag:

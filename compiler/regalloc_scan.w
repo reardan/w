@@ -351,7 +351,6 @@ const int rs_id_for = 6
 const int rs_id_range = 7   # not a keyword: the for header's 'range' call
 
 
-
 void rs_tables_ensure():
 	if (rs_names == 0):
 		rs_names = new list[char*]

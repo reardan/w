@@ -141,7 +141,7 @@ void test_fail():
 void test_reverse_n():
 	# Reverse mutates in place, so operate on a heap copy rather than the
 	# string literal (which lives in the now read-only code segment).
-	char *hey = strclone(c"hey there")
+	char* hey = strclone(c"hey there")
 	reverse_n(hey, 3)
 	assert_strings_equal(c"yeh there", hey)
 	free(hey)
@@ -154,14 +154,14 @@ void test_reverse_n():
 
 
 void test_reverse_odd():
-	char *me = strclone(c"reverseme")
+	char* me = strclone(c"reverseme")
 	reverse(me)
 	assert_strings_equal(c"emesrever", me)
 	free(me)
 
 
 void test_reverse_even():
-	char *me = strclone(c"even")
+	char* me = strclone(c"even")
 	reverse(me)
 	assert_strings_equal(c"neve", me)
 	free(me)
@@ -189,10 +189,10 @@ void test_atoi():
 void test_intstrlen():
 	assert_equal(5, intstrlen(-1000))
 	assert_equal(4, intstrlen(-100))
-	assert_equal(3, intstrlen(0-99))
+	assert_equal(3, intstrlen(0 - 99))
 	assert_equal(3, intstrlen(-10))
-	assert_equal(2, intstrlen(0-9))
-	assert_equal(2, intstrlen(0-2))
+	assert_equal(2, intstrlen(0 - 9))
+	assert_equal(2, intstrlen(0 - 2))
 	assert_equal(2, intstrlen(-1))
 	assert_equal(1, intstrlen(0))
 	assert_equal(1, intstrlen(1))

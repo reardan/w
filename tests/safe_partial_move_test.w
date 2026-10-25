@@ -94,8 +94,6 @@ void partial_move_case(char* source, char* diagnostic, int relaxed = 0, int seed
 	free(full)
 
 
-
-
 void test_partial_move_0():
 	partial_move_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* first = pair.first\n\t*first = 7\n\trefmut int* second = pair.second\n\t*second = 8\n\treturn *first + *second - 15\n", 0)
 	partial_move_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* first = pair.first\n\town int* second = pair.second\n\t*first = 7\n\t*second = 8\n\treturn *first + *second - 15\n", 0)

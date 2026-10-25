@@ -2,7 +2,7 @@ import code_generator.integer
 import code_generator.word_size
 
 
-char *code
+char* code
 int code_size
 int codepos
 int base_code_offset
@@ -22,7 +22,7 @@ int code_fixed_error_hook
 # read-execute and the data segment read-write. The in-process REPL and
 # debugger leave data_split at 0, keeping globals inline in the single
 # executed buffer (their mmap is RWX), so nothing changes for them.
-char *data
+char* data
 int data_size
 int datapos
 int data_offset
@@ -248,7 +248,7 @@ void regalloc_guard():
 		if (reg_lvalue_end == codepos): regalloc_guard_fail()
 
 
-void emit(int n, char *s):
+void emit(int n, char* s):
 	if (reg_lvalue_end != 0): regalloc_guard()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()

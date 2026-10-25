@@ -73,10 +73,10 @@ struct otl_glyph:
 	int props         # otl_class_* glyph class
 	int unicode_mark  # nonspacing mark (Mn/Me) in the source text
 	int lig_id        # HarfBuzz's lig_id (1..7): the ligature this glyph
-	                  # is, or a mark (or skipped glyph) was inside; or 0
+					  # is, or a mark (or skipped glyph) was inside; or 0
 	int lig_comp      # 1-based component of that ligature (0-based for a
-	                  # multiple substitution's outputs), or the component
-	                  # count on the ligature glyph itself (otl_subst_lig_base)
+					  # multiple substitution's outputs), or the component
+					  # count on the ligature glyph itself (otl_subst_lig_base)
 	int x_advance
 	int y_advance
 	int x_offset

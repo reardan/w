@@ -238,8 +238,6 @@ void check_contains(char* desc, attach_run* r, char* expect):
 	out_indented(r.text)
 
 
-
-
 # Number of lines containing needle (grep -cF).
 int count_lines_with(char* text, char* needle):
 	list[char*] lines = split(text, 10)
