@@ -132,6 +132,72 @@ atomic save semantics, scene/document lifetimes and editor conflict handling. Se
 and frontmatter indentation. Supported palettes are native approximations;
 accepting a theme name does not imply upstream visual parity.
 
+## Conformance corpus
+
+[`tests/mermaid_corpus/`](../../tests/mermaid_corpus/README.md) vendors every
+Mermaid code block of the pinned `mermaid@12.2.0` syntax documentation (the 33
+sidebar pages plus `railroad.md`; MIT, attribution in the corpus README) as one
+`.mmd` file per example, grouped by detected family. `./wbuild
+mermaid_corpus_test` (part of `./wbuild tests`) reads each example through the
+same path as `wmermaid` (frontmatter, `%%{init}%%`, fences), renders it and
+exports SVG, and compares the outcome with `tests/mermaid_corpus/manifest.txt`:
+*supported* parses and renders a non-empty scene and SVG; *partial* parses but
+renders nothing, or renders with a known difference recorded as a note;
+*unsupported* is rejected with the recorded diagnostic. Regressions and newly
+accepted examples both fail the test until `./wbuild mermaid_corpus_update`
+rewrites the manifest and the table below (notes are preserved). Counts measure
+acceptance, not visual parity: a *supported* example renders, but may still
+differ from upstream in layout or detail.
+
+<!-- corpus-counts:begin -->
+
+| Family | Supported | Partial | Unsupported | Total |
+| --- | ---: | ---: | ---: | ---: |
+| agentflow | 9 | 0 | 3 | 12 |
+| architecture | 2 | 0 | 4 | 6 |
+| block | 24 | 0 | 6 | 30 |
+| c4 | 0 | 0 | 6 | 6 |
+| class | 31 | 0 | 7 | 38 |
+| cynefin | 3 | 0 | 0 | 3 |
+| er | 22 | 0 | 3 | 25 |
+| eventmodeling | 11 | 0 | 2 | 13 |
+| flowchart | 35 | 2 | 79 | 116 |
+| gantt | 3 | 0 | 8 | 11 |
+| gitgraph | 13 | 0 | 23 | 36 |
+| ishikawa | 1 | 0 | 0 | 1 |
+| journey | 1 | 0 | 0 | 1 |
+| kanban | 2 | 0 | 1 | 3 |
+| mindmap | 10 | 2 | 3 | 15 |
+| packet | 2 | 0 | 2 | 4 |
+| pie | 3 | 0 | 1 | 4 |
+| quadrant | 2 | 0 | 1 | 3 |
+| radar | 2 | 0 | 1 | 3 |
+| railroad | 14 | 0 | 0 | 14 |
+| requirement | 6 | 0 | 3 | 9 |
+| sankey | 4 | 0 | 4 | 8 |
+| sequence | 29 | 2 | 11 | 42 |
+| state | 19 | 0 | 3 | 22 |
+| swimlane | 12 | 0 | 1 | 13 |
+| timeline | 6 | 0 | 8 | 14 |
+| treemap | 5 | 0 | 3 | 8 |
+| treeview | 5 | 0 | 8 | 13 |
+| usecase | 9 | 0 | 15 | 24 |
+| venn | 7 | 0 | 1 | 8 |
+| wardley | 12 | 0 | 7 | 19 |
+| xychart | 4 | 0 | 4 | 8 |
+| zenuml | 13 | 0 | 3 | 16 |
+| **All** | **321** | **6** | **221** | **548** |
+
+<!-- corpus-counts:end -->
+
+To review a future upstream bump, re-run `python3 -I
+tools/mermaid_corpus_extract.py --tag mermaid@<new>` (after adding any new
+syntax pages to its `DOCS` table), then `./wbuild mermaid_corpus_update`, and
+review the corpus diff: new and renumbered examples appear in `index.txt`,
+their outcomes in `manifest.txt`, and family totals in this table. New
+unsupported examples are the inventory of syntax the bump introduced; update the
+family rows above and the inventory baseline accordingly.
+
 ## Remaining completion criteria
 
 The family-coverage milestone is complete. Compatibility work remains measurable
