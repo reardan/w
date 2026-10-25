@@ -228,7 +228,7 @@ ui_paragraph* ui_paragraph_shape(char* text, int length, int strike, int directi
 	p.descent = ui_font_strike_descent(strike)
 	for i in range(p.item_count):
 		ui_text_item* item = &p.items[i]
-		item.strike = ui_font_strike(item.face, ppem)
+		item.strike = ui_font_strike_sibling(strike, item.face, ppem)
 		if (item.strike < 0):
 			p.status = UI_SHAPE_FAILED
 			return p

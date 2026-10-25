@@ -28,7 +28,7 @@ scan/color modes. Consult each linked document before accepting a wider input
 contract.
 
 These issue tracks remain broader than the delivered APIs. Paragraph
-line breaking, hinting and Sinhala/Myanmar/Khmer/USE shaping remain
+line breaking and Sinhala/Myanmar/Khmer/USE shaping remain
 open text work after [#459](https://github.com/reardan/w/issues/459). Screen-reader qualification on
 real Windows/macOS and richer text/table semantics remain
 [#465](https://github.com/reardan/w/issues/465). Broader JavaScript syntax,
