@@ -534,11 +534,243 @@ void mm_cynefin_badge(mm_scene* s, int cx, int y, char* text, int overflow):
 	if (overflow): badge.dashed = 0
 	mm_text(s, cx - width / 2 + 10, y + 5, text)
 
+# Dense transition routing (issue #817). Upstream draws every transition
+# from domain centre to domain centre bowed by 15%, so arrows land on the
+# domain names and parallel transitions coincide. Here each domain's text
+# (name, model, practices, item badges) is a keep-out block. A transition
+# runs on a line parallel to the centre line, shifted 8px to the left of
+# its direction (and 16px further for each earlier transition between the
+# same domains in the same direction), from where that line leaves the
+# source block (plus a margin) to where it enters the target's; it bows
+# to the same side by 15% (+15% per nesting step) of its chord, so a
+# reverse transition takes the other side and repeats nest outside each
+# other. Where that curve would enter a third domain's block or run
+# alongside an earlier transition, bows 30% and 60% larger, then a 60%
+# smaller one are tried; with none clean the least bad wins.
+# Labels sit beside the curve's midpoint, moving along and across it until
+# they overlap no block and no earlier label.
+const int MM_CYNEFIN_MARGIN = 10
+
+struct mm_cynefin_router:
+	# Keep-out text blocks per domain (x0, y0, x1, y1).
+	list[int] bx0
+	list[int] by0
+	list[int] bx1
+	list[int] by1
+	# Sample points of curves drawn so far, and placed label boxes.
+	list[int] sx
+	list[int] sy
+	list[int] lx0
+	list[int] ly0
+	list[int] lx1
+	list[int] ly1
+
+mm_cynefin_router* mm_cynefin_router_new():
+	mm_cynefin_router* r = new mm_cynefin_router()
+	r.bx0 = new list[int]
+	r.by0 = new list[int]
+	r.bx1 = new list[int]
+	r.by1 = new list[int]
+	r.sx = new list[int]
+	r.sy = new list[int]
+	r.lx0 = new list[int]
+	r.ly0 = new list[int]
+	r.lx1 = new list[int]
+	r.ly1 = new list[int]
+	return r
+
+void mm_cynefin_router_free(mm_cynefin_router* r):
+	__w_list_free(cast(__w_list*, r.bx0))
+	__w_list_free(cast(__w_list*, r.by0))
+	__w_list_free(cast(__w_list*, r.bx1))
+	__w_list_free(cast(__w_list*, r.by1))
+	__w_list_free(cast(__w_list*, r.sx))
+	__w_list_free(cast(__w_list*, r.sy))
+	__w_list_free(cast(__w_list*, r.lx0))
+	__w_list_free(cast(__w_list*, r.ly0))
+	__w_list_free(cast(__w_list*, r.lx1))
+	__w_list_free(cast(__w_list*, r.ly1))
+	free(r)
+
+# Widen domain's keep-out block to cover a text box.
+void mm_cynefin_block(mm_cynefin_router* r, int domain, int x0, int y0, int x1, int y1):
+	while (r.bx0.length <= domain):
+		r.bx0.push(100000)
+		r.by0.push(100000)
+		r.bx1.push(-100000)
+		r.by1.push(-100000)
+	if (x0 < r.bx0[domain]): r.bx0[domain] = x0
+	if (y0 < r.by0[domain]): r.by0[domain] = y0
+	if (x1 > r.bx1[domain]): r.bx1[domain] = x1
+	if (y1 > r.by1[domain]): r.by1[domain] = y1
+
+# Point where the ray from (ox, oy) inside domain's block (grown by the
+# margin) along (ux, uy) leaves it.
+void mm_cynefin_exit(mm_cynefin_router* r, int domain, float ox, float oy, float ux, float uy, int* x, int* y):
+	float x0 = cast(float, r.bx0[domain] - MM_CYNEFIN_MARGIN)
+	float x1 = cast(float, r.bx1[domain] + MM_CYNEFIN_MARGIN)
+	float y0 = cast(float, r.by0[domain] - MM_CYNEFIN_MARGIN)
+	float y1 = cast(float, r.by1[domain] + MM_CYNEFIN_MARGIN)
+	float t = 100000.0
+	if (ux > 0.0001): t = (x1 - ox) / ux
+	if (ux < -0.0001): t = (x0 - ox) / ux
+	if (uy > 0.0001 && (y1 - oy) / uy < t): t = (y1 - oy) / uy
+	if (uy < -0.0001 && (y0 - oy) / uy < t): t = (y0 - oy) / uy
+	if (t < 0.0): t = 0.0
+	*x = cast(int, ox + ux * t)
+	*y = cast(int, oy + uy * t)
+
+int mm_cynefin_inside(mm_cynefin_router* r, int domain, int x, int y, int grow):
+	return x > r.bx0[domain] - grow && x < r.bx1[domain] + grow && y > r.by0[domain] - grow && y < r.by1[domain] + grow
+
+# Quadratic Bezier sample at t/12.
+int mm_cynefin_qx(int x1, int cx, int x2, int t):
+	float u = cast(float, t) / 12.0
+	return cast(int, (1.0 - u) * (1.0 - u) * cast(float, x1) + 2.0 * (1.0 - u) * u * cast(float, cx) + u * u * cast(float, x2))
+
+# Penalty of a candidate curve: samples inside other domains' blocks
+# (heavy) and samples running within 8px of earlier curves.
+int mm_cynefin_penalty(mm_cynefin_router* r, int from, int to, int x1, int y1, int cx, int cy, int x2, int y2):
+	int penalty = 0
+	for t in range(1, 12):
+		int x = mm_cynefin_qx(x1, cx, x2, t)
+		int y = mm_cynefin_qx(y1, cy, y2, t)
+		for k in range(r.bx0.length):
+			if (k != from && k != to && mm_cynefin_inside(r, k, x, y, 4)): penalty = penalty + 10
+		if (t < 2 || t > 10): continue
+		for j in range(r.sx.length):
+			int dx = r.sx[j] - x
+			int dy = r.sy[j] - y
+			if (dx * dx + dy * dy < 64):
+				penalty = penalty + 1
+				break
+	return penalty
+
+int mm_cynefin_label_clear(mm_cynefin_router* r, int x, int y, int w, int h, int field_x0, int field_y0, int field_x1, int field_y1):
+	if (x < field_x0 || y < field_y0 || x + w > field_x1 || y + h > field_y1): return 0
+	for k in range(r.bx0.length):
+		if (x < r.bx1[k] + 2 && x + w > r.bx0[k] - 2 && y < r.by1[k] + 2 && y + h > r.by0[k] - 2): return 0
+	for k in range(r.lx0.length):
+		if (x < r.lx1[k] + 3 && x + w > r.lx0[k] - 3 && y < r.ly1[k] + 3 && y + h > r.ly0[k] - 3): return 0
+	return 1
+
+void mm_cynefin_label(mm_scene* s, mm_cynefin_router* r, char* text, int x1, int y1, int cx, int cy, int x2, int y2, int field_x0, int field_y0, int field_x1, int field_y1):
+	int w = mm_text_width(text, 0)
+	int h = MM_TEXT_LINE
+	list[int] ts = list[int]{6, 5, 7, 4, 8, 3, 9}
+	# Unit normal on the bow side.
+	float nx = cast(float, cx - (x1 + x2) / 2)
+	float ny = cast(float, cy - (y1 + y2) / 2)
+	float length = fsqrt(nx * nx + ny * ny)
+	if (length < 1.0):
+		nx = 0.0
+		ny = -1.0
+	else:
+		nx = nx / length
+		ny = ny / length
+	int best_x = mm_cynefin_qx(x1, cx, x2, 6) - w / 2
+	int best_y = mm_cynefin_qx(y1, cy, y2, 6) - h - 4
+	int found = 0
+	for int t in ts:
+		if (found): break
+		int px = mm_cynefin_qx(x1, cx, x2, t)
+		int py = mm_cynefin_qx(y1, cy, y2, t)
+		for side in range(2):
+			float sign = 1.0
+			if (side == 1): sign = -1.0
+			# Offset the box centre so its nearest edge clears the curve.
+			float reach = 6.0 + fabs(nx) * cast(float, w) / 2.0 + fabs(ny) * cast(float, h) / 2.0
+			int x = px + cast(int, sign * nx * reach) - w / 2
+			int y = py + cast(int, sign * ny * reach) - h / 2
+			if (mm_cynefin_label_clear(r, x, y, w, h, field_x0, field_y0, field_x1, field_y1)):
+				best_x = x
+				best_y = y
+				found = 1
+				break
+	__w_list_free(cast(__w_list*, ts))
+	mm_text(s, best_x, best_y, text)
+	r.lx0.push(best_x)
+	r.ly0.push(best_y)
+	r.lx1.push(best_x + w)
+	r.ly1.push(best_y + h)
+
+void mm_cynefin_transitions(mm_document* d, mm_scene* s, mm_cynefin_router* r, int field_x0, int field_y0, int field_x1, int field_y1):
+	int count = d.edges.length
+	list[int] bows = list[int]{0, 30, 60, -60}
+	for i in range(count):
+		mm_edge* e = d.edges[i]
+		int from = e.from_node
+		int to = e.to_node
+		# Self-loops carry no movement; upstream skips them too.
+		if (from == to || from > 4 || to > 4): continue
+		# Rank among earlier transitions between the same domains in the
+		# same direction: each further one nests outside the previous.
+		int nest = 0
+		for j in range(i):
+			mm_edge* other = d.edges[j]
+			if (other.from_node == from && other.to_node == to): nest = nest + 1
+		float ax = cast(float, r.bx0[from] + r.bx1[from]) / 2.0
+		float ay = cast(float, r.by0[from] + r.by1[from]) / 2.0
+		float bx = cast(float, r.bx0[to] + r.bx1[to]) / 2.0
+		float by = cast(float, r.by0[to] + r.by1[to]) / 2.0
+		float dx = bx - ax
+		float dy = by - ay
+		float length = fsqrt(dx * dx + dy * dy)
+		if (length < 1.0): continue
+		float ux = dx / length
+		float uy = dy / length
+		# Left normal of the direction: the side this transition bows to, so
+		# the reverse transition takes the other side.
+		float nx = 0.0 - uy
+		float ny = ux
+		float offset = cast(float, 8 + nest * 16)
+		int x1 = 0
+		int y1 = 0
+		int x2 = 0
+		int y2 = 0
+		mm_cynefin_exit(r, from, ax + nx * offset, ay + ny * offset, ux, uy, &x1, &y1)
+		mm_cynefin_exit(r, to, bx + nx * offset, by + ny * offset, 0.0 - ux, 0.0 - uy, &x2, &y2)
+		float cdx = cast(float, x2 - x1)
+		float cdy = cast(float, y2 - y1)
+		float chord = fsqrt(cdx * cdx + cdy * cdy)
+		if (chord < 1.0): continue
+		int best_cx = 0
+		int best_cy = 0
+		int best_penalty = -1
+		for int extra in bows:
+			float f = cast(float, 15 + nest * 15 + extra) / 100.0
+			int cx = (x1 + x2) / 2 + cast(int, (0.0 - cdy / chord) * chord * f)
+			int cy = (y1 + y2) / 2 + cast(int, cdx / chord * chord * f)
+			# Control points stay on the field so curves never leave it.
+			if (cx < field_x0): cx = field_x0
+			if (cx > field_x1): cx = field_x1
+			if (cy < field_y0): cy = field_y0
+			if (cy > field_y1): cy = field_y1
+			int penalty = mm_cynefin_penalty(r, from, to, x1, y1, cx, cy, x2, y2)
+			if (best_penalty < 0 || penalty < best_penalty):
+				best_penalty = penalty
+				best_cx = cx
+				best_cy = cy
+			if (penalty == 0): break
+		int cx = best_cx
+		int cy = best_cy
+		for t in range(13):
+			r.sx.push(mm_cynefin_qx(x1, cx, x2, t))
+			r.sy.push(mm_cynefin_qx(y1, cy, y2, t))
+		int start = s.items.length
+		mm_style_bezier(s, x1, y1, x1 + (cx - x1) * 2 / 3, y1 + (cy - y1) * 2 / 3, x2 + (cx - x2) * 2 / 3, y2 + (cy - y2) * 2 / 3, x2, y2, 0)
+		mm_ishikawa_arrow(s, x2, y2, cast(float, x2 - cx), cast(float, y2 - cy))
+		for k in range(start, s.items.length):
+			mm_primitive* p = s.items[k]
+			p.role = 3
+		if (e.label[0] != 0): mm_cynefin_label(s, r, e.label, x1, y1, cx, cy, x2, y2, field_x0, field_y0, field_x1, field_y1)
+	__w_list_free(cast(__w_list*, bows))
+
 # Upstream cynefinRenderer geometry on its default 800x600 field with 40px
 # padding: four quadrants, the seeded wavy fold and horizontal boundary, the
 # Clear/Chaotic cliff, the central Confusion ellipse (at most three item
 # badges plus "+N more"), domain models and practices, and transitions as
-# quadratic curves between domain centres bowed by 15% of their length.
+# bowed quadratic curves (routed by mm_cynefin_transitions above).
 mm_scene* mm_cynefin_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
 	int pad = 40
@@ -586,12 +818,14 @@ mm_scene* mm_cynefin_render(mm_document* d):
 	int confusion_start = s.items.length
 	mm_shape_ellipse(s, cx, pad + hh, width * 15 / 100, height * 15 / 100)
 	mm_style_node(d, s, d.nodes[4], confusion_start)
+	mm_cynefin_router* router = mm_cynefin_router_new()
 	for i in range(5):
 		mm_bounds* b = s.nodes[i]
 		int centre_x = b.x + b.w / 2
 		int centre_y = b.y + b.h / 2
 		int label_y = centre_y - 30
 		if (i == 4): label_y = pad + hh - 10
+		int text_start = s.items.length
 		mm_text_styled(s, centre_x - mm_text_width(names[i], MM_TEXT_BOLD) / 2, label_y - MM_TEXT_LINE / 2, names[i], MM_TEXT_BOLD)
 		if (i < 4):
 			mm_text(s, centre_x - mm_text_width(models[i], 0) / 2, centre_y - 10 - MM_TEXT_LINE / 2, models[i])
@@ -611,31 +845,20 @@ mm_scene* mm_cynefin_render(mm_document* d):
 			string_append(more, c" more")
 			mm_cynefin_badge(s, centre_x, first + shown * 30, more.data, 1)
 			string_free(more)
+		# The domain's keep-out block covers every text and badge just drawn.
+		for k in range(text_start, s.items.length):
+			mm_primitive* p = s.items[k]
+			int x1 = p.x2
+			int y1 = p.y2
+			if (p.kind == MM_TEXT):
+				x1 = p.x + mm_text_width(p.text, p.text_style)
+				y1 = p.y + MM_TEXT_LINE
+			mm_cynefin_block(router, i, p.x, p.y, x1, y1)
 	__w_list_free(cast(__w_list*, names))
 	__w_list_free(cast(__w_list*, models))
 	__w_list_free(cast(__w_list*, practices))
-	for mm_edge* e in d.edges:
-		# Self-loops carry no movement; upstream skips them too.
-		if (e.from_node == e.to_node): continue
-		mm_bounds* a = s.nodes[e.from_node]
-		mm_bounds* b = s.nodes[e.to_node]
-		int x1 = a.x + a.w / 2
-		int y1 = a.y + a.h / 2
-		int x2 = b.x + b.w / 2
-		int y2 = b.y + b.h / 2
-		float dx = cast(float, x2 - x1)
-		float dy = cast(float, y2 - y1)
-		float length = fsqrt(dx * dx + dy * dy)
-		if (length < 1.0): continue
-		int cpx = (x1 + x2) / 2 + cast(int, (0.0 - dy / length) * length * 0.15)
-		int cpy = (y1 + y2) / 2 + cast(int, dx / length * length * 0.15)
-		int start = s.items.length
-		mm_style_bezier(s, x1, y1, x1 + (cpx - x1) * 2 / 3, y1 + (cpy - y1) * 2 / 3, x2 + (cpx - x2) * 2 / 3, y2 + (cpy - y2) * 2 / 3, x2, y2, 0)
-		mm_ishikawa_arrow(s, x2, y2, cast(float, x2 - cpx), cast(float, y2 - cpy))
-		for k in range(start, s.items.length):
-			mm_primitive* p = s.items[k]
-			p.role = 3
-		if (e.label[0] != 0): mm_text(s, cpx - mm_text_width(e.label, 0) / 2, cpy - 6 - MM_TEXT_ASCENT, e.label)
+	mm_cynefin_transitions(d, s, router, pad, pad, pad + width, pad + height)
+	mm_cynefin_router_free(router)
 	if (d.title[0] != 0):
 		s.has_title = 1
 		mm_text(s, pad + hw - mm_text_width(d.title, 0) / 2, pad / 2 - MM_TEXT_LINE / 2, d.title)
