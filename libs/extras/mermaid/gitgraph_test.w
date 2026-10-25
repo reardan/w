@@ -31,7 +31,7 @@ void test_gitgraph_heads_parentage_and_merge_geometry():
 	mm_scene_free(s)
 
 void test_gitgraph_invalid_operations_and_prefixes():
-	list[char*] bad = list[char*]{c"gitGraph\ncheckout unknown", c"gitGraph\nbranch \"\"", c"gitGraph\nbranch main", c"gitGraph\ncommit\nmerge main", c"gitGraph\nbranch a\nmerge main", c"gitGraph\ncommit id: \"same\"\nbranch b\ncommit\ncheckout main\ncommit\nmerge b id: \"same\"",c"gitGraph\ncommit type: INVALID", c"gitGraph\ncommit id: \"a\" id: \"b\"", c"gitGraph\ncherry-pick id: \"a\""}
+	list[char*] bad = list[char*]{c"gitGraph\ncheckout unknown", c"gitGraph\nbranch \"\"", c"gitGraph\nbranch main", c"gitGraph\ncommit\nmerge main", c"gitGraph\nbranch a\nmerge main", c"gitGraph\ncommit id: \"same\"\nbranch b\ncommit\ncheckout main\ncommit\nmerge b id: \"same\"", c"gitGraph\ncommit type: INVALID", c"gitGraph\ncommit id: \"a\" id: \"b\"", c"gitGraph\ncherry-pick id: \"a\""}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid GitGraph operation fails", d.error != 0)
