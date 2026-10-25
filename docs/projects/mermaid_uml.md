@@ -45,8 +45,8 @@ the chart for standalone notes, without covering graph groups. Actual newlines
 and `\n` split note text into visible lines. At most 1,024 notes are accepted.
 
 These changes do not add class click handlers, browser interactions,
-per-state styling, rich HTML labels or upstream theme/layout
-parity. Notes use deterministic gutter placement rather than upstream placement.
+rich HTML labels or upstream layout parity. States take `style`, `classDef`,
+`class` and `:::` (see [styling](mermaid_styling.md)). Notes use deterministic gutter placement rather than upstream placement.
 
 `./wbuild uml_test uml_64_test` verifies generic identity and comma parameter lists, namespaces and labels,
 concurrent state regions, unique interfaces, cross-scope transitions, note ownership, and truncated note
