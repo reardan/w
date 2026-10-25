@@ -7557,7 +7557,6 @@ void test_compare_total_and_cmp_table():
 	dec_check_order(c"NaN5", c"NaN5", 0, 2, 1)
 
 
-
 void test_high_precision():
 	decimal_context* ctx = decimal_context_new()
 	dec_ctx_set(ctx, 50, DECIMAL_ROUND_HALF_EVEN, -999999, 999999, 0)

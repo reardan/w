@@ -141,4 +141,3 @@ void test_accessors_match_the_byte_loops():
 	assert_equal(65535, load_int16(&got[3]))
 	save_int8(&got[3], 0 - 1)
 	assert_equal(255, load_int8(&got[3]))
-

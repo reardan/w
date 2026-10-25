@@ -46,4 +46,3 @@ void test_alias_global_access():
 # leaking it here, and qualified access inside it works.
 void test_alias_in_imported_module():
 	assert_equal(1337, helper_qualified_value())
-

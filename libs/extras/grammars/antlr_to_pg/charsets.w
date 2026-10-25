@@ -412,5 +412,3 @@ int at_numeric_walk_element(at_element* e, int depth, int* has_digit):
 			j = j + 1
 		return 1
 	return 0
-
-

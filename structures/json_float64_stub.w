@@ -27,4 +27,3 @@ int json_f64_from_int(int v):
 
 float json_f64_to_float32(int bits):
 	return 0.0
-

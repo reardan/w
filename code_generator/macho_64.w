@@ -49,7 +49,7 @@ import code_generator.macho_sign
 import lib.sha256
 
 
-void error(char *s);                 /* diagnostics.w */
+void error(char* s);                 /* diagnostics.w */
 void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
 void macho_collect_symbols();       /* symbol_table.w */
@@ -58,8 +58,8 @@ void debug_info_emit_at(int text_start, int text_end); /* dwarf.w */
 void debug_abbrev_emit();           /* dwarf.w */
 void arm64_entry_rebase_stub();      /* elf_arm64.w */
 void arm64_emit_rebase_table();      /* elf_arm64.w */
-int sym_address(char *s);            /* symbol_table.w */
-int strlen(char *s);
+int sym_address(char* s);            /* symbol_table.w */
+int strlen(char* s);
 
 
 # Mach-O segments load on 16 KB pages (arm64 macOS); file offsets and
@@ -125,7 +125,7 @@ void macho_sym_add(char* name, int address):
 
 
 # 16-byte fixed-width segment name field.
-void macho_segname(char *s):
+void macho_segname(char* s):
 	int n = strlen(s)
 	emit(n, s)
 	emit_zeros(16 - n)
@@ -160,7 +160,7 @@ void macho_debug_section_patch(int index, int start):
 # codesign only read segments). vmaddr/vmsize/fileoff/filesize are int64s
 # emitted as lo/hi int32 pairs; size fields left 0 here are patched in
 # finish.
-void macho_segment_64(char *name, int vmaddr_lo, int vmaddr_hi, int vmsize_lo, int vmsize_hi, int prot):
+void macho_segment_64(char* name, int vmaddr_lo, int vmaddr_hi, int vmsize_lo, int vmsize_hi, int prot):
 	emit_int32(25)   /* LC_SEGMENT_64 */
 	emit_int32(72)   /* cmdsize */
 	macho_segname(name)

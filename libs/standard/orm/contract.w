@@ -290,8 +290,6 @@ const int ORM_CONFLICT_NOTHING = 1
 const int ORM_CONFLICT_UPDATE = 2
 
 
-
-
 struct orm_expr:
 	int kind
 	char* path

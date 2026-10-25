@@ -875,7 +875,6 @@ void test_ast_var_expressions_are_required():
 	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn cast(var, 1.5)\n")
 
 
-
 void test_ast_json_expressions_are_required():
 	for fixture in range(2):
 		for host in range(2):
@@ -898,7 +897,6 @@ void test_ast_json_expressions_are_required():
 	ast_test_store_diagnostics(c"import structures.json\nstruct R:\n\tmap[int, int] values\nint main():\n\tfrom_json(R, 0)\n\treturn 0\n")
 
 
-
 void test_ast_protobuf_expressions_are_required():
 	for fixture in range(2):
 		for host in range(2):
@@ -919,7 +917,6 @@ void test_ast_protobuf_expressions_are_required():
 	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nmessage R:\n\tint32 n = 1\nint main():\n\tfrom_proto(R, c\"bad\")\n\treturn 0\n")
 	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nmessage Later\nmessage R:\n\tLater n = 1\nint main():\n\tproto_descriptor(R)\n\treturn 0\n")
 	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nstruct R:\n\tint n\nint main():\n\tR value\n\tto_proto(value)\n\treturn 0\n")
-
 
 
 void test_ast_ndarray_expressions_are_required():
@@ -945,7 +942,6 @@ void test_ast_ndarray_expressions_are_required():
 	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\tvalue[0, 0] = c\"bad\"\n\treturn 0\n")
 
 
-
 void test_ast_buffer_flow_expressions_are_required():
 	for fixture in range(3):
 		for host in range(2):
@@ -965,7 +961,6 @@ void test_ast_buffer_flow_expressions_are_required():
 			process_result_free(result)
 	ast_test_store_diagnostics(c"int main():\n\tint[2] a\n\tchar* p = true ? a : c\"bad\"\n\treturn 0\n")
 	ast_test_store_diagnostics(c"int main():\n\tint[2] a\n\tint[2] b\n\t(true ? a : b) = a\n\treturn 0\n")
-
 
 
 void test_ast_utf8_expressions_are_required():
@@ -989,7 +984,6 @@ void test_ast_utf8_expressions_are_required():
 	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf‮)\n")
 	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf​)\n")
 	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf\xc3x)\n")
-
 
 
 void test_ast_large_literal_expressions_are_required():

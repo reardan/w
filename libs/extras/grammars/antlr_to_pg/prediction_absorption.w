@@ -50,7 +50,6 @@ void at_abs_reset(list[at_rule*] rules):
 			return
 
 
-
 struct at_abs_edge:
 	int target
 	char* token

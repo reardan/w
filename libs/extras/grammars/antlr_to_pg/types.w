@@ -132,8 +132,6 @@ char* at_try_generate_matcher(at_rule* rule);
 void at_emit_c_char_literal(string_builder* out, int c);
 
 
-
-
 # Current input is borrowed only while collecting its owned semantic text.
 char* g_at_source
 list[at_site*] g_at_dependencies

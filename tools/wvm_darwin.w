@@ -132,7 +132,6 @@ int dvm_worker():
 	return 0
 
 
-
 # Redirected input is bounded and subject to the command deadline. Never
 # wait for an interactive terminal. Restore the caller's descriptor flags.
 string_builder* dvm_cli_input(int deadline):

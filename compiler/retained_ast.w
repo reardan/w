@@ -828,7 +828,6 @@ int retained_source_byte(char* path, int offset, int value):
 	return 1
 
 
-
 # P1.2b: record, or check against the recorded copy, count bytes the
 # tokenizer's getchar window holds for path from file offset offset on. getc
 # calls this when the lexer reaches a byte the version has not recorded yet

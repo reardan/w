@@ -158,4 +158,3 @@ void test_utf8_string_literal():
 	assert_equal(4, utf8_codepoint_count(s))
 	assert_equal('h', s[0])
 	assert_equal(0, strcmp(cstr(s), c"hi \xc3\xa9"))
-

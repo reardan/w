@@ -58,7 +58,6 @@ char* sha3t_pattern(int n):
 	return m
 
 
-
 void test_empty_message():
 	sha3t_check(SHA3_224, c"", 0, c"6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7")
 	sha3t_check(SHA3_256, c"", 0, c"a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a")

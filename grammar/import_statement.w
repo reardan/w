@@ -397,8 +397,6 @@ int import_alias_member(int alias_index):
 	return identifier_value(token)
 
 
-
-
 /*
 import_statement:
 	'import' dotted_name ['as' NAME]
@@ -556,7 +554,7 @@ int import_statement():
 	int retained_start = token_start_offset
 	int retained_line = diag_token_line
 	int retained_column = diag_token_column
-	if(accept(c"import")):
+	if (accept(c"import")):
 		# The rest of the line is the module path plus an optional alias
 		# and an optional trailing comment
 		read_until_end()

@@ -71,8 +71,6 @@ const int process_null = 2
 /* Sentinels returned by the wait family (outside the errno range). */
 
 
-
-
 /* Common signal numbers for process_kill. */
 
 const int sigint = 2

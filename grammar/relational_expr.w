@@ -33,15 +33,15 @@ int relational_op(int type, int cc, int float_cc, int float_swap):
 int relational_expr():
 	int type = shift_expr()
 	while (1):
-		if(accept(c"<=")): type = relational_op(type, 0x9e, 0x93, 1)
+		if (accept(c"<=")): type = relational_op(type, 0x9e, 0x93, 1)
 
-		else if(accept(c"<")): type = relational_op(type, 0x9c, 0x97, 1)
+		else if (accept(c"<")): type = relational_op(type, 0x9c, 0x97, 1)
 
-		else if(accept(c">=")): type = relational_op(type, 0x9d, 0x93, 0)
+		else if (accept(c">=")): type = relational_op(type, 0x9d, 0x93, 0)
 
-		else if(accept(c">")): type = relational_op(type, 0x9f, 0x97, 0)
+		else if (accept(c">")): type = relational_op(type, 0x9f, 0x97, 0)
 
-		else if(accept(c"in")):
+		else if (accept(c"in")):
 			int key_type = binary1(type)
 			int key_slot = stack_pos
 			int base_stack = key_slot - 1

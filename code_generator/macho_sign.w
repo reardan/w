@@ -34,8 +34,8 @@ import code_generator.code_emitter
 import lib.sha256
 
 
-int strlen(char *s);
-void error(char *s);
+int strlen(char* s);
+void error(char* s);
 int op(int msb, int low);   /* arm64.w */
 
 
