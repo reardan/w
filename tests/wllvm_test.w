@@ -229,7 +229,7 @@ void test_wllvm_native_differential():
 		return
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
-	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 183)
+	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
 	free(clang)
 
 
