@@ -807,6 +807,12 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 		mm_text_set_size(previous)
 	if (d.kind == MM_CLASS || d.kind == MM_STATE): mm_uml_notes(d, s)
 
+# Primitives from the scene's current bounds, for every geometry family.
+void mm_render_draw(mm_document* d, mm_scene* s):
+	if (d.kind == MM_C4): mm_c4_draw(d, s)
+	else if (d.kind == MM_SWIMLANE): mm_workflow_draw(d, s)
+	else: mm_render_graph(d, s)
+
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
@@ -819,9 +825,16 @@ mm_scene* mm_render_diagram(mm_document* d):
 		mm_document_free(view)
 		__w_list_free(cast(__w_list*, slots))
 		return folded
-	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
+	if (d.kind == MM_SWIMLANE || d.kind == MM_C4):
+		# Saved geometry applies between the family's layout and drawing.
+		mm_scene* placed = 0
+		if (d.kind == MM_C4): placed = mm_c4_layout(d)
+		else: placed = mm_workflow_layout(d)
+		mm_positions_apply(d, placed)
+		mm_render_draw(d, placed)
+		return placed
+	if (d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
-	if (d.kind == MM_C4): return mm_c4_render(d)
 	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
 	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
 	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
@@ -901,6 +914,6 @@ void mm_render_graph_refresh(mm_document* d, mm_scene* s):
 	s.font_family = 0
 	s.has_effects = 0
 	int previous = mm_text_set_size(d.font_size)
-	mm_render_graph(d, s)
+	mm_render_draw(d, s)
 	mm_render_metadata(d, s)
 	mm_text_set_size(previous)

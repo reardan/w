@@ -4,6 +4,7 @@
 #   %% @w-size "id" w h       manual node size (groups: a minimum size)
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.flow_shapes
+import libs.extras.mermaid.agentflow
 
 const int MM_POSITION_LIMIT = 100000
 const int MM_GEOMETRY_POSITION = 0
@@ -19,17 +20,28 @@ int mm_position_title_offset(mm_document* d):
 	return 0
 
 # Families whose source grammar the graphical editor splices and whose
-# scene uses the generic graph renderer, so positions and sizes apply.
+# scene uses the generic graph renderer (edges hit-test against it).
 int mm_graph_edit_family(int kind):
-	return kind == MM_FLOW || kind == MM_ER || kind == MM_CLASS || kind == MM_STATE || kind == MM_REQUIREMENT || kind == MM_USECASE || kind == MM_ARCHITECTURE
+	return kind == MM_FLOW || kind == MM_ER || kind == MM_CLASS || kind == MM_STATE || kind == MM_REQUIREMENT || kind == MM_USECASE || kind == MM_ARCHITECTURE || kind == MM_AGENT
+
+# Families whose saved `@w-position` / `@w-size` records apply after the
+# family's own layout: the generic graph families, C4 and swimlane.
+int mm_geometry_family(int kind):
+	return mm_graph_edit_family(kind) || kind == MM_C4 || kind == MM_SWIMLANE
+
+# Families whose layout is their source order: a move reorders the source
+# (block grid cells, outline siblings, kanban cards) instead of storing
+# coordinates, and a block resize changes its column span.
+int mm_slot_family(int kind):
+	return kind == MM_BLOCK || kind == MM_MINDMAP || kind == MM_TREEVIEW || kind == MM_KANBAN
 
 # Families with structural graphical edits (select, rename, delete, connect,
-# add, outline operations) whose own layout owns geometry: no positions.
+# add, outline operations) whose layout is not free geometry.
 int mm_structural_edit_family(int kind):
-	return kind == MM_BLOCK || kind == MM_C4 || kind == MM_SWIMLANE || kind == MM_MINDMAP || kind == MM_TREEVIEW
+	return mm_slot_family(kind)
 
 int mm_canvas_edit_family(int kind):
-	return mm_graph_edit_family(kind) || mm_structural_edit_family(kind)
+	return mm_geometry_family(kind) || mm_structural_edit_family(kind)
 
 # Synthetic identities (`@hierarchy:3`, `note@0`, `@region:...`) are
 # positional, so geometry cannot follow them; state start/end pseudo-states
@@ -43,13 +55,30 @@ int mm_position_identity(char* id):
 	return 1
 
 int mm_position_supported(mm_document* d, int index):
-	if (d.error != 0 || mm_graph_edit_family(d.kind) == 0): return 0
+	if (d.error != 0 || mm_geometry_family(d.kind) == 0): return 0
 	if (index < 0 || index >= d.nodes.length): return 0
 	mm_node* n = d.nodes[index]
 	if (mm_position_identity(n.id) == 0): return 0
+	# Collapsed agentflow containers render a projected view.
+	if (mm_agent_has_collapsed(d)): return 0
 	# Members of a collapsed subgraph are not drawn.
 	if (mm_flow_visible_node(d, index) != index): return 0
 	return 1
+
+# A source-order item a canvas gesture may move: a named block item (not
+# the root, a `space` or an anonymous composite) or any outline node except
+# a mindmap's root.
+int mm_slot_movable(mm_document* d, int index):
+	if (d.error != 0 || mm_slot_family(d.kind) == 0): return 0
+	if (index < 0 || index >= d.nodes.length): return 0
+	mm_node* n = d.nodes[index]
+	if (d.kind == MM_BLOCK): return n.parent >= 0 && n.shape != -1 && mm_position_identity(n.id)
+	if (d.kind == MM_MINDMAP): return n.parent >= 0
+	return 1
+
+# Block leaves resize by column span.
+int mm_slot_resizable(mm_document* d, int index):
+	return d.kind == MM_BLOCK && mm_slot_movable(d, index) && d.nodes[index].group == 0
 
 int mm_position_space(int c):
 	return c == 32 || c == 9 || c == 13
@@ -167,6 +196,13 @@ void mm_position_translate(mm_document* d, mm_scene* s, int index, int dx, int d
 # Grow groups (innermost first) so they keep enclosing moved or resized
 # members. Groups only grow: automatic layout already encloses its members.
 void mm_positions_fit_groups(mm_document* d, mm_scene* s):
+	# Swimlane frames are tighter than the graph renderer's (14px sides, a
+	# 36px title band), so an untouched layout never grows.
+	int side = MM_GROUP_MARGIN
+	int title = MM_GROUP_TITLE
+	if (d.kind == MM_SWIMLANE):
+		side = 14
+		title = 36
 	int deepest = 0
 	for i in range(d.nodes.length):
 		int depth = mm_position_depth(d, i)
@@ -192,10 +228,10 @@ void mm_positions_fit_groups(mm_document* d, mm_scene* s):
 				if (any == 0 || b.y + b.h > bottom): bottom = b.y + b.h
 				any = 1
 			if (any == 0): continue
-			left = left - MM_GROUP_MARGIN
-			top = top - MM_GROUP_TITLE
-			right = right + MM_GROUP_MARGIN
-			bottom = bottom + MM_GROUP_MARGIN
+			left = left - side
+			top = top - title
+			right = right + side
+			bottom = bottom + side
 			if (left < box.x):
 				box.w = box.w + box.x - left
 				box.x = left
@@ -207,7 +243,7 @@ void mm_positions_fit_groups(mm_document* d, mm_scene* s):
 		depth = depth - 1
 
 void mm_positions_apply(mm_document* d, mm_scene* s):
-	if (mm_graph_edit_family(d.kind) == 0): return
+	if (mm_geometry_family(d.kind) == 0): return
 	int count = d.nodes.length
 	if (s.nodes.length < count): count = s.nodes.length
 	list[int] xs = new list[int]

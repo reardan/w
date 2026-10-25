@@ -3,6 +3,7 @@
 import libs.extras.mermaid.editor
 import libs.extras.mermaid.serialize
 import libs.extras.mermaid.edit_outline
+import libs.extras.mermaid.edit_slots
 
 const int MM_EDIT_LABEL = 1
 const int MM_EDIT_NODE_DELETE = 2
@@ -23,7 +24,7 @@ int mm_edit_has_interfaces(mm_document* d):
 char* mm_editor_edit_reason(mm_editor* e, int operation, int index):
 	if (e == 0 || e.document.error != 0): return c"Fix source errors before editing the diagram."
 	mm_document* d = e.document
-	if (mm_canvas_edit_family(d.kind) == 0): return c"Graphical editing is available for flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap and treeView diagrams."
+	if (mm_canvas_edit_family(d.kind) == 0): return c"Graphical editing is available for flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView, kanban and agentflow diagrams."
 	if (operation == MM_EDIT_EDGE_DELETE):
 		if (index < 0 || index >= d.edges.length): return c"Select a connection first."
 		if (mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
@@ -264,6 +265,17 @@ void mm_edit_splice(mm_edit_scan* scan, int start, int end, char* replacement):
 		piece.statement = 0
 		scan.pieces.push(piece)
 		return
+	if (replacement[0] == 0):
+		# A removed statement alone on its line takes the line (with its
+		# indentation inside a subgraph) rather than leaving it blank.
+		mm_document* d = scan.original
+		int line_start = start
+		while (line_start > scan.copied && line_start > d.source_start && (d.source[line_start - 1] == 32 || d.source[line_start - 1] == 9)): line_start = line_start - 1
+		int line_end = end
+		while (line_end < d.source_end && (d.source[line_end] == 32 || d.source[line_end] == 9 || d.source[line_end] == 13)): line_end = line_end + 1
+		if ((line_start == d.source_start || d.source[line_start - 1] == 10) && line_start >= scan.copied && line_end < d.source_end && d.source[line_end] == 10):
+			start = line_start
+			end = line_end + 1
 	string_append_bytes(scan.output, scan.original.source + scan.copied, start - scan.copied)
 	string_append(scan.output, replacement)
 	scan.copied = end
@@ -1037,6 +1049,7 @@ int mm_editor_member_set(mm_editor* e, int index, int which, char* text):
 # operators contain `|`).
 char* mm_editor_edge_kinds(int kind):
 	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"--> --- -.-> ==> --o --x <-->"
+	if (kind == MM_AGENT): return c"--> --- -.-> -.- ==> --x"
 	if (kind == MM_CLASS): return c"--> -- ..> .. <|-- *-- o-- ..|>"
 	if (kind == MM_STATE): return c"-->"
 	if (kind == MM_REQUIREMENT): return c"contains copies derives satisfies verifies refines traces"

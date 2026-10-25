@@ -218,10 +218,55 @@ int mm_canvas_on_handle(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 
 # Returns 1 only when a click mode committed a source change. `mods`
 # carries MM_CANVAS_EXTEND for shift/ctrl-click (toggle, rubber band).
+# The cell or outline slot under scene point (x, y) for a source-order
+# move of index: the smallest drawn box containing it, outside index's own
+# subtree. Blocks resolve to index's sibling enclosing that box.
+int mm_canvas_slot_at(mm_editor* e, int index, int x, int y):
+	mm_document* d = e.document
+	int best = -1
+	int best_area = 0
+	for i in range(d.nodes.length):
+		if (i == index || mm_position_within(d, i, index)): continue
+		if (d.nodes[i].group && d.nodes[i].id[0] == '@'): continue
+		mm_bounds* b = e.scene.nodes[i]
+		if (b.w <= 0 || b.h <= 0 || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h): continue
+		int area = b.w * b.h
+		if (best < 0 || area < best_area):
+			best = i
+			best_area = area
+	if (best >= 0 && d.kind == MM_BLOCK):
+		int at = best
+		int guard = 0
+		while (at >= 0 && d.nodes[at].parent != d.nodes[index].parent && guard < 64):
+			at = d.nodes[at].parent
+			guard = guard + 1
+		if (at < 0 || d.nodes[at].parent != d.nodes[index].parent): return -1
+		best = at
+	return best
+
+# Release of a source-order drag: the slot under the dragged box's centre.
+int mm_canvas_slot_drop(mm_canvas* c, mm_editor* e):
+	int index = e.move_index
+	if (index < 0 || index >= e.scene.nodes.length):
+		mm_editor_move_cancel(e)
+		return 0
+	mm_bounds* b = e.scene.nodes[index]
+	int cx = b.x + b.w / 2
+	int cy = b.y + b.h / 2
+	mm_editor_move_cancel(e)
+	int target = mm_canvas_slot_at(e, index, cx, cy)
+	if (target < 0): return 0
+	return mm_editor_slot_move(e, index, target)
+
 int mm_canvas_press_mods(mm_canvas* c, mm_editor* e, float32 x, float32 y, int mods):
 	int wx = cast(int, (x - c.pan_x) / c.zoom)
 	int wy = cast(int, (y - c.pan_y) / c.zoom)
 	int extend = (mods & MM_CANVAS_EXTEND) != 0 || c.extend
+	if (c.move_here && mm_slot_family(e.document.kind) && mm_editor_can_move(e, c.node)):
+		int target = mm_canvas_slot_at(e, c.node, wx, wy)
+		c.move_here = 0
+		if (target < 0): return 0
+		return mm_editor_slot_move(e, c.node, target)
 	if (c.move_here && mm_editor_can_move(e, c.node)):
 		int ok = mm_editor_move_node(e, c.node, mm_canvas_bound_x(wx), mm_canvas_bound_y(e, wy))
 		c.move_here = 0
@@ -326,7 +371,8 @@ void mm_canvas_motion(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 		c.dragged = 1
 		if (c.gesture == 2):
 			int began = 0
-			if (mm_canvas_selection_count(c, e) > 1):
+			if (mm_canvas_selection_count(c, e) > 1 && mm_slot_family(e.document.kind)): began = 0
+			else if (mm_canvas_selection_count(c, e) > 1):
 				list[int] set = mm_canvas_move_set(c, e)
 				if (set != 0):
 					# The primary node leads so previews and commits track it.
@@ -366,17 +412,54 @@ void mm_canvas_motion(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 
 int mm_canvas_release(mm_canvas* c, mm_editor* e):
 	int changed = 0
-	if (c.gesture == 2 && c.dragged): changed = mm_editor_move_commit(e)
+	int slot = mm_slot_family(e.document.kind)
+	if (c.gesture == 2 && c.dragged && slot): changed = mm_canvas_slot_drop(c, e)
+	else if (c.gesture == 2 && c.dragged): changed = mm_editor_move_commit(e)
 	# A click (no drag) on a member of a multi-selection selects just it.
 	if (c.gesture == 2 && c.dragged == 0 && c.selection != 0 && c.selection.length > 0): mm_canvas_clear_selection(c)
-	if (c.gesture == 4 && c.dragged): changed = mm_editor_resize_commit(e)
+	if (c.gesture == 4 && c.dragged && slot && e.moving == 2):
+		# A block's resize handle sets its column span.
+		int index = e.move_index
+		int span = mm_editor_block_span_for(e, index, e.move_start_x, e.scene.nodes[index].w)
+		mm_editor_move_cancel(e)
+		changed = mm_editor_block_span(e, index, span)
+	else if (c.gesture == 4 && c.dragged): changed = mm_editor_resize_commit(e)
 	if (c.gesture == 3):
 		if (c.dragged): mm_canvas_band_select(c, e, cast(float32, c.start_x), cast(float32, c.start_y))
 	c.gesture = 0
 	c.dragged = 0
 	return changed
 
+# Arrow keys in source-order families move one slot: block cells left and
+# right (up and down by a row of the composite's columns), outline siblings
+# up and down, kanban cards across columns with left and right.
+int mm_canvas_slot_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
+	int one = mm_canvas_single(c, e)
+	if (one < 0 || mm_editor_can_move(e, one) == 0): return 0
+	mm_document* d = e.document
+	int across = 0
+	if (dx > 0): across = 1
+	if (dx < 0): across = -1
+	int along = 0
+	if (dy > 0): along = 1
+	if (dy < 0): along = -1
+	if (d.kind == MM_BLOCK):
+		int columns = 0
+		int parent = d.nodes[one].parent
+		if (parent >= 0): columns = d.nodes[parent].value_x
+		if (columns <= 0):
+			list[int] siblings = mm_slot_siblings(d, one)
+			columns = siblings.length
+			__w_list_free(cast(__w_list*, siblings))
+		return mm_editor_slot_step(e, one, across + along * columns)
+	if (d.kind == MM_KANBAN && across != 0): return mm_editor_slot_column(e, one, across)
+	if (along == 0): along = across
+	return mm_editor_slot_step(e, one, along)
+
 int mm_canvas_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
+	if (mm_slot_family(e.document.kind)):
+		if (mm_canvas_selection_count(c, e) > 1): return 0
+		return mm_canvas_slot_nudge(c, e, dx, dy)
 	if (mm_canvas_selection_count(c, e) > 1):
 		list[int] set = mm_canvas_move_set(c, e)
 		if (set == 0): return 0
@@ -392,6 +475,13 @@ int mm_canvas_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
 int mm_canvas_grow(mm_canvas* c, mm_editor* e, int dw, int dh):
 	int one = mm_canvas_single(c, e)
 	if (mm_editor_can_resize(e, one) == 0): return 0
+	if (mm_slot_family(e.document.kind)):
+		# Blocks: Alt+Right/Left widen/narrow the column span by one.
+		if (dw == 0): return 0
+		int span = e.document.nodes[one].value_x
+		if (dw > 0): span = span + 1
+		else: span = span - 1
+		return mm_editor_block_span(e, one, span)
 	mm_bounds* b = e.scene.nodes[one]
 	int w = b.w + dw
 	int h = b.h + dh
