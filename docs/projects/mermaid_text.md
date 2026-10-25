@@ -69,9 +69,13 @@ raw newline rather than emitting an approximation.
 ## Limits
 
 - Family renderers outside `mm_render_graph` (sequence, data charts, blocks,
-  workflows, mindmap, ...) still size their own text with the older
+  workflows, mindmap, ...) still size plain text with the older
   8px-per-byte estimate; their SVG text now uses the same sans-serif face.
-- UML notes, class members and ER attribute rows are single-line.
+  Sequence messages and notes, journey tasks and timeline entries use this
+  layout (and its measurement) when the label is a Markdown string or holds
+  `<br>`; ER attribute comments and requirement text (Markdown emphasis) do
+  too.
+- UML notes and plain class members are single-line.
 - In vertical layouts an edge label sits to the right of its connector and
   lane spacing does not yet widen for it, so a wide label can reach a
   neighbouring node in the same rank.

@@ -223,8 +223,11 @@ void test_gantt_tick_interval_weekday_and_compact():
 	asserts(c"configured weekly ticks", index_of(svg, c">2024-01-08<") >= 0)
 	free(svg)
 	mm_document_free(d)
-	gaps_error(c"---\ndisplayMode: wide\n---\ngantt\nA: 2024-01-01, 1d\n", c"gantt displayMode must be compact or empty")
-	gaps_error(c"---\nconfig:\n  gantt:\n    barColour: red\n---\ngantt\nA: 2024-01-01, 1d\n", c"unsupported gantt setting")
+	gaps_error(c"---\ndisplayMode: wide\n---\ngantt\nA: 2024-01-01, 1d\n", c"displayMode must be compact or empty")
+	# Unknown gantt keys are ignored and recorded, as for every family.
+	d = gaps_parse(c"---\nconfig:\n  gantt:\n    barColour: red\n---\ngantt\nA: 2024-01-01, 1d\n")
+	asserts(c"unknown gantt key recorded", d.config_ignored != 0 && d.config_ignored.length == 1)
+	mm_document_free(d)
 	# A chart of directives alone still renders its axis.
 	d = gaps_parse(c"gantt\n  tickInterval 1week\n  weekday monday\n")
 	svg = gaps_svg(d)
@@ -277,7 +280,7 @@ void test_journey_faces_and_actor_avatars():
 void test_timeline_td_layout_and_multicolor():
 	char* source = c"timeline TD\ntitle History\nsection 2023 Q1 <br> Release\n  Bullet 1 : sub-point 1a : sub-point 1b\n  Bullet 2 : sub-point 2a\nsection 2023 Q2\n  Bullet 3 : sub-point 3a\n"
 	mm_document* d = gaps_parse(source)
-	assert_strings_equal(c"TD", mm_setting(d, c"timeline.direction"))
+	assert_strings_equal(c"TD", mm_config_value(d, c"timeline.direction"))
 	mm_scene* scene = mm_render(d)
 	assert_equal(3, scene.nodes.length)
 	mm_bounds* first = scene.nodes[0]
@@ -318,5 +321,5 @@ void test_timeline_td_layout_and_multicolor():
 	mm_scene_free(scene)
 	mm_document_free(d)
 	gaps_error(c"timeline XY\n2002 : A", c"timeline direction must be LR or TD")
-	gaps_error(c"---\nconfig:\n  timeline:\n    disableMulticolor: maybe\n---\ntimeline\n2002 : A\n", c"configuration value must be true or false")
+	gaps_error(c"---\nconfig:\n  timeline:\n    disableMulticolor: maybe\n---\ntimeline\n2002 : A\n", c"timeline.disableMulticolor must be true or false")
 	gaps_prefixes(source)

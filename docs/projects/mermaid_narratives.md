@@ -53,10 +53,17 @@ destroyed participant are errors. Numbering continues while hidden; restarting
 with an explicit integer sets a new range. Starts are 0–1,000,000 and increments
 are 1–1,000,000.
 
-Not yet supported: participant configuration objects/stereotypes, participant
-configuration after creation, rendering link menus
-(they are kept in the model; the SVG has no interactive menus), `properties`/
-`details`, half-arrows, multiline/rich labels or browser styling. Upstream
+Participant objects `participant A@{ "type": "queue", "alias": "Jobs" }`
+select participant, actor, boundary, control, entity, database, collections or
+queue symbols (an `as` alias wins over `alias`). Central connections
+(`A->>()B`, `A()->>B`) draw small circles at the lifeline. Entity codes
+(`#9829;`, `#infin;`, `#quot;`) decode in labels and notes; the source keeps
+them. `link`/`links` menus render as a box under each lifeline whose safe
+entries are SVG links. `properties A: {json}` and `details A: text` are kept as
+participant members; property icons are never fetched.
+
+Not yet supported: participant
+configuration after creation, half-arrows, multiline/rich labels or browser styling. Upstream
 `autonumber` takes integers only, so fractional numbering is not offered. Arbitrary control
 keywords do not silently become participants.
 
@@ -74,9 +81,9 @@ cornsilk face with two eyes and a smile above 3, a straight mouth at 3 and a
 frown below 3. Every listed actor is an avatar dot on the task card in
 upstream's actor colours (`#8FBC8F`, `#7CFC00`, `#00FFFF`, `#20B2AA`,
 `#B0E0E6`, `#FFFFE0`, repeating, by first mention), and a legend below the chart
-pairs each colour with its actor. `config: journey:` keys are validated
-(`useMaxWidth`, `mirrorActors`, margins and font sizes); the native layout keeps
-its own geometry for them.
+pairs each colour with its actor. `config: journey:` keys (margins, font
+sizes, ...) are ignored and recorded like other unsupported keys; the native
+layout keeps its own geometry.
 
 Not reproduced: theme-driven section colours and HTML labels.
 
@@ -100,9 +107,10 @@ since 11.14: `TD` stacks the periods top down on a vertical axis with each
 period's events in a row to its right. Periods and their events are colour-coded
 as upstream's multicolour default: by section when the chart has sections,
 otherwise one colour per period (12 light colours, repeating). With a theme the
-same primitives repaint from `cScale0`–`cScale11`; `config: timeline:
-disableMulticolor: true` draws every box plain. Other `timeline` settings
-(`padding`, margins, `useMaxWidth`) are validated and leave native geometry.
+same primitives repaint from `cScale0`–`cScale11`, `config: timeline:
+sectionFills` replaces the colours and `disableMulticolor: true` draws every
+box plain; `timeline.width` sets the minimum column width. The vertical
+layout uses the same colours.
 
 Other rich labels and automatic wrapping of long text remain unsupported.
 
@@ -178,18 +186,22 @@ locale) with the `-`, `_` and `0` padding modifiers; the default is `%Y-%m-%d`
 snap to clock intervals and grow with the label width. `tickInterval <n><unit>`
 (upstream's `millisecond|second|minute|hour|day|week|month` units) fixes the
 tick step: week ticks start on `weekday <name>` (Sunday by default) and month
-ticks on the first of the month; other `tickInterval` text is accepted and
+ticks on the first of the month. As d3's `interval.every(n)`, which upstream
+uses, a tick falls on a unit boundary whose calendar field is a multiple of n:
+`3day` ticks on the 1st, 4th, 7th, ... of each month, `6hour` at 00, 06, 12 and
+18, `2month` in January, March, ..., and `2week` on every second week counted
+from 1970. Other `tickInterval` text is accepted and
 ignored, as upstream, and an interval that would draw more than 200 ticks falls
-back to automatic ticks. Tick labels are drawn above the chart; `topAxis` also
-repeats them below it.
+back to automatic ticks. Tick labels are drawn above the chart; the `topAxis`
+directive or `config: gantt: topAxis: true` also repeats them below it, and
+`topAxis: false` keeps only the bottom row (upstream's default position).
 
 `displayMode: compact` (top-level frontmatter, or `config: gantt: displayMode`)
 packs each section's tasks into the fewest rows: a task takes the first row
 whose last task ended by its start, and labels move onto the bars. `config:
 gantt:` also accepts `axisFormat`, `tickInterval`, `weekday` and `topAxis` (the
-diagram's own directives win) and validates upstream's pixel settings
-(`barHeight`, `barGap`, paddings, font sizes, `numberSectionStyles`, ...), which
-leave native geometry unchanged.
+diagram's own directives win), and `barHeight`, `barGap` and `leftPadding`
+size the bars, rows and label column; other keys are ignored and recorded.
 
 `todayMarker off` and style-only `todayMarker` lines are accepted; the native
 renderer never reads the wall clock, so a red marker is drawn only for a fixed
@@ -225,11 +237,15 @@ a top-level call without an explicit caller uses an `External` participant.
 Balanced method arguments are required. Calls and returns become native
 lifeline messages with activation bars; control constructs become frames.
 
-Not yet supported: `@return`/`@reply`, `@Starter`, participant icons for
-annotations (they render as stereotype text), every loop spelling, rich
-comments or styles. Braces inside quoted arguments or after an async message's
+`@Starter(A)` names the caller of top-level calls; `@return`/`@reply` makes the
+next async message a dashed reply. `@Boundary`, `@Control`, `@Entity`,
+`@Database`, `@Collections` and `@Queue` draw their UML symbols. `//` comments
+(Markdown emphasis included) render above the following message or fragment.
+
+Not yet supported: icons for other annotations (they render as stereotype
+text), every loop spelling or styles. Braces inside quoted arguments or after an async message's
 colon stay label text.
-`//` comments are retained in source but not displayed above messages. Quoted
+Comments before a participant declaration are dropped. Quoted
 arguments do not currently process backslash escapes. Statements outside the
 listed subset fail explicitly.
 
@@ -245,5 +261,9 @@ diagnostics and every source prefix. `./wbuild narrative_test narrative_64_test`
 fragments, activation validation, journey score geometry, timeline event grouping,
 Gregorian dates/dependencies/status, nested ZenUML calls and returns, lossless
 edits, malformed/truncated input, ownership and source/item/layout bounds.
+`./wbuild sequence_objects_test sequence_objects_64_test` covers participant
+objects, properties/details, central connections, entity codes, link menus and
+ZenUML `@return`/`@Starter`/symbols/comments; `./wbuild flowchart_test
+flowchart_64_test` covers flowchart shapes, links, edge IDs and click actions.
 The same display list drives SVG and native desktop rendering; examples are
 also exercised through CLI check/export and native screenshot smoke checks.

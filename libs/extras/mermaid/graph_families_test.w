@@ -143,8 +143,8 @@ void test_graph_kanban_ticket_links_and_flattened_nesting():
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
-	list[char*] bad = list[char*]{c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'javascript:alert(1)'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://a/#TICKET#'\n    ticketBaseUrl: 'https://b/#TICKET#'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n  kanban:\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl\n---\nkanban\nA\n", c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n  theme: default\n    ticketBaseUrl: 'https://a/'\n---\nkanban\nA\n"}
-	list[char*] messages = list[char*]{c"ticketBaseUrl must be an http or https URL", c"unsupported kanban setting; supported: ticketBaseUrl", c"duplicate ticketBaseUrl", c"duplicate kanban configuration", c"frontmatter entry requires key: value", c"inconsistent frontmatter indentation"}
+	list[char*] bad = list[char*]{c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'javascript:alert(1)'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://a/#TICKET#'\n    ticketBaseUrl: 'https://b/#TICKET#'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n  kanban:\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl\n---\nkanban\nA\n", c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n  theme: default\n    ticketBaseUrl: 'https://a/'\n---\nkanban\nA\n"}
+	list[char*] messages = list[char*]{c"ticketBaseUrl must be an http or https URL", c"duplicate ticketBaseUrl", c"duplicate kanban configuration", c"frontmatter entry requires key: value", c"inconsistent frontmatter indentation"}
 	for i in range(bad.length):
 		mm_document* invalid = mm_parse(bad[i], strlen(bad[i]))
 		assert_strings_equal(messages[i], invalid.error)

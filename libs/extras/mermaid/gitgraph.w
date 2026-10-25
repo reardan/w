@@ -116,7 +116,13 @@ int mm_git_lane(mm_document* d, mm_node* branch):
 	return lane
 
 void mm_git_body(mm_parser* p):
-	int current = mm_git_branch(p, c"main", 1, -1, 0)
+	# gitGraph.mainBranchName / mainBranchOrder configure the initial branch.
+	char* main_name = mm_config_value(p.doc, c"gitGraph.mainBranchName")
+	if (main_name == 0 || main_name[0] == 0): main_name = c"main"
+	int current = mm_git_branch(p, main_name, 1, -1, 0)
+	if (current >= 0 && mm_config_has(p.doc, c"gitGraph.mainBranchOrder")):
+		mm_node* main_branch = p.doc.nodes[current]
+		main_branch.declared = mm_config_number(p.doc, c"gitGraph.mainBranchOrder", 0) + 1
 	int lane = 1
 	int ordinal = 0
 	while (mm_peek(p) != 0 && p.doc.error == 0):
@@ -245,6 +251,22 @@ mm_scene* mm_git_render(mm_document* d):
 		if (width > lane_sizes[lane]): lane_sizes[lane] = width
 	if (vertical): label_width = 100
 	time = label_width + 60
+	# gitGraph.parallelCommits: commits at the same ancestry depth share a column.
+	int parallel = mm_config_flag(d, c"gitGraph.parallelCommits", 0)
+	list[int] generation = new list[int]
+	list[int] columns = new list[int]
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		int depth = 0
+		if (n.group == 0):
+			for mm_edge* e in d.edges:
+				if (e.to_node == i && e.from_node < i && generation[e.from_node] + 1 > depth): depth = generation[e.from_node] + 1
+			int width = strlen(n.label) * 8 + 60
+			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+			if (width < 100): width = 100
+			while (columns.length <= depth): columns.push(0)
+			if (width > columns[depth]): columns[depth] = width
+		generation.push(depth)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
@@ -258,6 +280,10 @@ mm_scene* mm_git_render(mm_document* d):
 		b.y = offset
 		if (n.group):
 			b.x = 40
+		else if (parallel):
+			b.x = label_width + 60
+			for g in range(generation[i]): b.x = b.x + columns[g]
+			if (b.x + columns[generation[i]] > time): time = b.x + columns[generation[i]]
 		else:
 			b.x = time
 			int width = strlen(n.label) * 8 + 60
@@ -265,6 +291,10 @@ mm_scene* mm_git_render(mm_document* d):
 			if (width < 100): width = 100
 			time = time + width
 	__w_list_free(cast(__w_list*, lane_sizes))
+	__w_list_free(cast(__w_list*, generation))
+	__w_list_free(cast(__w_list*, columns))
+	int show_branches = mm_config_flag(d, c"gitGraph.showBranches", 1)
+	int show_labels = mm_config_flag(d, c"gitGraph.showCommitLabel", 1)
 	if (vertical):
 		for mm_bounds* b in s.nodes:
 			int x = b.x
@@ -273,21 +303,27 @@ mm_scene* mm_git_render(mm_document* d):
 			if (reverse): b.y = time + 40 - x
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
-		if (n.group == 0): continue
+		if (n.group == 0 || show_branches == 0): continue
 		mm_bounds* b = s.nodes[i]
 		mm_text(s, b.x, b.y - 8, n.label)
+		# Branch lines and commits take git0..git7 by lane under a theme.
+		int line_start = s.items.length
 		if (vertical):
 			if (reverse): mm_line(s, b.x, 40, b.x, time + 40 - label_width, 1)
 			else: mm_line(s, b.x, label_width, b.x, time, 1)
 		else: mm_line(s, label_width, b.y, time, b.y, 1)
+		mm_style_role(s, line_start, MM_ROLE_GIT, mm_git_lane(d, n))
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]
 		mm_bounds* b = s.nodes[e.to_node]
 		mm_line(s, a.x, a.y, b.x, b.y, 0)
+		mm_node* target = d.nodes[e.to_node]
+		mm_style_role(s, s.items.length - 1, MM_ROLE_GIT, mm_git_lane(d, d.nodes[target.parent]))
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group): continue
 		mm_bounds* b = s.nodes[i]
+		int commit_start = s.items.length
 		if (n.shape == 2): mm_draw(s, MM_BOX, b.x - 12, b.y - 12, b.x + 12, b.y + 12, 0, c"")
 		else: mm_draw(s, MM_CIRCLE, b.x - 9, b.y - 9, b.x + 9, b.y + 9, n.shape == 3, c"")
 		if (n.shape == 4):
@@ -298,6 +334,7 @@ mm_scene* mm_git_render(mm_document* d):
 			mm_line(s, b.x - 6, b.y - 6, b.x + 6, b.y + 6, 0)
 			mm_line(s, b.x + 6, b.y - 6, b.x - 6, b.y + 6, 0)
 		if (n.shape == 3): mm_draw(s, MM_CIRCLE, b.x - 4, b.y - 4, b.x + 4, b.y + 4, 0, c"")
-		mm_text(s, b.x - 12, b.y + 20, n.label)
+		mm_style_role(s, commit_start, MM_ROLE_GIT, mm_git_lane(d, d.nodes[n.parent]))
+		if (show_labels): mm_text(s, b.x - 12, b.y + 20, n.label)
 		if (n.annotation[0] != 0): mm_text(s, b.x - 12, b.y - 36, n.annotation)
 	return s

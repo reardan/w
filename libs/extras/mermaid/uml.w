@@ -1,6 +1,7 @@
 # Class and state syntax, referenced against Mermaid 12.2.0.
 import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.style
+import libs.extras.mermaid.interaction
 
 int mm_keyword(mm_parser* p, char* word):
 	int save = p.pos
@@ -305,6 +306,13 @@ void mm_class_statement(mm_parser* p, int scope, int depth):
 	else if (mm_match(p, c":")): mm_class_member(p, index)
 	else: mm_class_relation(p, index, scope)
 
+# `State:::class`; upstream does not style start or end states either.
+void mm_state_class(mm_parser* p, mm_node* n):
+	if (n.shape >= 4 && n.shape != 6):
+		mm_error(p.doc, p.pos, c"start and end states cannot be styled")
+		return
+	mm_style_inline(p, n)
+
 void mm_state_statement(mm_parser* p, int scope, int depth):
 	int declaration = mm_keyword(p, c"state")
 	char* label = 0
@@ -344,11 +352,15 @@ void mm_state_statement(mm_parser* p, int scope, int depth):
 			free(n.annotation)
 			n.annotation = annotation
 			mm_space(p)
+		if (mm_match(p, c":::")):
+			mm_state_class(p, n)
+			mm_space(p)
 		if (mm_match(p, c"{")): mm_group_body(p, index, depth)
 		return
 	if (mm_match(p, c":::")):
-		mm_error(p.doc, p.pos, c"state styling is not supported")
-		return
+		mm_state_class(p, n)
+		mm_space(p)
+		if (mm_end(p) || mm_peek(p) == '}'): return
 	if (mm_match(p, c":")):
 		if (n.shape != 1): mm_error(p.doc, p.pos, c"special state cannot have a description")
 		free(n.label)
@@ -363,6 +375,9 @@ void mm_state_statement(mm_parser* p, int scope, int depth):
 	if (mm_match(p, c"-->") == 0): mm_error(p.doc, p.pos, c"expected state transition -->")
 	e.to_node = mm_uml_node(p, scope, 1)
 	mm_space(p)
+	if (e.to_node >= 0 && mm_match(p, c":::")):
+		mm_state_class(p, p.doc.nodes[e.to_node])
+		mm_space(p)
 	if (mm_match(p, c":")):
 		free(e.label)
 		e.label = mm_uml_text(p)
@@ -503,6 +518,9 @@ void mm_uml_body(mm_parser* p, int scope, int depth):
 				free(n.direction)
 				n.direction = p.doc.direction
 				p.doc.direction = outer
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"click")): mm_interaction_statement(p, 0)
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"link")): mm_interaction_statement(p, 1)
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"callback")): mm_interaction_statement(p, 2)
 		else if (p.doc.kind == MM_CLASS): mm_class_statement(p, current, depth)
 		else: mm_state_statement(p, current, depth)
 		if (mm_end(p) == 0 && mm_peek(p) != '}'): mm_error(p.doc, p.pos, c"unsupported UML syntax or missing statement separator")

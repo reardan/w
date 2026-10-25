@@ -90,9 +90,9 @@ void test_wardley_flows_and_link_labels():
 void test_wardley_market_size_annotations_and_forces():
 	char* source = c"wardley-beta\ntitle Forces\nsize [800, 1000]\nevolution Genesis / Concept@0.2 -> Custom@0.5 -> Product@0.8 -> Commodity@1.0\ncomponent Cloud [0.30, 0.95] (market)\ncomponent API [0.60, 0.70] (buy) inertia\nCloud -> API\nannotations [0.10, 0.90]\nannotation 2,[0.50, 0.50] \"Second\"\nannotation 1,[0.60, 0.65] \"Critical\"\nannotation 1,[0.62, 0.40] \"Critical\"\naccelerator \"AI Adoption\" [0.55, 0.25]\ndeaccelerator \"Legacy\" [0.15, 0.75]\n"
 	mm_document* d = fgaps_parse(source)
-	assert_strings_equal(c"800 1000", mm_setting(d, c"wardley.size"))
-	assert_strings_equal(c"200 500 800 1000", mm_setting(d, c"wardley.boundaries"))
-	assert_strings_equal(c"100 900", mm_setting(d, c"wardley.annotations"))
+	assert_strings_equal(c"800 1000", mm_config_value(d, c"wardley.size"))
+	assert_strings_equal(c"200 500 800 1000", mm_config_value(d, c"wardley.boundaries"))
+	assert_strings_equal(c"100 900", mm_config_value(d, c"wardley.annotations"))
 	mm_node* cloud = d.nodes[0]
 	assert_strings_equal(c"market", mm_wardley_get(cloud, c"strategy"))
 	mm_node* second = d.nodes[2]
@@ -133,7 +133,7 @@ void test_wardley_market_size_annotations_and_forces():
 	mm_document_free(d)
 	# Three stages are fine upstream; boundaries apply only when all are given.
 	d = fgaps_parse(c"wardley-beta\nevolution A@0.3 -> B -> C\ncomponent X [0.5, 0.5]\n")
-	asserts(c"partial boundaries ignored", mm_setting(d, c"wardley.boundaries") == 0)
+	asserts(c"partial boundaries ignored", mm_config_value(d, c"wardley.boundaries") == 0)
 	char* text = fgaps_svg(d)
 	free(text)
 	mm_document_free(d)
@@ -179,8 +179,8 @@ void test_mindmap_indentation_heuristic_and_color_by():
 	int branch_zero = 0
 	int branch_one = 0
 	for mm_primitive* item in scene.items:
-		if (item.role == 5 && item.series == 0): branch_zero = branch_zero + 1
-		if (item.role == 5 && item.series == 1): branch_one = branch_one + 1
+		if (item.role == MM_ROLE_TINT && item.kind != MM_TEXT && item.kind != MM_LINE && item.series == 0): branch_zero = branch_zero + 1
+		if (item.role == MM_ROLE_TINT && item.kind != MM_TEXT && item.kind != MM_LINE && item.series == 1): branch_one = branch_one + 1
 	assert_equal(3, branch_zero)
 	assert_equal(1, branch_one)
 	mm_scene_free(scene)
@@ -190,8 +190,8 @@ void test_mindmap_indentation_heuristic_and_color_by():
 	int depth_one = 0
 	int depth_two = 0
 	for mm_primitive* item in scene.items:
-		if (item.role == 5 && item.series == 0): depth_one = depth_one + 1
-		if (item.role == 5 && item.series == 1): depth_two = depth_two + 1
+		if (item.role == MM_ROLE_TINT && item.kind != MM_TEXT && item.kind != MM_LINE && item.series == 0): depth_one = depth_one + 1
+		if (item.role == MM_ROLE_TINT && item.kind != MM_TEXT && item.kind != MM_LINE && item.series == 1): depth_two = depth_two + 1
 	assert_equal(2, depth_one)
 	assert_equal(1, depth_two)
 	mm_scene_free(scene)
@@ -199,7 +199,7 @@ void test_mindmap_indentation_heuristic_and_color_by():
 	free(svg)
 	mm_document_free(d)
 	fgaps_error(c"mindmap\n  A\nB", c"mindmap requires one root")
-	fgaps_error(c"---\nconfig:\n  mindmap:\n    colorBy: rainbow\n---\nmindmap\nA\n", c"mindmap colorBy must be depth or branch")
+	fgaps_error(c"---\nconfig:\n  mindmap:\n    colorBy: rainbow\n---\nmindmap\nA\n", c"mindmap.colorBy must be one of: branch, depth")
 
 char* fgaps_icon(mm_node* n):
 	for mm_property* property in n.metadata:
@@ -244,7 +244,7 @@ void test_treeview_icons_classes_and_config():
 	mm_document_free(d)
 	fgaps_error(c"treeView-beta\nA icon(x) icon(y)", c"duplicate TreeView icon")
 	fgaps_error(c"treeView-beta\nA :::bad!", c"invalid TreeView class name")
-	fgaps_error(c"---\nconfig:\n  treeView:\n    showIcons: sometimes\n---\ntreeView-beta\nA\n", c"configuration value must be true or false")
+	fgaps_error(c"---\nconfig:\n  treeView:\n    showIcons: sometimes\n---\ntreeView-beta\nA\n", c"treeView.showIcons must be true or false")
 	fgaps_prefixes(source)
 
 void test_kanban_column_metadata_and_repeated_ids():

@@ -1,11 +1,13 @@
 # Dedicated column and tree layouts; parent means ancestry, never a cluster box.
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.icons
+import libs.extras.mermaid.style_render
 import lib.fmath
 
 # Mindmap section colours: by branch (the root's child each node descends
 # from, as upstream's default) or by depth with `mindmap.colorBy: depth`.
-# Themes repaint them from cScale0..11 (series role). -1 leaves the root plain.
+# Themes repaint them from cScale0..11 (MM_ROLE_TINT with this series). -1
+# leaves the root plain.
 int mm_mindmap_series(mm_document* d, int index, int by_depth):
 	int depth = 0
 	int branch = index
@@ -32,8 +34,6 @@ void mm_mindmap_paint(mm_scene* s, int start, int series):
 		if (p.kind == MM_TEXT || p.kind == MM_LINE): continue
 		p.style.mask = p.style.mask | 1
 		p.style.fill = colors[series % 12]
-		p.role = 5
-		p.series = series
 	__w_list_free(cast(__w_list*, colors))
 
 # Mindmap cloud (3) and bang (4) outlines are 48-point polygons: lobes bulge
@@ -149,11 +149,12 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			mm_bounds* a = s.nodes[n.parent]
 			mm_bounds* b = s.nodes[i]
 			mm_line(s, a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2, 0)
-	char* color_by = mm_setting(d, c"mindmap.colorBy")
+	char* color_by = mm_config_value(d, c"mindmap.colorBy")
 	int by_depth = color_by != 0 && strcmp(color_by, c"depth") == 0
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
+		int style_start = s.items.length
 		int shape = MM_BOX
 		if (n.shape == 2): shape = MM_CIRCLE
 		int outline = s.items.length
@@ -184,5 +185,7 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 				mm_primitive* link = s.items[s.items.length - 1]
 				link.href = mm_kanban_ticket_url(d.ticket_base_url, m.text + 8)
 			y = y + 24
+		if (d.kind == MM_MINDMAP && n.parent >= 0): mm_style_role(s, style_start, MM_ROLE_TINT, mm_mindmap_series(d, i, by_depth))
+		if (d.kind == MM_MINDMAP && (n.style_classes[0] != 0 || n.style.mask != 0)): mm_style_node(d, s, n, style_start)
 	__w_list_free(cast(__w_list*, heights))
 	return s

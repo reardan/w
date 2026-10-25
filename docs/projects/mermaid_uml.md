@@ -44,10 +44,19 @@ layout vertices. They render in side gutters with dashed attachments, or below
 the chart for standalone notes, without covering graph groups. Actual newlines
 and `\n` split note text into visible lines. At most 1,024 notes are accepted.
 
-These changes do not add class click handlers, browser interactions,
-per-state styling, rich HTML labels or upstream theme/layout
-parity. Notes use deterministic gutter placement rather than upstream placement.
+Class `link ID "url" "tooltip"`, `click ID href "url"` / `click ID call fn()`
+and `callback ID "fn"` attach to declared classes; safe URLs (relative,
+fragment, http(s), mailto) render as SVG links, callbacks stay in the model and
+never run. Member labels drop the `$`/`*` classifier into styling (underlined
+static, italic abstract), show `~T~` as `<T>` and methods as
+`name(params) : Return`.
+
+These changes do not add browser interactions, rich HTML labels or upstream
+layout parity. States take `style`, `classDef`, `class` and `:::` (see
+[styling](mermaid_styling.md)). Notes use deterministic gutter placement rather than upstream placement.
 
 `./wbuild uml_test uml_64_test` verifies generic identity and comma parameter lists, namespaces and labels,
 concurrent state regions, unique interfaces, cross-scope transitions, note ownership, and truncated note
 input alongside the existing relationship, group and member tests.
+`./wbuild class_members_test class_members_64_test` covers member display,
+classifiers and class interaction statements.

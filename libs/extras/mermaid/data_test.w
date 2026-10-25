@@ -137,7 +137,7 @@ void test_data_venn_regions_and_aliases():
 	mm_document_free(d)
 	data_bad(c"venn-beta\nset A\nunion A,B[\"x\"]\n")
 	data_bad(c"venn-beta\nset A\nunion A,A[\"x\"]\n")
-	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\n")
+	data_bad(c"venn-beta\nset A\nset B\nset C\nset D\nset E\nset F\nset G\nset H\nset I\n")
 
 void test_data_packet_ranges_and_wrapping():
 	mm_document* d = data_parse(c"packet-beta\n+16: \"Source\"\n+16: \"Destination\"\n32-79: \"Payload\"\n")
@@ -526,15 +526,18 @@ void test_data_venn_sizes_and_text_nodes():
 	int text_count = 0
 	for mm_primitive* p in scene.items:
 		if (p.kind == MM_TEXT && index_of(p.text, c"note") >= 0): text_count = text_count + 1
-		if (p.kind != MM_LINE): continue
-		if (lines < 32):
-			if (p.x < first_left): first_left = p.x
-			if (p.x > first_right): first_right = p.x
-		else:
-			if (p.x < second_left): second_left = p.x
-			if (p.x > second_right): second_right = p.x
+		# Sets are filled disc polygons sampled from their circles.
+		if (p.kind != MM_POLYGON): continue
+		for k in range(0, p.points.length, 2):
+			int x = p.points[k]
+			if (lines == 0):
+				if (x < first_left): first_left = x
+				if (x > first_right): first_right = x
+			else:
+				if (x < second_left): second_left = x
+				if (x > second_right): second_right = x
 		lines = lines + 1
-	assert_equal(64, lines)
+	assert_equal(2, lines)
 	assert_equal(3, text_count)
 	assert_equal(340, first_right - first_left)
 	assert_equal(170, second_right - second_left)
@@ -551,7 +554,6 @@ void test_data_venn_sizes_and_text_nodes():
 	data_bad(c"venn-beta\ntext A[\"No parent\"]\n")
 	data_bad(c"venn-beta\nset A:0\n")
 	data_bad(c"venn-beta\nset A:2\nset B:1\nunion A,B[\"Too large\"]:3\n")
-	data_bad(c"venn-beta\nset A:10\nset B:10\nset C:10\n")
 	data_bad(c"venn-beta\nset A\n  text A[\"Duplicate\"]\n")
 
 void test_data_new_syntax_prefixes():

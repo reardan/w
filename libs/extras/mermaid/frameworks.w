@@ -42,48 +42,51 @@ int mm_tree_prefix(mm_parser* p, int indent):
 		column = column + 1
 	return -1
 
-# Trailing TreeView annotations after the label: `:::class` (repeatable,
-# comma-joined into *classes; the built-in `highlight` tints the row) and `icon(pack:name)` / `icon(none)` / `icon()`
-# (into *icon; "" hides the icon). Returns the owned remaining label.
-char* mm_tree_annotations(mm_parser* p, char* text, char** icon, char** classes):
-	int end = strlen(text)
-	string_builder* joined = string_new()
-	while (end > 0 && p.doc.error == 0):
-		int start = end
-		while (start > 0 && text[start - 1] != ' ' && text[start - 1] != 9): start = start - 1
-		char* token = str_copy_range(text, start, end)
-		int split = index_of(token, c":::")
-		int opens = index_of(token, c"icon(")
-		if (opens == 0 && token[strlen(token) - 1] == ')'):
+# Removes `icon(pack:name)` / `icon(none)` / `icon()` tokens (whitespace
+# delimited, before or after `:::` classes) into *icon; "" hides the icon.
+# Returns the owned remaining text.
+char* mm_tree_icons(mm_parser* p, char* text, char** icon):
+	string_builder* rest = string_new()
+	int length = strlen(text)
+	int at = 0
+	while (at < length && p.doc.error == 0):
+		int start = at
+		while (at < length && text[at] != ' ' && text[at] != 9): at = at + 1
+		int end = at
+		while (at < length && (text[at] == ' ' || text[at] == 9)): at = at + 1
+		if (end - start >= 6 && index_of(text + start, c"icon(") == 0 && text[end - 1] == ')'):
 			if (*icon != 0): mm_error(p.doc, p.pos, c"duplicate TreeView icon")
 			else:
-				char* name = str_copy_range(token, 5, strlen(token) - 1)
+				char* name = str_copy_range(text, start + 5, end - 1)
 				if (strcmp(name, c"none") == 0): name[0] = 0
 				for i in range(strlen(name)):
 					if (isalnum(name[i]) == 0 && name[i] != ':' && name[i] != '-' && name[i] != '_' && name[i] != '.'): mm_error(p.doc, p.pos, c"invalid TreeView icon name")
 				*icon = name
-			end = start
-		else if (split >= 0):
-			char* name = str_copy_range(token, split + 3, strlen(token))
-			if (mm_style_name(name) == 0): mm_error(p.doc, p.pos, c"invalid TreeView class name")
-			if (joined.length + strlen(name) > 4096): mm_error(p.doc, p.pos, c"node class assignment limit exceeded")
-			string_builder* next = string_from(name)
-			if (joined.length != 0): string_append_char(next, ',')
-			string_append(next, joined.data)
-			string_free(joined)
-			joined = next
-			free(name)
-			end = start + split
-		else:
-			free(token)
-			break
-		free(token)
-		while (end > 0 && (text[end - 1] == ' ' || text[end - 1] == 9)): end = end - 1
-	if (joined.length != 0): *classes = strclone(joined.data)
-	string_free(joined)
-	char* label = str_copy_range(text, 0, end)
+		else: string_append_bytes(rest, text + start, at - start)
+	char* result = mm_style_trim(rest.data, 0, rest.length)
+	string_free(rest)
 	free(text)
-	return label
+	return result
+
+# Comma-joined class names from "name name ..." at text[at]; diagnoses bad names.
+char* mm_tree_classes(mm_parser* p, char* text, int at):
+	string_builder* joined = string_new()
+	int length = strlen(text)
+	while (at < length):
+		while (at < length && (text[at] == 32 || text[at] == 9)): at = at + 1
+		int start = at
+		while (at < length && text[at] != 32 && text[at] != 9): at = at + 1
+		if (at == start): break
+		char* name = str_copy_range(text, start, at)
+		if (mm_style_name(name) == 0): mm_error(p.doc, p.pos, c"invalid TreeView class name")
+		if (joined.length + strlen(name) > 4096): mm_error(p.doc, p.pos, c"node class assignment limit exceeded")
+		if (joined.length != 0): string_append_char(joined, ',')
+		string_append(joined, name)
+		free(name)
+	if (joined.length == 0): mm_error(p.doc, p.pos, c"expected TreeView class names")
+	char* result = strclone(joined.data)
+	string_free(joined)
+	return result
 
 void mm_outline_body(mm_parser* p):
 	list[int] indents = new list[int]
@@ -99,7 +102,7 @@ void mm_outline_body(mm_parser* p):
 		if (mm_peek(p) == 0): break
 		if (mm_peek(p) == 13 || mm_peek(p) == 10): continue
 		if (mm_match(p, c"%%")):
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"configuration directive unsupported")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			char* comment = mm_line_text(p)
 			free(comment)
 			continue
@@ -129,7 +132,14 @@ void mm_outline_body(mm_parser* p):
 				char* label = mm_style_trim(text, 0, marker)
 				free(text)
 				text = label
-			text = mm_tree_annotations(p, text, &icon, &classes)
+			text = mm_tree_icons(p, text, &icon)
+			# `:::name` (space separated, after the label) assigns CSS classes.
+			int styled = index_of(text, c":::")
+			if (styled >= 0):
+				classes = mm_tree_classes(p, text, styled + 3)
+				char* label = mm_style_trim(text, 0, styled)
+				free(text)
+				text = label
 		else if (index_of(text, c":::") >= 0 || index_of(text, c" ##") >= 0 || index_of(text, c"icon(") >= 0 || index_of(text, c"├") >= 0 || index_of(text, c"└") >= 0 || index_of(text, c"│") >= 0): mm_error(p.doc, p.pos, c"outline annotations and tree command prefixes are not yet supported")
 		if (text[0] == '"'):
 			int size = strlen(text)
@@ -153,10 +163,10 @@ void mm_outline_body(mm_parser* p):
 		n.label = text
 		free(n.annotation)
 		n.annotation = description
-		if (icon != 0): n.metadata.push(new mm_property(strclone(c"icon"), icon))
-		# TreeView classes are CSS class names (no classDef upstream), so they
-		# live in metadata rather than the classDef-checked style_classes.
-		if (classes != 0): n.metadata.push(new mm_property(strclone(c"classes"), classes))
+		if (icon != 0): n.metadata.push(new mm_property(strclone(c"icon"), icon, MM_VALUE_STRING))
+		if (classes != 0):
+			free(n.style_classes)
+			n.style_classes = classes
 		if (text[0] == 0): mm_error(p.doc, p.pos, c"empty outline label")
 		if (depth > 0): n.parent = parents[depth - 1]
 		if (depth == indents.length):
@@ -271,7 +281,7 @@ void mm_wardley_set(mm_parser* p, mm_node* n, char* key, char* value):
 	if (mm_wardley_get(n, key) != 0):
 		mm_error(p.doc, p.pos, c"duplicate Wardley component modifier")
 		return
-	n.metadata.push(new mm_property(strclone(key), strclone(value)))
+	n.metadata.push(new mm_property(strclone(key), strclone(value), MM_VALUE_STRING))
 
 void mm_wardley_coordinates(mm_parser* p, mm_node* n):
 	mm_space(p)
@@ -422,7 +432,7 @@ void mm_wardley_stages(mm_parser* p):
 			count = count + 1
 			start = i + 2
 	if (count < 2 || count > 8): mm_error(p.doc, p.pos, c"Wardley evolution axis requires two to eight stages")
-	if (bounded == count && p.doc.error == 0): mm_setting_set(p.doc, c"wardley.boundaries", boundaries.data)
+	if (bounded == count && p.doc.error == 0): mm_config_set(p.doc, c"wardley.boundaries", boundaries.data)
 	string_free(boundaries)
 	free(text)
 
@@ -661,7 +671,7 @@ int mm_wardley_size_value(mm_parser* p):
 
 # `size [width, height]` in pixels (upstream default 1100 x 600).
 void mm_wardley_size(mm_parser* p):
-	if (mm_setting(p.doc, c"wardley.size") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley size")
+	if (mm_config_value(p.doc, c"wardley.size") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley size")
 	mm_space(p)
 	if (mm_match(p, c"[") == 0): mm_error(p.doc, p.pos, c"expected Wardley size bracket")
 	int width = mm_wardley_size_value(p)
@@ -675,12 +685,12 @@ void mm_wardley_size(mm_parser* p):
 	string_append_int(value, width)
 	string_append_char(value, ' ')
 	string_append_int(value, height)
-	mm_setting_set(p.doc, c"wardley.size", value.data)
+	mm_config_set(p.doc, c"wardley.size", value.data)
 	string_free(value)
 
 # `annotations [vis, evo]` places the numbered annotation legend box.
 void mm_wardley_annotations(mm_parser* p):
-	if (mm_setting(p.doc, c"wardley.annotations") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley annotations box")
+	if (mm_config_value(p.doc, c"wardley.annotations") != 0): mm_error(p.doc, p.pos, c"duplicate Wardley annotations box")
 	mm_node scratch
 	mm_wardley_coordinates(p, &scratch)
 	if (p.doc.error != 0): return
@@ -688,7 +698,7 @@ void mm_wardley_annotations(mm_parser* p):
 	string_append_int(value, scratch.value_y)
 	string_append_char(value, ' ')
 	string_append_int(value, scratch.value_x)
-	mm_setting_set(p.doc, c"wardley.annotations", value.data)
+	mm_config_set(p.doc, c"wardley.annotations", value.data)
 	string_free(value)
 
 # `annotation N,[vis, evo] "text"`: a numbered marker (shape 4, number in

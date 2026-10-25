@@ -256,7 +256,7 @@ void test_zenuml_creation_assignment_annotations_and_try():
 	branch = d.narrative[10]
 	assert_strings_equal(c"finally", branch.label)
 	char* svg = followup_svg(d)
-	asserts(c"annotation shown as stereotype", index_of(svg, c"&lt;&lt;Database&gt;&gt;") >= 0)
+	asserts(c"Database annotator draws its symbol", repo.shape == 5 && api.shape == 2)
 	asserts(c"creation label shown", index_of(svg, c"new Repo(config)") >= 0)
 	free(svg)
 	mm_scene* scene = mm_render(d)
@@ -297,7 +297,7 @@ void test_zenuml_nested_assignment_reply_and_inline_bodies():
 	followup_expect_error(c"zenuml\n@ Foo", c"unsupported ZenUML annotation")
 	followup_expect_error(c"zenuml\n@Database", c"unsupported ZenUML annotation")
 	followup_expect_error(c"zenuml\nx = 5", c"ZenUML assignment requires a call")
-	followup_expect_error(c"zenuml\nx = new A", c"ZenUML new requires a participant and balanced arguments")
+	followup_expect_error(c"zenuml\nx = new A(b", c"ZenUML new requires a participant and balanced arguments")
 	followup_expect_error(c"zenuml\nnew A(", c"ZenUML new requires a participant and balanced arguments")
 	followup_prefixes(c"zenuml\n@Database Repo\nApi.handle() {\nrepo = new Repo(config) { Repo.init() }\nOrder result = Repo.save(order)\ntry { Repo.flush() } catch(e) { return failed } finally { Api->Repo: close }\n}\n")
 

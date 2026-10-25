@@ -152,7 +152,7 @@ void mm_c4_set(mm_node* n, char* key, char* value):
 			free(property.value)
 			property.value = strclone(value)
 			return
-	n.metadata.push(new mm_property(strclone(key), strclone(value)))
+	n.metadata.push(new mm_property(strclone(key), strclone(value), MM_VALUE_STRING))
 
 # Signed pixel offset within +-2000, or the sentinel 1000000 when malformed.
 int mm_c4_offset(char* text):

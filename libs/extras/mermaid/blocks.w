@@ -183,8 +183,21 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 		else:
 			int from = mm_block_node(p, parent)
 			mm_space(p)
+			int dashed = 0
 			int arrow = mm_match(p, c"-->")
+			if (arrow == 0 && mm_match(p, c"-.->")):
+				arrow = 1
+				dashed = 1
+			else if (arrow == 0 && mm_match(p, c"==>")):
+				arrow = 1
+				dashed = 2
 			int line = arrow || mm_match(p, c"---")
+			if (line == 0 && mm_match(p, c"-.-")):
+				line = 1
+				dashed = 1
+			else if (line == 0 && mm_match(p, c"===")):
+				line = 1
+				dashed = 2
 			if (line && p.doc.error == 0):
 				char* label = strclone(c"")
 				mm_space(p)
@@ -199,6 +212,7 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 					e.to_node = to
 					e.label = strclone(label)
 					e.arrow = arrow
+					e.dashed = dashed
 					p.doc.edges.push(e)
 				free(label)
 		mm_separators(p)
@@ -413,11 +427,16 @@ mm_scene* mm_blocks_render(mm_document* d):
 			ay = a.y
 			by = b.y + b.h
 		int style_start = s.items.length
-		if (e.arrow): mm_framework_arrow(s, ax, ay, bx, by, 0)
-		else: mm_line(s, ax, ay, bx, by, 0)
+		int dotted = e.dashed == 1
+		if (e.arrow): mm_framework_arrow(s, ax, ay, bx, by, dotted)
+		else: mm_line(s, ax, ay, bx, by, dotted)
 		mm_text(s, (ax + bx) / 2, (ay + by) / 2 - 20, e.label)
 		for i in range(style_start, s.items.length):
 			mm_primitive* primitive = s.items[i]
+			# Thick links draw upstream's 3.5px edge-thickness-thick as 4px.
+			if (e.dashed == 2 && primitive.kind == MM_LINE):
+				primitive.style.mask = primitive.style.mask | MM_STYLE_WIDTH
+				primitive.style.width = 4
 			mm_style_merge(&primitive.style, &d.edge_style)
 			mm_style_merge(&primitive.style, &e.style)
 	return s
