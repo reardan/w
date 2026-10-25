@@ -373,6 +373,85 @@ describe content keys, separate restore/save actions, and sharing one built
 tool between jobs; its [cache access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
 explain default/base-branch visibility and cache eviction.
 
+## Remote execution
+
+`wexec --remote=<host> [--remote-dir=<dir>] target...` (issue #487)
+runs the requested targets on another machine over ssh. It turns the Mac
+checkout's "ssh host `w`" habit into a build feature for targets that
+need Linux, i386 libc or qemu:
+
+```sh
+./wbuild --remote=w c_import_test        # run there, bring outputs back
+./wbuild --remote=w --remote-dir=w-pr42 verify
+```
+
+There is no execution service and no daemon. Each run makes three ssh
+round trips (`ssh <host> 'sh -c ...'`; the host needs POSIX sh, coreutils
+and tar):
+
+1. **Sync.** wexec sends an index with one `<sha256> <mode> <path>` line
+   per input file, and the host replies with the hashes missing from its
+   object store.
+2. **Run.** wexec sends a tar of just those objects. The host updates its
+   copy of the tree from the index diff, then runs
+   `./wbuild -f .wexec_remote/manifest.json <targets>` in a fresh copy
+   of that tree, streaming the output back live.
+3. **Fetch.** The host's `bin/wexec --write-bundle` packs the requested
+   targets' declared `"outputs"` into one WBUN1 bundle (the shared-cache
+   format), and wexec unpacks it locally.
+
+**What is shipped.** The set that `--trace --hermetic` audits against
+(`wexec_trace_collect_declared`): for every target in the closure, its
+declared `"inputs"` (directory prefixes are walked) plus the import
+closures of its compile roots. `wbuild`, `SEEDS`, and the closures of
+`wv2`, `wexec` and `generated` are always included, because the remote
+`./wbuild` and the generated-source gate always run those. Outputs
+declared by closure targets, and generated sources, are not shipped: the
+host rebuilds them. The manifest goes along as
+`.wexec_remote/manifest.json`. It is the *logical* manifest, with this
+host's Mac/Android planning skipped, so a target that macOS marks
+unavailable still runs remotely. `wbuild` honors
+`WBUILD_BOOTSTRAP_MANIFEST` so its executor refresh loads that file
+instead of generating a manifest from the partial tree.
+
+**Hermetic by construction.** Under `--remote-dir` (default
+`.cache/wexec-remote/w`, relative to the remote home) the host keeps
+`objects/` (every content ever shipped), `base/` (the shipped tree) and
+`run/`. `run/` is a fresh copy of `base/` on every run. Only the previous
+run's `bin/` and the `./w` seed carry over, as they do locally. So a step
+sees only declared files. An undeclared read that works locally fails
+remotely, and `wexec --trace <target> --hermetic` on a Linux checkout
+names the file. Use one remote dir per checkout and one run at a time
+(pass `--remote-dir` to keep checkouts apart).
+
+**Caching.** Uploads are content addressed, so a repeat run sends only
+changed files. Before connecting, wexec computes every closure target's
+key exactly as a local run would. If each requested target is already
+satisfied by its local stamp or `W_CACHE_URL`, nothing goes remote.
+After a successful remote run, those keys stamp the fetched outputs in
+`bin/.wexec_cache`. With `W_CACHE_PUSH=1`, the outputs are also pushed
+to the shared cache, so a remote result fills the cache like a local
+run. The keys come from the logical manifest, so they are the keys a
+Linux checkout computes. The host keeps its own `bin/` cache too, so an
+unchanged remote target is `(cached)` there.
+
+**Modes.** WBUN1 records no file modes. When a bundle is unpacked (here
+and on a remote-cache hit), files that start like programs (ELF,
+Mach-O, PE or `#!`) are made executable, so a fetched `bin/wv3` runs.
+
+**Transport.** `WEXEC_REMOTE_SSH` names a program that is called like
+ssh (`<program> <host> <command>`). Ports, users and keys come from
+`~/.ssh/config`. `--no-cache` and `--keep-going` are forwarded to the
+remote run. `--remote` does not combine with `--list`, `--shard`,
+`--trace` or `--explain-cache`. It needs a local compiler (`bin/wv2`, or
+`bin/wv2_darwin` on macOS) to compute the import closures it ships.
+
+`tests/wexec_remote_exec_test.w` drives the whole protocol through
+`tests/wexec/fake_ssh.sh`, which runs the remote command locally. It
+covers a cold upload with outputs and stamps coming back, a local-hit
+rerun that opens no connection, a one-file incremental upload, and an
+undeclared read failing remotely.
+
 ## Parallelism
 
 The requested closure is collected depth-first up front (unknown
