@@ -25,7 +25,8 @@ branch) whose body calls sys_futex, and requires each such loop body
 to read memory that is not the stack frame (a load through a pointer or
 from a global). The steps above repeat the check under --inline and
 --profile-use (with a profile of this program's own run) on x86 and
-x64; the plain x86 run and its x64 twin cover the default options.
+x64; the plain x86 run and its x64 twin cover the default options, and
+the --profile-generate runs check the instrumented code as well.
 
 hoisted_wait is the negative control: its load sits before the loop,
 so the check must report its futex loop as not reloading. It is never
@@ -54,8 +55,15 @@ void hoisted_wait(int* word):
 # An instruction that reads memory outside the stack frame: a load or
 # compare whose memory operand is based on neither esp/rsp nor
 # ebp/rbp (register 4 or 5), i.e. a dereference or a global.
+# --profile-generate's counter bumps (`inc [counter]`, or add/adc of an
+# immediate into a 64-bit counter on x86) are not reads of program
+# state, so a read-modify-write of memory does not count.
 int reload_reads_shared(asm_insn* insn):
 	if (strcmp(insn.mnemonic, c"lea") == 0): return 0
+	if (insn.op1.kind == ASM_OP_MEM):
+		if (strcmp(insn.mnemonic, c"inc") == 0): return 0
+		if (strcmp(insn.mnemonic, c"add") == 0): return 0
+		if (strcmp(insn.mnemonic, c"adc") == 0): return 0
 	if (insn.op2.kind == ASM_OP_MEM):
 		if ((insn.op2.base != 4) && (insn.op2.base != 5)): return 1
 	if ((insn.op1.kind == ASM_OP_MEM) && (strcmp(insn.mnemonic, c"mov") != 0)):
