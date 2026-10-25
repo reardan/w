@@ -112,7 +112,12 @@ sectionFills` replaces the colours and `disableMulticolor: true` draws every
 box plain; `timeline.width` sets the minimum column width. The vertical
 layout uses the same colours.
 
-Other rich labels and automatic wrapping of long text remain unsupported.
+In the horizontal layout period and event text wraps at spaces inside the
+column (`timeline.width`, default 170px, less 30px padding) from measured
+per-glyph widths, as upstream wraps it; a single word wider than that widens
+the column instead, and event boxes and period headers grow 18px per extra
+line (issue #817). The `TD` layout sizes its boxes from measured widths but
+does not wrap. Other rich labels remain unsupported.
 
 Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 
@@ -192,13 +197,13 @@ uses, a tick falls on a unit boundary whose calendar field is a multiple of n:
 18, `2month` in January, March, ..., and `2week` on every second week counted
 from 1970. Other `tickInterval` text is accepted and
 ignored, as upstream, and an interval that would draw more than 200 ticks falls
-back to automatic ticks. Tick labels are drawn above the chart; the `topAxis`
+back to automatic ticks. Tick labels are centred on their ticks (measured widths) and drawn above the chart; the `topAxis`
 directive or `config: gantt: topAxis: true` also repeats them below it, and
 `topAxis: false` keeps only the bottom row (upstream's default position).
 
 `displayMode: compact` (top-level frontmatter, or `config: gantt: displayMode`)
 packs each section's tasks into the fewest rows: a task takes the first row
-whose last task ended by its start, and labels move onto the bars. `config:
+whose last task ended by its start, and labels move onto the bars: centred inside a bar their measured text fits (with 4px either side), otherwise just past the bar's end, as upstream's `taskText`/`taskTextOutsideRight`. `config:
 gantt:` also accepts `axisFormat`, `tickInterval`, `weekday` and `topAxis` (the
 diagram's own directives win), and `barHeight`, `barGap` and `leftPadding`
 size the bars, rows and label column; other keys are ignored and recorded.

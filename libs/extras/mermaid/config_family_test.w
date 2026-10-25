@@ -160,8 +160,9 @@ void test_gantt_configuration():
 	mm_bounds* third = s.nodes[2]
 	assert_equal(first.y, second.y)
 	asserts(c"next section on a new row", third.y > second.y)
+	# Compact labels centre inside bars they fit (issue #817).
 	mm_primitive* label = fam_text(s, c"A")
-	assert_equal(first.x + 4, label.x)
+	assert_equal(first.x + (first.w - mm_text_width(c"A", 0)) / 2, label.x)
 	mm_scene_free(s)
 	s = fam_configured(c"{'gantt': {'displayMode': 'compact'}}", body)
 	first = s.nodes[0]
@@ -261,8 +262,9 @@ void test_xychart_configuration():
 	assert_equal(940, fam_max_x(s))
 	mm_scene_free(s)
 	s = fam_configured(c"{'xyChart': {'chartOrientation': 'horizontal'}}", body)
+	# Horizontal category labels right-align 10px left of the axis (x 140).
 	category = fam_text(s, c"a")
-	assert_equal(10, category.x)
+	assert_equal(130, category.x + mm_text_width(c"a", 0))
 	mm_scene_free(s)
 	s = fam_configured(c"{'xyChart': {'showDataLabel': true, 'showTitle': false, 'showLegend': false}}", body)
 	assert_equal(1, fam_texts(s, c"13"))

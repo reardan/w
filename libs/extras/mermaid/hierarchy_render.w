@@ -2,6 +2,7 @@
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.icons
 import libs.extras.mermaid.style_render
+import libs.extras.mermaid.text
 import lib.fmath
 
 # Mindmap section colours: by branch (the root's child each node descends
@@ -84,13 +85,21 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 	s.items = new list[mm_primitive*]
 	s.nodes = new list[mm_bounds*]
 	list[int] heights = new list[int]
+	# Labels wrap at mindmap.maxNodeWidth / kanban.sectionWidth (upstream
+	# default 200px each) and the box grows by the extra lines (issue #817).
+	int wrap = mm_config_number(d, c"mindmap.maxNodeWidth", 200)
+	if (d.kind == MM_KANBAN): wrap = mm_config_number(d, c"kanban.sectionWidth", 200)
+	if (wrap < 40): wrap = 40
+	list[mm_text_block*] blocks = new list[mm_text_block*]
 	for mm_node* n in d.nodes:
 		mm_bounds* b = new mm_bounds()
-		b.w = strlen(n.label) * 8 + 40
+		mm_text_block* block = mm_text_layout(n.label, wrap)
+		blocks.push(block)
+		b.w = block.width + 40
 		if (b.w < 160): b.w = 160
-		b.h = 60 + n.members.length * 24
+		b.h = 60 + n.members.length * 24 + block.height - mm_text_line_height()
 		for mm_member* m in n.members:
-			if (strlen(m.text) * 8 + 40 > b.w): b.w = strlen(m.text) * 8 + 40
+			if (mm_text_width(m.text, 0) + 40 > b.w): b.w = mm_text_width(m.text, 0) + 40
 		if (n.shape == 2): b.h = b.w
 		if (n.annotation[0] != 0): b.h = b.h + 24
 		# Clouds and bangs lose their corners, so reserve room for the label.
@@ -108,7 +117,7 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			box.x = x
 			box.y = 40
 			# Column metadata lines sit under the title, above the header rule.
-			int y = 120 + column.members.length * 24
+			int y = 120 + column.members.length * 24 + blocks[i].height - mm_text_line_height()
 			for j in range(d.nodes.length):
 				mm_node* card = d.nodes[j]
 				if (card.parent != i): continue
@@ -165,10 +174,10 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		int x = b.x + 20
 		# Mindmap outlines are centred shapes, so centre the label block in them.
 		if (d.kind == MM_MINDMAP):
-			int content = 16
+			int content = blocks[i].height
 			if (n.annotation[0] != 0): content = content + 24
 			y = b.y + (b.h - content) / 2
-			x = b.x + (b.w - strlen(n.label) * 8) / 2
+			x = b.x + b.w / 2
 		# Icon fonts are not bundled: the icon is a native pictogram (icons.w)
 		# centred above the label, as upstream places the icon.
 		if (n.annotation[0] != 0):
@@ -176,9 +185,10 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			if (d.kind == MM_MINDMAP): badge = b.x + b.w / 2
 			mm_icon_draw(s, n.annotation, badge, y + 8, 0x374151)
 			y = y + 24
-		if (d.kind == MM_KANBAN && n.parent < 0): mm_line(s, b.x, b.y + 60 + n.members.length * 24, b.x + b.w, b.y + 60 + n.members.length * 24, 0)
-		mm_text(s, x, y, n.label)
-		y = y + 24
+		int rule = b.y + 60 + n.members.length * 24 + blocks[i].height - mm_text_line_height()
+		if (d.kind == MM_KANBAN && n.parent < 0): mm_line(s, b.x, rule, b.x + b.w, rule, 0)
+		mm_text_draw(s, blocks[i], x, y, d.kind == MM_MINDMAP)
+		y = y + 24 + blocks[i].height - mm_text_line_height()
 		for mm_member* m in n.members:
 			mm_text(s, b.x + 20, y, m.text)
 			if (d.kind == MM_KANBAN && d.ticket_base_url != 0 && index_of(m.text, c"ticket: ") == 0):
@@ -188,4 +198,6 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		if (d.kind == MM_MINDMAP && n.parent >= 0): mm_style_role(s, style_start, MM_ROLE_TINT, mm_mindmap_series(d, i, by_depth))
 		if (d.kind == MM_MINDMAP && (n.style_classes[0] != 0 || n.style.mask != 0)): mm_style_node(d, s, n, style_start)
 	__w_list_free(cast(__w_list*, heights))
+	for mm_text_block* block in blocks: mm_text_block_free(block)
+	__w_list_free(cast(__w_list*, blocks))
 	return s

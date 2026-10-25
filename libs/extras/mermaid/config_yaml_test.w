@@ -187,9 +187,9 @@ void test_directives_anywhere_and_precedence():
 	yaml_reject(c"flowchart LR\nA\n%%{init: {'theme': 'dark'}}%%\n%%{init: {'look': 'handDrawn'}}%%\n", c"unsupported look; supported: classic, neo")
 
 void test_unknown_keys_are_ignored_deterministically():
-	char* source = c"---\nunknownTop: 1\nconfig:\n  fontFamilyX: serif\n  flowchart:\n    padding: 5\n  gitGraph:\n    rotateCommitLabel: false\n  sequence:\n    hideUnusedParticipants: true\n  elk:\n    mergeEdges: true\n---\n%%{init: {'maxTextSize': 90000, 'kanban': {'sectionWidth': 200}, 'packet': {'rowHeight': 40}}}%%\nflowchart LR\nA\n"
+	char* source = c"---\nunknownTop: 1\nconfig:\n  fontFamilyX: serif\n  flowchart:\n    padding: 5\n  gitGraph:\n    rotateCommitLabel: false\n  sequence:\n    hideUnusedParticipants: true\n  elk:\n    mergeEdges: true\n---\n%%{init: {'maxTextSize': 90000, 'kanban': {'bogusKey': 200}, 'packet': {'rowHeight': 40}}}%%\nflowchart LR\nA\n"
 	mm_document* d = yaml_parse(source)
-	list[char*] paths = list[char*]{c"unknownTop", c"config.fontFamilyX", c"config.flowchart.padding", c"config.gitGraph.rotateCommitLabel", c"config.sequence.hideUnusedParticipants", c"config.elk.mergeEdges", c"config.maxTextSize", c"config.kanban.sectionWidth", c"config.packet.rowHeight"}
+	list[char*] paths = list[char*]{c"unknownTop", c"config.fontFamilyX", c"config.flowchart.padding", c"config.gitGraph.rotateCommitLabel", c"config.sequence.hideUnusedParticipants", c"config.elk.mergeEdges", c"config.maxTextSize", c"config.kanban.bogusKey", c"config.packet.rowHeight"}
 	assert_equal(paths.length, d.config_ignored.length)
 	for i in range(paths.length): assert_strings_equal(paths[i], d.config_ignored[i])
 	asserts(c"ignored keys are not stored", mm_config_value(d, c"gitGraph.rotateCommitLabel") == 0)

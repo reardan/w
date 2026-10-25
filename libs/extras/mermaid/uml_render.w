@@ -22,7 +22,7 @@ list[char*] mm_uml_note_lines(char* text):
 int mm_uml_note_width(list[char*] lines):
 	int width = 120
 	for char* line in lines:
-		if (strlen(line) * 8 + 32 > width): width = strlen(line) * 8 + 32
+		if (mm_text_width(line, 0) + 32 > width): width = mm_text_width(line, 0) + 32
 	return width
 
 void mm_uml_note_lines_free(list[char*] lines):

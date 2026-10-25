@@ -86,6 +86,356 @@ void mm_workflow_start(mm_scene* s, mm_edge* e, int ax, int ay, int nx, int ny):
 	mm_line(s, ax, ay, ax - ux + px, ay - uy + py, 0)
 	mm_line(s, ax, ay, ax - ux - px, ay - uy - py, 0)
 
+# Orthogonal link routing across lanes (issue #817). Coordinates are
+# normalized so ranks advance along u (x for LR/RL and event models, y for
+# TB/BT; negated for RL/BT) and lanes stack along v. Rank columns never
+# overlap, so the gap after each column is a channel free of steps. A link
+# leaves its source's far side into the channel after the source column,
+# runs along v to a track, follows the track to the channel before the
+# target column and enters the target's near side. The track is the
+# target's (or source's) own center line when that is clear of every step
+# between the two channels, else the nearest clear line just above or
+# below a blocking step, so no segment crosses a step box. Channel and
+# track segments of unrelated links are offset (8px steps) when they would
+# overlap, so parallel links stay distinguishable.
+const int MM_WF_CLEAR = 10
+const int MM_WF_SLOT = 8
+
+struct mm_wf_router:
+	int horizontal
+	int reverse
+	# Normalized step boxes (u0, u1, v0, v1) per node, -1 rank for clusters.
+	list[int] u0
+	list[int] u1
+	list[int] v0
+	list[int] v1
+	list[int] ranks
+	# Occupied routes: kind 0 channel (u fixed), 1 track (v fixed).
+	list[int] seg_kind
+	list[int] seg_at
+	list[int] seg_lo
+	list[int] seg_hi
+	list[int] seg_from
+	list[int] seg_to
+	# Nested cluster frames (u0, u1, v0) whose title band tracks avoid in
+	# horizontal layouts, and placed label boxes in screen coordinates.
+	list[int] band_u0
+	list[int] band_u1
+	list[int] band_v
+	list[int] label_x0
+	list[int] label_y0
+	list[int] label_x1
+	list[int] label_y1
+
+int mm_wf_u(mm_wf_router* r, int x, int y):
+	int u = y
+	if (r.horizontal): u = x
+	if (r.reverse): u = 0 - u
+	return u
+
+int mm_wf_v(mm_wf_router* r, int x, int y):
+	if (r.horizontal): return y
+	return x
+
+int mm_wf_x(mm_wf_router* r, int u, int v):
+	if (r.reverse): u = 0 - u
+	if (r.horizontal): return u
+	return v
+
+int mm_wf_y(mm_wf_router* r, int u, int v):
+	if (r.reverse): u = 0 - u
+	if (r.horizontal): return v
+	return u
+
+mm_wf_router* mm_wf_router_new(mm_document* d, mm_scene* s, int horizontal, int reverse):
+	mm_wf_router* r = new mm_wf_router()
+	r.horizontal = horizontal
+	r.reverse = reverse
+	r.u0 = new list[int]
+	r.u1 = new list[int]
+	r.v0 = new list[int]
+	r.v1 = new list[int]
+	r.ranks = new list[int]
+	r.seg_kind = new list[int]
+	r.seg_at = new list[int]
+	r.seg_lo = new list[int]
+	r.seg_hi = new list[int]
+	r.seg_from = new list[int]
+	r.seg_to = new list[int]
+	r.band_u0 = new list[int]
+	r.band_u1 = new list[int]
+	r.band_v = new list[int]
+	r.label_x0 = new list[int]
+	r.label_y0 = new list[int]
+	r.label_x1 = new list[int]
+	r.label_y1 = new list[int]
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		mm_bounds* b = s.nodes[i]
+		int a = mm_wf_u(r, b.x, b.y)
+		int c = mm_wf_u(r, b.x + b.w, b.y + b.h)
+		if (c < a):
+			int swap = a
+			a = c
+			c = swap
+		r.u0.push(a)
+		r.u1.push(c)
+		r.v0.push(mm_wf_v(r, b.x, b.y))
+		r.v1.push(mm_wf_v(r, b.x + b.w, b.y + b.h))
+		if (n.group): r.ranks.push(-1)
+		else: r.ranks.push(b.rank)
+		if (n.group && n.parent >= 0 && b.w > 0 && horizontal):
+			r.band_u0.push(a)
+			r.band_u1.push(c)
+			r.band_v.push(b.y)
+	return r
+
+void mm_wf_router_free(mm_wf_router* r):
+	__w_list_free(cast(__w_list*, r.u0))
+	__w_list_free(cast(__w_list*, r.u1))
+	__w_list_free(cast(__w_list*, r.v0))
+	__w_list_free(cast(__w_list*, r.v1))
+	__w_list_free(cast(__w_list*, r.ranks))
+	__w_list_free(cast(__w_list*, r.seg_kind))
+	__w_list_free(cast(__w_list*, r.seg_at))
+	__w_list_free(cast(__w_list*, r.seg_lo))
+	__w_list_free(cast(__w_list*, r.seg_hi))
+	__w_list_free(cast(__w_list*, r.seg_from))
+	__w_list_free(cast(__w_list*, r.seg_to))
+	__w_list_free(cast(__w_list*, r.band_u0))
+	__w_list_free(cast(__w_list*, r.band_u1))
+	__w_list_free(cast(__w_list*, r.band_v))
+	__w_list_free(cast(__w_list*, r.label_x0))
+	__w_list_free(cast(__w_list*, r.label_y0))
+	__w_list_free(cast(__w_list*, r.label_x1))
+	__w_list_free(cast(__w_list*, r.label_y1))
+	free(r)
+
+# Extent of rank's column along u; 0 when the rank holds no step.
+int mm_wf_column(mm_wf_router* r, int rank, int* lo, int* hi):
+	int any = 0
+	for i in range(r.ranks.length):
+		if (r.ranks[i] != rank): continue
+		if (any == 0 || r.u0[i] < *lo): *lo = r.u0[i]
+		if (any == 0 || r.u1[i] > *hi): *hi = r.u1[i]
+		any = 1
+	return any
+
+# Channel center just past (after = 1) or before a rank's column.
+int mm_wf_channel(mm_wf_router* r, int rank, int after):
+	int lo = 0
+	int hi = 0
+	mm_wf_column(r, rank, &lo, &hi)
+	int max_rank = 0
+	for int k in r.ranks:
+		if (k > max_rank): max_rank = k
+	int other = rank - 1
+	if (after): other = rank + 1
+	while (other >= 0 && other <= max_rank):
+		int olo = 0
+		int ohi = 0
+		if (mm_wf_column(r, other, &olo, &ohi)):
+			if (after): return (hi + olo) / 2
+			return (ohi + lo) / 2
+		if (after): other = other + 1
+		else: other = other - 1
+	if (after): return hi + 50
+	return lo - 20
+
+# 1 when the v line at `at` between u lo..hi touches no step box.
+int mm_wf_track_clear(mm_wf_router* r, int at, int lo, int hi):
+	for i in range(r.ranks.length):
+		if (r.ranks[i] < 0): continue
+		if (r.u1[i] < lo || r.u0[i] > hi): continue
+		if (at > r.v0[i] - MM_WF_CLEAR && at < r.v1[i] + MM_WF_CLEAR): return 0
+	for i in range(r.band_v.length):
+		if (r.band_u1[i] < lo || r.band_u0[i] > hi): continue
+		if (at > r.band_v[i] - 4 && at < r.band_v[i] + 30): return 0
+	return 1
+
+# 1 when a new segment would overlap an unrelated link's segment.
+int mm_wf_busy(mm_wf_router* r, int kind, int at, int lo, int hi, int from, int to):
+	for i in range(r.seg_kind.length):
+		if (r.seg_kind[i] != kind || r.seg_from[i] == from || r.seg_to[i] == to): continue
+		if (at > r.seg_at[i] - MM_WF_SLOT / 2 - 1 && at < r.seg_at[i] + MM_WF_SLOT / 2 + 1 && lo < r.seg_hi[i] + 4 && hi > r.seg_lo[i] - 4): return 1
+	return 0
+
+void mm_wf_occupy(mm_wf_router* r, int kind, int at, int a, int b, int from, int to):
+	int lo = a
+	int hi = b
+	if (hi < lo):
+		lo = b
+		hi = a
+	r.seg_kind.push(kind)
+	r.seg_at.push(at)
+	r.seg_lo.push(lo)
+	r.seg_hi.push(hi)
+	r.seg_from.push(from)
+	r.seg_to.push(to)
+
+# A free channel offset near center for a segment spanning v lo..hi.
+int mm_wf_channel_slot(mm_wf_router* r, int center, int a, int b, int from, int to):
+	int lo = a
+	int hi = b
+	if (hi < lo):
+		lo = b
+		hi = a
+	for k in range(9):
+		int offset = (k + 1) / 2 * MM_WF_SLOT
+		if (k % 2 == 0): offset = 0 - offset
+		if (mm_wf_busy(r, 0, center + offset, lo, hi, from, to) == 0): return center + offset
+	return center
+
+# Clear track between channels c1 and c2 nearest the endpoints' centers.
+int mm_wf_track(mm_wf_router* r, int av, int bv, int c1, int c2, int from, int to):
+	int lo = c1
+	int hi = c2
+	if (hi < lo):
+		lo = c2
+		hi = c1
+	list[int] candidates = new list[int]
+	candidates.push(bv)
+	candidates.push(av)
+	for i in range(r.ranks.length):
+		if (r.ranks[i] < 0 || r.u1[i] < lo || r.u0[i] > hi): continue
+		candidates.push(r.v0[i] - 2 * MM_WF_CLEAR)
+		candidates.push(r.v1[i] + 2 * MM_WF_CLEAR)
+	int best = 0
+	int best_cost = -1
+	for int base in candidates:
+		for k in range(5):
+			int offset = (k + 1) / 2 * MM_WF_SLOT
+			if (k % 2 == 0): offset = 0 - offset
+			int at = base + offset
+			if (mm_wf_track_clear(r, at, lo, hi) == 0 || mm_wf_busy(r, 1, at, lo, hi, from, to)): continue
+			int cost = at - av
+			if (cost < 0): cost = 0 - cost
+			int other = at - bv
+			if (other < 0): other = 0 - other
+			cost = cost + other
+			if (best_cost < 0 || cost < best_cost):
+				best = at
+				best_cost = cost
+			break
+	__w_list_free(cast(__w_list*, candidates))
+	if (best_cost >= 0): return best
+	# Nothing clear between the channels: run past every step.
+	int outside = 0
+	for i in range(r.ranks.length):
+		if (r.ranks[i] >= 0 && r.v1[i] > outside): outside = r.v1[i]
+	return outside + 3 * MM_WF_CLEAR
+
+# Normalized route of a link from step a to step b into us/vs; returns the
+# index of the segment that carries the label.
+int mm_wf_route(mm_wf_router* r, int a, int b, list[int] us, list[int] vs):
+	int av = (r.v0[a] + r.v1[a]) / 2
+	int bv = (r.v0[b] + r.v1[b]) / 2
+	int c1 = mm_wf_channel(r, r.ranks[a], 1)
+	int c2 = mm_wf_channel(r, r.ranks[b], 0)
+	us.push(r.u1[a])
+	vs.push(av)
+	int label = 0
+	if (c1 == c2 && r.ranks[b] > r.ranks[a]):
+		if (av != bv):
+			int c = mm_wf_channel_slot(r, c1, av, bv, a, b)
+			mm_wf_occupy(r, 0, c, av, bv, a, b)
+			us.push(c)
+			vs.push(av)
+			us.push(c)
+			vs.push(bv)
+			label = 1
+	else:
+		int t = mm_wf_track(r, av, bv, c1, c2, a, b)
+		int first = c1
+		if (t != av):
+			first = mm_wf_channel_slot(r, c1, av, t, a, b)
+			mm_wf_occupy(r, 0, first, av, t, a, b)
+		int second = c2
+		if (t != bv):
+			second = mm_wf_channel_slot(r, c2, t, bv, a, b)
+			mm_wf_occupy(r, 0, second, t, bv, a, b)
+		mm_wf_occupy(r, 1, t, first, second, a, b)
+		if (t != av):
+			us.push(first)
+			vs.push(av)
+		us.push(first)
+		vs.push(t)
+		label = us.length - 1
+		us.push(second)
+		vs.push(t)
+		if (t != bv):
+			us.push(second)
+			vs.push(bv)
+	us.push(r.u0[b])
+	vs.push(bv)
+	return label
+
+# 1 when a label box at (x, y) of size w x h touches a step box or a label
+# placed before it.
+int mm_wf_label_clear(mm_document* d, mm_scene* s, mm_wf_router* r, int x, int y, int w, int h):
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		mm_bounds* b = s.nodes[i]
+		if (n.group): continue
+		if (x < b.x + b.w + 2 && x + w > b.x - 2 && y < b.y + b.h + 2 && y + h > b.y - 2): return 0
+	for i in range(r.label_x0.length):
+		if (x < r.label_x1[i] + 2 && x + w > r.label_x0[i] - 2 && y < r.label_y1[i] + 2 && y + h > r.label_y0[i] - 2): return 0
+	return 1
+
+# Link labels sit beside their segment at the first of several positions
+# along it (middle first, either side) that overlaps no step and no other
+# label; with none clear they keep the middle position.
+void mm_wf_label(mm_document* d, mm_scene* s, mm_wf_router* r, char* text, int x0, int y0, int x1, int y1):
+	int w = mm_text_width(text, 0)
+	int h = MM_TEXT_LINE
+	list[int] fractions = list[int]{50, 30, 70, 15, 85}
+	int vertical = x0 == x1
+	int best_x = (x0 + x1) / 2 + 6
+	int best_y = (y0 + y1) / 2 - 8
+	if (vertical == 0):
+		best_x = (x0 + x1) / 2 - w / 2
+		best_y = y0 - 20
+	int found = 0
+	for int f in fractions:
+		if (found): break
+		int px = x0 + (x1 - x0) * f / 100
+		int py = y0 + (y1 - y0) * f / 100
+		for side in range(2):
+			int x = px + 6
+			int y = py - h / 2
+			if (vertical && side == 1): x = px - 6 - w
+			if (vertical == 0):
+				x = px - w / 2
+				y = py - 20
+				if (side == 1): y = py + 4
+			if (mm_wf_label_clear(d, s, r, x, y, w, h)):
+				best_x = x
+				best_y = y
+				found = 1
+				break
+	__w_list_free(cast(__w_list*, fractions))
+	mm_text(s, best_x, best_y, text)
+	r.label_x0.push(best_x)
+	r.label_y0.push(best_y)
+	r.label_x1.push(best_x + w)
+	r.label_y1.push(best_y + h)
+
+# Draw a routed link: start marker on the first segment, target marker on
+# the last, label beside the segment the router chose.
+void mm_wf_draw(mm_document* d, mm_scene* s, mm_wf_router* r, mm_edge* e, list[int] us, list[int] vs, int label):
+	int count = us.length
+	list[int] xs = new list[int]
+	list[int] ys = new list[int]
+	for k in range(count):
+		xs.push(mm_wf_x(r, us[k], vs[k]))
+		ys.push(mm_wf_y(r, us[k], vs[k]))
+	for k in range(count - 2): mm_line(s, xs[k], ys[k], xs[k + 1], ys[k + 1], e.dashed)
+	mm_workflow_end(s, e, xs[count - 2], ys[count - 2], xs[count - 1], ys[count - 1])
+	mm_workflow_start(s, e, xs[0], ys[0], xs[1], ys[1])
+	if (e.label[0] != 0): mm_wf_label(d, s, r, e.label, xs[label], ys[label], xs[label + 1], ys[label + 1])
+	__w_list_free(cast(__w_list*, xs))
+	__w_list_free(cast(__w_list*, ys))
+
 mm_scene* mm_workflow_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
 	int event = d.kind == MM_EVENT_MODEL
@@ -275,79 +625,48 @@ mm_scene* mm_workflow_render(mm_document* d):
 		mm_draw(s, MM_BOX, box.x, box.y, box.x + box.w, box.y + box.h, 1, c"")
 		mm_text(s, box.x + 12, box.y + 8, group.label)
 		mm_style_node(d, s, group, style_start)
+	mm_wf_router* router = mm_wf_router_new(d, s, horizontal, reverse)
+	list[int] us = new list[int]
+	list[int] vs = new list[int]
 	for mm_edge* e in d.edges:
 		int edge_start = s.items.length
 		mm_bounds* a = s.nodes[e.from_node]
-		mm_bounds* b = s.nodes[e.to_node]
-		int ax = a.x + a.w / 2
-		int ay = a.y + a.h
-		int bx = b.x + b.w / 2
-		int by = b.y
-		if (horizontal):
-			ax = a.x + a.w
-			ay = a.y + a.h / 2
-			bx = b.x
-			by = b.y + b.h / 2
-		if (reverse):
-			if (horizontal):
-				ax = a.x
-				bx = b.x + b.w
-			else:
-				ay = a.y
-				by = b.y + b.h
-		if (e.from_node == e.to_node):
-			if (horizontal):
-				ax = a.x + a.w
-				bx = ax
-				ay = a.y + 16
-				by = a.y + a.h - 16
-			else:
-				ay = a.y + a.h
-				by = ay
-				ax = a.x + 16
-				bx = a.x + a.w - 16
+		if (e.from_node != e.to_node):
+			us.clear()
+			vs.clear()
+			int label = mm_wf_route(router, e.from_node, e.to_node, us, vs)
+			mm_wf_draw(d, s, router, e, us, vs, label)
+			mm_style_edge(d, s, e, edge_start)
+			continue
+		# Self loops: a short bracket beside the step's far side.
+		int ax = a.x + a.w
+		int bx = ax
+		int ay = a.y + 16
+		int by = a.y + a.h - 16
+		if (horizontal == 0):
+			ay = a.y + a.h
+			by = ay
+			ax = a.x + 16
+			bx = a.x + a.w - 16
 		int mx = (ax + bx) / 2
 		int my = (ay + by) / 2
-		int backwards = 0
-		if (horizontal): backwards = (reverse == 0 && bx < ax) || (reverse && bx > ax)
-		else: backwards = (reverse == 0 && by < ay) || (reverse && by > ay)
-		if (backwards && e.from_node != e.to_node):
-			if (horizontal):
-				ax = a.x + a.w / 2
-				ay = a.y + a.h
-				bx = b.x + b.w / 2
-				by = b.y + b.h
-				my = ay + 24
-				if (by + 24 > my): my = by + 24
-				mm_line(s, ax, ay, ax, my, e.dashed)
-				mm_workflow_start(s, e, ax, ay, ax, my)
-				mm_line(s, ax, my, bx, my, e.dashed)
-				mm_workflow_end(s, e, bx, my, bx, by)
-			else:
-				ax = a.x + a.w
-				ay = a.y + a.h / 2
-				bx = b.x + b.w
-				by = b.y + b.h / 2
-				mx = ax + 24
-				if (bx + 24 > mx): mx = bx + 24
-				mm_line(s, ax, ay, mx, ay, e.dashed)
-				mm_workflow_start(s, e, ax, ay, mx, ay)
-				mm_line(s, mx, ay, mx, by, e.dashed)
-				mm_workflow_end(s, e, mx, by, bx, by)
-		else if (horizontal):
-			if (e.from_node == e.to_node): mx = a.x + a.w + 30
+		if (horizontal):
+			mx = a.x + a.w + 30
 			mm_line(s, ax, ay, mx, ay, e.dashed)
 			mm_workflow_start(s, e, ax, ay, mx, ay)
 			mm_line(s, mx, ay, mx, by, e.dashed)
 			mm_workflow_end(s, e, mx, by, bx, by)
 		else:
-			if (e.from_node == e.to_node): my = a.y + a.h + 30
+			my = a.y + a.h + 30
 			mm_line(s, ax, ay, ax, my, e.dashed)
 			mm_workflow_start(s, e, ax, ay, ax, my)
 			mm_line(s, ax, my, bx, my, e.dashed)
 			mm_workflow_end(s, e, bx, my, bx, by)
 		mm_style_edge(d, s, e, edge_start)
 		mm_text(s, mx + 8, my - 20, e.label)
+	__w_list_free(cast(__w_list*, us))
+	__w_list_free(cast(__w_list*, vs))
+	mm_wf_router_free(router)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group): continue

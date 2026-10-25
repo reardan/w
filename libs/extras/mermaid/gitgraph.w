@@ -292,7 +292,7 @@ mm_scene* mm_git_render(mm_document* d):
 	int time = 200
 	int label_width = 120
 	for mm_node* n in d.nodes:
-		if (n.group && strlen(n.label) * 8 + 40 > label_width): label_width = strlen(n.label) * 8 + 40
+		if (n.group && mm_text_width(n.label, 0) + 40 > label_width): label_width = mm_text_width(n.label, 0) + 40
 	list[int] lane_sizes = new list[int]
 	for mm_node* n in d.nodes:
 		if (n.group): lane_sizes.push(130)
@@ -300,8 +300,8 @@ mm_scene* mm_git_render(mm_document* d):
 		mm_node* branch = n
 		if (n.group == 0): branch = d.nodes[n.parent]
 		int lane = mm_git_lane(d, branch)
-		int width = strlen(n.label) * 8 + 60
-		if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+		int width = mm_text_width(n.label, 0) + 60
+		if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 		if (width > lane_sizes[lane]): lane_sizes[lane] = width
 	if (vertical): label_width = 100
 	time = label_width + 60
@@ -315,8 +315,8 @@ mm_scene* mm_git_render(mm_document* d):
 		if (n.group == 0):
 			for mm_edge* e in d.edges:
 				if (e.to_node == i && e.from_node < i && generation[e.from_node] + 1 > depth): depth = generation[e.from_node] + 1
-			int width = strlen(n.label) * 8 + 60
-			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+			int width = mm_text_width(n.label, 0) + 60
+			if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 			if (width < 100): width = 100
 			while (columns.length <= depth): columns.push(0)
 			if (width > columns[depth]): columns[depth] = width
@@ -340,8 +340,8 @@ mm_scene* mm_git_render(mm_document* d):
 			if (b.x + columns[generation[i]] > time): time = b.x + columns[generation[i]]
 		else:
 			b.x = time
-			int width = strlen(n.label) * 8 + 60
-			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+			int width = mm_text_width(n.label, 0) + 60
+			if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 			if (width < 100): width = 100
 			time = time + width
 	__w_list_free(cast(__w_list*, lane_sizes))

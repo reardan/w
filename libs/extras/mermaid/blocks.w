@@ -308,7 +308,7 @@ void mm_blocks_measure(mm_document* d, mm_scene* s, int parent):
 		mm_bounds* b = s.nodes[i]
 		if (n.group): mm_blocks_measure(d, s, i)
 		else:
-			b.w = strlen(n.label) * 8 + 40
+			b.w = mm_text_width(n.label, 0) + 40
 			b.h = 60
 			if (n.shape == 2 || n.shape == MM_BLOCK_DOUBLE_CIRCLE): b.h = b.w
 			if (n.shape == 3 || n.shape == 23): b.w = b.w + 40
@@ -500,7 +500,7 @@ mm_scene* mm_blocks_render(mm_document* d):
 		if (n.shape == -1): continue
 		int style_start = s.items.length
 		mm_blocks_shape(s, n, b)
-		if (n.group == 0): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + (b.h - 16) / 2, n.label)
+		if (n.group == 0): mm_text(s, b.x + (b.w - mm_text_width(n.label, 0)) / 2, b.y + (b.h - 16) / 2, n.label)
 		mm_style_node(d, s, n, style_start)
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]

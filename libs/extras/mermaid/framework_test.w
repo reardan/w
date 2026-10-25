@@ -296,3 +296,85 @@ void test_framework_wardley_modifier_diagnostics():
 	d = mm_parse(text, strlen(text))
 	assert_strings_equal(c"Wardley pipeline component outside pipeline range", d.error)
 	mm_document_free(d)
+
+int cynefin_is_label(char* text):
+	if (strcmp(text, c"again") == 0): return 1
+	if (text[0] != 't' || text[1] < '0' || text[1] > '9'): return 0
+	return 1
+
+int cynefin_overlap(mm_primitive* a, mm_primitive* b):
+	int ax1 = a.x + mm_text_width(a.text, a.text_style)
+	int bx1 = b.x + mm_text_width(b.text, b.text_style)
+	return a.x < bx1 && b.x < ax1 && a.y < b.y + MM_TEXT_LINE && b.y < a.y + MM_TEXT_LINE
+
+void test_framework_cynefin_dense_transition_routing():
+	# Every ordered pair of domains plus a repeated transition: labels never
+	# overlap each other or domain text, curves never cross domain text, and
+	# no two transitions run alongside each other (upstream's centre-to-centre
+	# curves coincide for repeats and land on the domain names).
+	list[char*] domains = list[char*]{c"complex", c"complicated", c"chaotic", c"clear", c"confusion"}
+	string_builder* text = string_from(c"cynefin-beta\ntitle Dense\ncomplex\n  \"Probe\"\nclear\n  \"Checklist\"\n  \"Runbook\"\nconfusion\n  \"Unknown\"\n")
+	int k = 0
+	for char* a in domains:
+		for char* b in domains:
+			if (strcmp(a, b) == 0): continue
+			string_append(text, a)
+			string_append(text, c" --> ")
+			string_append(text, b)
+			string_append(text, c" : \"t")
+			string_append_int(text, k)
+			string_append(text, c"\"\n")
+			k = k + 1
+	string_append(text, c"complex --> complicated : \"again\"\n")
+	mm_document* d = framework_parse(text.data)
+	mm_scene* s = mm_render(d)
+	list[mm_primitive*] labels = new list[mm_primitive*]
+	list[mm_primitive*] texts = new list[mm_primitive*]
+	# Curve samples per transition: the role-3 lines up to each arrowhead.
+	list[int] xs = new list[int]
+	list[int] ys = new list[int]
+	list[int] owner = new list[int]
+	int transitions = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT):
+			if (cynefin_is_label(p.text)): labels.push(p)
+			else if (strcmp(p.text, c"Dense") != 0): texts.push(p)
+		if (p.role != 3): continue
+		if (p.kind == MM_POLYGON): transitions = transitions + 1
+		if (p.kind == MM_LINE):
+			xs.push(p.x2)
+			ys.push(p.y2)
+			owner.push(transitions)
+	assert_equal(21, transitions)
+	assert_equal(21, labels.length)
+	for i in range(labels.length):
+		for j in range(i + 1, labels.length): asserts(c"transition labels apart", cynefin_overlap(labels[i], labels[j]) == 0)
+		for mm_primitive* t in texts: asserts(c"label clear of domain text", cynefin_overlap(labels[i], t) == 0)
+	for i in range(xs.length):
+		for mm_primitive* t in texts:
+			int x1 = t.x + mm_text_width(t.text, t.text_style)
+			asserts(c"curve clear of domain text", (xs[i] > t.x && xs[i] < x1 && ys[i] > t.y && ys[i] < t.y + MM_TEXT_LINE) == 0)
+	# Two transitions run alongside when several of one's samples lie within
+	# 6px of the other's; a crossing touches at most a couple.
+	for a in range(transitions):
+		for b in range(a + 1, transitions):
+			int close = 0
+			for i in range(xs.length):
+				if (owner[i] != a): continue
+				for j in range(xs.length):
+					if (owner[j] != b): continue
+					int dx = xs[i] - xs[j]
+					int dy = ys[i] - ys[j]
+					if (dx * dx + dy * dy < 36):
+						close = close + 1
+						break
+			asserts(c"transitions do not coincide", close <= 3)
+	__w_list_free(cast(__w_list*, labels))
+	__w_list_free(cast(__w_list*, texts))
+	__w_list_free(cast(__w_list*, xs))
+	__w_list_free(cast(__w_list*, ys))
+	__w_list_free(cast(__w_list*, owner))
+	__w_list_free(cast(__w_list*, domains))
+	string_free(text)
+	mm_scene_free(s)
+	mm_document_free(d)

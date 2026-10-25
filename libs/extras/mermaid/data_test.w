@@ -363,6 +363,21 @@ void test_data_squarified_treemap_geometry():
 	mm_scene_free(scene)
 	mm_document_free(d)
 
+# Overlapping pairs among the scene's MM_TEXT boxes whose left edge lies in
+# [min_x, max_x]: the outside-label collision contract.
+int data_text_overlaps(mm_scene* scene, int min_x, int max_x):
+	int overlaps = 0
+	for i in range(scene.items.length):
+		mm_primitive* a = scene.items[i]
+		if (a.kind != MM_TEXT || a.x < min_x || a.x > max_x): continue
+		for j in range(i + 1, scene.items.length):
+			mm_primitive* b = scene.items[j]
+			if (b.kind != MM_TEXT || b.x < min_x || b.x > max_x): continue
+			int ax2 = a.x + mm_text_width(a.text, 0)
+			int bx2 = b.x + mm_text_width(b.text, 0)
+			if (a.x < bx2 && b.x < ax2 && a.y < b.y + MM_TEXT_LINE && b.y < a.y + MM_TEXT_LINE): overlaps = overlaps + 1
+	return overlaps
+
 void test_data_dense_pie_legend_labels():
 	string_builder* source = string_from(c"pie showData\n")
 	for i in range(40):
@@ -373,18 +388,125 @@ void test_data_dense_pie_legend_labels():
 	mm_scene* scene = mm_render(d)
 	int labels = 0
 	int percentages = 0
+	int legend_x = -1
+	int outside = 0
+	int outside_right = 0
+	int leaders = 0
 	for mm_primitive* p in scene.items:
+		if (p.kind == MM_LINE): leaders = leaders + 1
 		if (p.kind != MM_TEXT): continue
 		if (index_of(p.text, c"Category ") == 0):
-			assert_equal(500, p.x)
+			if (legend_x < 0): legend_x = p.x
+			assert_equal(legend_x, p.x)
 			assert_equal(80 + labels * 26, p.y)
 			labels = labels + 1
 		if (strcmp(p.text, c"2.5% (value: 1)") == 0): percentages = percentages + 1
+		if (strcmp(p.text, c"2.5") == 0):
+			outside = outside + 1
+			if (p.x + mm_text_width(p.text, 0) > outside_right): outside_right = p.x + mm_text_width(p.text, 0)
 	assert_equal(40, labels)
 	assert_equal(40, percentages)
+	# Every 9-degree wedge gets an outside label with a two-segment leader,
+	# none overlapping, and the legend moves clear of the right-hand column.
+	assert_equal(40, outside)
+	assert_equal(80, leaders)
+	asserts(c"legend right of outside labels", legend_x > outside_right)
+	assert_equal(0, data_text_overlaps(scene, -10000, legend_x - 1))
 	mm_scene_free(scene)
 	mm_document_free(d)
 	string_free(source)
+
+# One dominant slice crowds many thin wedges into one arc: their labels
+# must stack apart, keep angular order (leaders never cross) and stay off
+# the legend.
+void test_data_pie_small_slices_spread_without_overlap():
+	string_builder* source = string_from(c"pie\n\"Big\": 300\n")
+	for i in range(18):
+		string_append(source, c"\"S")
+		string_append_int(source, i)
+		string_append(source, c"\": 1\n")
+	mm_document* d = data_parse(source.data)
+	mm_scene* scene = mm_render(d)
+	int legend_x = 0
+	int outside = 0
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Big") == 0): legend_x = p.x
+	asserts(c"legend found", legend_x > 0)
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_TEXT && p.x < legend_x - 28 && index_of(p.text, c"0.") == 0): outside = outside + 1
+	assert_equal(18, outside)
+	assert_equal(0, data_text_overlaps(scene, -10000, legend_x - 29))
+	# Leader end points (second segment of each pair) descend monotonically
+	# per side, so no two leaders cross.
+	int last_right = -100000
+	int last_left = -100000
+	int lines = 0
+	for mm_primitive* p in scene.items:
+		if (p.kind != MM_LINE): continue
+		lines = lines + 1
+		if (lines % 2 == 1): continue
+		if (p.x2 > 250):
+			asserts(c"right leaders keep order", p.y2 > last_right)
+			last_right = p.y2
+		else:
+			asserts(c"left leaders keep order", p.y2 > last_left)
+			last_left = p.y2
+	assert_equal(36, lines)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	string_free(source)
+
+# Ribbon crossings read back from the scene: ribbons spanning the same
+# column pair whose top-to-bottom order differs at the two ends.
+int data_sankey_scene_crossings(mm_scene* scene):
+	list[mm_primitive*] ribbons = new list[mm_primitive*]
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_POLYGON && p.points.length == 68): ribbons.push(p)
+	int total = 0
+	for i in range(ribbons.length):
+		mm_primitive* a = ribbons[i]
+		for j in range(i + 1, ribbons.length):
+			mm_primitive* b = ribbons[j]
+			if (a.points[0] != b.points[0] || a.points[32] != b.points[32]): continue
+			int a0 = a.points[1] + a.points[67]
+			int b0 = b.points[1] + b.points[67]
+			int a1 = a.points[33] + a.points[35]
+			int b1 = b.points[33] + b.points[35]
+			if ((a0 < b0 && a1 > b1) || (a0 > b0 && a1 < b1)): total = total + 1
+	__w_list_free(cast(__w_list*, ribbons))
+	return total
+
+int data_sankey_crossings(char* source):
+	mm_document* d = data_parse(source)
+	mm_scene* scene = mm_render(d)
+	int crossings = data_sankey_scene_crossings(scene)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	return crossings
+
+void test_data_sankey_global_crossing_reduction():
+	# Ribbons sharing a source stack in their targets' order.
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nX,C,1\nA,B,5\nA,C,5\n"))
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nA,Y,10\nB,X,10\nC,Y,10\n"))
+	# Planar inputs whose first-pass order crosses: the sweeps untangle
+	# sources and middle columns too.
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nS1,M2,4\nS2,M1,4\nS3,M2,4\nM1,T1,4\nM2,T2,8\n"))
+	assert_equal(0, data_sankey_crossings(c"sankey-beta\nA,X,3\nB,Y,3\nC,X,3\nD,Y,3\nE,X,3\nX,Z,9\nY,W,6\n"))
+	# A non-planar K3,3 stage keeps the crossings it cannot avoid but fewer
+	# than the six the single forward pass drew.
+	int dense = data_sankey_crossings(c"sankey-beta\nn1,m3,2\nn2,m1,2\nn3,m2,2\nn1,m2,1\nn2,m3,1\nn3,m1,1\nm1,k2,3\nm2,k1,3\nm3,k3,3\n")
+	asserts(c"dense stage improves", dense > 0 && dense <= 3)
+	# Deterministic: the same source renders the same display list.
+	char* source = c"sankey-beta\nS1,M2,4\nS2,M1,4\nS3,M2,4\nM1,T1,4\nM2,T2,8\n"
+	mm_document* first = data_parse(source)
+	mm_document* second = data_parse(source)
+	char* a = mm_svg(mm_render(first))
+	char* b = mm_svg(mm_render(second))
+	assert_strings_equal(a, b)
+	free(a)
+	free(b)
+	mm_document_free(first)
+	mm_document_free(second)
 
 void test_data_packet_configured_word_order():
 	mm_document* d = data_parse(c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n    bitOrder: descending\n---\npacket\n0-7: \"Data\"\n8-19: \"Rest\"\n")
