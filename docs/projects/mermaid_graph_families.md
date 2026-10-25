@@ -18,13 +18,18 @@ positioned diagnostic and suppresses the preview.
 - **Mindmaps:** a single indentation-based tree with plain text, `[square]`,
   `(rounded)`, `((circle))`, `)cloud(`, `))bang((` and `{{hexagon}}` labels. A
   dedicated subtree-height layout keeps sibling branches separate. Nesting is
-  bounded to 64 levels. A `::icon(name)` line attaches one icon name to the
-  previous node; icon fonts are not bundled, so the name renders as a badge row.
-  `:::a b` classes, trailing a node or on their own line, attach to the previous
-  node and are kept in the owned model as external CSS class names (mindmaps
-  have no `classDef`, so they do not change native colours). Indentation must
-  return to an existing level; the upstream ambiguous-indentation heuristic is
-  not applied.
+  bounded to 64 levels. A `::icon(name)` line attaches one icon to the
+  previous node, drawn above the label as a native pictogram (see *Icons*
+  below; no icon font is downloaded). `:::a b` classes, trailing a node or on
+  their own line, attach to the previous node and are kept in the owned model
+  as external CSS class names (mindmaps have no `classDef`). A node's parent is
+  the nearest earlier node indented less than it, as upstream's
+  `mindmapDb.getParent`, so a line indented between two levels becomes a child
+  of the shallower one; a second unindented node is still a second root and
+  fails. Nodes are filled per branch (the root's child they descend from) as
+  upstream's section colours, or per depth with `config: mindmap: colorBy:
+  depth`; themes repaint them from `cScale0`–`cScale11`. `padding` and
+  `maxNodeWidth` are validated and leave native geometry.
 - **Kanban:** indentation-based columns and cards, explicit or generated IDs,
   assigned/ticket/priority metadata, validated priorities. Columns contain their
   cards and metadata in a dedicated column layout. Frontmatter
@@ -33,9 +38,14 @@ positioned diagnostic and suppresses the preview.
   replaced by the percent-encoded ticket (a base without the marker is used
   as is), and only `http://`/`https://` bases are accepted. Deeper indented
   lines are cards of the enclosing column, as upstream `getSection` flattens
-  them; there are no subcards. Metadata on columns, other `kanban` settings
+  them; there are no subcards. `@{ ... }` metadata is accepted on columns too
+  (upstream kanbanDb applies node data to any item): its lines render under
+  the column title, above the header rule. A `label:` key replaces the
+  bracket title on columns and cards. A repeated ID (upstream's own example
+  reuses `id3`) keeps both items: the repeat gets a generated internal ID and
+  records the written one as its `id` property. Other `kanban` settings
   (`sectionWidth`, …) and rendering cards without their metadata are not yet
-  supported; unknown `kanban` settings are diagnosed.
+  supported; unknown `kanban` settings and metadata keys are diagnosed.
 
 Tests cover semantic structures, geometry, lossless writing, forward references,
 errors, and every byte-prefix of representative inputs. Tests run on x86 and
@@ -47,31 +57,69 @@ x64, including the guard allocator's leak checks.
   freely with indented lines) take their depth from the branch glyph's column
   plus four; bare `│` lines are ignored and a glyph prefix without a branch
   marker is diagnosed. `label ## description` attaches a description that
-  renders muted after the label. Icons and `:::` classes remain unsupported
-  and produce diagnostics.
+  renders in italic after the label. Before the description, `icon(pack:name)`
+  draws a native pictogram (see *Icons*) even when icons are off and
+  `icon(none)`/`icon()` hides one; `:::name` classes (repeatable) are kept as
+  CSS class names, and the built-in `highlight` tints the row (`highlightBg`
+  / `highlightStroke`). `config: treeView: showIcons: true` adds folder icons
+  for directories (a trailing `/` or children) and file icons otherwise;
+  `filenameIcons: { Dockerfile: docker }` maps whole names (extension maps
+  need dotted YAML keys, which the frontmatter reader does not accept yet).
+  `rowIndent` and `lineThickness` change the row indent and connector width,
+  and `themeVariables: treeView:` `labelColor`, `lineColor`,
+  `descriptionColor`, `iconColor`, `highlightBg` and `highlightStroke`
+  recolour them; `labelFontSize`, `paddingX`/`paddingY` and `iconSize` are
+  validated and leave native metrics. `defaultIconPack` is kept but packs are
+  never fetched.
 - **Ishikawa:** problem head, first-level cause branches alternating around a
   spine, indented subcauses with ancestry connectors. Physical indentation
   carries hierarchy; input and nesting are bounded.
 - **Cynefin:** all five domain regions, quoted items, optional title and labelled
   domain transitions. Confusion occupies the centre between quadrant rows.
   Native regions use rectangular boundaries instead of upstream organic curves.
-- **Wardley:** anchors/components at validated visibility/evolution coordinates,
-  a title, forward-resolved dependencies and four labelled evolution stages.
-  Coordinates use bounded thousandths. `evolution A -> B -> C -> D` renames
-  the four stages (exactly four). After a component's `[visibility,
-  evolution]`, any order of `label [dx, dy]` (integers within ±999),
-  `(build)`/`(buy)`/`(outsource)` (a shaded halo) and `inertia`/`(inertia)`
-  (a bar on the evolution side) is accepted; repeats are diagnosed.
-  `evolve Name 0.8` draws a red dashed arrow to a red ghost of the component
-  at the new evolution. `note "text" [v, e]` (or unquoted text) places a free
+- **Wardley:** anchors/components at validated visibility/evolution
+  coordinates, a title, forward-resolved links and labelled evolution stages.
+  Coordinates use bounded thousandths. `size [width, height]` (100–4000
+  pixels) scales the plot to that canvas. `evolution A -> B -> ...` takes two
+  to eight stages; `Stage@0.25` gives each stage's right edge on the evolution
+  axis (used only when every stage has one, strictly increasing, as upstream)
+  and `Stage / Second line` adds a second label line. After a component's
+  `[visibility, evolution]`, any order of `label [dx, dy]` (integers within
+  ±999), `(build)`/`(buy)`/`(outsource)` (a shaded halo), `(market)` (a white
+  disc with three linked dots replacing the component circle) and
+  `inertia`/`(inertia)` (a bar on the evolution side) is accepted; repeats are
+  diagnosed. Links follow upstream's grammar `A [port] [arrow] B [port]
+  [; label]`: `->`, `-->` and `>` are plain dependencies, `-.->` is dashed,
+  the flow ports `+>`, `+<` and `+<>` draw arrowheads at the target, the
+  source or both, `+'label'>` (`<`, `<>`) is a labelled flow, and `; label`
+  labels any link. `evolve Name 0.8` draws a red dashed arrow to a red ghost
+  of the component at the new evolution. `note "text" [v, e]` (or unquoted
+  text) places a free label. `annotation N,[v, e] "text"` places numbered
+  marker N (repeating a number marks more points, joined by dashed lines) and
+  `annotations [v, e]` positions the legend box that lists them by number
+  (top-right by default). `accelerator "name" [v, e]` and `deaccelerator`
+  draw upstream's 60 × 30 block arrows pointing right or left with a bold
   label. `pipeline Name [low, high]` and/or a following `{ component Child
   [evolution] … }` block (brace on the same or next line) draws a band under
   the component and places sub-components at its visibility; a range is
   inferred from the children when omitted and children outside an explicit
-  range fail. Pipelines must belong to a top-level component. `evolve A->B`
-  renaming, OnlineWardleyMaps flows (`+>`, `+<>`, `limited by`), `market`/
-  `ecosystem`/`submap` types, annotations, `size` and `accelerator` remain
-  unsupported and produce diagnostics.
+  range fail. Pipelines must belong to a top-level component. Mermaid 12.2.0
+  has no `evolve A->B` renaming, `limited by` links, `(ecosystem)` or `submap`
+  (OnlineWardleyMaps syntax its grammar rejects), so those stay diagnosed;
+  trend indicators (`-.-`) are not supported either.
+
+- **Icons (`icons.w`, mindmap and treeView):** an icon reference's last name
+  segment (after any `pack:` prefix and a short `fa-`/`mdi-`-style tag) is
+  matched against a fixed keyword table and drawn as a 20-pixel vector
+  pictogram from scene primitives, so it renders the same in SVG and native
+  previews: folder/directory → folder, book → open book, file/document →
+  page, user/person/people/account → person, cog/gear/setting → gear, cloud,
+  database/server → cylinder, star, heart, home/house, check, close/times/
+  xmark → cross, info, warn/exclamation/alert → warning triangle,
+  search/magnif → magnifier, code/terminal → `</>`, bulb/idea → bulb,
+  link/chain, envelope/mail, calendar, lock/key, globe/earth/web, brain,
+  flag. Any other name draws a round badge with its first letter
+  (`logos:react` → `R`). No icon font or pack is downloaded or bundled.
 
 - **GitGraph:** commit IDs, normal/reverse/highlight shapes, tags, branch
   creation, checkout/switch and merge commits with two parents. Branch heads

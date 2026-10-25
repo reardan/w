@@ -4,7 +4,7 @@ config:
     ticketBaseUrl: 'https://github.com/reardan/w/issues/#TICKET#'
 ---
 kanban
-  todo[Todo]
+  todo[Todo]@{ assigned: 'Triage' }
     docs[Write documentation]@{ assigned: 'W team', priority: 'High' }
   progress[In progress]
     renderer[Native rendering]@{ ticket: 706 }

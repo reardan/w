@@ -285,7 +285,7 @@ void test_mermaid_configuration_diagnostics():
 	config_reject(c"---\nconfig:\n  theme: 'dark'x\n---\nflowchart LR\nA\n", c"unexpected text after quoted configuration value")
 	config_reject(c"---\nconfig:\n  theme: |\n---\nflowchart LR\nA\n", c"unsupported YAML value in frontmatter")
 	config_reject(c"---\nconfig:\n  themeVariables: {primaryColor: '#fff'} x\n---\nflowchart LR\nA\n", c"unexpected text after frontmatter mapping")
-	config_reject(c"---\ndisplayMode: compact\n---\nflowchart LR\nA\n", c"unsupported frontmatter field")
+	config_reject(c"---\nmode: compact\n---\nflowchart LR\nA\n", c"unsupported frontmatter field")
 	config_reject(c"---\nconfig: dark\n---\nflowchart LR\nA\n", c"configuration section must be a mapping")
 	config_reject(c"---\nconfig:\n  theme: dark\n  theme: forest\n---\nflowchart LR\nA\n", c"duplicate theme setting")
 	config_reject(c"---\nconfig:\n  theme: dark\n---\nflowchart LR\nA\n%%{init: {'theme': 'dark'}}%%\n", c"Mermaid configuration directives are not supported in the native renderer")

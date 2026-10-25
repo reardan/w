@@ -69,10 +69,16 @@ Reference: <https://mermaid.js.org/syntax/userJourney.html>.
 Supported: `journey`, title, sections and `Task: score: Actor, Other actor`.
 Scores must be integers 1–5; actor lists are optional. Tasks remain in source
 order. The preview shows section labels, task cards, actor labels and a connected
-score plot with numbered points on a 1–5 vertical scale.
+score plot on a 1–5 vertical scale whose points are upstream's score faces: a
+cornsilk face with two eyes and a smile above 3, a straight mouth at 3 and a
+frown below 3. Every listed actor is an avatar dot on the task card in
+upstream's actor colours (`#8FBC8F`, `#7CFC00`, `#00FFFF`, `#20B2AA`,
+`#B0E0E6`, `#FFFFE0`, repeating, by first mention), and a legend below the chart
+pairs each colour with its actor. `config: journey:` keys are validated
+(`useMaxWidth`, `mirrorActors`, margins and font sizes); the native layout keeps
+its own geometry for them.
 
-This uses the scores and actor metadata natively; it does not reproduce Mermaid's
-colored avatar legend, face icons, theme configuration or HTML labels.
+Not reproduced: theme-driven section colours and HTML labels.
 
 Example: [journey.mmd](../../examples/mermaid/journey.mmd).
 
@@ -89,9 +95,16 @@ text, not parsed dates. Each period owns a chronological column on a horizontal
 axis, with its events stacked below it. Empty event labels and an event without
 a preceding period are errors.
 
-Other rich labels, configurable colors/themes (`disableMulticolor` is moot: the
-native timeline is single-colored) and alternative wrapping/layout choices remain
-unsupported.
+`timeline LR` (the default) and `timeline TD` choose the direction, as upstream
+since 11.14: `TD` stacks the periods top down on a vertical axis with each
+period's events in a row to its right. Periods and their events are colour-coded
+as upstream's multicolour default: by section when the chart has sections,
+otherwise one colour per period (12 light colours, repeating). With a theme the
+same primitives repaint from `cScale0`–`cScale11`; `config: timeline:
+disableMulticolor: true` draws every box plain. Other `timeline` settings
+(`padding`, margins, `useMaxWidth`) are validated and leave native geometry.
+
+Other rich labels and automatic wrapping of long text remain unsupported.
 
 Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 
@@ -99,27 +112,54 @@ Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 
 Reference: <https://mermaid.js.org/syntax/gantt.html>.
 
-Supported: `gantt`, title, sections, task IDs, explicit
-start/end dates, positive integer day/week durations (`3d`, `2w`), sequential
-starts after the previous task, and `after taskID` dependencies, including forward references and multiple
-space-separated IDs (the latest dependency end wins). `until taskID` ends at
-the referenced task start. The first task needs an explicit date or dependency. Calendar dates validate Gregorian leap
-years and accept years 1970–9999. `done`, `active`, `crit` and `milestone` tags
-are represented using completion lines, an active label, a double border and a
-diamond respectively; milestones can use `0d`.
+Supported: `gantt`, title, sections, task IDs, explicit start/end dates,
+durations, sequential starts after the previous task, and `after taskID`
+dependencies, including forward references and multiple space-separated IDs (the
+latest dependency end wins). `until a b` ends at the earliest start of the listed
+tasks. The first task needs an explicit date or dependency. Calendar dates
+validate Gregorian leap years and accept years 1970–9999. `done`, `active`,
+`crit` and `milestone` tags are represented using completion lines, an active
+label, a double border and a diamond respectively; milestones (and `vert`
+markers) may have zero duration. `vert` tasks draw a full-height purple
+reference line with their label and take no row, as upstream.
 
 The preview uses a common calendar axis and proportional start positions/bar
 lengths. Date ticks maintain enough spacing to stay readable. Dependencies
 resolve after parsing the complete chart; unknown references, dependency cycles,
-ends before starts, and schedules beyond year 9999 fail.
+ends before starts, and schedules beyond the calendar fail.
 
-`dateFormat` accepts any arrangement of `YYYY`, `MM`, `DD` and optionally
-`HH` with `mm`, separated by non-alphanumeric literals (`DD-MM-YYYY`,
-`YYYY/MM/DD`, `MM.DD.YYYY`, `YYYY-MM-DD HH:mm`, ...). It applies to every later
-date and must precede tasks, exclusions and a fixed today marker. A format with
-a time of day switches the chart to minute units: durations then also accept
-`h` and `m` (`90m`, `2h`) and dates are limited to years 1970–4000 so every
-moment fits a 32-bit integer; minute durations are capped at 3,660 days.
+**Units and time zones.** Every moment is a UTC wall-clock value counted from
+1970-01-01 in one of three units: days (date-only formats), minutes (a format
+with hours, minutes, AM/PM or an offset) or seconds (a format with seconds,
+fractions or a Unix timestamp). Minute charts are limited to years 1970–4000 and
+second charts to 1970–2037 so every moment fits a 32-bit integer. An explicit
+offset (`Z`, `ZZ`: `Z`, `+02:00`, `-0130`) is converted to UTC, so `10:00+02:00`
+and `08:00Z` are the same moment, and axis labels print UTC (`%Z` prints
+`+0000`). Upstream parses offsets the same way but displays the browser's local
+zone; the native chart is deterministic and never reads the host time zone.
+Formats without a date (`HH:mm`) anchor at 1970-01-01 where upstream uses the
+current day.
+
+`dateFormat` accepts the moment.js/dayjs tokens upstream documents: `YYYY`, `YY`
+(69–99 → 19xx), `Q`, `M`, `MM`, `MMM`, `MMMM` (English names, any case), `D`,
+`DD`, `Do` (`5th`), `DDD`, `DDDD` (day of year), `d`/`dd`/`ddd`/`dddd` (weekday,
+read and ignored), `H`, `HH`, `h`, `hh` with `A`/`a`, `k`, `kk`, `m`, `mm`, `s`,
+`ss`, `S`, `SS`, `SSS`, `X` (Unix seconds, optional fraction), `x` (Unix
+milliseconds), `Z` and `ZZ`; `[text]` and other characters (such as the `T` of
+ISO 8601) are literals. Week-based and era tokens (`w`, `W`, `gggg`, `GGGG`,
+`E`, `e`, `N`) are diagnosed. The format applies to every later date and must
+precede tasks, exclusions and a fixed today marker. Task fields are
+comma-separated, so a date cannot contain a comma.
+
+Durations are `<number><unit>` with `ms`, `s`, `m`, `h`, `d`, `w`, `M` and `y`,
+optionally fractional (`1.5d`, `0.5y`). `M` and `y` add calendar months as dayjs
+does (the day clamps to the month length: 2024-01-31 + `1M` is 2024-02-29) and
+must amount to whole months. A duration finer than the chart unit rounds up
+(`1s` on a minute chart is one minute); in a day chart, a sub-day duration
+(`20h`, `1.5d`) switches the whole chart to minutes while keeping the
+`%Y-%m-%d` default axis labels. Durations are capped at 3,660 days (365,000 in
+day charts). `inclusiveEndDates` (before the tasks) makes explicit end dates
+include their last day.
 
 `excludes` takes `weekends`, weekday names and dates (space or comma separated,
 dates in the active format or `YYYY-MM-DD`); `includes` takes dates that override
@@ -131,20 +171,37 @@ Excluded days within the chart are shaded (charts longer than 1,000 days skip th
 shading). Scheduling uses whole-week arithmetic plus a binary search, so long
 chains over exclusion calendars stay bounded.
 
-`axisFormat` uses strftime tokens `%Y %y %m %d %e %b %B %a %A %H %I %M %p %j %%`;
-the default is `%Y-%m-%d` (`%Y-%m-%d %H:%M` for minute charts). Minute-chart
-ticks snap to clock intervals (minutes, hours, days, weeks) and tick spacing grows
-with the label width. `todayMarker off` and style-only `todayMarker` lines are
-accepted; the native renderer never reads the wall clock, so a red marker is
-drawn only for a fixed date (`todayMarker 2026-10-08`, a native extension) inside
-the charted range. `click ID href "url"` stores the URL as `href` metadata on
-the task's node (the SVG writer has no link primitive, so it is not yet emitted
-as `<a>`); the ID must name a task, and `call` callbacks are rejected.
+`axisFormat` accepts every d3-time-format directive (`%a %A %b %B %c %d %e %f %g
+%G %H %I %j %L %m %M %p %q %Q %s %S %u %U %V %w %W %x %X %y %Y %Z %%`, en-US
+locale) with the `-`, `_` and `0` padding modifiers; the default is `%Y-%m-%d`
+(`%Y-%m-%d %H:%M` for minute and `%Y-%m-%d %H:%M:%S` for second charts). Ticks
+snap to clock intervals and grow with the label width. `tickInterval <n><unit>`
+(upstream's `millisecond|second|minute|hour|day|week|month` units) fixes the
+tick step: week ticks start on `weekday <name>` (Sunday by default) and month
+ticks on the first of the month; other `tickInterval` text is accepted and
+ignored, as upstream, and an interval that would draw more than 200 ticks falls
+back to automatic ticks. Tick labels are drawn above the chart; `topAxis` also
+repeats them below it.
 
-Not yet supported: timezones, `inclusiveEndDates`, `topAxis`, `tickInterval`,
-`weekday`, month/year/second duration units, other moment.js tokens, click
-callbacks, rendered links or configurable styles. Unsupported scheduling
-directives fail rather than producing an incorrect chart.
+`displayMode: compact` (top-level frontmatter, or `config: gantt: displayMode`)
+packs each section's tasks into the fewest rows: a task takes the first row
+whose last task ended by its start, and labels move onto the bars. `config:
+gantt:` also accepts `axisFormat`, `tickInterval`, `weekday` and `topAxis` (the
+diagram's own directives win) and validates upstream's pixel settings
+(`barHeight`, `barGap`, paddings, font sizes, `numberSectionStyles`, ...), which
+leave native geometry unchanged.
+
+`todayMarker off` and style-only `todayMarker` lines are accepted; the native
+renderer never reads the wall clock, so a red marker is drawn only for a fixed
+date (`todayMarker 2026-10-08`, a native extension) inside the charted range.
+`click ID href "url"` stores the URL as `href` metadata on the task's node (the
+SVG writer has no link primitive, so it is not yet emitted as `<a>`); the ID
+must name a task, and `call` callbacks are rejected.
+
+Upstream 12.2.0 draws no dependency arrows between tasks (there is no option to
+enable them), so none are drawn natively either. Not yet supported: years before
+1970, click callbacks, rendered links and configurable bar styles. Unsupported
+scheduling directives fail rather than producing an incorrect chart.
 
 Example: [gantt.mmd](../../examples/mermaid/gantt.mmd).
 
