@@ -86,11 +86,15 @@ point, and the output file is left untouched.
 
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
-  `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]`, slices `T[]` and slice values, and the built-in `list[T]`, `map[K, V]`
-  and `set[T]` containers of any of these.
+  `string` handles, records (structs whose fields are all of these,
+  fixed-array fields included), fixed arrays `T[N]`, slices `T[]` and
+  slice values, generator handles, and the built-in `list[T]`,
+  `map[K, V]` and `set[T]` containers of any of these.
 - Locals with or without initializers (storage is zeroed at the
-  declaration, as are fixed-array headers), parameters, globals with
+  declaration, as are fixed-array headers; a record's fixed-array fields
+  get their inline headers wherever a record comes into being: its
+  declaration, `new`, a record copy and a global's initializer),
+  parameters, globals with
   constant, C string, `&global` or function initializers, and `const`
   globals.
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
@@ -122,7 +126,8 @@ point, and the output file is left untouched.
   to three arguments, cursor loops (`for x in l`, `for i, x in l`,
   `enumerate`, `for k, v in m`, `for k in s`, fixed arrays and slices,
   strings through `lib.utf8`, and `T*` iterables with `T_iter_*`
-  functions), `break`, `continue`, `pass`, `return`, `unsafe:` blocks,
+  functions, generators included), `break`, `continue`, `pass`, `return`,
+  `yield`, `unsafe:` blocks,
   `name := value`, parallel assignment (`a, b = b, a + b`: every target
   address, then every value, then the stores) and expression statements.
 
@@ -132,27 +137,31 @@ different signal (SIGILL) from the native backend's. Calls and operands
 preserve evaluation order.
 
 Not yet supported, and rejected with a diagnostic: floats, records
-passed or returned by value, arrays inside records, generics, f-strings, `switch`, `defer`,
-`goto`, generators (see below), checked pointers (`own`, `ref`, ... and their
+passed or returned by value, generics, f-strings, `switch`, `defer`,
+`goto`, checked pointers (`own`, `ref`, ... and their
 slices), GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
 `thread_create`, ...). A container trap (out-of-range index, missing
 key) prints its message and then reaches the `print_stack_trace` trap
 stub.
 
-Generators are stackful coroutines: `lib/generator.w` builds an initial
-frame on a private mmap'd stack and `gen_switch`, an assembly stub from
-`code_generator/x64_asm.w`, swaps stack pointers. Supporting them needs
-`gen_switch` as module-level inline assembly (save the SysV callee-saved
-registers, store `rsp` through the first argument, load the second, pop
-and return), a per-generator entry thunk that unpacks the arguments
-`__w_gen_create` leaves on the new stack (it lays them out for the native
-stack-argument convention, not LLVM's register arguments), calls the body
-with them and the hidden trailing `generator*` and then calls
-`__w_gen_return`, 16-byte stack alignment at that call, and lowering
-`yield v` to `__w_gen_yield(self, v)`, `return` to `__w_gen_return(self)`
-and the call site to `__w_gen_create(thunk, argv, argc)`; the
-`generator_iter_*` cursor loop then works as it is.
+Generators are stackful coroutines (`lib/generator.w`) and lower with the
+native runtime unchanged. The body is an ordinary function whose last
+parameter is the hidden `__w_gen_self`; `yield v` calls
+`__w_gen_yield(self, v)`, and `return` or falling off the end calls
+`__w_gen_return(self)`. A call `counter(a, b)` stores its arguments into
+an entry-block argv (last argument first) and calls
+`__w_gen_create(@wg<n>, argv, argc)`. `__w_gen_create` seeds the new
+stack for the native stack-argument convention (a zero return address,
+then self, then the arguments), so `@wg<n>` is a per-generator entry
+thunk: it reads those words relative to
+`llvm.addressofreturnaddress` and calls the body with register
+arguments. `"stackrealign"` covers the stack, which is not call-aligned
+there. `gen_switch` is module assembly with the native stub's protocol:
+push rbx, rbp and r12-r15, store rsp through the first argument, load the
+second, pop and return. A cursor loop over a generator calls `gen_free`
+on its exit edges, and a `return` inside such loops frees each enclosing
+generator first, as `for_cleanup_emit_all` does.
 
 ## Evidence (2026-10-24)
 
@@ -201,7 +210,8 @@ lowering, unsupported-program diagnostics, CLI errors and input/output
 identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
-`tests/wllvm_container_fixture.w` and `tests/wllvm_slice_fixture.w` with
+`tests/wllvm_container_fixture.w`, `tests/wllvm_slice_fixture.w` and
+`tests/wllvm_generator_fixture.w` with
 W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, and checks that a library trap stub
