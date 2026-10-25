@@ -970,6 +970,13 @@ void dbg_log_report(int bp, int addr, int esp):
 # through the kernel's sigreturn path. context points at the sigcontext;
 # the arch-specific entry shims below compute it.
 void wdbg_trap(int sig, int context):
+	# A thread an entry started trapped ('debugger' or a breakpoint): the
+	# command loop and its nested entries belong to the main thread, which
+	# may be compiling or reading input right now (#713).
+	if (repl_threads_enabled && (repl_gettid() != getpid())):
+		println(c"debugger: stop in a thread started by an entry; only the main thread can stop in the REPL; exiting")
+		# The trap already executed: end the process as SIGTRAP would.
+		exit(128 + sig)
 	# Mirrors the trapped sigcontext into the register seam's in-process
 	# read path (debugger/registers.w), so any seam consumer sees the same
 	# registers this handler is about to work with. Purely additive: every

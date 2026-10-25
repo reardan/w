@@ -135,10 +135,9 @@ int safe_session_type_checked(int type, int depth):
 
 # 1 when values of type hold a lock guard (own[a] WSafeGuard[T]*, directly,
 # through owned children or fields held by value). A guard's destruction
-# unlocks its mutex, so its loan is in use until the session ends; the
-# guard library (lib/safe_thread.w) needs thread_local storage, which
-# in-process images cannot provide. Unknown or too deep shapes count as
-# guards (fail closed).
+# unlocks its mutex, so replacing a held one releases it at the
+# redeclaration, before the new initializer can lock again
+# (safe_session_held_guard). Unknown or too deep shapes count as guards.
 int safe_session_guard(int type, int depth):
 	if (type < 0): return 0
 	if (depth > 16): return 1
@@ -488,9 +487,6 @@ void safe_session_item(int start, int end, int kind, int name_at, int symbol):
 		if (fresh.checked && safe_session_nested):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: checked session bindings cannot be declared while another entry or a debugger stop is active")
-		if (fresh.checked && safe_session_guard(fresh.type, 0)):
-			safe_session_binding_free(fresh)
-			safe_session_error_at(name_at, c"safe: session bindings cannot hold lock guards (own[a] WSafeGuard[T]*); lock and unlock inside a function")
 		if (fresh.checked && safe_session_no_run):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: an entry that is not run cannot declare checked session bindings")
@@ -1011,6 +1007,27 @@ void safe_session_drop(safe_session_binding* b):
 	safe_session_drop_value(pointer, b.type, 0, &remaining)
 
 
+# The committed generation a top-level declaration of name replaces, as an
+# int, when it is a held checked owner holding a lock guard; else 0. The
+# REPL then emits a call to safe_session_replace_now at the redeclaration.
+# Its state is the one the transcript's destruction there reads (an earlier
+# item of the entry that moved it makes that destruction a checker error).
+int safe_session_held_guard(char* name):
+	if ((safe_session_bindings == 0) || safe_session_nested || safe_session_no_run): return 0
+	safe_session_binding* b = safe_session_lookup(name)
+	if ((b == 0) || b.view || (b.checked == 0) || (b.owner == 0) || b.discarded || b.dropped): return 0
+	if (safe_session_listed(safe_session_new, b) || ((b.state & 7) != 2)): return 0
+	if (safe_session_guard(b.type, 0) == 0): return 0
+	return cast(int, b)
+
+
+# Called by an executing entry where it redeclares a held guard binding:
+# release the old generation now, exactly once (dropped stays set, so
+# commit, :reset and exit skip it; a fault later in the entry discards it).
+void safe_session_replace_now(int binding):
+	safe_session_drop(cast(safe_session_binding*, binding))
+
+
 # 1 when the pending entry changed checked session state, so a runtime fault
 # while it ran leaves that state unknown.
 int safe_session_changes():
@@ -1071,6 +1088,9 @@ void safe_session_fault():
 			safe_session_binding* b = safe_session_bindings[i]
 			int changed = safe_session_listed(safe_session_retired, b)
 			if (b.captured && ((b.pending_state & 7) != (b.state & 7))): changed = 1
+			# A guard the entry already released at its redeclaration
+			# (safe_session_replace_now) is gone too, without a leak.
+			if (b.checked && changed && b.dropped && (b.discarded == 0)): b.discarded = 1
 			if (b.checked && changed && (b.dropped == 0) && (b.discarded == 0)):
 				b.discarded = 1
 				discarded = discarded + 1
@@ -1081,13 +1101,23 @@ void safe_session_fault():
 
 # End the session (normal exit, :quit, :reset): destroy every held owner in
 # reverse declaration order, then forget all session state.
+# A held lock guard released here is reported: the session, not the
+# program, gave up that lock.
 void safe_session_end():
 	if (safe_session_bindings == 0): return
 	safe_session_discard()
+	int guards = 0
 	int i = safe_session_bindings.length
 	while (i > 0):
 		i = i - 1
-		safe_session_drop(safe_session_bindings[i])
+		safe_session_binding* b = safe_session_bindings[i]
+		if (b.owner && (b.dropped == 0) && (b.discarded == 0) && ((b.state & 7) == 2) && safe_session_guard(b.type, 0)):
+			if (load_word(cast(char*, load_int(table + b.symbol + 2))) != 0): guards = guards + 1
+		safe_session_drop(b)
+	if (guards > 0):
+		print(c"note: released ")
+		print(itoa(guards))
+		println(c" held lock guard(s) of the session")
 	for k in range(safe_session_bindings.length): safe_session_binding_free(safe_session_bindings[k])
 	safe_session_bindings.clear()
 	for k in range(safe_session_items.length): safe_session_text_free(safe_session_items[k])

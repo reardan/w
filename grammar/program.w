@@ -966,7 +966,7 @@ int thread_local_type_needs_init(int type):
 void thread_local_declaration():
 	if ((target_isa != 0) || (target_os != 0)):
 		error(c"thread_local is only supported on the x86 and x64 Linux targets")
-	if (data_split == 0): error(c"thread_local is not supported in the REPL or debugger")
+	if ((data_split == 0) && (tls_inprocess_capacity == 0)): error(c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
 	int start = token_start_offset
 	int decl_type = type_name()
 	if (thread_local_type_needs_init(decl_type)):
@@ -981,10 +981,7 @@ void thread_local_declaration():
 	accept(c";")
 	if (ast_expressions_mode >= 2): ast_thread_local_declaration(current_symbol, decl_type)
 	else:
-		if (tls_size == 0):
-			tls_size = word_size  /* word 0: the block's self pointer */
-		int offset = tls_size
-		tls_size = tls_size + global_storage_size(decl_type)
+		int offset = tls_reserve(global_storage_size(decl_type))
 		sym_define_global_at(current_symbol, offset)
 		sym_set_thread_local(current_symbol)
 	defhash_note(name, c"global", decl_file_index(), line, column, start, token_start_offset)

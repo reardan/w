@@ -1057,6 +1057,8 @@ int repl_main(int argc, int argv, int initial_shell):
 		return 0
 	repl_ast_options()
 	repl_init()
+	# thread_local and lib/thread.w threads for entries (repl/core.w)
+	repl_threads_enable()
 
 	# 'debugger' statements trap into wdbg's command loop instead of
 	# dying on an unhandled SIGTRAP: the debugger state initializes here
