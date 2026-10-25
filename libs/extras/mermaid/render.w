@@ -549,6 +549,11 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_flow_link_stroke(s, e, path_start)
 		mm_flow_marker(s, ax, ay, dx, dy, e.left_marker)
 		mm_flow_marker(s, bx, by, end_dx, end_dy, e.right_marker)
+	# Animated agentflow edges march their dashes like flowchart links.
+	if (d.kind == MM_AGENT && e.animate != 0):
+		for i in range(path_start, s.items.length):
+			mm_primitive* segment = s.items[i]
+			if (segment.kind == MM_LINE): segment.dashed = 3 + e.animate
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		mm_marker(s, bx, by, end_dx, end_dy, e.right_card)

@@ -72,6 +72,18 @@ int mm_agent_curve(char* value):
 	if (mm_in_words(value, c"|basis|bumpX|bumpY|cardinal|catmullRom|monotoneX|monotoneY|natural|rounded|")): return MM_CURVE_BASIS
 	return 0
 
+# The merged `animate` / `animation` metadata as the flowchart edge.animate
+# code (0 off, 1 on, 2 fast, 3 slow): `animation` turns the edge on at its
+# speed, `animate: false` turns it off, as flowchart's edge metadata does.
+void mm_agent_edge_animate(mm_edge* e):
+	e.animate = 0
+	mm_property* animate = mm_agent_get(e.metadata, c"animate")
+	if (animate != 0 && animate.type == MM_VALUE_BOOL && strcmp(animate.value, c"true") == 0): e.animate = 1
+	mm_property* animation = mm_agent_get(e.metadata, c"animation")
+	if (animation != 0 && (animate == 0 || e.animate == 1)):
+		if (strcmp(animation.value, c"fast") == 0): e.animate = 2
+		else if (strcmp(animation.value, c"slow") == 0): e.animate = 3
+
 void mm_agent_apply_edge(mm_parser* p, mm_edge* e, list[mm_property*] props):
 	if (e.metadata == 0): e.metadata = new list[mm_property*]
 	mm_agent_merge(p, e.metadata, props)
@@ -83,6 +95,7 @@ void mm_agent_apply_edge(mm_parser* p, mm_edge* e, list[mm_property*] props):
 	if (animation != 0 && mm_in_words(animation.value, c"|fast|slow|") == 0): mm_error(p.doc, p.pos, c"agentflow edge animation must be fast or slow")
 	mm_property* animate = mm_agent_get(props, c"animate")
 	if (animate != 0 && animate.type != MM_VALUE_BOOL): mm_error(p.doc, p.pos, c"agentflow edge animate must be true or false")
+	if (p.doc.error == 0): mm_agent_edge_animate(e)
 
 void mm_agent_metadata(mm_parser* p, mm_node* n):
 	list[mm_property*] props = mm_agent_block(p)
