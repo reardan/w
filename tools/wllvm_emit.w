@@ -208,6 +208,8 @@ int llvm_class_of(retained_type* t):
 	if ((t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return llvm_class_word
 	# list (12), map (10) and set (11) handles (see "containers" below)
 	if ((t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return llvm_class_word
+	# var: a tagged box pointer (see "var" below)
+	if (t.kind == 13): return llvm_class_word
 	int float_kind = llvm_float_kind_of(t)
 	if ((float_kind == 1) || (float_kind == 2)): return llvm_class_word
 	if (t.fields.length > 0):
@@ -901,6 +903,21 @@ void llvm_generator_yield(int id);
 void llvm_generator_free_loops(int id);
 void llvm_generator_loop(char* container, int open);
 void llvm_generator_emit_runtime();
+# methods, allocation, propagation, var, gpu host code and other forms
+# (defined after the arrays inside records)
+int llvm_uses_debugtrap
+char* llvm_call1(int id, char* name, char* a);
+char* llvm_method_call(int group, int id, retained_node* node);
+char* llvm_array_allocation(int group, int id, retained_node* node);
+char* llvm_propagate(int group, int id, retained_node* node);
+int llvm_is_var(int type);
+char* llvm_var_convert(int id, char* value, int from, int to, int* done);
+char* llvm_var_binary(int id, int op, char* a, int a_type, char* b, int b_type);
+int llvm_form_statement(int id, retained_node* node);
+int llvm_qualified_statement(int id, retained_node* node, retained_node* expression);
+void llvm_forms_emit_runtime();
+int llvm_variadic_tail(int group, int id, list[char*] values, list[int] types, list[int] operands, int fixed, int slice);
+char* llvm_ptx_module();
 # arrays inside records (defined after the generators)
 void llvm_init_array_fields(int type, char* address);
 int llvm_global_record_headers(int linkage, int type, string_builder* text);
@@ -916,6 +933,9 @@ int llvm_parameter_ok(int type);
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
 # through the runtime's str_from_cstr, exactly as the native coercion.
 char* llvm_convert(int id, char* value, int from, int to):
+	int var_done = 0
+	char* boxed = llvm_var_convert(id, value, from, to, &var_done)
+	if (var_done): return boxed
 	if (llvm_is_bool(to)): return llvm_extend(llvm_bool(value))
 	int want_float = llvm_float_kind(to)
 	int got_float = llvm_float_kind(from)
@@ -968,7 +988,7 @@ char* llvm_import_address(int binding);
 
 int llvm_place(retained_node* node):
 	int op = node.op
-	if ((op == 'd') || (op == 'i') || (op == 'I') || (op == 'B') || (op == 'j') || (op == 134)): return 1
+	if ((op == 'd') || (op == 'i') || (op == 'I') || (op == 'B') || (op == 'j') || (op == 134) || (op == 136)): return 1
 	if (op == '.'): return node.high >= 0
 	if (op == 'v'): return (node.binding >= 0) && ((node.binding in llvm_locals) || (retained_bindings[node.binding].linkage in llvm_global_decls) || (llvm_import_address(node.binding) != 0))
 	return 0
@@ -1004,6 +1024,7 @@ char* llvm_address(int group, int operand):
 	if (op == 'B'): return llvm_offset(llvm_pointer(llvm_value(group, node.left)), llvm_number(node.value))
 	if (op == 'j'): return llvm_list_element(group, id, &node)
 	if (op == 134): return llvm_it_slot(id)
+	if (op == 136): return llvm_propagate(group, id, &node)
 	# A record-valued m[key] names its value slot.
 	if (((op == 'm') || (op == 'q')) && (llvm_class(node.semantic_type) == llvm_class_struct)): return llvm_pointer(llvm_map_read(group, id, &node))
 	if (op == 'i'):
@@ -2182,6 +2203,10 @@ char* llvm_call(int group, int id, retained_node* node):
 				values.free()
 				types.free()
 				return llvm_test_main_call(id)
+			if ((strcmp(callee_name, c"__w_ptx_module") == 0) && (values.length == 0)):
+				values.free()
+				types.free()
+				return llvm_ptx_module()
 			char* stub = llvm_runtime_stub(callee_name, values.length)
 			if (stub != 0):
 				char* stub_result = llvm_runtime_call(stub, values)
@@ -2214,11 +2239,17 @@ char* llvm_call(int group, int id, retained_node* node):
 		retained_node definition
 		retained_node_load(llvm_functions[linkage], &definition)
 		retained_binding* defined = retained_bindings[definition.binding]
+		# A W variadic callee takes its tail as one slice parameter.
+		int variadic = sym_w_variadic_fixed_args(defined.origin)
+		int packed = -1
+		if ((variadic >= 0) && (variadic < defined.parameters.length) && (count >= variadic)):
+			count = llvm_variadic_tail(group, id, values, types, operands, variadic, defined.parameters[variadic])
+			packed = variadic
 		# _main passes argc and argv even to a main without parameters.
 		if (count > defined.parameters.length): count = defined.parameters.length
 		if (count < defined.parameters.length): llvm_error_at(id, c"call argument count", callee_name)
 		for i in range(count):
-			if (i < defined.parameters.length):
+			if ((i < defined.parameters.length) && (i != packed)):
 				if (llvm_parameter_ok(defined.parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", callee_name)
 				values[i] = llvm_convert(id, values[i], types[i], defined.parameters[i])
 				llvm_owner_move(group, operands[i], defined.parameters[i])
@@ -2248,6 +2279,33 @@ char* llvm_call(int group, int id, retained_node* node):
 	operands.free()
 	if (buffer != 0): return buffer
 	return result
+
+
+# The tail of a W variadic call (finish_w_variadic_arguments): the values
+# from argument fixed on, converted to the element type, in an entry-block
+# array, and a {data, length} descriptor whose address replaces them as
+# the slice parameter. Returns the new argument count, fixed + 1.
+int llvm_variadic_tail(int group, int id, list[char*] values, list[int] types, list[int] operands, int fixed, int slice):
+	int element = llvm_type(slice).target
+	int n = values.length - fixed
+	char* cells = llvm_temp()
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, cells)
+	string_append(llvm_entry, c" = alloca [")
+	string_append_int(llvm_entry, n + 2)
+	string_append(llvm_entry, c" x i64], align 8\x0a")
+	for i in range(n):
+		char* value = llvm_convert(id, values[fixed + i], types[fixed + i], element)
+		llvm_owner_move(group, operands[fixed + i], element)
+		llvm_store_width(8, value, llvm_offset(cells, llvm_number((i + 2) * 8)))
+	llvm_store_width(8, llvm_address_value(llvm_offset(cells, c"16")), cells)
+	llvm_store_width(8, llvm_number(n), llvm_offset(cells, c"8"))
+	while (values.length > fixed):
+		values.pop()
+		types.pop()
+	values.push(llvm_address_value(cells))
+	types.push(slice)
+	return fixed + 1
 
 
 # A call of a named runtime helper (print builtins, len/max/min/abs).
@@ -2377,6 +2435,10 @@ char* llvm_template(int group, int id, retained_node* node):
 				else: llvm_error(id, c"template string value type")
 				return c"0"
 			char* word = llvm_value(group, chunk.next_arg)
+			# a var interpolates its text (var_emit_to_cstr)
+			if (llvm_is_var(value.semantic_type)):
+				word = llvm_call1(id, c"__w_var_to_cstr", word)
+				kind = 6
 			list[char*] arguments = list[char*]{builder, word}
 			char* helper = c"__w_template_fmt"
 			if ((present == 0) && (kind < 8)):
@@ -2652,9 +2714,12 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] values = new list[char*]
 		int arg = node.left
 		while ((arg >= 0) && (llvm_failed == 0)):
-			values.push(llvm_value(group, arg))
 			retained_node argument
 			retained_node_load(llvm_node_id(group, arg), &argument)
+			char* printed = llvm_value(group, arg)
+			# print(var) prints its text (var_emit_to_cstr)
+			if ((op == 'P') && llvm_is_var(argument.semantic_type)): printed = llvm_call1(id, c"__w_var_to_cstr", printed)
+			values.push(printed)
 			arg = argument.next_arg
 			if (op == 'P'): arg = -1
 		char* result = c"0"
@@ -2668,6 +2733,8 @@ char* llvm_value_inner(int group, int operand):
 	if (op == 'Z'): return llvm_slice_range(group, id, &node)
 	if (op == 'A'): return llvm_parallel_assign(group, id, &node)
 	if (op == 'X'): return llvm_generator_create(group, id, &node)
+	if (op == 'z'): return llvm_method_call(group, id, &node)
+	if (op == 'Y'): return llvm_array_allocation(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
 		if ((op == 'C') && (node.binding < 0)):
@@ -2700,6 +2767,9 @@ char* llvm_value_inner(int group, int operand):
 				int kind = 0
 				value = llvm_float_binary(id, compound, before, left.semantic_type, value, right.semantic_type, &kind)
 				value = llvm_float_coerce(value, kind, llvm_float_kind(left.semantic_type))
+				from = left.semantic_type
+			else if (llvm_is_var(left.semantic_type) || llvm_is_var(right.semantic_type)):
+				value = llvm_var_binary(id, compound, before, left.semantic_type, value, right.semantic_type)
 				from = left.semantic_type
 			else: value = llvm_binary(id, compound, llvm_unsigned_word(left.semantic_type) || llvm_unsigned_word(right.semantic_type), before, value)
 		else: value = llvm_value(group, node.right)
@@ -2828,6 +2898,7 @@ char* llvm_value_inner(int group, int operand):
 			operands.free()
 			if (op == 0x94): return llvm_extend(llvm_instruction(c"icmp ne", equal, c"0"))
 			return llvm_extend(llvm_instruction(c"icmp eq", equal, c"0"))
+		if (llvm_is_var(left.semantic_type) || llvm_is_var(right.semantic_type)): return llvm_var_binary(id, op, a, left.semantic_type, b, right.semantic_type)
 		if (llvm_float_kind(left.semantic_type) || llvm_float_kind(right.semantic_type)):
 			int kind = 0
 			return llvm_float_binary(id, op, a, left.semantic_type, b, right.semantic_type, &kind)
@@ -3594,6 +3665,18 @@ char* llvm_container_method(int group, int id, retained_node* node):
 		values.push(value)
 		count = count + 1
 		arg = argument.next_arg
+	# A float map's add is get_or, the float sum and set (hash_map_add_suffix).
+	if ((method == 18) && llvm_float_kind(value_type)):
+		int float_kind = llvm_float_kind(value_type)
+		char* delta = llvm_float_coerce(c"1", 0, float_kind)
+		if (count > 1): delta = values[2]
+		char* current = llvm_call3(id, c"__w_map_get_or", values[0], values[1], c"0")
+		int sum_kind = 0
+		char* sum = llvm_float_binary(id, '+', current, value_type, delta, value_type, &sum_kind)
+		sum = llvm_float_coerce(sum, sum_kind, float_kind)
+		llvm_call3(id, c"__w_map_set", values[0], values[1], sum)
+		values.free()
+		return sum
 	# m.add(key) adds one
 	if ((method == 18) && (count == 1)): values.push(c"1")
 	if ((method == 16) || (method == 17)): values.push(llvm_number(node.high))
@@ -3630,7 +3713,18 @@ char* llvm_map_store(int group, int id, retained_node* node):
 			return c"0"
 		char* before = llvm_call2(id, c"__w_map_get", table, key)
 		value = llvm_value(group, node.right)
-		value = llvm_binary(id, node.value, llvm_unsigned_word(element) || llvm_unsigned_word(right_type), before, value)
+		int compound = node.value
+		if (compound == 'l'): compound = 'L'
+		else if (compound == 'r'): compound = 'R'
+		if (llvm_float_kind(element) || llvm_float_kind(right_type)):
+			int kind = 0
+			value = llvm_float_binary(id, compound, before, element, value, right_type, &kind)
+			value = llvm_float_coerce(value, kind, llvm_float_kind(element))
+			right_type = element
+		else if (llvm_is_var(element) || llvm_is_var(right_type)):
+			value = llvm_var_binary(id, compound, before, element, value, right_type)
+			right_type = element
+		else: value = llvm_binary(id, compound, llvm_unsigned_word(element) || llvm_unsigned_word(right_type), before, value)
 	else: value = llvm_value(group, node.right)
 	value = llvm_convert(id, value, right_type, element)
 	char* helper = c"__w_map_set"
@@ -3880,6 +3974,35 @@ int llvm_header_position(int id, int group, int binding):
 # for x in l, for i, x in l, for k in m, for k, v in m, for k in s:
 # for_cursor_loop's begin/done/value/next protocol. The container is
 # evaluated once; the cursor is a phi over the loop.
+# A cursor-protocol function for a struct-pointer iterable: T_iter_<what>,
+# or for an instantiated generic container its generic function's
+# instantiation ('heap$int' + "begin" -> 'heap_iter_begin$int', as
+# for_iter_generic_require names it).
+char* llvm_iter_function(char* container_name, char* what):
+	int dollar = 0
+	while (container_name[dollar] && (container_name[dollar] != '$')): dollar = dollar + 1
+	string_builder* text = string_new()
+	if (container_name[dollar] == 0):
+		string_append(text, container_name)
+		string_append(text, c"_iter_")
+		string_append(text, what)
+	else:
+		for i in range(dollar): string_append_char(text, container_name[i])
+		string_append(text, c"_iter_")
+		string_append(text, what)
+		string_append(text, container_name + dollar)
+	char* result = retained_intern(text.data)
+	string_free(text)
+	return result
+
+
+# The container-for helper name: the runtime's prefix + what, or the
+# struct iterable's protocol function.
+char* llvm_container_iter(char* prefix, char* custom, char* what):
+	if (custom): return llvm_iter_function(custom, what)
+	return llvm_join(prefix, what)
+
+
 void llvm_container_for(int id):
 	int entry_reachable = llvm_reachable
 	int group = -1
@@ -3926,7 +4049,7 @@ void llvm_container_for(int id):
 		else if (llvm_is_string(type)): sequence = 2
 		else if ((t.pointer_level == 1) && (t.target >= 0) && (llvm_class(t.target) == llvm_class_struct)):
 			sequence = 3
-			custom = llvm_join(llvm_type(t.target).name, c"_iter_")
+			custom = llvm_type(t.target).name
 			generator = strcmp(llvm_type(t.target).name, c"generator") == 0
 	if ((kind == 0) && (sequence == 0)):
 		if (type >= 0): llvm_error_at(id, c"for loop over", retained_types[type].name)
@@ -3938,10 +4061,9 @@ void llvm_container_for(int id):
 		return
 	char* prefix = c"__w_list_iter_"
 	if (kind != 12): prefix = c"__w_map_iter_"
-	if (sequence == 3): prefix = custom
 	char* container = llvm_group(group)
 	char* begin = c"0"
-	if ((sequence == 0) || (sequence == 3)): begin = llvm_call1(id, llvm_join(prefix, c"begin"), container)
+	if ((sequence == 0) || (sequence == 3)): begin = llvm_call1(id, llvm_container_iter(prefix, custom, c"begin"), container)
 	int before = llvm_block
 	char* cursor = llvm_temp()
 	char* advanced = llvm_temp()
@@ -3966,7 +4088,7 @@ void llvm_container_for(int id):
 	if ((sequence == 1) || (sequence == 2)):
 		# a slice, array header or string: {data, length}
 		finished = llvm_extend(llvm_instruction(c"icmp sge", cursor, llvm_load(-1, llvm_offset(llvm_pointer(container), c"8"))))
-	else: finished = llvm_call2(id, llvm_join(prefix, c"done"), container, cursor)
+	else: finished = llvm_call2(id, llvm_container_iter(prefix, custom, c"done"), container, cursor)
 	llvm_cond_branch(llvm_bool(finished), done, yes)
 	llvm_label(yes)
 	int first_storage = retained_bindings[variables[0]].type
@@ -3976,7 +4098,7 @@ void llvm_container_for(int id):
 		char* offset = llvm_instruction(c"mul", cursor, llvm_number(llvm_type(element).size))
 		first = llvm_convert(id, llvm_load(element, llvm_offset(data, offset)), element, first_storage)
 	else if (sequence == 2): first = llvm_call2(id, c"utf8_decode", container, cursor)
-	else if (sequence == 3): first = llvm_call2(id, llvm_join(prefix, c"value"), container, cursor)
+	else if (sequence == 3): first = llvm_call2(id, llvm_container_iter(prefix, custom, c"value"), container, cursor)
 	else:
 		# The first variable: a list element (its index when there are two)
 		# or a map or set key. Record elements bind their slot's address.
@@ -4019,7 +4141,7 @@ void llvm_container_for(int id):
 	char* stepped = c"0"
 	if (sequence == 1): stepped = llvm_instruction(c"add", cursor, c"1")
 	else if (sequence == 2): stepped = llvm_call2(id, c"utf8_next", container, cursor)
-	else: stepped = llvm_call2(id, llvm_join(prefix, c"next"), container, cursor)
+	else: stepped = llvm_call2(id, llvm_container_iter(prefix, custom, c"next"), container, cursor)
 	llvm_put(c"  ")
 	llvm_put(advanced)
 	llvm_put(c" = add i64 ")
@@ -4450,6 +4572,456 @@ int llvm_global_record_headers(int linkage, int type, string_builder* text):
 # --- end of arrays inside records --------------------------------------------
 
 
+# --- methods, allocation, propagation, var, gpu host code and other forms ----
+
+# receiver.method(args) (op 'z', UFCS): T_method(receiver, args...). A
+# record receiver passes its address, as a T* parameter takes it.
+char* llvm_method_call(int group, int id, retained_node* node):
+	int result_class = llvm_class(node.semantic_type)
+	if ((result_class != llvm_class_word) && (result_class != llvm_class_void)):
+		llvm_error(id, c"call result type")
+		return c"0"
+	if ((node.binding < 0) || ((retained_bindings[node.binding].linkage in llvm_functions) == 0)):
+		llvm_error(id, c"method without a W body")
+		return c"0"
+	int linkage = retained_bindings[node.binding].linkage
+	retained_node definition
+	retained_node_load(llvm_functions[linkage], &definition)
+	retained_binding* defined = retained_bindings[definition.binding]
+	list[int] operands = new list[int]
+	operands.push(node.right)
+	int arg = node.left
+	while (arg >= 0):
+		operands.push(arg)
+		retained_node argument
+		retained_node_load(llvm_node_id(group, arg), &argument)
+		arg = argument.next_arg
+	list[char*] values = new list[char*]
+	for i in range(operands.length):
+		if (llvm_failed): break
+		values.push(llvm_value(group, operands[i]))
+	if (operands.length != defined.parameters.length): llvm_error_at(id, c"method argument count", defined.name)
+	if (llvm_failed):
+		operands.free()
+		values.free()
+		return c"0"
+	for i in range(values.length):
+		if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", defined.name)
+		values[i] = llvm_convert(id, values[i], llvm_operand_type(group, operands[i]), defined.parameters[i])
+		llvm_owner_move(group, operands[i], defined.parameters[i])
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = call i64 ")
+	llvm_put(llvm_function_symbol(linkage))
+	llvm_put(c"(")
+	for i in range(values.length):
+		if (i > 0): llvm_put(c", ")
+		llvm_put(c"i64 ")
+		llvm_put(values[i])
+	llvm_put(c")\x0a")
+	operands.free()
+	values.free()
+	return result
+
+
+# new T[n] (op 'Y'): __w_alloc_trap unless 0 <= n <= 2^30 / size, then one
+# zeroed object holding the {data, length} header and the elements.
+char* llvm_array_allocation(int group, int id, retained_node* node):
+	retained_type* t = llvm_type(node.semantic_type)
+	int element_size = 1
+	if ((t.target >= 0) && (llvm_type(t.target).size > 1)): element_size = llvm_type(t.target).size
+	int limit = 1073741823 / element_size
+	char* length = llvm_value(group, node.left)
+	char* invalid = llvm_instruction(c"icmp slt", length, c"0")
+	invalid = llvm_op(c"or", c"i1", invalid, llvm_instruction(c"icmp sgt", length, llvm_number(limit)))
+	int trap = llvm_label_new()
+	int valid = llvm_label_new()
+	llvm_cond_branch(invalid, trap, valid)
+	llvm_label(trap)
+	llvm_call2(id, c"__w_alloc_trap", length, llvm_number(limit))
+	llvm_put(c"  unreachable\x0a")
+	llvm_terminated = 1
+	llvm_label(valid)
+	char* bytes = llvm_instruction(c"add", llvm_instruction(c"mul", length, llvm_number(element_size)), c"16")
+	char* object = llvm_call1(id, c"__w_new_object", bytes)
+	char* header = llvm_pointer(object)
+	llvm_store_width(8, llvm_address_value(llvm_offset(header, c"16")), header)
+	llvm_store_width(8, length, llvm_offset(header, c"8"))
+	return object
+
+
+# r? (op 136, result_propagate_suffix): return r from the function unless
+# r.ok, freeing the enclosing generator loops and owners as a return
+# does; otherwise the place of r.value.
+char* llvm_propagate(int group, int id, retained_node* node):
+	if (llvm_generator_self >= 0):
+		llvm_error(id, c"'?' in a generator")
+		return c"null"
+	char* result = llvm_value(group, node.left)
+	retained_type* pointer = llvm_type(llvm_operand_type(group, node.left))
+	int offset = -1
+	if (pointer.target >= 0):
+		for field in llvm_type(pointer.target).fields:
+			if (strcmp(field.name, c"value") == 0): offset = field.offset
+	if (offset < 0):
+		llvm_error(id, c"'?' operand")
+		return c"null"
+	char* ok = llvm_load(-1, llvm_pointer(result))
+	int good = llvm_label_new()
+	int bad = llvm_label_new()
+	llvm_cond_branch(llvm_bool(ok), good, bad)
+	llvm_label(bad)
+	llvm_generator_free_loops(id)
+	llvm_owner_cleanup(id, 0, 1)
+	llvm_put(c"  ret i64 ")
+	llvm_put(result)
+	llvm_put(c"\x0a")
+	llvm_terminated = 1
+	llvm_label(good)
+	return llvm_offset(llvm_pointer(result), llvm_number(offset))
+
+
+# The dynamic var type (grammar/var_builtin.w): one word naming a tagged
+# box from structures/w_dynamic.w; conversions box and unbox, and the
+# arithmetic and comparisons dispatch at run time.
+int llvm_is_var(int type):
+	if (type < 0): return 0
+	retained_type* t = llvm_type(type)
+	return (t.pointer_level == 0) && ((t.kind == 13) || (strcmp(t.name, c"var") == 0))
+
+
+char* llvm_var_box_helper(int type):
+	if (type < 0): return c"__w_var_box_int"
+	if (llvm_is_string(type)): return c"__w_var_box_str"
+	if (llvm_is_char_pointer(type)): return c"__w_var_box_cstr"
+	retained_type* t = llvm_type(type)
+	if ((t.pointer_level == 0) && (llvm_class(type) == llvm_class_word) && (llvm_float_kind(type) == 0) && (llvm_is_var(type) == 0)): return c"__w_var_box_int"
+	return 0
+
+
+char* llvm_var_convert(int id, char* value, int from, int to, int* done):
+	done[0] = 0
+	int want_var = llvm_is_var(to)
+	int got_var = llvm_is_var(from)
+	if ((want_var == 0) && (got_var == 0)): return value
+	done[0] = 1
+	if ((want_var && got_var) || (to < 0)): return value
+	if (want_var):
+		char* box = llvm_var_box_helper(from)
+		if (box == 0):
+			llvm_error(id, c"conversion to var")
+			return c"0"
+		return llvm_call1(id, box, value)
+	if (llvm_is_string(to)): return llvm_call1(id, c"__w_var_unbox_str", value)
+	if (llvm_is_char_pointer(to)): return llvm_call1(id, c"__w_var_unbox_cstr", value)
+	retained_type* t = llvm_type(to)
+	# void* exposes the raw box pointer
+	if ((t.pointer_level == 1) && (strcmp(t.name, c"void") == 0)): return value
+	char* box = llvm_var_box_helper(to)
+	if ((box == 0) || (strcmp(box, c"__w_var_box_int") != 0)):
+		llvm_error(id, c"conversion from var")
+		return c"0"
+	char* unboxed = llvm_call1(id, c"__w_var_unbox_int", value)
+	if (llvm_is_bool(to)): return llvm_extend(llvm_bool(unboxed))
+	return unboxed
+
+
+char* llvm_var_operand(int id, char* value, int type):
+	if (llvm_is_var(type)): return value
+	char* box = llvm_var_box_helper(type)
+	if (box == 0):
+		llvm_error(id, c"conversion to var")
+		return c"0"
+	return llvm_call1(id, box, value)
+
+
+char* llvm_var_binary(int id, int op, char* a, int a_type, char* b, int b_type):
+	char* helper = 0
+	if (op == '+'): helper = c"__w_var_add"
+	else if (op == '-'): helper = c"__w_var_sub"
+	else if (op == '*'): helper = c"__w_var_mul"
+	else if (op == '/'): helper = c"__w_var_div"
+	else if ((op == 0x94) || (op == 0x95)): helper = c"__w_var_eq"
+	else if ((op >= 0x9c) && (op <= 0x9f)): helper = c"__w_var_cmp"
+	if (helper == 0):
+		llvm_error(id, c"var operator")
+		return c"0"
+	a = llvm_var_operand(id, a, a_type)
+	b = llvm_var_operand(id, b, b_type)
+	char* result = llvm_call2(id, helper, a, b)
+	if (op == 0x94): return llvm_extend(llvm_bool(result))
+	if (op == 0x95): return llvm_extend(llvm_instruction(c"icmp eq", result, c"0"))
+	if (op >= 0x9c): return llvm_binary(id, op, 0, result, c"0")
+	return result
+
+
+# 'deep.name = value': a statement through an import alias names the
+# alias, and its expression starts after "alias.".
+int llvm_qualified_statement(int id, retained_node* node, retained_node* expression):
+	retained_source* source = retained_sources[node.source]
+	int dot = node.start + strlen(node.name)
+	return (dot < source.length) && (source.bytes[dot] == '.') && (expression.start == dot + 1)
+
+
+# A source byte of the statement, or 0 past the end.
+int llvm_statement_byte(retained_node* node, int at):
+	retained_source* source = retained_sources[node.source]
+	if ((at < 0) || (at >= source.length)): return 0
+	return source.bytes[at]
+
+
+# raw_asm(c"...") emits its bytes in place (ast_stmt_raw): LLVM inline
+# assembly .byte directives, clobbering what the native bytes may. The
+# retained statement carries no operand, so the literal is decoded from
+# the source as process_string_literal_from does (\xNN, \n \t \r \0,
+# anything else literally; \u escapes are rejected).
+int llvm_hex_digit(int c):
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
+	return 0
+
+
+void llvm_raw_asm(int id, retained_node* node):
+	int at = node.start
+	while ((at < node.end) && (llvm_statement_byte(node, at) != '"')): at = at + 1
+	at = at + 1
+	list[int] bytes = new list[int]
+	while ((at < node.end) && (llvm_statement_byte(node, at) != '"')):
+		int c = llvm_statement_byte(node, at)
+		if (c != 92):
+			bytes.push(c)
+			at = at + 1
+			continue
+		int e = llvm_statement_byte(node, at + 1)
+		if (e == 'x'):
+			bytes.push(llvm_hex_digit(llvm_statement_byte(node, at + 2)) * 16 + llvm_hex_digit(llvm_statement_byte(node, at + 3)))
+			at = at + 4
+			continue
+		if ((e == 'u') || (e == 'U')): llvm_error(id, c"raw_asm unicode escape")
+		if (e == 'n'): e = 10
+		else if (e == 't'): e = 9
+		else if (e == 'r'): e = 13
+		else if (e == '0'): e = 0
+		bytes.push(e)
+		at = at + 2
+	if (bytes.length > 0):
+		llvm_put(c"  call void asm sideeffect \".byte ")
+		for i in range(bytes.length):
+			if (i > 0): llvm_put(c",")
+			llvm_put(llvm_number(bytes[i] & 255))
+		if (llvm_arm64): llvm_put(c"\", \"~{memory},~{nzcv},~{x0},~{x1},~{x2},~{x3},~{x4},~{x5},~{x6},~{x7},~{x8},~{x9},~{x10},~{x11},~{x12},~{x13},~{x14},~{x15},~{x16},~{x17}\"()\x0a")
+		else: llvm_put(c"\", \"~{memory},~{dirflag},~{fpsr},~{flags},~{rax},~{rcx},~{rdx},~{rsi},~{rdi},~{r8},~{r9},~{r10},~{r11}\"()\x0a")
+	bytes.free()
+
+
+# Host side of 'launch' and 'gpu for' (grammar/ast_gpu.w, gpu_for.w):
+# argument cells laid out last-first, as __w_gpu_launch_raw and
+# __w_gpu_launch in lib/cuda.w read them. The device side (PTX) is not
+# produced here.
+char* llvm_gpu_cells(list[char*] values):
+	int count = values.length
+	char* cells = llvm_temp()
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, cells)
+	string_append(llvm_entry, c" = alloca [")
+	string_append_int(llvm_entry, count + 1)
+	string_append(llvm_entry, c" x i64], align 8\x0a")
+	for i in range(count): llvm_store_width(8, values[i], llvm_offset(cells, llvm_number((count - 1 - i) * 8)))
+	return llvm_address_value(cells)
+
+
+char* llvm_gpu_name(char* name):
+	return llvm_constant_address(llvm_string_constant(name, strlen(name)))
+
+
+void llvm_launch(int id, retained_node* node):
+	# launch NAME[grid, block](args): the kernel's name follows the keyword
+	int at = node.start + 6
+	while ((llvm_statement_byte(node, at) == ' ') || (llvm_statement_byte(node, at) == 9)): at = at + 1
+	string_builder* name = string_new()
+	while (1):
+		int c = llvm_statement_byte(node, at)
+		if ((c == 0) || (c == '[') || (c == ' ') || (c == 9)): break
+		string_append_char(name, c)
+		at = at + 1
+	# A kernel has no host binding: its parameters are the locals leading
+	# its function node.
+	list[int] parameters = new list[int]
+	int kernel = -1
+	int count = retained_node_count()
+	for candidate in range(count):
+		if ((kernel < 0) && (retained_node_kind(candidate) == retained_function)):
+			retained_node function
+			retained_node_load(candidate, &function)
+			if (strcmp(function.name, name.data) == 0): kernel = candidate
+	if (kernel < 0):
+		llvm_error_at(id, c"launch of", name.data)
+		string_free(name)
+		parameters.free()
+		return
+	int parameter = llvm_first[kernel]
+	while ((parameter >= 0) && (retained_node_kind(parameter) == retained_local)):
+		retained_node local
+		retained_node_load(parameter, &local)
+		parameters.push(local.semantic_type)
+		parameter = llvm_next[parameter]
+	list[char*] values = new list[char*]
+	char* grid = c"0"
+	char* block = c"0"
+	int index = 0
+	int child = llvm_first[id]
+	while ((child >= 0) && (llvm_failed == 0)):
+		if (retained_node_kind(child) == retained_expression_group):
+			char* value = llvm_group(child)
+			if (index == 0): grid = value
+			else if (index == 1): block = value
+			else:
+				int argument = index - 2
+				if (argument < parameters.length): value = llvm_convert(id, value, llvm_group_type(child), parameters[argument])
+				values.push(value)
+			index = index + 1
+		child = llvm_next[child]
+	if (values.length != parameters.length): llvm_error_at(id, c"kernel argument count", name.data)
+	if (llvm_failed == 0):
+		char* cells = llvm_gpu_cells(values)
+		list[char*] arguments = list[char*]{llvm_gpu_name(name.data), grid, block, cells, llvm_number(values.length)}
+		llvm_helper_call(id, c"__w_gpu_launch_raw", arguments)
+		arguments.free()
+	values.free()
+	parameters.free()
+	string_free(name)
+
+
+# Bindings declared inside a subtree (the loop variable and body locals).
+void llvm_gpu_declared(int id, map[int, int] declared):
+	if (retained_node_kind(id) == retained_local):
+		retained_node local
+		retained_node_load(id, &local)
+		if (local.binding >= 0): declared[local.binding] = 1
+	int child = llvm_first[id]
+	while (child >= 0):
+		llvm_gpu_declared(child, declared)
+		child = llvm_next[child]
+
+
+# Host locals the body reads, in first-reference order (the device
+# compiler's capture order).
+void llvm_gpu_captures(int id, map[int, int] declared, list[int] captures, map[int, int] seen):
+	if (retained_node_kind(id) == retained_expression_group):
+		int k = 0
+		while (retained_node_kind(id + 1 + k) == retained_expression):
+			retained_node expression
+			retained_node_load(id + 1 + k, &expression)
+			int binding = expression.binding
+			if ((expression.op == 'v') && (binding >= 0) && (binding in llvm_locals) && ((binding in declared) == 0) && ((binding in seen) == 0)):
+				seen[binding] = 1
+				captures.push(binding)
+			k = k + 1
+	int child = llvm_first[id]
+	while (child >= 0):
+		llvm_gpu_captures(child, declared, captures, seen)
+		child = llvm_next[child]
+
+
+int llvm_is_gpu_for(int id):
+	if (retained_node_kind(id) != retained_statement): return 0
+	retained_node node
+	retained_node_load(id, &node)
+	if (strcmp(node.name, c"gpu") != 0): return 0
+	int child = llvm_first[id]
+	while (child >= 0):
+		if (retained_node_kind(child) == retained_local): return 1
+		child = llvm_next[child]
+	return 0
+
+
+void llvm_gpu_for(int id, retained_node* node):
+	list[char*] slots = new list[char*]
+	map[int, int] declared = new map[int, int]
+	int body = -1
+	int child = llvm_first[id]
+	while ((child >= 0) && (llvm_failed == 0)):
+		int kind = retained_node_kind(child)
+		if (kind == retained_expression_group): slots.push(llvm_convert(id, llvm_group(child), llvm_group_type(child), -1))
+		else if (kind == retained_local): llvm_gpu_declared(child, declared)
+		else: body = child
+		child = llvm_next[child]
+	if ((body < 0) || (slots.length < 1) || (slots.length > 2)): llvm_error(id, c"gpu for statement shape")
+	if (llvm_failed):
+		slots.free()
+		declared.free()
+		return
+	llvm_gpu_declared(body, declared)
+	list[int] captures = new list[int]
+	map[int, int] seen = new map[int, int]
+	llvm_gpu_captures(body, declared, captures, seen)
+	char* n = slots[0]
+	if (slots.length == 2): n = llvm_instruction(c"sub", slots[1], slots[0])
+	for binding in captures:
+		int type = retained_bindings[binding].type
+		if (llvm_class(type) != llvm_class_word): llvm_error_at(id, c"gpu for capture of", retained_bindings[binding].name)
+		else: slots.push(llvm_load(type, llvm_name(c"%v", binding)))
+	# __w_gpu_kernel_<n>: n counts the 'gpu for' statements compiled before
+	int ordinal = 0
+	for earlier in range(id):
+		if (llvm_is_gpu_for(earlier)): ordinal = ordinal + 1
+	if (llvm_failed == 0):
+		string_builder* name = string_new()
+		string_append(name, c"__w_gpu_kernel_")
+		string_append_int(name, ordinal)
+		char* cells = llvm_gpu_cells(slots)
+		list[char*] arguments = list[char*]{llvm_gpu_name(name.data), n, cells, llvm_number(slots.length)}
+		llvm_helper_call(id, c"__w_gpu_launch", arguments)
+		arguments.free()
+		string_free(name)
+	slots.free()
+	declared.free()
+	captures.free()
+	seen.free()
+
+
+int llvm_form_statement(int id, retained_node* node):
+	if (strcmp(node.name, c"debugger") == 0):
+		# int3, as the native statement (SIGTRAP outside a debugger)
+		llvm_uses_debugtrap = 1
+		llvm_put(c"  call void @llvm.debugtrap()\x0a")
+		return 1
+	if (strcmp(node.name, c"raw_asm") == 0):
+		llvm_raw_asm(id, node)
+		return 1
+	if ((strcmp(node.name, c"launch") == 0) && (llvm_first[id] >= 0) && (retained_node_kind(llvm_first[id]) == retained_expression_group)):
+		retained_node first
+		retained_node_load(llvm_first[id], &first)
+		# 'launch' as a statement keyword, not a variable named launch
+		if (first.start > node.start + 6):
+			llvm_launch(id, node)
+			return 1
+	if (llvm_is_gpu_for(id)):
+		llvm_gpu_for(id, node)
+		return 1
+	return 0
+
+
+# lib/cuda.w loads the kernels' PTX through __w_ptx_module(), which the
+# native driver synthesizes (ptx_finish_module): the in-process front end
+# already produced that text while compiling the kernels, so it becomes a
+# constant here (empty for a program without kernels).
+char* llvm_ptx_module():
+	int length = 0
+	if (ptx_used):
+		length = ptx_module_pos
+		if ((length > 0) && (ptx_module_buf[length - 1] == 0)): length = length - 1
+	if (length == 0): return llvm_constant_address(llvm_string_constant(c"", 0))
+	return llvm_constant_address(llvm_string_constant(ptx_module_buf, length))
+
+
+void llvm_forms_emit_runtime():
+	if (llvm_uses_debugtrap): string_append(llvm_code, c"declare void @llvm.debugtrap() nounwind\x0a\x0a")
+# --- end of methods, allocation, propagation, var, gpu host code and other forms
+
+
 void llvm_statement(int id):
 	if (llvm_failed): return
 	retained_node node
@@ -4469,6 +5041,7 @@ void llvm_statement(int id):
 	if (strcmp(node.name, c"yield") == 0):
 		llvm_generator_yield(id)
 		return
+	if (llvm_form_statement(id, &node)): return
 	if (llvm_control_statement(id, &node)): return
 	if (strcmp(node.name, c"for range") == 0):
 		llvm_range(id)
@@ -4590,7 +5163,7 @@ void llvm_statement(int id):
 		retained_node_load(child, &expression)
 		# Only expression statements use this catch-all: a keyword statement
 		# (assert, defer, yield, ...) has an expression starting after it.
-		if ((expression.start != node.start) && llvm_starts_with_word(id)):
+		if ((expression.start != node.start) && llvm_starts_with_word(id) && (llvm_qualified_statement(id, &node, &expression) == 0)):
 			llvm_error_at(id, c"statement", node.name)
 			return
 		llvm_group(child)
@@ -4933,6 +5506,7 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_import_thunks = new map[int, int]
 	llvm_thunk_code = string_new()
 	llvm_uses_gen_switch = 0
+	llvm_uses_debugtrap = 0
 	llvm_generator_thunks = new map[int, int]
 	llvm_data = string_new()
 	llvm_code = string_new()
@@ -5053,6 +5627,7 @@ int llvm_emit(char* filename, char* output_path):
 		llvm_emit_test_main()
 		llvm_emit_entry(entry_binding.linkage, entry_binding.parameters.length)
 		llvm_generator_emit_runtime()
+		llvm_forms_emit_runtime()
 		llvm_tls_finish()
 		llvm_emit_runtime_stubs(llvm_code)
 		if (c"thread_create" in llvm_runtime_used):

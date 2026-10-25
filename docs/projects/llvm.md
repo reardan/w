@@ -251,7 +251,11 @@ point, and the output file is left untouched.
   `goto` and labels, `pass`, `return`, `yield`, legacy `defer` and checked
   `defer:`, `unsafe:` blocks, `name := value`, parallel assignment
   (`a, b = b, a + b`: every target address, then every value, then the
-  stores) and expression statements. The front end already expands each
+  stores) and expression statements, including ones through an import
+  alias (`deep.x = 42`); a generic container iterates through its
+  iterator functions' instantiations (`heap$int` through
+  `heap_iter_begin$int`, as `for_iter_generic_require` names them). The
+  front end already expands each
   exit's deferred statements into its retained tree (`deferred exit`
   children of `return`, `break`, `continue` and block ends), so they lower
   in order: a record result is copied to the caller's buffer before they
@@ -267,6 +271,23 @@ point, and the output file is left untouched.
   `input`/`read_all`/`ints`/`lines`/`words`. Each lowers
   to the same `structures/` runtime call the native front end makes, with
   the element slot size and key kind taken from the retained types.
+- Other forms: method calls (`p.move(1, 2)`, a record receiver passing its
+  address), `new T[n]` (`__w_alloc_trap`, then an inline `{data, length}`
+  header), `?` on a `wresult[T]*` (an error frees the enclosing generator
+  loops and owners and returns the operand), W variadic calls (the tail in
+  an entry-block array behind a `{data, length}` descriptor, as
+  `finish_w_variadic_arguments` lays it out), `var` values through
+  `structures/w_dynamic.w`'s box, unbox, operator and text helpers, the
+  `debugger` statement (`llvm.debugtrap`, the native `int3`), and
+  `raw_asm(c"...")` (its bytes as an inline-assembly `.byte` directive
+  clobbering the caller-saved registers).
+- GPU host code: `launch k[grid, block](args)` calls
+  `__w_gpu_launch_raw` and `gpu for` calls `__w_gpu_launch` with the
+  native argument cells (last argument first) and kernel names. The
+  kernels' PTX is the text the in-process front end already produced
+  (`code_generator/ptx.w`), and a call of `__w_ptx_module` returns it as a
+  constant, byte-identical to the native embedding. As natively, running
+  needs `libcuda.so.1`: `lib/cuda.w` has no CPU fallback.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one and then divide by zero, raising SIGFPE as the native `idiv`
@@ -359,12 +380,13 @@ operand before the second, and the default NaN is positive (`0x7ff8...`,
 native arm64 build, as do the container, slice and generator fixtures,
 `setjmp_test` and `stack_trace_test`.
 
-Not yet supported, and rejected with a diagnostic: `var`, records returned
+Not yet supported, and rejected with a diagnostic: records returned
 through function values (the native backend does not support them
 either), checked slices, borrowed records and records holding checked
 pointers passed or returned by value (the safe-mode call ABI), arrays of
 records holding fixed arrays (the native backend leaves their element
-headers zeroed), GPU code, the `debugger` statement, and the
+headers zeroed), `\u` escapes in `raw_asm`, the json/protobuf codec
+builtins (their compile-time descriptor blobs), and the
 `get_context`/`store_context` stubs. A container trap (out-of-range
 index, missing key) prints its message and then the stack trace.
 
@@ -448,7 +470,9 @@ identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
 `tests/wllvm_container_fixture.w`, `tests/wllvm_slice_fixture.w`,
-`tests/wllvm_generator_fixture.w`,
+`tests/wllvm_generator_fixture.w`, `tests/wllvm_forms_fixture.w`
+(methods, `new T[n]`, `?`, `var`, variadics, a generic iterable,
+`raw_asm`, an alias statement and GPU-free launch stand-ins),
 `tests/wllvm_generic_fixture.w` (generics and checked owners),
 `tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
 variadic, float and narrow-integer signatures, an alias, an imported
@@ -475,6 +499,16 @@ import graph.
 
 ## Next steps
 
-1. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
+1. Device code through LLVM's NVPTX backend: feasible as a follow-up.
+   wllvm would outline each `kernel` and `gpu for` body into its own
+   module with the `nvptx64-nvidia-cuda` triple, map the thread and block
+   builtins to `llvm.nvvm.read.ptx.sreg.*` intrinsics, put kernel pointer
+   parameters in the global address space (`addrspace(1)`) and mark the
+   entries with `ptx_kernel`, then embed `llc`'s PTX where the native PTX
+   text goes today. The host side would not change.
+2. The json/protobuf codec builtins: their descriptor blobs
+   (`grammar/json_builtin.w`) can be rebuilt from the retained record
+   types (field names, offsets, kinds and sizes).
+3. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
    and code signing) and win64 would need their own entry and system-call
    layers.

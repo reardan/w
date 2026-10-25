@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_control_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_forms_fixture.w data=tests/debug_fixture.w data=tests/wllvm_control_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -141,6 +141,20 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"\"stackrealign\"")
 	unlink(first)
 	free(a)
+	# raw_asm bytes become inline .byte directives.
+	wllvm_test_emit(c"tests/wllvm_forms_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"call void asm sideeffect \".byte 144,144\"")
+	unlink(first)
+	free(a)
+	# The debugger statement's int3 is llvm.debugtrap.
+	wllvm_test_emit(c"tests/debug_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"call void @llvm.debugtrap()")
+	unlink(first)
+	free(a)
 	# Records by value: hidden result buffers, parameter copies, headers.
 	wllvm_test_emit(c"tests/wllvm_control_fixture.w", first)
 	a = file_read_text(first)
@@ -183,9 +197,9 @@ void test_wllvm_rejects_unsupported_programs():
 	wllvm_test_reject(c"struct holder:\n\tint[2] items\nint main():\n\tholder[2] all\n\treturn 0\n")
 	# checked slices and borrowed records cross calls by the safe-mode ABI
 	wllvm_test_reject(c"int first(ref int[] v):\n\treturn v[0]\nint main():\n\tint[2] a\n\tref int[] s = a\n\treturn first(s)\n")
-	wllvm_test_reject(c"int main():\n\tdebugger\n\treturn 0\n")
+	wllvm_test_reject(c"int main():\n\traw_asm(c\"\\u00e9\")\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
-	wllvm_test_reject(c"int main():\n\treturn 0\n\tdebugger\n")
+	wllvm_test_reject(c"int main():\n\treturn 0\n\traw_asm(c\"\\u00e9\")\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
 
@@ -310,6 +324,7 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_half_fixture.w", 50)
 	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
 	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
+	wllvm_test_differential(clang, c"tests/wllvm_forms_fixture.w", 11)
 	wllvm_test_differential(clang, c"tests/wllvm_control_fixture.w", 23)
 	free(clang)
 
