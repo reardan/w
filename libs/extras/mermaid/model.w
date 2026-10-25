@@ -255,6 +255,12 @@ struct mm_document:
 	# 0 classic, 1 neo (accepted as a classic approximation).
 	int look
 	mm_gantt_settings* gantt
+	# Resolved per-family configuration (config.w): validated values keyed by
+	# their path below `config.` ("sequence.mirrorActors", "timeline.sectionFills.0").
+	# Null when nothing was configured; read with the mm_config_* getters below.
+	list[mm_property*] config
+	# Configuration paths that were read but ignored (unknown or unsupported keys).
+	list[char*] config_ignored
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -309,6 +315,8 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	n.parent = -1
 	d.nodes.push(n)
 	return d.nodes.length - 1
+
+void mm_config_free(mm_document* d);
 
 void mm_document_free(mm_document* d):
 	if (d == 0): return
@@ -406,7 +414,91 @@ void mm_document_free(mm_document* d):
 	free(d.direction)
 	free(d.error)
 	if (d.ticket_base_url != 0): free(d.ticket_base_url)
+	mm_config_free(d)
 	free(d)
+
+void mm_config_free(mm_document* d):
+	if (d.config != 0):
+		for mm_property* property in d.config:
+			free(property.key)
+			free(property.value)
+			free(property)
+		__w_list_free(cast(__w_list*, d.config))
+	if (d.config_ignored != 0):
+		for char* path in d.config_ignored: free(path)
+		__w_list_free(cast(__w_list*, d.config_ignored))
+	d.config = 0
+	d.config_ignored = 0
+
+# A configured value (validated by config.w), or null when not configured.
+char* mm_config_value(mm_document* d, char* key):
+	if (d.config == 0): return 0
+	for mm_property* property in d.config:
+		if (strcmp(property.key, key) == 0): return property.value
+	return 0
+
+int mm_config_has(mm_document* d, char* key):
+	return mm_config_value(d, key) != 0
+
+int mm_config_flag(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return strcmp(value, c"true") == 0
+
+# Signed decimal text in thousandths ("0.17" -> 170); fractions past three digits truncate.
+int mm_config_parse_milli(char* value):
+	int at = 0
+	int sign = 1
+	if (value[0] == '-'):
+		sign = -1
+		at = 1
+	else if (value[0] == '+'): at = 1
+	int whole = 0
+	while (value[at] >= '0' && value[at] <= '9'):
+		if (whole < 100000000): whole = whole * 10 + value[at] - '0'
+		at = at + 1
+	int fraction = 0
+	int scale = 100
+	if (value[at] == '.'):
+		at = at + 1
+		while (value[at] >= '0' && value[at] <= '9'):
+			fraction = fraction + (value[at] - '0') * scale
+			scale = scale / 10
+			at = at + 1
+	if (whole > 1000000): whole = 1000000
+	return sign * (whole * 1000 + fraction)
+
+int mm_config_milli(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return mm_config_parse_milli(value)
+
+# Integer value (decimal values truncate toward zero).
+int mm_config_number(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return mm_config_parse_milli(value) / 1000
+
+# Number of items in a configured list (`key.0`, `key.1`, ...).
+int mm_config_count(mm_document* d, char* key):
+	int count = 0
+	while (count < 1024):
+		string_builder* path = string_from(key)
+		string_append_char(path, '.')
+		string_append_int(path, count)
+		int found = mm_config_value(d, path.data) != 0
+		string_free(path)
+		if (found == 0): return count
+		count = count + 1
+	return count
+
+char* mm_config_item(mm_document* d, char* key, int index):
+	string_builder* path = string_from(key)
+	string_append_char(path, '.')
+	string_append_int(path, index)
+	char* value = mm_config_value(d, path.data)
+	string_free(path)
+	return value
 
 # Lossless writer, including comments and formatting, even for invalid documents.
 char* mm_write(mm_document* d):
