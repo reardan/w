@@ -1,6 +1,7 @@
 # Class and state syntax, referenced against Mermaid 12.2.0.
 import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.style
+import libs.extras.mermaid.interaction
 
 int mm_keyword(mm_parser* p, char* word):
 	int save = p.pos
@@ -503,6 +504,9 @@ void mm_uml_body(mm_parser* p, int scope, int depth):
 				free(n.direction)
 				n.direction = p.doc.direction
 				p.doc.direction = outer
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"click")): mm_interaction_statement(p, 0)
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"link")): mm_interaction_statement(p, 1)
+		else if (p.doc.kind == MM_CLASS && mm_style_keyword(p, c"callback")): mm_interaction_statement(p, 2)
 		else if (p.doc.kind == MM_CLASS): mm_class_statement(p, current, depth)
 		else: mm_state_statement(p, current, depth)
 		if (mm_end(p) == 0 && mm_peek(p) != '}'): mm_error(p.doc, p.pos, c"unsupported UML syntax or missing statement separator")

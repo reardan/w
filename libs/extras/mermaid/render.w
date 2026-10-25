@@ -15,6 +15,7 @@ import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
 import libs.extras.mermaid.flow_shapes
+import libs.extras.mermaid.class_members
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -91,7 +92,14 @@ void mm_measure(mm_document* d, mm_scene* s):
 			int width = mm_text_width(n.annotation, 0) + 68
 			if (width > b.w): b.w = width
 			for mm_member* m in n.members:
-				width = mm_text_width(m.text, 0) + 32
+				if (d.kind == MM_CLASS):
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					width = mm_text_width(shown, style) + 32
+					free(shown)
+				else: width = mm_text_width(m.text, 0) + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
@@ -446,7 +454,7 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
-void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
+void mm_render_class(mm_document* d, mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 	int y = b.y + 40 + extra
 	if (n.annotation[0] != 0):
 		string_builder* text = string_from(c"<<")
@@ -460,7 +468,16 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 		int count = 0
 		for mm_member* m in n.members:
 			if (m.method == method):
-				mm_text(s, b.x + 12, y + 5, m.text)
+				if (d.kind == MM_CLASS):
+					# Static members are underlined, abstract members italic, as upstream.
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					mm_text_styled(s, b.x + 12, y + 5, shown, style)
+					if (classifier == MM_MEMBER_STATIC): mm_line(s, b.x + 12, y + 5 + MM_TEXT_LINE - 1, b.x + 12 + mm_text_width(shown, 0), y + 5 + MM_TEXT_LINE - 1, 0)
+					free(shown)
+				else: mm_text(s, b.x + 12, y + 5, m.text)
 				y = y + 26
 				count = count + 1
 		if (count == 0): y = y + 18
@@ -573,7 +590,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
 		mm_text_block_free(title)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(d, s, n, b, extra)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
 				int y = b.y + 40 + extra + j * 26
