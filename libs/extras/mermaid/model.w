@@ -178,6 +178,12 @@ struct mm_node:
 	char* role
 	int global_node
 	list[mm_property*] metadata
+	# Interaction (flowchart/class `click`, class `link`/`callback`); null when absent.
+	# Links are exported as SVG anchors only for safe schemes; callbacks never run.
+	char* link
+	char* link_target
+	char* tooltip
+	char* callback
 
 struct mm_edge:
 	int from_node
@@ -196,6 +202,14 @@ struct mm_edge:
 	char* right_label
 	int scope
 	mm_style style
+	# Flowchart link extensions: optional `id@` edge ID (null when absent),
+	# stroke 0 normal / 1 thick / 2 invisible, extra ranks from longer links,
+	# animate 0 off / 1 on / 2 fast / 3 slow, curve 0 inherited else edge_curve + 1.
+	char* id
+	int stroke
+	int extra_rank
+	int animate
+	int curve
 
 # UML notes are annotations, not graph vertices.
 struct mm_note:
@@ -336,6 +350,10 @@ void mm_document_free(mm_document* d):
 			free(property.value)
 			free(property)
 		__w_list_free(cast(__w_list*, n.metadata))
+		if (n.link != 0): free(n.link)
+		if (n.link_target != 0): free(n.link_target)
+		if (n.tooltip != 0): free(n.tooltip)
+		if (n.callback != 0): free(n.callback)
 		free(n.role)
 		free(n.annotation)
 		free(n.direction)
@@ -346,6 +364,7 @@ void mm_document_free(mm_document* d):
 		free(e.label)
 		free(e.left_label)
 		free(e.right_label)
+		if (e.id != 0): free(e.id)
 		free(e)
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))
