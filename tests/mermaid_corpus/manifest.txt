@@ -1,0 +1,552 @@
+# Mermaid conformance corpus classifications; see README.md.
+# Regenerate with ./wbuild mermaid_corpus_update (keeps notes and
+# still-matching diagnostic substrings).
+# path<TAB>class<TAB>observed[<TAB>note]
+agentflow/agentflow_001.mmd	supported	ok
+agentflow/agentflow_002.mmd	supported	ok
+agentflow/agentflow_003.mmd	supported	ok
+agentflow/agentflow_004.mmd	supported	ok
+agentflow/agentflow_005.mmd	supported	ok
+agentflow/agentflow_006.mmd	supported	ok
+agentflow/agentflow_007.mmd	supported	ok
+agentflow/agentflow_008.mmd	unsupported	error 11:33: unsupported agentflow presentation metadata
+agentflow/agentflow_009.mmd	supported	ok
+agentflow/agentflow_010.mmd	supported	ok
+agentflow/agentflow_011.mmd	unsupported	error 3:1: unsupported configuration key
+agentflow/agentflow_012.mmd	unsupported	error 3:1: supported native layouts: dagre, force
+architecture/architecture_001.mmd	supported	ok
+architecture/architecture_002.mmd	unsupported	error 10:11: expected architecture source port
+architecture/architecture_003.mmd	unsupported	error 9:11: expected architecture source port
+architecture/architecture_004.mmd	unsupported	error 24:11: expected architecture source port
+architecture/architecture_005.mmd	supported	ok
+architecture/architecture_006.mmd	unsupported	error 2:32: unsupported architecture icon
+block/block_001.mmd	supported	ok
+block/block_002.mmd	supported	ok
+block/block_003.mmd	supported	ok
+block/block_004.mmd	supported	ok
+block/block_005.mmd	supported	ok
+block/block_006.mmd	unsupported	error 4:15: expected entity or node identifier
+block/block_007.mmd	supported	ok
+block/block_008.mmd	supported	ok
+block/block_009.mmd	supported	ok
+block/block_010.mmd	supported	ok
+block/block_011.mmd	supported	ok
+block/block_012.mmd	supported	ok
+block/block_013.mmd	supported	ok
+block/block_014.mmd	supported	ok
+block/block_015.mmd	supported	ok
+block/block_016.mmd	supported	ok
+block/block_017.mmd	supported	ok
+block/block_018.mmd	unsupported	error 8:28: expected block arrow direction right, left, up, down, x or y
+block/block_019.mmd	supported	ok
+block/block_020.mmd	supported	ok
+block/block_021.mmd	supported	ok
+block/block_022.mmd	unsupported	error 3:4: expected entity or node identifier
+block/block_023.mmd	supported	ok
+block/block_024.mmd	unsupported	error 5:80: unsupported style property; supported: fill, stroke, color, stroke-width
+block/block_025.mmd	unsupported	error 6:78: unsupported style property; supported: fill, stroke, color, stroke-width
+block/block_026.mmd	supported	ok
+block/block_027.mmd	supported	ok
+block/block_028.mmd	supported	ok
+block/block_029.mmd	unsupported	error 3:21: style property requires colon
+block/block_030.mmd	supported	ok
+c4/c4_001.mmd	unsupported	error 36:37: named C4 configuration arguments are unsupported
+c4/c4_002.mmd	unsupported	error 36:37: named C4 configuration arguments are unsupported
+c4/c4_003.mmd	unsupported	error 4:89: named C4 configuration arguments are unsupported
+c4/c4_004.mmd	unsupported	error 27:31: named C4 configuration arguments are unsupported
+c4/c4_005.mmd	unsupported	error 14:28: named C4 configuration arguments are unsupported
+c4/c4_006.mmd	unsupported	error 39:62: unsupported C4 declaration or configuration
+class/classDiagram_001.mmd	supported	ok
+class/classDiagram_002.mmd	supported	ok
+class/classDiagram_003.mmd	supported	ok
+class/classDiagram_004.mmd	supported	ok
+class/classDiagram_005.mmd	supported	ok
+class/classDiagram_006.mmd	supported	ok
+class/classDiagram_007.mmd	supported	ok
+class/classDiagram_008.mmd	supported	ok
+class/classDiagram_009.mmd	supported	ok
+class/classDiagram_010.mmd	supported	ok
+class/classDiagram_011.mmd	supported	ok
+class/classDiagram_012.mmd	supported	ok
+class/classDiagram_013.mmd	supported	ok
+class/classDiagram_014.mmd	supported	ok
+class/classDiagram_015.mmd	supported	ok
+class/classDiagram_016.mmd	supported	ok
+class/classDiagram_017.mmd	supported	ok
+class/classDiagram_018.mmd	supported	ok
+class/classDiagram_019.mmd	supported	ok
+class/classDiagram_020.mmd	supported	ok
+class/classDiagram_021.mmd	supported	ok
+class/classDiagram_022.mmd	unsupported	error 3:1: unsupported configuration key
+class/classDiagram_023.mmd	supported	ok
+class/classDiagram_024.mmd	supported	ok
+class/classDiagram_025.mmd	supported	ok
+class/classDiagram_026.mmd	supported	ok
+class/classDiagram_027.mmd	supported	ok
+class/classDiagram_028.mmd	supported	ok
+class/classDiagram_029.mmd	supported	ok
+class/classDiagram_030.mmd	unsupported	error 3:1: unsupported UML statement
+class/classDiagram_031.mmd	unsupported	error 3:1: unsupported UML statement
+class/classDiagram_032.mmd	unsupported	error 4:5: unsupported UML statement
+class/classDiagram_033.mmd	unsupported	error 5:84: unsupported style property; supported: fill, stroke, color, stroke-width
+class/classDiagram_034.mmd	supported	ok
+class/classDiagram_035.mmd	supported	ok
+class/classDiagram_036.mmd	supported	ok
+class/classDiagram_037.mmd	unsupported	error 1:1: assigned style class has no classDef
+class/classDiagram_038.mmd	unsupported	error 2:1: inconsistent frontmatter indentation
+cynefin/cynefin_001.mmd	supported	ok
+cynefin/cynefin_002.mmd	supported	ok
+cynefin/cynefin_003.mmd	supported	ok
+er/entityRelationshipDiagram_001.mmd	supported	ok
+er/entityRelationshipDiagram_002.mmd	supported	ok
+er/entityRelationshipDiagram_003.mmd	supported	ok
+er/entityRelationshipDiagram_004.mmd	supported	ok
+er/entityRelationshipDiagram_005.mmd	supported	ok
+er/entityRelationshipDiagram_006.mmd	supported	ok
+er/entityRelationshipDiagram_007.mmd	supported	ok
+er/entityRelationshipDiagram_008.mmd	supported	ok
+er/entityRelationshipDiagram_009.mmd	supported	ok
+er/entityRelationshipDiagram_010.mmd	supported	ok
+er/entityRelationshipDiagram_011.mmd	supported	ok
+er/entityRelationshipDiagram_012.mmd	supported	ok
+er/entityRelationshipDiagram_013.mmd	supported	ok
+er/entityRelationshipDiagram_014.mmd	supported	ok
+er/entityRelationshipDiagram_015.mmd	supported	ok
+er/entityRelationshipDiagram_016.mmd	supported	ok
+er/entityRelationshipDiagram_017.mmd	supported	ok
+er/entityRelationshipDiagram_018.mmd	supported	ok
+er/entityRelationshipDiagram_019.mmd	supported	ok
+er/entityRelationshipDiagram_020.mmd	supported	ok
+er/entityRelationshipDiagram_021.mmd	unsupported	error 4:82: unsupported style property; supported: fill, stroke, color, stroke-width
+er/entityRelationshipDiagram_022.mmd	supported	ok
+er/entityRelationshipDiagram_023.mmd	unsupported	error 13:12: expected ER cardinality marker
+er/entityRelationshipDiagram_024.mmd	unsupported	error 13:12: expected ER cardinality marker
+er/entityRelationshipDiagram_025.mmd	supported	ok
+eventmodeling/eventmodeling_001.mmd	supported	ok
+eventmodeling/eventmodeling_002.mmd	supported	ok
+eventmodeling/eventmodeling_003.mmd	supported	ok
+eventmodeling/eventmodeling_004.mmd	unsupported	error 4:19: unsupported event data or timeframe syntax
+eventmodeling/eventmodeling_005.mmd	unsupported	error 4:30: unsupported event data or timeframe syntax
+eventmodeling/eventmodeling_006.mmd	supported	ok
+eventmodeling/eventmodeling_007.mmd	supported	ok
+eventmodeling/eventmodeling_008.mmd	supported	ok
+eventmodeling/eventmodeling_009.mmd	supported	ok
+eventmodeling/eventmodeling_010.mmd	supported	ok
+eventmodeling/eventmodeling_011.mmd	supported	ok
+eventmodeling/eventmodeling_012.mmd	supported	ok
+eventmodeling/eventmodeling_013.mmd	supported	ok
+pie/examples_001.mmd	supported	ok
+pie/examples_002.mmd	supported	ok
+sequence/examples_003.mmd	supported	ok
+flowchart/examples_004.mmd	supported	ok
+flowchart/examples_005.mmd	unsupported	error 5:11: unsupported flowchart edge
+sequence/examples_006.mmd	supported	ok
+sequence/examples_007.mmd	supported	ok
+sequence/examples_008.mmd	supported	ok
+gitgraph/examples_009.mmd	unsupported	error 2:20: expected commit property colon
+flowchart/flowchart_001.mmd	supported	ok
+flowchart/flowchart_002.mmd	supported	ok
+flowchart/flowchart_003.mmd	supported	ok
+flowchart/flowchart_004.mmd	unsupported	error 3:1: unsupported configuration key
+flowchart/flowchart_005.mmd	supported	ok
+flowchart/flowchart_006.mmd	supported	ok
+flowchart/flowchart_007.mmd	unsupported	error 4:11: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_008.mmd	unsupported	error 10:11: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_009.mmd	supported	ok
+flowchart/flowchart_010.mmd	supported	ok
+flowchart/flowchart_011.mmd	supported	ok
+flowchart/flowchart_012.mmd	unsupported	error 2:9: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_013.mmd	supported	ok
+flowchart/flowchart_014.mmd	unsupported	error 2:8: unsupported flowchart edge
+flowchart/flowchart_015.mmd	supported	ok
+flowchart/flowchart_016.mmd	supported	ok
+flowchart/flowchart_017.mmd	supported	ok
+flowchart/flowchart_018.mmd	supported	ok
+flowchart/flowchart_019.mmd	supported	ok
+flowchart/flowchart_020.mmd	supported	ok
+flowchart/flowchart_021.mmd	unsupported	error 2:10: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_022.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_023.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_024.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_025.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_026.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_027.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_028.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_029.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_030.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_031.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_032.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_033.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_034.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_035.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_036.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_037.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_038.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_039.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_040.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_041.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_042.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_043.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_044.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_045.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_046.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_047.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_048.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_049.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_050.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_051.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_052.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_053.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_054.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_055.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_056.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_057.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_058.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_059.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_060.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_061.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_062.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_063.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_064.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_065.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_066.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_067.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_068.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_069.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_070.mmd	unsupported	error 3:4: unsupported flowchart edge
+flowchart/flowchart_071.mmd	supported	ok
+flowchart/flowchart_072.mmd	supported	ok
+flowchart/flowchart_073.mmd	unsupported	error 2:31: expected --> after inline edge label
+flowchart/flowchart_074.mmd	supported	ok
+flowchart/flowchart_075.mmd	supported	ok
+flowchart/flowchart_076.mmd	supported	ok
+flowchart/flowchart_077.mmd	supported	ok
+flowchart/flowchart_078.mmd	unsupported	error 2:5: unsupported flowchart edge
+flowchart/flowchart_079.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_080.mmd	unsupported	error 2:6: unsupported flowchart edge
+flowchart/flowchart_081.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_082.mmd	supported	ok
+flowchart/flowchart_083.mmd	unsupported	error 2:12: unsupported flowchart edge
+flowchart/flowchart_084.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_085.mmd	supported	ok
+flowchart/flowchart_086.mmd	unsupported	error 2:5: unsupported flowchart edge
+flowchart/flowchart_087.mmd	unsupported	error 2:5: unsupported flowchart edge
+flowchart/flowchart_088.mmd	unsupported	error 2:5: unsupported flowchart edge
+flowchart/flowchart_089.mmd	unsupported	error 2:5: unsupported flowchart edge
+flowchart/flowchart_090.mmd	unsupported	error 2:12: expected --> after inline edge label
+flowchart/flowchart_091.mmd	unsupported	error 2:12: expected --> after inline edge label
+flowchart/flowchart_092.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_093.mmd	unsupported	error 6:10: expected entity or node identifier
+flowchart/flowchart_094.mmd	supported	ok
+flowchart/flowchart_095.mmd	supported	ok
+flowchart/flowchart_096.mmd	supported	ok
+flowchart/flowchart_097.mmd	supported	ok
+flowchart/flowchart_098.mmd	supported	ok
+flowchart/flowchart_099.mmd	supported	ok
+flowchart/flowchart_100.mmd	supported	ok
+flowchart/flowchart_101.mmd	unsupported	error 16:16: expected entity or node identifier
+flowchart/flowchart_102.mmd	unsupported	error 8:8: unsupported flowchart edge
+flowchart/flowchart_103.mmd	unsupported	error 3:1: unsupported configuration key
+flowchart/flowchart_104.mmd	unsupported	error 5:5: unsupported Mermaid statement in native stage 1
+flowchart/flowchart_105.mmd	unsupported	error 6:5: unsupported Mermaid statement in native stage 1
+flowchart/flowchart_106.mmd	supported	ok
+flowchart/flowchart_107.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_108.mmd	unsupported	error 4:82: unsupported style property; supported: fill, stroke, color, stroke-width
+flowchart/flowchart_109.mmd	supported	ok
+flowchart/flowchart_110.mmd	unsupported	error 2:13: unsupported flowchart edge
+flowchart/flowchart_111.mmd	supported	ok
+flowchart/flowchart_112.mmd	partial	ok	Font Awesome fa: label prefixes render as literal text
+flowchart/flowchart_113.mmd	partial	ok	Font Awesome fa:/fab: label prefixes render as literal text
+flowchart/flowchart_114.mmd	supported	ok
+gantt/gantt_001.mmd	supported	ok
+gantt/gantt_002.mmd	unsupported	error 14:68: Gantt requires end date, until task or positive duration
+gantt/gantt_003.mmd	unsupported	error 5:37: unknown Gantt dependency
+gantt/gantt_004.mmd	supported	ok
+gantt/gantt_005.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
+gantt/gantt_006.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
+gantt/gantt_007.mmd	unsupported	error 2:21: unsupported Gantt directive or missing task colon
+gantt/gantt_008.mmd	unsupported	error 2:1: unsupported frontmatter field
+gantt/gantt_009.mmd	supported	ok
+gantt/gantt_010.mmd	unsupported	error 3:17: unsupported Gantt dateFormat
+gantt/gantt_011.mmd	unsupported	error 3:1: inconsistent frontmatter indentation
+gitgraph/gitgraph_001.mmd	supported	ok
+gitgraph/gitgraph_002.mmd	supported	ok
+gitgraph/gitgraph_003.mmd	supported	ok
+gitgraph/gitgraph_004.mmd	supported	ok
+gitgraph/gitgraph_005.mmd	supported	ok
+gitgraph/gitgraph_006.mmd	supported	ok
+gitgraph/gitgraph_007.mmd	supported	ok
+gitgraph/gitgraph_008.mmd	supported	ok
+gitgraph/gitgraph_009.mmd	supported	ok
+gitgraph/gitgraph_010.mmd	supported	ok
+gitgraph/gitgraph_011.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_012.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_013.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_014.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_015.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_016.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_017.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_018.mmd	supported	ok
+gitgraph/gitgraph_019.mmd	supported	ok
+gitgraph/gitgraph_020.mmd	supported	ok
+gitgraph/gitgraph_021.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_022.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_023.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_024.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_025.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_026.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_027.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_028.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_029.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_030.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_031.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_032.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_033.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_034.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_035.mmd	unsupported	error 3:1: unsupported configuration key
+ishikawa/ishikawa_001.mmd	supported	ok
+kanban/kanban_001.mmd	supported	ok
+kanban/kanban_002.mmd	supported	ok
+kanban/kanban_003.mmd	unsupported	error 23:5: duplicate hierarchy node identifier
+mindmap/mindmap_001.mmd	partial	ok	::icon() names are kept in the model; icon fonts are not drawn
+mindmap/mindmap_002.mmd	supported	ok
+mindmap/mindmap_003.mmd	supported	ok
+mindmap/mindmap_004.mmd	supported	ok
+mindmap/mindmap_005.mmd	supported	ok
+mindmap/mindmap_006.mmd	supported	ok
+mindmap/mindmap_007.mmd	supported	ok
+mindmap/mindmap_008.mmd	supported	ok
+mindmap/mindmap_009.mmd	supported	ok
+mindmap/mindmap_010.mmd	unsupported	error 3:1: unsupported configuration key
+mindmap/mindmap_011.mmd	unsupported	error 4:1: unsupported configuration key
+mindmap/mindmap_012.mmd	partial	ok	::icon() names are kept in the model; icon fonts are not drawn
+mindmap/mindmap_013.mmd	supported	ok
+mindmap/mindmap_014.mmd	unsupported	error 5:7: indentation must match a previous level
+mindmap/mindmap_015.mmd	supported	ok
+packet/packet_001.mmd	supported	ok
+packet/packet_002.mmd	supported	ok
+packet/packet_003.mmd	unsupported	error 4:1: unsupported packet setting
+packet/packet_004.mmd	unsupported	error 4:1: unsupported packet setting
+pie/pie_001.mmd	supported	ok
+pie/pie_002.mmd	unsupported	error 3:1: unsupported configuration key
+quadrant/quadrantChart_001.mmd	supported	ok
+quadrant/quadrantChart_002.mmd	unsupported	error 3:1: unsupported configuration key
+quadrant/quadrantChart_003.mmd	supported	ok
+radar/radar_001.mmd	supported	ok
+radar/radar_002.mmd	supported	ok
+radar/radar_003.mmd	unsupported	error 3:1: unsupported configuration key
+railroad/railroad_001.mmd	supported	ok
+railroad/railroad_002.mmd	supported	ok
+railroad/railroad_003.mmd	supported	ok
+railroad/railroad_004.mmd	supported	ok
+railroad/railroad_005.mmd	supported	ok
+railroad/railroad_006.mmd	supported	ok
+railroad/railroad_007.mmd	supported	ok
+railroad/railroad_008.mmd	supported	ok
+railroad/railroad_009.mmd	supported	ok
+railroad/railroad_010.mmd	supported	ok
+railroad/railroad_011.mmd	supported	ok
+railroad/railroad_012.mmd	supported	ok
+railroad/railroad_013.mmd	supported	ok
+railroad/railroad_014.mmd	supported	ok
+requirement/requirementDiagram_001.mmd	supported	ok
+requirement/requirementDiagram_002.mmd	supported	ok
+requirement/requirementDiagram_003.mmd	supported	ok
+requirement/requirementDiagram_004.mmd	supported	ok
+requirement/requirementDiagram_005.mmd	unsupported	error 51:11: unsupported requirement property
+requirement/requirementDiagram_006.mmd	unsupported	error 3:11: expected requirement relationship
+requirement/requirementDiagram_007.mmd	supported	ok
+requirement/requirementDiagram_008.mmd	supported	ok
+requirement/requirementDiagram_009.mmd	unsupported	error 3:21: expected requirement property block
+sankey/sankey_001.mmd	unsupported	error 3:1: unsupported configuration key
+sankey/sankey_002.mmd	supported	ok
+sankey/sankey_003.mmd	supported	ok
+sankey/sankey_004.mmd	supported	ok
+sankey/sankey_005.mmd	supported	ok
+sankey/sankey_006.mmd	unsupported	error 3:1: unsupported configuration key
+sankey/sankey_007.mmd	unsupported	error 3:1: unsupported configuration key
+sankey/sankey_008.mmd	unsupported	error 6:1: invalid frontmatter key
+sequence/sequenceDiagram_001.mmd	supported	ok
+sequence/sequenceDiagram_002.mmd	supported	ok
+sequence/sequenceDiagram_003.mmd	supported	ok
+sequence/sequenceDiagram_004.mmd	supported	ok
+sequence/sequenceDiagram_005.mmd	supported	ok
+sequence/sequenceDiagram_006.mmd	unsupported	error 2:46: unsupported participant identifier
+sequence/sequenceDiagram_007.mmd	unsupported	error 2:45: unsupported participant identifier
+sequence/sequenceDiagram_008.mmd	unsupported	error 2:44: unsupported participant identifier
+sequence/sequenceDiagram_009.mmd	unsupported	error 2:46: unsupported participant identifier
+sequence/sequenceDiagram_010.mmd	unsupported	error 2:49: unsupported participant identifier
+sequence/sequenceDiagram_011.mmd	unsupported	error 2:43: unsupported participant identifier
+sequence/sequenceDiagram_012.mmd	supported	ok
+sequence/sequenceDiagram_013.mmd	unsupported	error 2:57: unsupported participant identifier
+sequence/sequenceDiagram_014.mmd	unsupported	error 2:66: unsupported participant identifier
+sequence/sequenceDiagram_015.mmd	unsupported	error 2:86: unsupported participant identifier
+sequence/sequenceDiagram_016.mmd	supported	ok
+sequence/sequenceDiagram_017.mmd	supported	ok
+sequence/sequenceDiagram_018.mmd	unsupported	error 4:31: unsupported participant identifier
+sequence/sequenceDiagram_019.mmd	supported	ok
+sequence/sequenceDiagram_020.mmd	supported	ok
+sequence/sequenceDiagram_021.mmd	supported	ok
+sequence/sequenceDiagram_022.mmd	supported	ok
+sequence/sequenceDiagram_023.mmd	supported	ok
+sequence/sequenceDiagram_024.mmd	supported	ok
+sequence/sequenceDiagram_025.mmd	supported	ok
+sequence/sequenceDiagram_026.mmd	supported	ok
+sequence/sequenceDiagram_027.mmd	supported	ok
+sequence/sequenceDiagram_028.mmd	supported	ok
+sequence/sequenceDiagram_029.mmd	supported	ok
+sequence/sequenceDiagram_030.mmd	supported	ok
+sequence/sequenceDiagram_031.mmd	supported	ok
+sequence/sequenceDiagram_032.mmd	supported	ok
+sequence/sequenceDiagram_033.mmd	supported	ok
+sequence/sequenceDiagram_034.mmd	supported	ok
+sequence/sequenceDiagram_035.mmd	unsupported	error 2:25: message requires a colon and label
+sequence/sequenceDiagram_036.mmd	supported	ok
+sequence/sequenceDiagram_037.mmd	partial	ok	link menus are kept in the model but not rendered
+sequence/sequenceDiagram_038.mmd	partial	ok	links menus are kept in the model but not rendered
+state/stateDiagram_001.mmd	supported	ok
+state/stateDiagram_002.mmd	supported	ok
+state/stateDiagram_003.mmd	supported	ok
+state/stateDiagram_004.mmd	supported	ok
+state/stateDiagram_005.mmd	supported	ok
+state/stateDiagram_006.mmd	supported	ok
+state/stateDiagram_007.mmd	supported	ok
+state/stateDiagram_008.mmd	supported	ok
+state/stateDiagram_009.mmd	supported	ok
+state/stateDiagram_010.mmd	supported	ok
+state/stateDiagram_011.mmd	supported	ok
+state/stateDiagram_012.mmd	supported	ok
+state/stateDiagram_013.mmd	supported	ok
+state/stateDiagram_014.mmd	supported	ok
+state/stateDiagram_015.mmd	supported	ok
+state/stateDiagram_016.mmd	supported	ok
+state/stateDiagram_017.mmd	supported	ok
+state/stateDiagram_018.mmd	supported	ok
+state/stateDiagram_019.mmd	supported	ok
+state/stateDiagram_020.mmd	unsupported	error 8:33: unsupported style property; supported: fill, stroke, color, stroke-width
+state/stateDiagram_021.mmd	unsupported	error 8:33: unsupported style property; supported: fill, stroke, color, stroke-width
+state/stateDiagram_022.mmd	unsupported	error 2:35: unsupported style property; supported: fill, stroke, color, stroke-width
+swimlane/swimlanes_001.mmd	supported	ok
+swimlane/swimlanes_002.mmd	supported	ok
+swimlane/swimlanes_003.mmd	supported	ok
+swimlane/swimlanes_004.mmd	supported	ok
+swimlane/swimlanes_005.mmd	supported	ok
+swimlane/swimlanes_006.mmd	supported	ok
+swimlane/swimlanes_007.mmd	supported	ok
+swimlane/swimlanes_008.mmd	supported	ok
+swimlane/swimlanes_009.mmd	supported	ok
+swimlane/swimlanes_010.mmd	supported	ok
+swimlane/swimlanes_011.mmd	supported	ok
+swimlane/swimlanes_012.mmd	unsupported	error 13:12: expected swimlane relationship
+swimlane/swimlanes_013.mmd	supported	ok
+timeline/timeline_001.mmd	supported	ok
+timeline/timeline_002.mmd	supported	ok
+timeline/timeline_003.mmd	supported	ok
+timeline/timeline_004.mmd	supported	ok
+timeline/timeline_005.mmd	supported	ok
+timeline/timeline_006.mmd	unsupported	error 1:10: expected end of diagram header
+timeline/timeline_007.mmd	supported	ok
+timeline/timeline_008.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_009.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_010.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_011.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_012.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_013.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_014.mmd	unsupported	error 3:1: unsupported configuration key
+treemap/treemap_001.mmd	supported	ok
+treemap/treemap_002.mmd	supported	ok
+treemap/treemap_003.mmd	supported	ok
+treemap/treemap_004.mmd	supported	ok
+treemap/treemap_005.mmd	supported	ok
+treemap/treemap_006.mmd	unsupported	error 3:1: unsupported configuration key
+treemap/treemap_007.mmd	unsupported	error 3:1: unsupported configuration key
+treemap/treemap_008.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_001.mmd	supported	ok
+treeview/treeView_002.mmd	unsupported	error 3:73: TreeView icons and classes are not yet supported
+treeview/treeView_003.mmd	supported	ok
+treeview/treeView_004.mmd	unsupported	error 3:29: TreeView icons and classes are not yet supported
+treeview/treeView_005.mmd	supported	ok
+treeview/treeView_006.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_007.mmd	unsupported	error 9:1: invalid frontmatter key
+treeview/treeView_008.mmd	unsupported	error 3:34: TreeView icons and classes are not yet supported
+treeview/treeView_009.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_010.mmd	unsupported	error 4:69: TreeView icons and classes are not yet supported
+treeview/treeView_011.mmd	supported	ok
+treeview/treeView_012.mmd	supported	ok
+treeview/treeView_013.mmd	unsupported	error 3:1: unsupported configuration key
+usecase/usecase_001.mmd	supported	ok
+usecase/usecase_002.mmd	supported	ok
+usecase/usecase_003.mmd	supported	ok
+usecase/usecase_004.mmd	supported	ok
+usecase/usecase_005.mmd	unsupported	error 3:29: unsupported use-case syntax
+usecase/usecase_006.mmd	unsupported	error 2:32: unsupported use-case syntax
+usecase/usecase_007.mmd	unsupported	error 5:18: unsupported use-case syntax
+usecase/usecase_008.mmd	unsupported	error 7:32: unsupported use-case syntax
+usecase/usecase_009.mmd	supported	ok
+usecase/usecase_010.mmd	unsupported	error 2:38: expected entity or node identifier
+usecase/usecase_011.mmd	unsupported	error 6:16: unsupported use-case syntax
+usecase/usecase_012.mmd	unsupported	error 9:10: unsupported use-case syntax
+usecase/usecase_013.mmd	unsupported	error 4:35: unsupported use-case syntax
+usecase/usecase_014.mmd	supported	ok
+usecase/usecase_015.mmd	unsupported	error 5:10: unsupported use-case syntax
+usecase/usecase_016.mmd	unsupported	error 2:6: unsupported use-case syntax
+usecase/usecase_017.mmd	unsupported	error 3:6: unsupported use-case syntax
+usecase/usecase_018.mmd	unsupported	error 2:15: unsupported use-case syntax
+usecase/usecase_019.mmd	supported	ok
+usecase/usecase_020.mmd	unsupported	error 4:1: unsupported configuration key
+usecase/usecase_021.mmd	unsupported	error 3:1: unsupported configuration key
+usecase/usecase_022.mmd	supported	ok
+usecase/usecase_023.mmd	unsupported	error 9:27: unsupported use-case syntax
+usecase/usecase_024.mmd	supported	ok
+journey/userJourney_001.mmd	supported	ok
+venn/venn_001.mmd	supported	ok
+venn/venn_002.mmd	supported	ok
+venn/venn_003.mmd	supported	ok
+venn/venn_004.mmd	supported	ok
+venn/venn_005.mmd	supported	ok
+venn/venn_006.mmd	supported	ok
+venn/venn_007.mmd	supported	ok
+venn/venn_008.mmd	unsupported	error 7:3: expected Venn set, union or text
+wardley/wardley_001.mmd	supported	ok
+wardley/wardley_002.mmd	unsupported	error 3:6: expected Wardley dependency arrow
+wardley/wardley_003.mmd	supported	ok
+wardley/wardley_004.mmd	supported	ok
+wardley/wardley_005.mmd	supported	ok
+wardley/wardley_006.mmd	supported	ok
+wardley/wardley_007.mmd	supported	ok
+wardley/wardley_008.mmd	unsupported	error 8:40: unsupported Wardley decorator; supported: build, buy, outsource, inertia
+wardley/wardley_009.mmd	unsupported	error 11:11: expected Wardley dependency arrow
+wardley/wardley_010.mmd	supported	ok
+wardley/wardley_011.mmd	supported	ok
+wardley/wardley_012.mmd	supported	ok
+wardley/wardley_013.mmd	supported	ok
+wardley/wardley_014.mmd	supported	ok
+wardley/wardley_015.mmd	supported	ok
+wardley/wardley_016.mmd	unsupported	error 11:13: expected Wardley dependency arrow
+wardley/wardley_017.mmd	unsupported	error 11:27: expected Wardley dependency arrow
+wardley/wardley_018.mmd	unsupported	error 3:6: expected Wardley dependency arrow
+wardley/wardley_019.mmd	unsupported	error 3:6: expected Wardley dependency arrow
+xychart/xyChart_001.mmd	supported	ok
+xychart/xyChart_002.mmd	supported	ok
+xychart/xyChart_003.mmd	unsupported	error 4:1: unsupported theme variable
+xychart/xyChart_004.mmd	unsupported	error 3:1: unsupported configuration key
+xychart/xyChart_005.mmd	unsupported	error 3:1: unsupported configuration key
+xychart/xyChart_006.mmd	supported	ok
+xychart/xyChart_007.mmd	supported	ok
+xychart/xyChart_008.mmd	unsupported	error 3:1: unsupported configuration key
+zenuml/zenuml_001.mmd	supported	ok
+zenuml/zenuml_002.mmd	supported	ok
+zenuml/zenuml_003.mmd	supported	ok
+zenuml/zenuml_004.mmd	supported	ok
+zenuml/zenuml_005.mmd	supported	ok
+zenuml/zenuml_006.mmd	supported	ok
+zenuml/zenuml_007.mmd	unsupported	error 2:11: ZenUML new requires a participant and balanced arguments
+zenuml/zenuml_008.mmd	unsupported	error 14:12: unsupported ZenUML annotation
+zenuml/zenuml_009.mmd	unsupported	error 8:18: unsupported ZenUML annotation
+zenuml/zenuml_010.mmd	supported	ok
+zenuml/zenuml_011.mmd	supported	ok
+zenuml/zenuml_012.mmd	supported	ok
+zenuml/zenuml_013.mmd	supported	ok
+zenuml/zenuml_014.mmd	supported	ok
+zenuml/zenuml_015.mmd	supported	ok
+zenuml/zenuml_016.mmd	supported	ok
