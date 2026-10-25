@@ -434,8 +434,9 @@ for testing a rendered application's complete contrast and focus appearance.
 
 Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
 and UI Automation bridges are initial adapters, with screen-reader
-qualification and richer semantics (text ranges, table relations, incremental
-updates) still open. A semantic snapshot or a cross-compiled Cocoa binary is not
+qualification on real Windows, VoiceOver and NVDA, and richer semantics (text
+ranges and selection, UIA table/grid and text patterns, incremental updates)
+still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
 
 The native implementation follows Apple's
