@@ -331,6 +331,7 @@ void mm_serialize_usecase_body(mm_serializer* out, mm_document* d, int variant):
 	while ((next < d.nodes.length || edge < d.edges.length) && out.failed == 0 && guard <= d.nodes.length + d.edges.length + 2):
 		guard = guard + 1
 		while (next < d.nodes.length && w.created[next]): next = next + 1
+		if (next >= d.nodes.length && edge >= d.edges.length): break
 		# Declarations create their node where its index falls; relationships
 		# create the nodes no declaration names.
 		if (next < d.nodes.length):
