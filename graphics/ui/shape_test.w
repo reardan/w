@@ -1,10 +1,23 @@
-# wbuild: name=graphics_ui_shape_test arch_only=x64
-# HarfBuzz is optional; unavailable hosts report a visible skip. CPU rendering
-# tests need no display. Font fixture inputs are already checked in.
+# wbuild: name=graphics_ui_shape_test arch_only=x64 deps=tests/data/fonts/
+# Shaped runs through both engines: the portable lib.ttf_shape one always,
+# then HarfBuzz when it loads (unavailable hosts report a visible skip).
+# CPU rendering tests need no display. Font fixture inputs are checked in.
 import lib.testing
 import graphics.ui.shape
 
-void test_shape_validation():
+type shape_case = fn() -> void
+
+# Runs a case under the portable engine, then HarfBuzz when it is present.
+void shape_each_engine(shape_case* body):
+	ui_shape_set_engine(UI_SHAPE_ENGINE_PORTABLE)
+	body()
+	if (ui_shape_available()):
+		ui_shape_set_engine(UI_SHAPE_ENGINE_NATIVE)
+		body()
+	else: print(c"SKIP: HarfBuzz Linux x64 shaping unavailable; portable engine only\n")
+	ui_shape_set_engine(UI_SHAPE_ENGINE_AUTO)
+
+void shape_case_validation():
 	ui_shaped_run* run = ui_shape_utf8(c"\xff", 1, 0, UI_SHAPE_LTR, 0, 0, 100)
 	assert_equal(UI_SHAPE_INVALID, run.status)
 	ui_shaped_run_free(run)
@@ -14,6 +27,9 @@ void test_shape_validation():
 	run = ui_shape_utf8(c"a", 65537, 0, UI_SHAPE_LTR, 0, 0, 100)
 	assert_equal(UI_SHAPE_LIMIT, run.status)
 	ui_shaped_run_free(run)
+
+void test_shape_validation():
+	shape_each_engine(shape_case_validation)
 
 # Replace the fixture face's GSUB with a minimal, deterministic Latin liga:
 # f i -> A. Testing a known substitution avoids depending on a system font's
@@ -67,15 +83,13 @@ int ligature_face(int face):
 	free(data)
 	return result
 
-void test_native_shaping_and_rendering():
-	if (!ui_shape_available()):
-		print(c"SKIP: HarfBuzz Linux x64 shaping unavailable\n")
-		return
+void shape_case_shaping_and_rendering():
 	int face = ui_font_face_load_ttf(c"tools/ui/LiberationSans-Regular.ttf")
 	asserts(c"loaded face", face >= 0)
 	int strike = ui_font_strike(face, 24)
 	ui_shaped_run* run = ui_shape_utf8(c"q\xcc\x81", 3, strike, UI_SHAPE_LTR, 0, 0, 10)
 	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(__ui_shape_engine, run.engine)
 	assert_equal(2, run.count)
 	assert_equal(0, run.glyphs[0].cluster)
 	assert_equal(0, run.glyphs[1].cluster)
@@ -124,3 +138,104 @@ void test_native_shaping_and_rendering():
 	assert_equal(UI_SHAPE_OK, run.status)
 	assert_equal(0, run.count)
 	ui_shaped_run_free(run)
+
+void test_shaping_and_rendering():
+	shape_each_engine(shape_case_shaping_and_rendering)
+
+# Arabic joining and lam-alef, Devanagari reordering and Thai through
+# ui_shape_utf8 on Noto subsets; the glyph-level detail is checked by
+# tests/ttf_shape_test.w, so this checks the run's shape and clusters.
+void shape_case_complex_scripts():
+	int arabic = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSansArabic-subset.ttf"), 20)
+	# "\u0644\u0627" (lam alef): this font joins them with contextual
+	# forms, not a ligature; the run is right to left in visual order.
+	ui_shaped_run* run = ui_shape_utf8(c"\xd9\x84\xd8\xa7", 4, arabic, UI_SHAPE_AUTO, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(UI_SHAPE_RTL, run.direction)
+	assert_equal(2, run.count)
+	assert_equal(2, run.glyphs[0].cluster)
+	assert_equal(0, run.glyphs[1].cluster)
+	asserts(c"joined forms advance", run.advance > 0)
+	ui_shaped_run_free(run)
+	int devanagari = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSansDevanagari-subset.ttf"), 20)
+	# "\u0915\u093f" (ki): the pre-base matra is drawn first, both in the
+	# consonant's cluster.
+	run = ui_shape_utf8(c"\xe0\xa4\x95\xe0\xa4\xbf", 6, devanagari, UI_SHAPE_AUTO, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(UI_SHAPE_LTR, run.direction)
+	assert_equal(2, run.count)
+	assert_equal(0, run.glyphs[0].cluster)
+	assert_equal(0, run.glyphs[1].cluster)
+	ui_shaped_run_free(run)
+	# An explicit script tag: Latin text under 'Deva' still shapes.
+	run = ui_shape_utf8(c"ab", 2, devanagari, UI_SHAPE_LTR, 0x44657661, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(2, run.count)
+	ui_shaped_run_free(run)
+
+void test_complex_scripts():
+	shape_each_engine(shape_case_complex_scripts)
+
+void test_engine_selection():
+	ui_font_init()
+	ui_shape_set_engine(UI_SHAPE_ENGINE_NATIVE)
+	ui_shaped_run* run = ui_shape_utf8(c"a", 1, 0, UI_SHAPE_LTR, 0, 0, 10)
+	if (!ui_shape_available()): assert_equal(UI_SHAPE_UNAVAILABLE, run.status)
+	else: assert_equal(UI_SHAPE_ENGINE_NATIVE, run.engine)
+	ui_shaped_run_free(run)
+	ui_shape_set_engine(UI_SHAPE_ENGINE_AUTO)
+	run = ui_shape_utf8(c"a", 1, 0, UI_SHAPE_LTR, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	if (!ui_shape_available()): assert_equal(UI_SHAPE_ENGINE_PORTABLE, run.engine)
+	ui_shaped_run_free(run)
+	run = ui_shape_portable_utf8(c"a", 1, 0, UI_SHAPE_LTR, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(UI_SHAPE_ENGINE_PORTABLE, run.engine)
+	assert_equal(1, run.count)
+	ui_shaped_run_free(run)
+
+# Caret positions over a shaped run: a ligature's width divides among the
+# graphemes it covers, a right-to-left run starts at its right edge, and
+# hit testing returns the nearest grapheme boundary.
+void shape_case_carets():
+	int latin = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSans-subset.ttf"), 20)
+	char* text = c"office"
+	ui_shaped_run* run = ui_shape_utf8(text, 6, latin, UI_SHAPE_LTR, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(4, run.count)
+	int o = run.glyphs[0].x_advance
+	int ffi = run.glyphs[1].x_advance
+	assert_equal(0, ui_shaped_caret_x(run, text, 0))
+	assert_equal(o, ui_shaped_caret_x(run, text, 1))
+	assert_equal(o + ffi / 3, ui_shaped_caret_x(run, text, 2))
+	assert_equal(o + ffi * 2 / 3, ui_shaped_caret_x(run, text, 3))
+	assert_equal(o + ffi, ui_shaped_caret_x(run, text, 4))
+	assert_equal(run.advance, ui_shaped_caret_x(run, text, 6))
+	assert_equal(2, ui_shaped_offset_from_x(run, text, o + ffi / 3 + 1))
+	assert_equal(0, ui_shaped_offset_from_x(run, text, -50))
+	assert_equal(6, ui_shaped_offset_from_x(run, text, run.advance + 50))
+	ui_shaped_run_free(run)
+	# "e" + combining acute + "x": the mark is in e's grapheme, so no caret
+	# stops between them.
+	text = c"e\xcc\x81x"
+	run = ui_shape_utf8(text, 4, latin, UI_SHAPE_LTR, 0, 0, 10)
+	int e = run.glyphs[0].x_advance
+	assert_equal(e, ui_shaped_caret_x(run, text, 3))
+	assert_equal(3, ui_shaped_offset_from_x(run, text, e))
+	assert_equal(0, ui_shaped_caret_x(run, text, 1))
+	ui_shaped_run_free(run)
+	int hebrew = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSansHebrew-subset.ttf"), 20)
+	# Two Hebrew letters right to left: offset 0 at the right edge, the
+	# boundary between them at the first letter's left edge.
+	text = c"\xd7\xa9\xd7\x9c"
+	run = ui_shape_utf8(text, 4, hebrew, UI_SHAPE_AUTO, 0, 0, 10)
+	assert_equal(UI_SHAPE_RTL, run.direction)
+	assert_equal(run.advance, ui_shaped_caret_x(run, text, 0))
+	assert_equal(run.glyphs[0].x_advance, ui_shaped_caret_x(run, text, 2))
+	assert_equal(0, ui_shaped_caret_x(run, text, 4))
+	assert_equal(2, ui_shaped_offset_from_x(run, text, run.glyphs[0].x_advance))
+	ui_shaped_run_free(run)
+	assert_equal(0, ui_shaped_caret_x(0, text, 1))
+
+void test_carets():
+	shape_each_engine(shape_case_carets)

@@ -2480,6 +2480,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
 		int want = ast_expression_named_type(tree, 1, depth + 1)
 		if ((want < 0) || (ast_expression_accept(tree, c",") == 0)): return -1
+		int allocator_call = peek(c"malloc")
 		tree.cast_depth = tree.cast_depth + 1
 		int child = ast_expression_assignment(tree, depth + 1)
 		tree.cast_depth = tree.cast_depth - 1
@@ -2493,6 +2494,8 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
 			if (type_decays_to_pointer(want, got) == 0):
 				if (ast_expression_warning_message(tree, c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead") == 0): return -1
+		if (cast_malloc_lacks_array_descriptors(want, allocator_call)):
+			if (ast_expression_warning_message(tree, cast_malloc_array_warning()) == 0): return -1
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
 		if (((got == 4) || (type_get_pointer_level(got) > 0) || buffer_value) && (type_get_pointer_level(want) == 0)):

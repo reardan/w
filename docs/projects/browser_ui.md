@@ -89,23 +89,28 @@ committed buffer, persist across frames, and clear on cancellation/focus change.
 - The web mobile adapter forwards composition updates and commits through the
   W event contract. Hosts using a different web adapter must implement that
   contract themselves.
-- Cocoa's existing `[event characters]` path delivers Unicode, but does not yet
-  implement `NSTextInputClient`, dead-key composition or native preedit.
+- Cocoa's `[event characters]` path delivers Unicode; the opt-in
+  `graphics.ime_cocoa` bridge adds `NSTextInputClient` composition (dead keys,
+  input methods, native preedit) through a companion dylib.
 
 The [text-input contract](text_input.md) documents limits, event ownership and
 platform smoke checks. Native IME interaction still needs qualification with
 real input methods; headless event tests alone cannot establish that behavior.
 
 For document rendering, `graphics.ui.shape` can shape and draw a single
-font/script/direction run through HarfBuzz on Linux x64. It preserves source
-clusters and positioned glyphs, including substitutions and combining marks.
-`graphics.ui.bidi` additionally resolves a paragraph through FriBidi on Linux
-x64, providing logical directional ranges and visual run order. Its
+font/script/direction run on every target, through the portable W shaper or
+HarfBuzz where it loads on Linux x64. It preserves source clusters and
+positioned glyphs, including substitutions and combining marks.
+`graphics.ui.bidi` additionally resolves a paragraph through the portable
+UAX #9 engine or FriBidi, providing logical directional ranges and visual run
+order. Its
 `ui_bidi_reorder_line` API reorders caller-selected wrapped ranges using retained
 paragraph context, with independent owned output for each line and reflow.
 Feed the original logical slices to the shaper; scalar reordering maps are not
 glyph or caret positions. The host still selects scripts/fonts and line breaks.
-Ordinary widget drawing still uses codepoint lookup and pair kerning. Portable
-bidi/shaping, script/font segmentation, shaped caret
-layout, CFF outlines and broader native input remain open parts of #459. See [shaping](text_shaping.md)
-for font coverage, optional dependencies and explicit limits.
+`ui_shaped_caret_x` and `ui_shaped_offset_from_x` place grapheme carets over a
+shaped run. Ordinary widget drawing still uses codepoint lookup and pair
+kerning, with combining marks placed on their base. `graphics.ui.itemize` splits a
+paragraph into bidi, script and face runs and shapes them; line breaking
+remains the host's job. See [shaping](text_shaping.md) for font
+coverage, optional dependencies and explicit limits.

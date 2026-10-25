@@ -1,34 +1,19 @@
-# Optional Linux x64 OpenType shaping. Import explicitly; plain UI text has no
-# shared-library dependency on HarfBuzz. Output positions use 26.6 pixels.
+# OpenType shaping: the optional Linux x64 HarfBuzz engine, with the portable
+# lib.ttf_shape engine of graphics.ui.shape_ot whenever HarfBuzz is
+# unavailable (or when ui_shape_set_engine selects it). Import explicitly;
+# plain UI text has no shared-library dependency on HarfBuzz. Output
+# positions use 26.6 pixels.
 # https://harfbuzz.github.io/shaping-and-shape-plans.html
 import lib.dlcall
 import graphics.ui.render
+import graphics.ui.shape_ot
 
-const int UI_SHAPE_OK = 0
-const int UI_SHAPE_INVALID = 1
-const int UI_SHAPE_UNAVAILABLE = 2
-const int UI_SHAPE_LIMIT = 3
-const int UI_SHAPE_FAILED = 4
-const int UI_SHAPE_AUTO = 0
-const int UI_SHAPE_LTR = 4
-const int UI_SHAPE_RTL = 5
+int __ui_shape_engine
 
-struct ui_shaped_glyph:
-	int gid
-	int cluster
-	int x_advance
-	int y_advance
-	int x_offset
-	int y_offset
-
-struct ui_shaped_run:
-	int status
-	int strike
-	int direction
-	int source_bytes
-	int count
-	int advance
-	ui_shaped_glyph* glyphs
+# UI_SHAPE_ENGINE_AUTO (HarfBuzz when present, else portable), _NATIVE
+# (HarfBuzz only: UI_SHAPE_UNAVAILABLE without it) or _PORTABLE.
+void ui_shape_set_engine(int engine):
+	__ui_shape_engine = engine
 
 int __ui_hb_state
 int[21] __ui_hb_functions
@@ -97,22 +82,15 @@ int __ui_shape_signed(char* data):
 # Always returns an owned result, including failure; no partial glyphs on error.
 ui_shaped_run* ui_shape_utf8(char* text, int length, int strike, int direction, int script, char* language, int max_glyphs):
 	ui_shaped_run* run = new ui_shaped_run()
-	run.status = UI_SHAPE_INVALID
-	ui_font_init()
-	if ((length < 0) || ((text == 0) && (length > 0))): return run
-	if ((strike < 0) || (strike >= ui_font_st.strike_count)): return run
-	if ((direction != UI_SHAPE_AUTO) && (direction != UI_SHAPE_LTR) && (direction != UI_SHAPE_RTL)): return run
-	if ((max_glyphs < 0) || (max_glyphs > 1048576) || (length > 65536)):
-		run.status = UI_SHAPE_LIMIT
-		return run
-	if (!utf8_validate_bytes(text, length)): return run
+	if (!__ui_shape_validate(run, text, length, strike, direction, language, max_glyphs)): return run
 	if (language == 0): language = c"und"
-	if (strlen(language) > 64): return run
-	run.strike = strike
-	run.source_bytes = length
+	if ((__ui_shape_engine == UI_SHAPE_ENGINE_PORTABLE) || ((__ui_shape_engine == UI_SHAPE_ENGINE_AUTO) && !ui_shape_available())):
+		__ui_shape_portable_fill(run, text, length, direction, script, max_glyphs)
+		return run
 	if (!ui_shape_available()):
 		run.status = UI_SHAPE_UNAVAILABLE
 		return run
+	run.engine = UI_SHAPE_ENGINE_NATIVE
 	run.status = UI_SHAPE_FAILED
 	ttf_font* source = ui_font_face_font(ui_font_st.strikes[strike].face)
 	int[5] args
@@ -189,24 +167,3 @@ ui_shaped_run* ui_shape_utf8(char* text, int length, int strike, int direction, 
 	args[0] = blob
 	dl_call(__ui_hb_functions[1], &args[0])
 	return run
-
-void ui_shaped_run_free(ui_shaped_run* run):
-	if (run == 0): return
-	free(run.glyphs)
-	free(run)
-
-# x,y are the line-box origin. Draw in visual glyph order using the same atlas
-# and clip stack as normal UI text, with no second pair-kerning pass.
-int ui_draw_shaped_run(ui_renderer* renderer, float32 x, float32 y, ui_shaped_run* run, ui_color color):
-	if ((run == 0) || (run.status != UI_SHAPE_OK)): return 0
-	int pen_x = 0
-	int pen_y = 0
-	for i in range(run.count):
-		ui_shaped_glyph* glyph = &run.glyphs[i]
-		ui_glyph metrics = ui_font_glyph_id(run.strike, glyph.gid)
-		float32 gx = x + cast(float32, pen_x + glyph.x_offset) / 64.0
-		float32 gy = y - cast(float32, pen_y + glyph.y_offset) / 64.0
-		ui_render_glyph_metrics(renderer, gx, gy, metrics, run.strike, 0.0, color)
-		pen_x = pen_x + glyph.x_advance
-		pen_y = pen_y + glyph.y_advance
-	return 1

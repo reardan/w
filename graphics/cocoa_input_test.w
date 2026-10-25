@@ -217,6 +217,10 @@ int test_window_events():
 	expect_event(win, GFX_EVENT_KEY_DOWN, 51, 0 - 1, 0, 0 - 1)
 	expect_event(win, GFX_EVENT_CHAR, 8, 0 - 1, 0, 0 - 1)
 	expect_event(win, GFX_EVENT_KEY_DOWN, 123, 0 - 1, 0, 0 - 1)
+	# graphics.input_queue holds navigation behind this frame's text
+	# until the next poll, so the caret moves after the insertions.
+	assert_equal(0, gfx_window_next_event(win, &none))
+	gfx_window_poll(win)
 	expect_event(win, GFX_EVENT_NAV, GFX_NAV_LEFT, 0 - 1, 0, 0 - 1)
 	assert_equal(123, win.last_keycode)
 
