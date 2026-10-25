@@ -133,18 +133,30 @@ int safe_session_type_checked(int type, int depth):
 	return 0
 
 
-# 1 when type, or a field it holds by value, carries lifetime labels
-# (own[a] lock guards, labeled borrows and records): their loans tie them to
-# another value, which the session cannot keep across entries.
-int safe_session_labeled(int type, int depth):
-	if ((type < 0) || (depth > 16)): return 0
+# 1 when values of type hold a lock guard (own[a] WSafeGuard[T]*, directly,
+# through owned children or fields held by value). A guard's destruction
+# unlocks its mutex, so its loan is in use until the session ends; the
+# guard library (lib/safe_thread.w) needs thread_local storage, which
+# in-process images cannot provide. Unknown or too deep shapes count as
+# guards (fail closed).
+int safe_session_guard(int type, int depth):
+	if (type < 0): return 0
+	if (depth > 16): return 1
 	type = type_unqualified(type)
 	if (type < 0): return 0
-	if (type_record(type).safe_lifetime != 0): return 1
-	if (type_is_array(type)): return safe_session_labeled(type_get_element_type(type), depth + 1)
+	if (type_is_array(type)): return safe_session_guard(type_get_element_type(type), depth + 1)
+	if (type_safe_kind(type) == 1):
+		int target = type_unqualified(type_safe_target(type))
+		if ((target < 0) || (type_get_pointer_level(target) != 1)): return 0
+		int record = type_unqualified(type_lookup_previous_pointer(target))
+		if (record < 0): return 0
+		char* name = type_get_name(record)
+		if ((name != 0) && starts_with(name, c"WSafeGuard$")): return 1
+		return safe_session_guard(record, depth + 1)
+	if (type_safe_kind(type) != 0): return 0
 	if ((type_get_pointer_level(type) == 0) && (type_record(type).kind == 0)):
 		for i in range(type_num_args(type)):
-			if (safe_session_labeled(type_get_field_type_at(type, i), depth + 1)): return 1
+			if (safe_session_guard(type_get_field_type_at(type, i), depth + 1)): return 1
 	return 0
 
 
@@ -476,9 +488,9 @@ void safe_session_item(int start, int end, int kind, int name_at, int symbol):
 		if (fresh.checked && safe_session_nested):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: checked session bindings cannot be declared while another entry or a debugger stop is active")
-		if (fresh.checked && safe_session_labeled(fresh.type, 0)):
+		if (fresh.checked && safe_session_guard(fresh.type, 0)):
 			safe_session_binding_free(fresh)
-			safe_session_error_at(name_at, c"safe: session bindings cannot have lifetime-labeled checked types (such as lock guards); keep them inside a function")
+			safe_session_error_at(name_at, c"safe: session bindings cannot hold lock guards (own[a] WSafeGuard[T]*); lock and unlock inside a function")
 		if (fresh.checked && safe_session_no_run):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: an entry that is not run cannot declare checked session bindings")
@@ -722,7 +734,8 @@ void safe_session_probe_capture(int function):
 		# A borrow is only known to be valid while the program still uses
 		# it: past its last use its root may already be moved or dropped. A
 		# known-absent optional borrow holds no loan.
-		int borrow = safe_local_kind(i) >= 2
+		# An owner carrying borrowed groups (own[a] R*) holds loans too.
+		int borrow = safe_local_loan(i) >= 2
 		int optional = safe_optional(retained_bindings[safe_locals[i]].type)
 		int status = 1
 		for k in range(chosen.length):

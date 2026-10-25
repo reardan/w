@@ -1790,18 +1790,48 @@ an edited imported module is checked afresh, including its new contracts.
 Options and the target are fixed for the life of a process, so there is no
 option-change path to invalidate.
 
+**Lifetime-labeled bindings.** Bindings whose checked types carry lifetime
+labels are session bindings like any other: labeled references and slices
+(`ref[a] cell* r = q`), inline borrowed records (`ref[x] holder h =
+holder(a, 3)`, `refmut exclusive e = exclusive(a, 1)`, copies such as
+`ref holder k = h`) and owners carrying borrowed groups (`own[y] stored* s
+= store(a)`). The transcript replays each declaration as a labeled local,
+so the loan ties a binding to the bindings it borrows across entries
+exactly as within one function: the borrowed owner cannot be mutated,
+moved or replaced incompatibly while a later entry still uses the labeled
+binding, and once the owner was replaced or moved a later use reports the
+checker's own diagnostic. A struct-valued initializer is copied into the
+binding's persistent storage. Borrowed records have no destructor; an owner
+carrying borrowed groups is destroyed like any session owner (its owned
+fields, never the borrowed data) at replacement, `:reset` and exit, newest
+first, so it is always retired before or with the owners it borrows.
+Replacing such an owner is checked as a use of it (the transcript moves
+it into its destruction), so it is rejected once an earlier entry changed
+the data it borrows, which is conservative: the destruction itself does
+not read that data. Fault discard applies unchanged. An inferred `h :=
+holder(a, 3)` is rejected by the checker (`safe: unsupported type or
+reference-bearing aggregate`), as it is for a local.
+
+Lock guards stay rejected (`safe: session bindings cannot hold lock guards
+(own[a] WSafeGuard[T]*); lock and unlock inside a function`), directly or
+through owned fields; the check is by the guard record's name and fails
+closed on unbounded shapes. A guard's destruction unlocks its mutex, so it
+uses its loan until the session ends, and `lib/safe_thread.w` cannot be
+imported in-process anyway: in-process images reject `thread_local` (W0324),
+and admitting it would need per-thread storage beyond the host's fixed TLS
+block, which entries cannot grow. Lowering it to shared storage would be
+unsound once an entry spawns a thread.
+
 **Unsupported forms.** These fail explicitly instead of being
 approximated: `--safe` on in-process entry points; checked declarations in
 an entry that does not run (`:type`, `safe: an entry that is not run cannot
 declare checked session bindings`); declaring, replacing or naming a checked
 session binding from a nested entry (a stop inside a running entry, or any
 debugger evaluation); `return`, `goto`, `defer` and `yield` in an item that
-names a checked session binding; and session bindings with lifetime-labeled
-checked types such as `own[a] WSafeGuard*` lock guards (`safe: session
-bindings cannot have lifetime-labeled checked types ...`), whose loans tie
-them to another value. Owner assignment to an existing persistent binding
-is rejected by the existing `owner assignment requires a plain local or
-parameter` rule; declare a new generation instead.
+names a checked session binding; and lock guards (above). Owner assignment
+to an existing persistent binding is rejected by the existing `owner
+assignment requires a plain local or parameter` rule; declare a new
+generation instead.
 
 **Debugger evaluation.** wdbg checks its debuggee before running it. At a
 stop, `print`, breakpoint conditions, logpoints and `repl` entries are the
@@ -1816,25 +1846,33 @@ re-analyzes that frame's function and reads its flow state:
   held), while every borrow the statement uses -- including those the
   callee holds -- counts as in use and must still have every root it
   borrows held;
-- a checked owner, reference, optional owner or reference, or inline
-  checked slice (`ref T[]`, `refmut T[]`) without lifetime labels that is
-  definitely initialized there (and, for a borrow, still used later by the
-  program or known absent, so its loan is valid) is presented as a
-  read-only view, a parameter of the entry's own check that never joins
-  the replayed session: `ref T*` for owners and references, `optref T*`
-  for optional ones (dereferencing still requires a presence check in the
-  entry), `ref T[]` for slices (element writes are `safe: write through a
-  shared reference`);
+- a checked owner, reference, optional owner or reference, inline checked
+  slice (`ref T[]`, `refmut T[]`) or inline borrowed record, labeled or
+  not, that is definitely initialized there (and, for a borrow or an owner
+  carrying borrowed groups, still used later by the program or known
+  absent, so its loans are valid) is presented as a read-only view, a
+  parameter of the entry's own check that never joins the replayed
+  session: `ref T*` for owners (including `own[a] R*` owners carrying
+  borrowed groups) and references, `optref T*` for optional ones
+  (dereferencing still requires a presence check in the entry), `ref T[]`
+  for slices (element writes are `safe: write through a shared
+  reference`), and `ref[labels] R` for a borrowed record whose fields are
+  all shared, `ref` or `refmut` (fields read through it, field writes are
+  `safe: write through a shared reference`). Labels of pointers and slices
+  are dropped: the view only reads, and its loans end with the entry;
 - other checked locals are hidden; naming one reports why (`safe: this
   checked local is not definitely initialized and live at this debugger
   stop`; in an outer frame, `safe: this checked local is lent exclusively
   to the call this frame is suspended in` for a local, or the root of a
   reborrow, that the statement passes as `refmut` or as an owned record's
-  exclusive group; `safe: only checked owners, references, optional
-  references and slices without lifetime labels can be viewed at a
-  debugger stop` for aggregates, arrays of checked values and labeled
-  types; `safe: checked locals are only available in analyzed functions at
-  a debugger stop` when the frame is not in an analyzed function);
+  exclusive group; `safe: borrowed records with exclusive fields cannot be
+  viewed read-only at a debugger stop`, since a shared view of a record
+  with `refmut` fields is not a valid checked type; `safe: arrays of
+  checked values cannot be viewed at a debugger stop`; `safe: this checked
+  local's type has no read-only view spelling at a debugger stop (generic
+  or redefined target)`; `safe: checked locals are only available in
+  analyzed functions at a debugger stop` when the frame is not in an
+  analyzed function);
 - assigning a view (`safe: checked debugger locals are read-only views at a
   stop; assign them in the program`) or moving out of it (`safe: owner
   requires new storage or an ownership transfer`) is rejected, and frame
@@ -1855,9 +1893,11 @@ and reborrow parents while an outer frame's call statement is re-run.
 `tests/safe_repl_session_test.w` and `tests/safe_session_debugger_test.w`
 (each with an x64 twin) cover persistence, replacement, reset and exit
 destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
-diagnostic recovery, fault discards, every unsupported form above, an
-imported-source edit across `:reset`, and the debugger views (innermost
-and outer frames, optional and slice views), conditions and rejections.
+diagnostic recovery, fault discards, lifetime-labeled bindings (borrowed
+records, owners carrying borrowed groups, the lock-guard rejection),
+every unsupported form above, an imported-source edit across `:reset`, and
+the debugger views (innermost and outer frames, optional, slice, record
+and labeled views), conditions and rejections.
 
 ## Entry points, diagnostics and costs
 

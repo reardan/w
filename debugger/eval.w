@@ -90,14 +90,50 @@ int dbg_eval_probe(int stop_addr):
 	return 1
 
 
-# The read-only view spelling of checked type: "ref T*" for owners and
-# references, "optref T*" for optional ones, "ref T[]" for inline slices;
-# 0 when it has none (lifetime labels, aggregates, unspellable targets).
-# Sets *view to the view's type.
+# Why a checked local has no read-only view (dbg_eval_view_spelling).
+char* dbg_eval_unviewable
+
+
+# The template name of a borrowed record, when it resolves back to exactly
+# that record (not a generic instantiation or a redefined struct).
+char* dbg_eval_record_name(int template):
+	char* name = type_get_name(template)
+	if (name == 0): return 0
+	if (type_lookup(name) != type_real(type_unqualified(template))): return 0
+	return name
+
+
+# The read-only view spelling of checked type: "ref T*" for owners
+# (including owners carrying borrowed groups) and references, "optref T*"
+# for optional ones, "ref T[]" for inline slices, "ref[labels] R" for an
+# inline borrowed record whose fields are all shared; 0 when it has none,
+# with the reason in dbg_eval_unviewable. Lifetime labels on pointers and
+# slices are dropped: the view is a parameter of the entry's own check,
+# which only reads through it. Sets *view to the view's type.
 char* dbg_eval_view_spelling(int type, int* view):
 	int bare = type_unqualified(type)
 	int kind = type_get_kind(bare)
-	if (type_record(bare).safe_lifetime != 0): return 0
+	dbg_eval_unviewable = c"safe: this checked local's type has no read-only view spelling at a debugger stop (generic or redefined target)"
+	if (type_is_array(bare)):
+		dbg_eval_unviewable = c"safe: arrays of checked values cannot be viewed at a debugger stop"
+		return 0
+	if ((kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)):
+		int template = type_record(bare).alias_target
+		for i in range(type_num_args(template)):
+			if (type_safe_kind(type_get_field_type_at(template, i)) == 3):
+				dbg_eval_unviewable = c"safe: borrowed records with exclusive fields cannot be viewed read-only at a debugger stop"
+				return 0
+		char* record = dbg_eval_record_name(template)
+		if (record == 0): return 0
+		char* labels = type_record(bare).safe_lifetime
+		*view = type_get_safe_record_kind(template, labels, 2)
+		if (labels == 0): return strjoin(c"ref ", record)
+		char* opened = strjoin(c"ref[", labels)
+		char* closed = strjoin(opened, c"] ")
+		char* spelled = strjoin(closed, record)
+		free(opened)
+		free(closed)
+		return spelled
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_slicemut)):
 		int element = type_record(bare).alias_target
 		char* item = safe_session_spell(element)
@@ -110,16 +146,17 @@ char* dbg_eval_view_spelling(int type, int* view):
 		return result
 	int optional = (kind == type_kind_optref) || (kind == type_kind_optrefmut) || (kind == type_kind_optown)
 	if ((((kind < type_kind_own) || (kind > type_kind_refmut)) && (optional == 0)) || (type_get_pointer_level(bare) != 1)): return 0
-	char* target = safe_session_spell(type_safe_target(bare))
-	if (target == 0): return 0
+	int target = type_safe_target(bare)
+	char* spelled_target = safe_session_spell(target)
+	if (spelled_target == 0): return 0
 	char* result = 0
 	if (optional):
-		*view = type_get_safe(type_safe_target(bare), 6)
-		result = strjoin(c"optref ", target)
+		*view = type_get_safe(target, 6)
+		result = strjoin(c"optref ", spelled_target)
 	else:
-		*view = type_get_safe(type_safe_target(bare), 2)
-		result = strjoin(c"ref ", target)
-	free(target)
+		*view = type_get_safe(target, 2)
+		result = strjoin(c"ref ", spelled_target)
+	free(spelled_target)
 	return result
 
 
@@ -140,7 +177,7 @@ void dbg_eval_present(int i, int probed):
 	int view = -1
 	char* spelling = dbg_eval_view_spelling(type, &view)
 	if (spelling == 0):
-		safe_session_hide(name, c"safe: only checked owners, references, optional references and slices without lifetime labels can be viewed at a debugger stop")
+		safe_session_hide(name, dbg_eval_unviewable)
 		return;
 	# Parameters are unique in their function; locals match by declaration
 	# line too, so a shadowed outer declaration is never mistaken for one.
