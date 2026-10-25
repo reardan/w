@@ -99,24 +99,115 @@ x64, including the guard allocator's leak checks.
   not multiply across every column. Dotted/thick links and block-arrow
   geometry beyond the six directions remain unsupported.
 
-- **Architecture:** services, nested groups, junctions, the five built-in icon
-  names, all sixteen source/target port pairs, arrowheads at either end, and
-  explicit containment/reference validation. Native icon geometry and port
-  routing share the graph scene backend. Icon packs, group-edge modifiers and
-  alignment directives remain unsupported. Placement currently uses the native
-  graph hierarchy; it does not solve upstream port-direction placement
-  constraints.
-- **Use case:** actors, oval/rectangular use cases, one-level system boundaries,
-  direction, directed/reversed/undirected associations, include/extend and
-  generalization. Endpoint types are validated after declarations. Metadata,
-  stereotypes, notes, JSON nodes and rich labels remain unsupported. Node
-  styles/classes and link styles are supported, including filled oval cases.
-- **C4:** all five headers, typed person/system/container/component cards,
-  external/database/queue type annotations, nested boundaries and deployment
-  nodes, descriptions/technology, Rel/BiRel/Rel_Back, and source-ordered numbered
-  interactions in C4Dynamic. Native cards preserve semantic type annotations;
-  custom styling, directional relationship macros, named configuration
-  arguments and upstream exact geometry remain unsupported.
+- **Architecture:** services, nested groups, junctions, all sixteen
+  source/target port pairs, arrowheads at either end, and explicit
+  containment/reference validation (`architecture.w`).
+  - *Icons:* the five built-in names plus iconify-style `pack:name`
+    references (`logos:aws-lambda`). Icon packs are never fetched or
+    bundled. The native fallback draws the closest built-in glyph when the
+    icon name contains a recognisable word (`aurora`, `db`, `sql`, `rds` ->
+    database; `s3`, `glacier`, `bucket`, `storage` -> disk; `ec2`, `lambda`,
+    `compute`, `container` -> server; `gateway`, `cdn`, `network` ->
+    internet; `cloud`), otherwise a rounded unknown-icon tile marked `?`.
+    Group titles keep the icon name as a `[pack:name]` prefix. Any other
+    icon text is diagnosed.
+  - *`{group}` endpoints:* `server{group}:B --> T:subnet{group}` attaches
+    the edge to the side of the service's parent group, aligned with the
+    service. The modifier is only accepted on services inside a group.
+  - *Placement:* each port pair places its endpoints relative to each other
+    on a grid per group (`a:R -- L:b` puts `b` right of `a`, `a:T -- B:b`
+    above, `a:T -- L:b` above-right), groups are laid out as one cell of
+    their parent's grid, and edges route straight, with one 90-degree elbow
+    for orthogonal port pairs, or with a midway jog for offset facing ports.
+    A crowded cell pushes the later node further along the same direction.
+  - *Alignment:* `align row|column id id ...` (at least two declared
+    services or junctions, no repeats) pins members to one row or column in
+    declared order, taking priority over edge-derived placement. When
+    consecutive members sit in different groups, the later group is shifted
+    so the members line up, unless that would overlap a sibling.
+  - *Configuration:* `architecture.nodeSeparation` sets the grid gap;
+    `randomize`, `idealEdgeLengthMultiplier`, `edgeElasticity`, `numIter`,
+    `seed`, `iconSize`, `padding` and `fontSize` are validated but the
+    native layout is deterministic and keeps its own spacing.
+  - Not supported: fcose force-directed geometry, edge labels and
+    registered (bundled) icon packs.
+- **Use case:** (`usecase.w`)
+  - *Elements:* actors, ellipse `( )` and rectangular `[ ]` use cases,
+    quoted declarations (`"Reset password"` -> ID `Reset_password`),
+    identifiers starting with digits, forward references (undeclared
+    endpoints are ellipse use cases), one-level `systemBoundary` blocks with
+    `id`, `id[title]`, `id(title)` or `"quoted title"` headers.
+  - *Metadata and stereotypes:* `@{ ... }` inline or as a later `id@{ ... }`
+    statement (a later key wins). Actors take `type: normal|hollow|awesome`,
+    `icon: "pack:name"` and `business: true|false`; ellipse use cases take
+    `business`; boundaries take `type: rect|package` (package draws a title
+    tab). Icons combined with a type or business, business awesome actors or
+    rectangular use cases and any other key are diagnosed. Icon actors use
+    the architecture icon fallback (there is no icon registry).
+    `<<stereotype>>` (after metadata, before `:::`) renders as a guillemet
+    stereotype above the label.
+  - *Notes and JSON tables:* `note for TARGET "text"` adds a note node
+    joined to its actor or use case by a dotted line; notes may come before
+    their target and cannot target boundaries, JSON tables or notes.
+    `json ID@{ ... }` parses a strict JSON object (escapes, `\u` surrogate
+    pairs, numbers, literals) into a path/value table (`address.city`,
+    `items[0].name`, `{}`/`[]` for empty containers, last duplicate value
+    wins at the first position), bounded to 512 rows and 32 levels.
+  - *Labels:* unquoted, plain-string and Markdown-string labels (Markdown
+    strings may span lines) on actors, use cases, boundaries, relationships
+    and notes; Mermaid entity codes (`#quot;`, `#40;`, `#NNN;` ...) are
+    decoded.
+  - *Relationships:* `-->`, `<--`, `--`, `--o`, `o--`, `--x`, `x--`,
+    `--|>` generalization and `..> : include|extend`; extra dashes on
+    point/reversed/markerless associations raise the minimum rank distance;
+    labelled associations `A -- label --> B` / `A -- "label" ---> B`;
+    explicit edge IDs `A id@--> B` that `class`, `style` and
+    `id@{ animate|animation }` statements target (animated edges render
+    dashed). JSON nodes accept only point, reversed-point and markerless
+    associations; include/extend and generalization endpoint kinds are
+    validated.
+  - *Styling:* `classDef`, `class`, `style`, `:::class` and `linkStyle` on
+    actors, use cases, boundaries, JSON tables and explicit edges; a class
+    without a `classDef` stays a plain class name, as upstream.
+  - *Configuration:* `usecase.nodeSpacing`/`rankSpacing` set the native
+    gaps and `colorScheme: rotate` gives actors, then use cases, their own
+    palette slot under colour themes; font keys, `diagramPadding` and
+    `useMaxWidth` are validated only (native metrics are fixed).
+  - Not supported: ELK layout, numbered per-boundary palette colours and
+    real (animated) SVG edge animation.
+- **C4:** all five headers (`c4.w`, `c4_render.w`).
+  - *Calls:* positional and `$name=value` arguments bound to the upstream
+    signatures (`Person(alias, label, ?descr, ?sprite, ?tags, $link)`,
+    `Container(alias, label, ?techn, ?descr, ...)`, `Boundary(alias, label,
+    ?type, ...)`, `Deployment_Node`/`Node`/`Node_L`/`Node_R(alias, label,
+    ?type, ?descr, ...)`, `Rel(from, to, label, ?techn, ...)`,
+    `RelIndex(index, from, to, label, ...)`). Unknown, duplicate or excess
+    arguments and bare `name=value` are diagnosed. Semantic fields are kept
+    as node metadata (`techn`, `descr`, `type`, `sprite`, `tags`, `link`).
+  - *Relations:* `Rel`, `BiRel`, `Rel_Back`, `RelIndex` (index ignored,
+    numbering by statement order in C4Dynamic) and the directional macros
+    `Rel_U/Up`, `Rel_D/Down`, `Rel_L/Left`, `Rel_R/Right` (plus `BiRel_*`).
+    Directional relations attach to the named sides when the target lies in
+    that direction; otherwise they draw like `Rel`.
+  - *Styling:* `UpdateElementStyle(element, ?bgColor, ?fontColor,
+    ?borderColor, ...)` recolours one element (`techn` updates its
+    technology; shadowing, shape, sprite and legend arguments are accepted
+    and ignored), `UpdateRelStyle(from, to, ?textColor, ?lineColor,
+    ?offsetX, ?offsetY)` recolours a relation and moves its label, and
+    `UpdateLayoutConfig(?c4ShapeInRow, ?c4BoundaryInRow)` (or the
+    `c4.c4ShapeInRow`/`c4BoundaryInRow` configuration) sets the row sizes.
+  - *Geometry:* the upstream statement-order layout: the shapes of each
+    boundary fill rows of `c4ShapeInRow` (default 4), nested boundaries
+    follow in rows of `c4BoundaryInRow` (default 2), cards are 240px wide
+    with the fixed upstream palette, `<<type>>` stereotype, person icon,
+    bold name, `[technology]` and wrapped description; databases and queues
+    are vertical and horizontal cylinders; boundaries are dashed with a
+    `[type]` line (`[system]`, `[enterprise]`, `[container]`, `[boundary]`)
+    and deployment nodes solid; relations are straight border-to-border
+    lines labelled at their midpoint.
+  - Not supported: sprites, tags/legends (`AddElementTag`, `AddRelTag`),
+    `Lay_*` statements (rejected; upstream does not plan them), link
+    rendering and `c4.wrap: false` (validated only).
 
 - **Swimlanes:** named responsibility lanes, five flow directions, rectangular,
   rounded/stadium, circular and decision nodes; labelled solid/dashed edges and

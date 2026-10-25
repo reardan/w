@@ -5,3 +5,11 @@ service server(server)[Server] in api
 service edge(internet)[Gateway]
 edge:B --> T:server
 server:L --> R:db
+group storage(logos:aws-s3)[Storage]
+service disk1(disk)[Primary] in storage
+service disk2(logos:aws-glacier)[Archive] in storage
+junction hub in storage
+db{group}:B --> T:disk1{group}
+disk1:R -- L:hub
+hub:R -- L:disk2
+align row disk1 hub disk2

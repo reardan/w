@@ -1,9 +1,16 @@
 C4Container
 title Native diagram editor
 Person(user, "User", "Authors diagrams")
+System_Ext(store, "File system", $descr="Holds .mmd sources", $tags="v1")
 System_Boundary(editor, "Desktop editor") {
   Container(parser, "Parser", "W", "Builds semantic documents")
   Container(renderer, "Renderer", "W", "Creates native scenes")
+  ContainerDb(model, "Model", "W structs", $descr="Owned documents")
 }
 Rel(user, parser, "Edits source")
 Rel(parser, renderer, "Renders document")
+Rel_R(renderer, model, "Reads")
+BiRel(parser, store, "Reads and writes", "UTF-8")
+UpdateElementStyle(user, $bgColor="grey")
+UpdateRelStyle(user, parser, $textColor="blue", $lineColor="blue", $offsetY="-10")
+UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

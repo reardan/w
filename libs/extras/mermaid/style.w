@@ -527,11 +527,11 @@ void mm_style_theme_resolve(mm_document* d, int theme, list[int] user, int dark)
 	__w_list_free(cast(__w_list*, native))
 	__w_list_free(cast(__w_list*, touched))
 
-# Native layered-layout gaps; flowchart nodeSpacing/rankSpacing override them.
+# Native layered-layout gaps; flowchart (and use case) nodeSpacing/rankSpacing override them.
 int mm_style_lane_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 1)): return d.node_spacing * 2
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 1)): return d.node_spacing * 2
 	return 100
 
 int mm_style_rank_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 2)): return d.rank_spacing + 90
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 2)): return d.rank_spacing + 90
 	return 140

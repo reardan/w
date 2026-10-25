@@ -347,7 +347,14 @@ void mm_c4_relation_draw(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 48
 		my = (ay + by) / 2
 	else:
-		if (e.from_port != 0):
+		# Directional macros attach to the named sides when the target lies
+		# that way; statement-order placement can put it elsewhere.
+		int agrees = 0
+		if (e.from_port == 1): agrees = b.x + b.w <= a.x
+		if (e.from_port == 2): agrees = b.x >= a.x + a.w
+		if (e.from_port == 3): agrees = b.y + b.h <= a.y
+		if (e.from_port == 4): agrees = b.y >= a.y + a.h
+		if (agrees):
 			mm_c4_port(a, e.from_port, &ax, &ay)
 			mm_c4_port(b, e.to_port, &bx, &by)
 		else:

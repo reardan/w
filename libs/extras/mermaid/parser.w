@@ -517,6 +517,10 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	d.rank_spacing = envelope.rank_spacing
 	d.edge_curve = envelope.edge_curve
 	d.look = envelope.look
+	d.usecase_rotate = envelope.usecase_rotate
+	# UpdateLayoutConfig statements in the diagram win over c4 configuration.
+	if (d.c4_shape_in_row == 0): d.c4_shape_in_row = envelope.c4_shape_in_row
+	if (d.c4_boundary_in_row == 0): d.c4_boundary_in_row = envelope.c4_boundary_in_row
 	if (d.layout_algorithm == 1 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force layout is only supported for graph diagrams")
 	free(d.source)
 	d.source = envelope.source
