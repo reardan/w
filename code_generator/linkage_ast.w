@@ -33,7 +33,8 @@ void emit_linkage_ast(linkage_ast* node):
 		be_align_code()
 		sym_define_global(node.binding)
 		emit_ffi_shim(node.parameter_count, node.parameter_classes, node.return_class, address)
-		if (node.variadic):
-			sym_set_variadic(node.binding, node.parameter_count)
-			sym_set_got_vaddr(node.binding, address)
+		# Every import records its slot: the variadic call path loads
+		# through it, and tools/wllvm_emit.w finds the import by it.
+		sym_set_got_vaddr(node.binding, address)
+		if (node.variadic): sym_set_variadic(node.binding, node.parameter_count)
 	ast_extern_functions_emitted = ast_extern_functions_emitted + 1

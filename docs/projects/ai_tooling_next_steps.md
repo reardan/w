@@ -295,7 +295,9 @@ suggesting that it behaves like pointer arithmetic.
   `wtest_map_test` assertions. Remove those failed records to retry; `--no-cache`
   is the `wexec` development workaround. Seen again 2026-10-24 while extending
   `wllvm`: a cached failed closure made `./wbuild wllvm` report "(cached)"
-  after the import was fixed.
+  after the import was fixed. Again 2026-10-25: with a prototype missing in
+  `tools/wllvm_emit.w`, `./wbuild wllvm` kept reporting "(cached)" and "OK"
+  while an old `bin/wllvm` ran, so tests silently exercised stale code.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
@@ -1506,3 +1508,12 @@ when stderr is not a terminal.
 - **`bin/wtest changed` from a unit branch** needs the integration
   branch as its base (see the `test_changed` entry above); every w-orm
   unit agent piped its own staged file list instead.
+
+## Stale `bin/wllvm` after an edit (2026-10-25, wllvm runtime stubs)
+
+- **`./wbuild wllvm` reported `OK` without rebuilding** after a scripted
+  edit to `tools/wllvm_emit.w` made within a second of the previous
+  build; the old binary kept emitting the old IR until `--no-cache`.
+  Observed once in a worktree under parallel load. Direction: key the
+  cache check on content hashes only (never an mtime/size shortcut), or
+  print which input digests a cached target was matched against.

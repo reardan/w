@@ -439,17 +439,18 @@ compiled by `bin/wv2`. This:
 - Is explicitly **not** a path to replacing `w.w`'s compile path, same
   disclaimer `wbuildd.md` gives `bin/wc2` for the identical reason.
 
-### 3.7 Original recommendation and implemented experiment
+### 3.7 Original recommendation and what was built
 
-The bounded experiment is now `bin/wllvm`, documented in [llvm.md](llvm.md).
-It reuses production parsing, semantic analysis and retained bindings, then
-walks the retained tree to emit LLVM IR for an explicit subset (integers,
-pointers, records, arrays, strings, globals, and the reachable standard
-library code) and links a freestanding executable with Clang. Unsupported
-constructs in the input program fail rather than silently falling back. LLVM remains
-an external, opt-in consumer of the text output; bootstrap and the normal
-compiler backends do not depend on it. The original assessment below records
-why this is an experiment rather than a commitment to a full LLVM backend.
+The experiment grew into `bin/wllvm`, an opt-in LLVM backend documented in
+[llvm.md](llvm.md). It reuses production parsing, semantic analysis and
+retained bindings, then walks the retained tree to emit LLVM IR for the
+whole language as the test corpus uses it (795 of 801 runnable `tests/*.w`
+programs behave identically to the native x64 build) and links x86-64 or
+arm64 Linux executables with Clang. Unsupported constructs fail rather than
+silently falling back. LLVM remains an external, opt-in consumer of the
+text output; bootstrap and the normal compiler backends do not depend on
+it. The original assessment below records why this was first scoped as an
+experiment.
 
 Don't schedule a real LLVM backend now: the dependency cost (an
 external toolchain at minimum, a multi-month binding project at worst)
@@ -577,7 +578,7 @@ should compile to. No design is attempted here pending that answer.
 | #338 claim 2 (thin CLI wrappers) | Already proven achievable (`wvc.w`/`cas.w`); several tools (`wexec.w`, `test_map.w`, `wbuildgen.w`) are the counter-example | Refactor those three into a library + porcelain split, no new compiler work |
 | #338 claim 1 (compiled library format) | No relocatable/archive format exists; a "static library" has nothing to match today | Don't schedule the archive+linker option (b) without an explicit maintainer sizing call; shared-library production (c) is the more tractable literal reading if wanted |
 | #338 performance motivation | Likely the same complaint `wbuildd` already solves | Ride `wbuildd`'s existing schedule |
-| #337 | The production retained AST now supplies semantic types and bindings; LLVM remains an optional external toolchain | The bounded [`bin/wllvm` experiment](llvm.md) consumes that AST; broader backend support remains separate work |
+| #337 | The production retained AST now supplies semantic types and bindings; LLVM remains an optional external toolchain | The opt-in [`bin/wllvm` backend](llvm.md) consumes that AST for x86-64 and arm64 Linux; GPU device code through NVPTX and other OS targets remain follow-ups |
 | #332 | Real primitives exist (`lib/stream.w`, PG listener mode, `lib/task.w`) but nothing composes them into a pipeline today | Scope a dedicated design doc once the push-vs-pull and #338/#333 dependencies are answered |
 | #333 | Generics and typed containers already cover much of the underlying capability; the operator spelling and the `*` examples are unresolved | Get worked examples from the maintainer before any design work starts |
 
