@@ -197,7 +197,7 @@ int mm_editor_set_label(mm_editor* e, int index, char* label):
 	if (strcmp(e.document.nodes[index].label, label) == 0): return 1
 	if (mm_outline_family(e.document.kind)): return mm_outline_rename(e, index, label)
 	if (e.document.kind != MM_FLOW && e.document.kind != MM_ER && mm_edit_uml(e.document) == 0): return mm_ee_rename(e, index, label)
-	if (e.document.nodes[index].group): return mm_ee_rename(e, index, label)
+	if (e.document.nodes[index].group && mm_edit_uml(e.document) == 0): return mm_ee_rename(e, index, label)
 	# Minimal bytes first: the label's own text, edited in place.
 	if (mm_ee_rename_in_place(e, index, label)): return 1
 	char* statement = mm_edit_label_statement(e.document, e.document.nodes[index], label)

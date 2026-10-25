@@ -432,6 +432,7 @@ int mm_ee_validate(mm_document* old, mm_document* next, mm_expect* x):
 		mm_edge* want = old.edges[i]
 		if (x.edges[i] != 0): want = x.edges[i]
 		mm_edge copy = *want
+		while (copy.scope >= 0 && copy.scope < old.nodes.length && x.removed[copy.scope]): copy.scope = old.nodes[copy.scope].parent
 		if (scope_free): copy.scope = -1
 		mm_edge* have = next.edges[edge]
 		mm_edge other = *have
@@ -474,6 +475,9 @@ int mm_ee_attempt(mm_editor* e, char* source, mm_expect* x):
 		return 0
 	x.attempts = x.attempts + 1
 	mm_document* next = mm_parse_selected(source, strlen(source), e.selected)
+	println(c"---- candidate")
+	println(source)
+	if (next.error != 0): println(next.error)
 	int ok = mm_ee_validate(e.document, next, x)
 	mm_document_free(next)
 	if (ok): ok = mm_editor_change(e, source)
@@ -563,7 +567,8 @@ int mm_ee_rename_mode(mm_editor* e, int index, char* label, int modes):
 		# After an id token: `["L"]`, `[L]`, `("L")`, `(L)`.
 		mm_ee_scan* scan = mm_ee_scan_new(d)
 		for mm_ee_unit* unit in scan.units:
-			if (ok || unit.header || x.attempts >= MM_EE_ATTEMPTS): break
+			if (ok || x.attempts >= MM_EE_ATTEMPTS): break
+			if (unit.header): continue
 			int at = mm_ee_token(d, unit.code, unit.code_end, n.id, unit.code)
 			while (at >= 0 && ok == 0 && x.attempts < MM_EE_ATTEMPTS):
 				int after = at + strlen(n.id)
@@ -591,7 +596,7 @@ int mm_ee_rename_mode(mm_editor* e, int index, char* label, int modes):
 				string_free(c)
 				string_free(f)
 				__w_list_free(cast(__w_list*, forms))
-				at = mm_ee_token(d, unit.code, unit.code_end, n.id, at + 1)
+				if (ok == 0): at = mm_ee_token(d, unit.code, unit.code_end, n.id, at + 1)
 		mm_ee_scan_free(scan)
 	string_free(quoted)
 	mm_expect_free(x)
@@ -946,52 +951,51 @@ int mm_ee_reparent(mm_editor* e, int index, int group):
 		if (group >= 0): target = mm_ee_group_unit(scan, group)
 		int source_block = -1
 		if (d.nodes[index].parent >= 0): source_block = mm_ee_group_unit(scan, d.nodes[index].parent)
-		if (group < 0 || target >= 0):
+		# Candidate 0 carries the declarations that alone name the node in its
+		# current scope; candidate 1 adds a bare declaration to the target.
+		for candidate in range(2):
+			if (ok || (group >= 0 && target < 0)): break
 			list[mm_ee_splice*] edits = mm_ee_splices()
 			string_builder* moved = string_new()
-			for u in range(scan.units.length):
-				mm_ee_unit* unit = scan.units[u]
-				if (mm_ee_declaration_unit(d, unit, index) == 0): continue
-				if (source_block >= 0 && mm_ee_unit_within(scan, u, source_block) == 0): continue
-				if (source_block < 0 && unit.parent >= 0): continue
-				string_append_bytes(moved, d.source + unit.code, unit.code_end - unit.code)
-				string_append_char(moved, 10)
-				mm_ee_add(edits, unit.start, unit.end, c"")
-			if (moved.length == 0 || source_block < 0):
-				# Nothing to carry (or carrying would lose an earlier top-level
-				# declaration's position): declare the node in the target.
-				string_free(moved)
-				moved = string_new()
+			if (candidate == 0):
+				for u in range(scan.units.length):
+					mm_ee_unit* unit = scan.units[u]
+					if (mm_ee_declaration_unit(d, unit, index) == 0): continue
+					if (source_block >= 0 && mm_ee_unit_within(scan, u, source_block) == 0): continue
+					if (source_block < 0 && unit.parent >= 0): continue
+					string_append_bytes(moved, d.source + unit.code, unit.code_end - unit.code)
+					string_append_char(moved, 10)
+					mm_ee_add(edits, unit.start, unit.end, c"")
+			else:
 				char* mention = mm_ee_mention_statement(d, index)
 				string_append(moved, mention)
 				string_append_char(moved, 10)
 				free(mention)
-				mm_ee_splices_free(edits)
-				edits = mm_ee_splices()
-			string_builder* text = string_new()
-			int at = d.source_end
-			char* indent = strclone(c"")
-			if (target >= 0):
-				mm_ee_unit* block = scan.units[target]
-				at = block.closer
+			if (moved.length > 0):
+				string_builder* text = string_new()
+				int at = d.source_end
+				char* indent = strclone(c"")
+				if (target >= 0):
+					mm_ee_unit* block = scan.units[target]
+					at = block.closer
+					free(indent)
+					indent = mm_ee_indent(d, block.closer)
+					string_builder* deeper = string_from(indent)
+					string_append(deeper, c"  ")
+					free(indent)
+					indent = strclone(deeper.data)
+					string_free(deeper)
+				else if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): string_append_char(text, 10)
+				int line = 0
+				for i in range(moved.length):
+					if (line == 0): string_append(text, indent)
+					line = 1
+					string_append_char(text, moved.data[i])
+					if (moved.data[i] == 10): line = 0
+				mm_ee_add(edits, at, at, text.data)
+				ok = mm_ee_attempt_edits(e, edits, x)
 				free(indent)
-				indent = mm_ee_indent(d, block.closer)
-				string_builder* deeper = string_from(indent)
-				string_append(deeper, c"  ")
-				free(indent)
-				indent = strclone(deeper.data)
-				string_free(deeper)
-			else if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): string_append_char(text, 10)
-			int line = 0
-			for i in range(moved.length):
-				if (line == 0): string_append(text, indent)
-				line = 1
-				string_append_char(text, moved.data[i])
-				if (moved.data[i] == 10): line = 0
-			mm_ee_add(edits, at, at, text.data)
-			ok = mm_ee_attempt_edits(e, edits, x)
-			free(indent)
-			string_free(text)
+				string_free(text)
 			string_free(moved)
 			mm_ee_splices_free(edits)
 	mm_ee_scan_free(scan)
@@ -1183,7 +1187,7 @@ int mm_ee_edge_kind(mm_editor* e, int index, char* operator):
 			int at = mm_ee_token(d, unit.code, unit.code_end, edge.label, unit.code)
 			while (at >= 0 && ok == 0):
 				ok = mm_ee_attempt_splice(e, at, at + strlen(edge.label), operator, x)
-				at = mm_ee_token(d, unit.code, unit.code_end, edge.label, at + 1)
+				if (ok == 0): at = mm_ee_token(d, unit.code, unit.code_end, edge.label, at + 1)
 			continue
 		list[int] spans = mm_ee_operator_spans(d, unit.code, unit.code_end)
 		for k in range(spans.length / 2):
