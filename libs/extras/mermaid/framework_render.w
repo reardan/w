@@ -10,7 +10,7 @@ mm_scene* mm_framework_scene(mm_document* d):
 	s.nodes = new list[mm_bounds*]
 	for mm_node* n in d.nodes:
 		mm_bounds* b = new mm_bounds()
-		b.w = strlen(n.label) * 8 + 32
+		b.w = mm_text_width(n.label, 0) + 32
 		b.h = 32
 		s.nodes.push(b)
 	return s
