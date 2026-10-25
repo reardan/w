@@ -117,20 +117,20 @@ void mm_config_utf8(string_builder* out, int c):
 		string_append_char(out, 128 | ((c >> 6) & 63))
 		string_append_char(out, 128 | (c & 63))
 
-# Quoted string at source[at] (the quote) ending on the same line before
-# limit. Double quotes take JSON/YAML escapes (\" \\ \/ \n \t \r \b \f \0 \'
-# \xHH \uHHHH \UHHHHHHHH); single quotes take '' for a quote. *next receives
-# the index after the closing quote; unterminated reports message.
-char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline);
-
-char* mm_config_quoted(mm_document* d, int at, int limit, int* next, char* unterminated):
-	return mm_config_quoted_lines(d, at, limit, next, unterminated, 0)
-
+# The one YAML quoted-scalar reader, shared by frontmatter and directives and
+# by `@{ ... }` element metadata (yaml_meta.w). Quoted string at source[at]
+# (the quote) ending before limit. Double quotes take JSON/YAML escapes (\"
+# \\ \/ \n \t \r \b \f \0 \' \xHH \uHHHH \UHHHHHHHH); single quotes take '' for a
+# quote. *next receives the index after the closing quote; unterminated
+# reports message.
 # multiline: a YAML flow scalar that may continue on later lines (YAML 1.2
 # 7.3): each line break folds to a space, n blank lines to n newlines, the
 # whitespace around a break is dropped, and in double quotes a `\` before
 # the break joins the lines with nothing between them.
-char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline):
+# metadata: element metadata reads control escapes (\0, \b, \f, an escaped
+# space, \xHH / \uHHHH below 32) as a space instead of rejecting them, and
+# reports bad escapes as metadata errors.
+char* mm_yaml_quoted(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline, int metadata):
 	int quote = d.source[at]
 	string_builder* out = string_new()
 	int i = at + 1
@@ -179,11 +179,13 @@ char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char*
 			if (e == 'n'): string_append_char(out, 10)
 			else if (e == 't'): string_append_char(out, 9)
 			else if (e == 'r'): string_append_char(out, 13)
+			else if ((e == 'b' || e == 'f' || e == '0' || e == 32) && metadata): string_append_char(out, 32)
 			else if (e == 'b' || e == 'f' || e == '0'): mm_error(d, i, c"control characters are not allowed in configuration strings")
 			else if (e == '"' || e == '\\' || e == '/' || e == '\''): string_append_char(out, e)
 			else if (e == 'x'): digits = 2
 			else if (e == 'u'): digits = 4
 			else if (e == 'U'): digits = 8
+			else if (metadata): mm_error(d, i + 1, c"invalid metadata escape")
 			else: mm_error(d, i, c"unsupported escape in configuration string")
 			i = i + 2
 			if (digits):
@@ -192,11 +194,15 @@ char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char*
 					int h = -1
 					if (i < limit): h = mm_config_hex_digit(d.source[i])
 					if (h < 0):
-						mm_error(d, i, c"invalid unicode escape in configuration string")
+						if (metadata): mm_error(d, i, c"invalid metadata escape")
+						else: mm_error(d, i, c"invalid unicode escape in configuration string")
 						break
 					if (code < 16777216): code = code * 16 + h
 					i = i + 1
-				if (d.error == 0 && ((code < 32 && code != 9 && code != 10) || (code >= 55296 && code < 57344) || code > 1114111)): mm_error(d, i, c"invalid unicode escape in configuration string")
+				if (metadata && d.error == 0 && code < 32 && code != 9 && code != 10): code = 32
+				if (d.error == 0 && ((code < 32 && code != 9 && code != 10) || (code >= 55296 && code < 57344) || code > 1114111)):
+					if (metadata): mm_error(d, i, c"invalid metadata escape")
+					else: mm_error(d, i, c"invalid unicode escape in configuration string")
 				if (d.error == 0): mm_config_utf8(out, code)
 			keep = out.length
 			continue
@@ -208,6 +214,12 @@ char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char*
 	char* result = out.data
 	free(out)
 	return result
+
+char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline):
+	return mm_yaml_quoted(d, at, limit, next, unterminated, multiline, 0)
+
+char* mm_config_quoted(mm_document* d, int at, int limit, int* next, char* unterminated):
+	return mm_yaml_quoted(d, at, limit, next, unterminated, 0, 0)
 
 # A block scalar is a frontmatter value, so its plain-line forms never reach here.
 char* mm_config_plain(mm_document* d, int start, int end):
@@ -507,69 +519,116 @@ char* mm_yaml_key(mm_config_reader* r, int start, int colon, int offset, int all
 void mm_yaml_block(mm_config_reader* r, char* path, int indent);
 char* mm_config_spec(char* key);
 
-# |, |-, |+, >, >-, >+ with an optional indentation digit, on the lines after
-# the header that are indented beyond the parent.
-void mm_yaml_block_scalar(mm_config_reader* r, char* path, int indent, int at, int end, int offset):
-	mm_document* d = r.doc
+# Columns of the indentation at line start `at` (a tab counts tab_width
+# columns); *content receives the offset after it.
+int mm_yaml_indent_at(mm_document* d, int at, int limit, int tab_width, int* content):
+	int column = 0
+	while (at < limit && (d.source[at] == 32 || (tab_width > 0 && d.source[at] == 9))):
+		if (d.source[at] == 9): column = column + tab_width
+		else: column = column + 1
+		at = at + 1
+	content[0] = at
+	return column
+
+# The one YAML block-scalar reader, shared by frontmatter and by `@{ ... }`
+# element metadata (yaml_meta.w): |, |-, |+, >, >-, >+ with an optional
+# indentation digit at source[at] (the header runs to header_end, where only
+# blanks and a comment may follow), on the lines from `body` (a line start)
+# before limit that are indented beyond indent columns (a tab counts
+# tab_width columns, 0 where tabs are not indentation). *next receives the
+# start of the first line not consumed; a bad header reports header_error
+# and returns 0.
+char* mm_yaml_block_text(mm_document* d, int at, int header_end, int indent, int body, int limit, int tab_width, int* next, int offset, char* header_error):
+	next[0] = body
 	int folded = d.source[at] == '>'
 	int chomp = 0
 	int explicit = 0
 	int i = at + 1
-	while (i < end && d.source[i] != 32 && d.source[i] != 9):
+	while (i < header_end && d.source[i] != 32 && d.source[i] != 9 && d.source[i] != 13):
 		int c = d.source[i]
 		if ((c == '-' || c == '+') && chomp == 0):
 			chomp = 1
 			if (c == '+'): chomp = 2
 		else if (c >= '1' && c <= '9' && explicit == 0): explicit = c - '0'
 		else:
-			mm_error(d, offset, c"invalid YAML block scalar header")
-			return
+			mm_error(d, offset, header_error)
+			return 0
 		i = i + 1
-	while (i < end && (d.source[i] == 32 || d.source[i] == 9)): i = i + 1
-	if (i < end && d.source[i] != '#'):
-		mm_error(d, offset, c"invalid YAML block scalar header")
-		return
+	while (i < header_end && (d.source[i] == 32 || d.source[i] == 9 || d.source[i] == 13)): i = i + 1
+	if (i < header_end && d.source[i] != '#'):
+		mm_error(d, offset, header_error)
+		return 0
 	int content = 0
 	if (explicit): content = indent + explicit
-	int first = r.line
-	int last = r.line
-	while (last < r.lines.length):
-		mm_yaml_line* l = r.lines[last]
-		if (l.start == l.end):
-			last = last + 1
-			continue
-		if (l.indent <= indent): break
-		if (content == 0): content = l.indent
-		if (l.indent < content): break
-		last = last + 1
-	# Trailing blank lines belong to the scalar only for keep chomping.
-	int stop = last
-	while (stop > first):
-		mm_yaml_line* l = r.lines[stop - 1]
-		if (l.start != l.end): break
-		stop = stop - 1
+	# Lines of the scalar: [body, last); stop is past its last non-empty line.
+	int last = body
+	int stop = body
+	while (last < limit):
+		int end = mm_config_line_end(d, last, limit)
+		int start = 0
+		int column = mm_yaml_indent_at(d, last, end, tab_width, &start)
+		int trimmed = end
+		while (trimmed > start && (d.source[trimmed - 1] == 32 || d.source[trimmed - 1] == 9 || d.source[trimmed - 1] == 13)): trimmed = trimmed - 1
+		if (start < trimmed):
+			if (column <= indent): break
+			if (content == 0): content = column
+			if (column < content): break
+		last = end + 1
+		if (start < trimmed): stop = last
+	if (last > limit): last = limit
+	if (stop > limit): stop = limit
 	string_builder* out = string_new()
 	int previous = -1
-	for k in range(first, stop):
-		mm_yaml_line* l = r.lines[k]
-		int from = l.begin + content
-		if (from > l.end): from = l.end
-		int empty = from >= l.end
+	int line = body
+	int first = 1
+	while (line < stop):
+		int end = mm_config_line_end(d, line, limit)
+		int trimmed = end
+		while (trimmed > line && (d.source[trimmed - 1] == 32 || d.source[trimmed - 1] == 9 || d.source[trimmed - 1] == 13)): trimmed = trimmed - 1
+		# Skip the content indentation; deeper indentation is content.
+		int from = line
+		int skipped = 0
+		while (from < trimmed && skipped < content && (d.source[from] == 32 || (tab_width > 0 && d.source[from] == 9))):
+			if (d.source[from] == 9): skipped = skipped + tab_width
+			else: skipped = skipped + 1
+			from = from + 1
+		int empty = from >= trimmed
 		int more = empty == 0 && (d.source[from] == 32 || d.source[from] == 9)
-		if (k > first):
+		if (first == 0):
 			if (folded && previous == 1 && empty == 0 && more == 0): string_append_char(out, 32)
 			else if (folded && previous == 1 && empty): string_append(out, c"")
 			else: string_append_char(out, 10)
-		string_append_bytes(out, d.source + from, l.end - from)
+		if (empty == 0): string_append_bytes(out, d.source + from, trimmed - from)
 		previous = 2
 		if (empty == 0 && more == 0): previous = 1
 		if (empty): previous = 0
-	if (stop > first && chomp != 1): string_append_char(out, 10)
+		first = 0
+		line = end + 1
+	if (stop > body && chomp != 1): string_append_char(out, 10)
 	if (chomp == 2):
-		for k in range(stop, last): string_append_char(out, 10)
-	r.line = last
+		int blank = stop
+		while (blank < last):
+			string_append_char(out, 10)
+			blank = mm_config_line_end(d, blank, limit) + 1
+	next[0] = last
 	char* text = out.data
 	free(out)
+	return text
+
+# A frontmatter block scalar value: the shared reader over the lines after the
+# current one, up to the end of the frontmatter.
+void mm_yaml_block_scalar(mm_config_reader* r, char* path, int indent, int at, int end, int offset):
+	mm_document* d = r.doc
+	if (r.line >= r.lines.length):
+		char* empty = mm_yaml_block_text(d, at, end, indent, end, end, 0, &end, offset, c"invalid YAML block scalar header")
+		if (empty != 0): mm_config_add(r, path, empty, 0, offset)
+		return
+	mm_yaml_line* final = r.lines[r.lines.length - 1]
+	int limit = mm_config_line_end(d, final.begin, d.source_end)
+	int next = 0
+	char* text = mm_yaml_block_text(d, at, end, indent, r.lines[r.line].begin, limit, 0, &next, offset, c"invalid YAML block scalar header")
+	if (text == 0): return
+	while (r.line < r.lines.length && r.lines[r.line].begin < next): r.line = r.line + 1
 	mm_config_add(r, path, text, 0, offset)
 
 # The value after "key:" or "- " on the current line, [at, end); the line
