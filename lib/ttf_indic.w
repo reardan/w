@@ -20,10 +20,11 @@ Character categories and positions come from lib.unicode_text
 (ut_indic_category / ut_indic_position), the per-script settings from
 HarfBuzz's indic_configs.
 
-Not ported: the vowel-constraint dotted circles of
-hb-ot-shaper-vowel-constraints (e.g. U+0905 U+093E), the 'dev3'-style
-tags that select HarfBuzz's USE shaper, and syllables longer than
-ttf_indic_window characters, which are split.
+lib.ttf_shape adds the vowel-constraint dotted circles of
+hb-ot-shaper-vowel-constraints (e.g. U+0905 U+093E), and a font whose
+chosen tag is a 'dev3'-style one shapes with lib.ttf_use instead, as in
+HarfBuzz. Not ported: syllables longer than ttf_indic_window characters,
+which are split.
 */
 import lib.lib
 import lib.ttf

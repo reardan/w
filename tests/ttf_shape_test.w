@@ -109,7 +109,7 @@ void test_normalization_tables():
 void test_script_selection():
 	char[40] tags
 	int n = ttf_script_tags(ut_script_from_code(c"Deva"), &tags[0])
-	assert_bytes_equal(c"dev2deva", &tags[0], 8)
+	assert_bytes_equal(c"dev3dev2deva", &tags[0], 12)
 	assert_bytes_equal(c"latn", &tags[(n - 1) * 4], 4)
 	int32[4] cps
 	cps[0] = ' '
@@ -194,3 +194,53 @@ void test_dropped_ignorables():
 	expect_shape(&font, c"\xe2\x9d\xa4\xef\xb8\x8f", c"dir=ltr 2@0+2550(0,0)")
 	expect_shape(&font, c"\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7", c"dir=ltr 10@0+2550(0,0)")
 	expect_shape(&font, c"\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd", c"dir=ltr 9@0+2550(0,0)")
+
+# The Universal Shaping Engine's pieces: categories, script routing
+# (including 'dev3' tags), vowel constraints and the cluster machine.
+void test_use_engine():
+	assert_equal(ttf_use_b, ttf_use_category(0x0d9a))
+	assert_equal(ttf_use_hvm, ttf_use_category(0x0dca))
+	assert_equal(ttf_use_vpre, ttf_use_category(0x0dd9))
+	assert_equal(ttf_use_cgj, ttf_use_category(0x200d))
+	assert_equal(ttf_use_zwnj, ttf_use_category(0x200c))
+	assert_equal(ttf_use_b, ttf_use_category(0x25cc))
+	assert_equal(ttf_use_o, ttf_use_category('a'))
+	assert_equal(ttf_use_o, ttf_use_category(-1))
+	asserts(c"Sinhala is USE", ttf_use_script(c"Sinh"))
+	asserts(c"Latin is not USE", !ttf_use_script(c"Latn"))
+	asserts(c"Mongolian joins", ttf_use_joining_script(c"Mong"))
+	asserts(c"a Sinhala vowel pair takes a circle", ttf_use_vowel_constraint(c"Sinh", 0x0d85, 0x0dcf))
+	asserts(c"a Takri vowel pair takes a circle", ttf_use_vowel_constraint(c"Takr", 0x11686, 0x116b2))
+	asserts(c"other pairs do not", !ttf_use_vowel_constraint(c"Sinh", 0x0d9a, 0x0dcf))
+	asserts(c"Tibetan U sorts before I", ttf_modified_ccc(0x0f74) < ttf_modified_ccc(0x0f72))
+	char[40] tags
+	int n = ttf_script_tags(ut_script_from_code(c"Deva"), &tags[0])
+	ttf_font font
+	asserts(c"dev3 font loads", ttf_load(&font, c"tests/data/fonts/NotoSansDevanagari-dev3-subset.ttf"))
+	asserts(c"a dev3 font shapes Devanagari with USE", ttf_use_applies(&font, c"Deva", &tags[0], n))
+	ttf_free(&font)
+	asserts(c"dev2 font loads", ttf_load(&font, c"tests/data/fonts/NotoSansDevanagari-subset.ttf"))
+	asserts(c"a dev2 font shapes Devanagari with the Indic shaper", !ttf_use_applies(&font, c"Deva", &tags[0], n))
+	ttf_free(&font)
+	# Syllables: KA, SIGN E (VPre), AL-LAKUNA (HVM) is one standard
+	# cluster; a lone VPre is broken; a Latin letter is a symbol cluster.
+	otl_buffer* b = otl_buffer_new(8)
+	int32[6] cps
+	cps[0] = 0x0d9a
+	cps[1] = 0x0dd9
+	cps[2] = 0x0dca
+	cps[3] = 0x0dd9
+	cps[4] = 'a'
+	for i in range(5):
+		otl_buffer_add(b, 0, cps[i], i, 1)
+		b.glyphs[i].icat = ttf_use_category(cps[i])
+	asserts(c"a broken cluster is found", ttf_use_find_syllables(b))
+	assert_equal(ttf_use_standard, b.glyphs[0].syllable & 15)
+	assert_equal(b.glyphs[0].syllable, b.glyphs[2].syllable)
+	assert_equal(ttf_use_broken, b.glyphs[3].syllable & 15)
+	assert_equal(ttf_use_symbol, b.glyphs[4].syllable & 15)
+	# Reordering moves the pre-base vowel to the cluster start.
+	ttf_use_reorder_syllable(b, 0, 3)
+	assert_equal(0x0dd9, b.glyphs[0].cp)
+	assert_equal(0x0d9a, b.glyphs[1].cp)
+	otl_buffer_free(b)

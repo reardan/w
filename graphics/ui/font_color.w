@@ -832,6 +832,7 @@ int ttf_color_outline(ttf_color_painter* p, int gid, ttf_xform* m, ttf_bitmap* o
 	o.ys1 = cast(float32*, malloc(o.cap * 4))
 	o.scale = p.scale
 	o.skew = 0.0
+	o.points = 0
 	int ok = ttf_add_glyph(f, &o, gid, m, 0)
 	if (ok): ok = ttf_fill(&o, out)
 	free(cast(char*, o.xs0))

@@ -108,6 +108,39 @@ SECTIONS = [
     ("tests/data/fonts/NotoSansThai-subset.ttf", [
         "สวัสดีครับ ภาษาไทย น้ำ ที่",
     ]),
+    # The Universal Shaping Engine (lib/ttf_use.w): Sinhala, Tibetan,
+    # Javanese and Balinese, with broken clusters and a Sinhala vowel
+    # constraint; Tai Tham through a DFLT-only font (the default shaper,
+    # with SAKOT sorted last); Devanagari in a font with only a 'dev3'
+    # tag (NotoSansDevanagari with its dev2 script renamed).
+    ("tests/data/fonts/NotoSansSinhala-subset.ttf", [
+        "ශ්‍රී ලංකාව සිංහල භාෂාව",
+        "ක්‍රීඩාව විශ්වවිද්‍යාලය ප්‍රජාතන්ත්‍රවාදී",
+        "කොළඹ කෝපි බෞද්ධ ෙක ්ක අා",
+    ]),
+    ("tests/data/fonts/NotoSerifTibetan-subset.ttf", [
+        "བོད་ཡིག བཀྲ་ཤིས་བདེ་ལེགས།",
+        "ཨོཾ་མ་ཎི་པདྨེ་ཧཱུྃ། སྒྲོལ་མ",
+        "བསྒྲུབས ཀྵ ཧྲཱིཿ ཇཱི༹ ཱ ྐ",
+    ]),
+    ("tests/data/fonts/NotoSansJavanese-subset.ttf", [
+        "ꦲꦤꦕꦫꦏ ꦢꦠꦱꦮꦭ",
+        "ꦏꦿꦩ ꦥꦿꦧꦸ ꦱ꧀ꦠꦿꦶ ꦲꦏ꧀ꦱꦫ",
+        "ꦏꦺꦴ ꦩꦠꦸꦂꦤꦸꦮꦸꦤ꧀ ꦦꦾꦶꦹꦂ ꦾ ꦺ",
+    ]),
+    ("tests/data/fonts/NotoSansBalinese-subset.ttf", [
+        "ᬩᬲᬩᬮᬶ ᬅᬓ᭄ᬱᬭ",
+        "ᬲ᭄ᬯᬲ᭄ᬢ᭄ᬬᬲ᭄ᬢᬸ ᬧ᭄ᬭᬪᬸ ᬓᭀ ᬓᭃ",
+        "ᬭ᭄ᬓ ᬳ᭄ᬭ ᬌ ᬶ ᬓ᭄ᬓᬸ",
+    ]),
+    ("tests/data/fonts/NotoSansTaiTham-subset.ttf", [
+        "ᨻᩩᨴ᩠ᨵ ᨵᨾ᩠ᨾ ᩈᩘ᩠ᨥ ᨸ᩠᩼",
+    ]),
+    ("tests/data/fonts/NotoSansDevanagari-dev3-subset.ttf", [
+        "नमस्ते दुनिया हिन्दी",
+        "क्षत्रिय ज्ञान श्री र्कि प्र्य",
+        "अर्थ धर्म ि ्क अा",
+    ]),
     # Hidden tables reach the fallbacks: legacy kern and mark placement
     # without GPOS, presentation forms without GSUB, Hebrew presentation
     # compositions without GPOS mark, and Indic reordering without GSUB.
