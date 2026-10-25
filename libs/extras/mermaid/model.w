@@ -125,6 +125,8 @@ struct mm_narrative_event:
 	int end
 	int dashed
 	int arrow
+	# Sequence central connections `()`: bit 1 at the sender, bit 2 at the receiver.
+	int central
 
 # Gantt calendar settings. Units are days, or minutes when the date format
 # has a time of day. Excluded and included day lists are sorted and unique.
