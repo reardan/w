@@ -56,6 +56,8 @@
 			"vm_darwin_native_test": "required manual Apple Silicon execution gate; never substitute Linux cross-compilation",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it",
 			"mermaid_editor_ui_test": "opt-in real-window editor workflow requiring Xvfb and X11/XTest; display-independent canvas and edit tests run in tests",
+			"mermaid_editor_atspi_test": "opt-in screen-reader qualification of the editor canvas against real at-spi2-core (Xvfb, session bus, pyatspi); mermaid_canvas_access_test covers the snapshot in tests",
+			"mermaid_editor_orca_test": "opt-in: mermaid_editor_atspi_test plus headless Orca and speech-dispatcher's dummy module, checking what Orca speaks",
 			"web_mobile_browser_test": "opt-in headless Chromium phone emulation of tools/web; needs a local Chromium (wasm_mobile_ui_test and web_mobile_input_test cover the logic)"
 		},
 		"tool_targets": [

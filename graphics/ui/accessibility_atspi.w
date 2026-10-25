@@ -149,8 +149,11 @@ int ui_atspi_path_id(char* path):
 	int id = 0
 	int i = n
 	if (path[i] == 0): return 0 - 1
+	# Up to 2^31 - 1 on every word size: widget snapshots number their
+	# document root ui_access_root_id (2^30).
 	while (path[i] != 0):
-		if ((path[i] < '0') || (path[i] > '9') || (id > 100000000)): return 0 - 1
+		if ((path[i] < '0') || (path[i] > '9')): return 0 - 1
+		if (id > (2147483647 - (path[i] - '0')) / 10): return 0 - 1
 		id = id * 10 + (path[i] - '0')
 		i = i + 1
 	if (id <= 0): return 0 - 1

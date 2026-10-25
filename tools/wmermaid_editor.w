@@ -2,13 +2,20 @@
 # wbuild: target=mermaid_editor_platforms tag=tests dep=wv2
 # wbuild: step="bin/wv2 win64 tools/wmermaid_editor.w -o bin/wmermaid_editor_win.exe"
 # wbuild: step="bin/wv2 arm64_darwin tools/wmermaid_editor.w -o bin/wmermaid_editor_darwin"
+# wbuild: step="bin/wv2 arm64_darwin --import-root tools/mac/access_cocoa tools/wmermaid_editor.w -o bin/wmermaid_editor_darwin_voiceover"
 # wbuild: target=mermaid_editor_ui_test dep=wmermaid_editor dep=wmermaid dep=mermaid_editor_ui_driver
 # wbuild: step="xvfb-run -a bin/mermaid_editor_ui_driver"
+# wbuild: target=mermaid_editor_atspi_test dep=wmermaid_editor
+# wbuild: step="sh tools/mermaid_editor_atspi_test.sh"
+# wbuild: target=mermaid_editor_orca_test dep=wmermaid_editor
+# wbuild: step="sh tools/mermaid_editor_atspi_test.sh --orca"
 # Native desktop editor. Optional --frames N / --screenshot FILE for QA.
 import lib.args
 import lib.time
 import libs.extras.mermaid.editor
 import graphics.mermaid_canvas
+import graphics.mermaid_access
+import graphics.__arch__.access_platform
 import graphics.ui.widgets
 
 int wm_editor_ppm(char* path, int width, int height):
@@ -36,6 +43,26 @@ int wm_editor_ppm(char* path, int width, int height):
 	return ok
 
 const int WM_CANVAS_FOCUS = 900001
+# Semantic ids past every canvas item id (graphics/mermaid_access.w).
+const int WM_STATUS_ACCESS = 990001
+
+char* wm_message
+
+# The status line for a save attempt; never claims success on a conflict.
+char* wm_save_message(mm_editor* e, int result):
+	if (result == MM_SAVE_OK): return c"Saved."
+	if (result == MM_SAVE_FAILED): return c"Save failed. Changes remain in the editor; try Save as."
+	if (e.recovery_path == 0): return c"Not saved: the file changed on disk. Choose Reload from disk, or Keep mine and save again."
+	free(wm_message)
+	string_builder* text = string_from(c"Conflict: another program wrote the file during the save; its bytes were kept in ")
+	string_append(text, e.recovery_path)
+	wm_message = text.data
+	free(text)
+	return wm_message
+
+char* wm_disk_message(int state):
+	if (state == MM_DISK_MISSING): return c"The file was deleted on disk. Keep mine recreates it on save; nothing is written until then."
+	return c"The file changed on disk. Reload from disk discards your edits; Keep mine overwrites it on the next save."
 
 # Mirror a selection into fields only on selection changes, preserving typing.
 void wm_selection_fields(mm_canvas* canvas, mm_editor* e, ui_textbox_state* id, ui_textarea_state* label):
@@ -84,6 +111,11 @@ int main(int argc, int argv):
 	ui_context_init(&ctx, &renderer, &theme)
 	mm_canvas canvas
 	mm_canvas_init(&canvas)
+	# Screen-reader bridge (AT-SPI / UI Automation / opt-in NSAccessibility);
+	# 0 when no assistive technology is reachable, and then nothing is built.
+	int access_bridge = ui_access_platform_open(win, c"W Mermaid")
+	ui_access_tree* access_published = 0
+	ui_access_tree* access_fresh = 0
 	ui_split_state splitter
 	ui_split_init(&splitter, 435.0)
 	splitter.min_a = 300.0
@@ -109,8 +141,15 @@ int main(int argc, int argv):
 			if (mm_editor_dirty(e) == 0): break
 			win.should_close = 0
 			closing = 1
+		if (access_bridge != 0):
+			access_fresh = ui_access_tree_new(8192, 4194304)
+			ui_access_capture(&ctx, access_fresh)
 		ui_begin_window(&ctx, win)
-		if (frame % 60 == 0): external = mm_editor_external_change(e)
+		# Poll the fingerprint four times a second and the bytes every two.
+		if (frame % 15 == 0 && closing == 0):
+			int disk = mm_editor_poll(e, frame % 120 == 0)
+			if (disk != MM_DISK_SAME && external == 0): status = wm_disk_message(disk)
+			external = disk
 		float32 width = cast(float32, win.width)
 		float32 height = cast(float32, win.height)
 		float32 preview_width = width - splitter.pos - 30.0
@@ -121,6 +160,9 @@ int main(int argc, int argv):
 		int now = time_monotonic_ms()
 		if (ctx.input.mouse_pressed || ctx.nav_count > 0): last_source_time = 0
 		int old_selection = canvas.node
+		int disk_reload = 0
+		int disk_keep = 0
+		if (mm_access_apply(&ctx, WM_CANVAS_FOCUS, &canvas, e)): status = c"Selected from the accessibility tree."
 		int changed = 0
 		for i in range(ctx.char_count):
 			int key = ctx.chars[i]
@@ -144,10 +186,11 @@ int main(int argc, int argv):
 				if (key > 0 && key < 27): key = key + 96
 				if (key == 's'):
 					mm_canvas_cancel(&canvas, e)
-					if (mm_editor_save(e)):
-						status = c"Saved."
-						external = 0
-					else: status = c"File changed or save failed. Reload or Save as a new path."
+					int saved = mm_editor_save_checked(e)
+					status = wm_save_message(e, saved)
+					external = e.disk_state
+				else if (key == 'r' && (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0 && external == MM_DISK_CHANGED): disk_reload = 1
+				else if (key == 'k' && external != MM_DISK_SAME): disk_keep = 1
 				else if (key == 'z' || key == 'y'):
 					int redo = key == 'y' || (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0
 					changed = mm_canvas_undo(&canvas, e, redo)
@@ -213,8 +256,9 @@ int main(int argc, int argv):
 					fit = 1
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Save")):
-			if (mm_editor_save(e)): status = c"Saved."
-			else: status = c"File changed or save failed. Reload or Save as a new path."
+			int saved = mm_editor_save_checked(e)
+			status = wm_save_message(e, saved)
+			external = e.disk_state
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Save as")):
 			if (mm_editor_save_as(e, filename.buf.data)): status = c"Saved to the path field."
@@ -300,6 +344,31 @@ int main(int argc, int argv):
 		string_append_int(counter, diagrams)
 		ui_label(&ctx, counter.data)
 		string_free(counter)
+		if (external != MM_DISK_SAME):
+			# The explicit choice an external change needs; saving stays refused.
+			ui_same_line(&ctx)
+			if (external == MM_DISK_MISSING): ui_label(&ctx, c"Deleted on disk:")
+			else: ui_label(&ctx, c"Changed on disk:")
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || external == MM_DISK_MISSING)
+			if (ui_button(&ctx, c"Reload from disk")): disk_reload = 1
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing)
+			if (ui_button(&ctx, c"Keep mine")): disk_keep = 1
+			if (disk_reload && closing == 0):
+				mm_canvas_reset(&canvas, e)
+				if (mm_editor_reload(e)):
+					mm_canvas_source_sync(&area, e.document.source)
+					external = MM_DISK_SAME
+					reloading = 0
+					fit = 1
+					status = c"Reloaded the disk version; Ctrl+Z cannot restore the discarded edits."
+				else: status = c"Reload failed."
+			else if (disk_keep && closing == 0):
+				if (mm_editor_keep_mine(e)):
+					external = MM_DISK_SAME
+					status = c"Keeping your version. Save replaces the disk file."
+				else: status = c"The disk file is unreadable; Save as a new path instead."
 		ui_region_pop(&ctx)
 		ui_rect left
 		ui_rect preview
@@ -433,6 +502,7 @@ int main(int argc, int argv):
 			free(diagnostic)
 		else: ui_draw_text(&renderer, 12.0, height - 62.0, status, 2, theme.text_muted)
 		char* help = c"Ctrl+D canvas: Tab selects, arrows move (Shift: 10), Delete removes. Wheel zooms."
+		if (external != MM_DISK_SAME): help = c"Changed on disk: Ctrl+Shift+R reloads it (discarding edits), Ctrl+K keeps your version."
 		if (mm_graph_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class and state."
 		ui_draw_text(&renderer, 12.0, height - 38.0, help, 2, theme.text_muted)
 		ui_clip_pop(&renderer)
@@ -446,16 +516,40 @@ int main(int argc, int argv):
 				ui_label(&ctx, c"Unsaved:")
 				ui_same_line(&ctx)
 				if (ui_button(&ctx, c"Save + close")):
-					if (mm_editor_save(e)): finished = 1
+					int saved = mm_editor_save_checked(e)
+					if (saved == MM_SAVE_OK): finished = 1
 					else:
 						closing = 0
-						status = c"Save failed. Changes remain in the editor."
+						status = wm_save_message(e, saved)
+						external = e.disk_state
 				ui_same_line(&ctx)
 				if (ui_button(&ctx, c"Discard")): finished = 1
 				ui_same_line(&ctx)
 				if (ui_button(&ctx, c"Cancel")): closing = 0
 				ui_region_pop(&ctx)
 		ui_end(&ctx)
+		if (access_bridge != 0):
+			ui_access_node* root = ui_access_find(access_fresh, ui_access_root_id)
+			if (root != 0):
+				string_builder* title = string_from(c"W Mermaid: ")
+				string_append(title, e.path)
+				ui_access_set_text(access_fresh, ui_access_root_id, UI_ACCESS_NAME, title.data, title.length)
+				string_free(title)
+				mm_access_canvas(access_fresh, ui_access_root_id, WM_CANVAS_FOCUS, &canvas, e, preview, ctx.focus == WM_CANVAS_FOCUS)
+				char* spoken = status
+				if (e.document.error != 0): spoken = c"Syntax error in the source."
+				if (ui_access_add(access_fresh, WM_STATUS_ACCESS, ui_access_root_id, UI_ACCESS_TEXT, ui_rect_new(12.0, height - 64.0, width - 24.0, 24.0)) != 0): ui_access_set_text(access_fresh, WM_STATUS_ACCESS, UI_ACCESS_NAME, spoken, strlen(spoken))
+			ui_access_capture(&ctx, 0)
+			if (ui_access_tree_same(access_fresh, access_published)): ui_access_tree_free(access_fresh)
+			else:
+				ui_access_platform_publish(access_bridge, access_fresh)
+				ui_access_tree_free(access_published)
+				access_published = access_fresh
+			access_fresh = 0
+			ui_access_platform_origin(access_bridge, win)
+			if (ui_access_platform_dispatch(access_bridge, access_published) < 0):
+				ui_access_platform_close(access_bridge)
+				access_bridge = 0
 		frame = frame + 1
 		if (max_frames > 0 && frame >= max_frames):
 			char* shot = args_value(c"screenshot")
@@ -466,6 +560,8 @@ int main(int argc, int argv):
 		gfx_window_swap(win)
 		sleep_ms(16)
 	mm_canvas_cancel(&canvas, e)
+	ui_access_platform_close(access_bridge)
+	ui_access_tree_free(access_published)
 	ui_render_destroy(&renderer)
 	gfx_window_destroy(win)
 	ui_textarea_free(&area)
