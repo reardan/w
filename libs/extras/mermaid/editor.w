@@ -195,14 +195,9 @@ int mm_editor_save(mm_editor* e):
 # Save As refuses an existing destination; use Open to review it first.
 int mm_editor_save_as(mm_editor* e, char* path):
 	if (strcmp(e.path, path) == 0): return mm_editor_save(e)
+	if (mm_save_write_new(path, e.document.source, e.document.length, FS_DEFAULT_MODE) != 0): return 0
 	io_result result
-	int fd = fs_create_exclusive(path, FS_DEFAULT_MODE, &result)
-	if (fd < 0): return 0
-	int ok = io_write_all(fd, e.document.source, e.document.length, &result) == IO_OK
-	if (fs_fsync(fd, &result) != IO_OK): ok = 0
-	if (io_close(fd, &result) != IO_OK): ok = 0
-	if (fs_sync_parent_dir(path, &result) != IO_OK): ok = 0
-	if (ok == 0): return 0
+	if (os_windows() == 0 && fs_sync_parent_dir(path, &result) != IO_OK): return 0
 	char* saved_path = strclone(path)
 	free(e.path)
 	e.path = saved_path

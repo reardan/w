@@ -8,6 +8,11 @@
 # before the claim is detected; one that creates the path after the claim
 # makes the placement fail. Either way nothing it wrote is overwritten, and
 # the save reports MM_SAVE_CONFLICT. See docs/projects/mermaid.md.
+#
+# Windows has no lib.fs adapter (fs_open is ENOSYS there), so the same
+# protocol runs on the portable open/write/fsync/rename calls: MoveFile
+# never replaces an existing name, which gives the no-replace placement,
+# and NTFS journals the rename itself (there is no directory barrier).
 import libs.extras.mermaid.io
 import lib.stat
 import lib.__arch__.hardlink
@@ -74,8 +79,14 @@ int mm_disk_matches(char* path, char* baseline):
 	free(disk)
 	return same
 
-# Treat unreadable paths as occupied; only ENOENT means absent.
+# Treat unreadable paths as occupied; only ENOENT means absent. On
+# Windows any failed open counts as absent (no errno is reported).
 int mm_disk_present(char* path):
+	if (os_windows()):
+		int handle = open(path, 0, 0)
+		if (handle < 0): return 0
+		close(handle)
+		return 1
 	io_result result
 	int fd = fs_open(path, FS_O_RDONLY, 0, &result)
 	if (fd < 0): return result.native_error != 2
@@ -103,8 +114,26 @@ char* mm_save_sibling(char* path, char* kind):
 	free(name)
 	return text
 
+# Windows staging: callers pass fresh per-process names, so a presence
+# check stands in for O_EXCL; FlushFileBuffers is the barrier.
+int mm_save_write_new_windows(char* path, char* data, int length):
+	if (mm_disk_present(path)): return 1
+	int fd = open(path, FS_O_WRONLY | FS_O_CREAT | FS_O_TRUNC, 0)
+	if (fd < 0): return 2
+	int done = 0
+	while (done < length):
+		int count = write(fd, data + done, length - done)
+		if (count <= 0): break
+		done = done + count
+	int ok = done == length && fsync(fd) == 0
+	if (close(fd) != 0): ok = 0
+	if (ok): return 0
+	unlink(path)
+	return 2
+
 # Exclusive, synced creation of a new file; 0 when it was fully written.
 int mm_save_write_new(char* path, char* data, int length, int mode):
+	if (os_windows()): return mm_save_write_new_windows(path, data, length)
 	io_result result
 	int fd = fs_create_exclusive(path, mode, &result)
 	if (fd < 0):
@@ -166,7 +195,7 @@ int mm_save_cas(char* path, int present, char* baseline, char* data, int length,
 	if (mm_disk_compare(path, present, baseline) != MM_DISK_SAME): return MM_SAVE_CONFLICT
 	int mode = FS_DEFAULT_MODE
 	file_stat st
-	if (present && file_stat_path(path, &st) == 0): mode = st.mode & FILE_MODE_PERM_MASK
+	if (present && os_windows() == 0 && file_stat_path(path, &st) == 0): mode = st.mode & FILE_MODE_PERM_MASK
 	char* temp = mm_save_stage(path, data, length, mode)
 	if (temp == 0): return MM_SAVE_FAILED
 	mm_save_hook(path, 1)
@@ -214,6 +243,7 @@ int mm_save_cas(char* path, int present, char* baseline, char* data, int length,
 		else:
 			*recovery = claim
 			status = MM_SAVE_CONFLICT
+	if (os_windows()): return status
 	io_result result
 	if (fs_sync_parent_dir(path, &result) != IO_OK && status == MM_SAVE_OK): status = MM_SAVE_FAILED
 	return status

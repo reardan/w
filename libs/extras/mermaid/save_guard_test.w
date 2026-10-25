@@ -1,8 +1,9 @@
-# wbuild: x64
+# wbuild: x64 arch=win64
 # Compare-and-swap saves and disk polling, including writers that race
 # each stage of the save (injected through mm_save_race_hook).
 import lib.testing
 import lib.dir
+import lib.file
 import libs.extras.mermaid.editor
 
 char* sg_dir = c"bin/mermaid_save_guard"
@@ -29,8 +30,13 @@ char* sg_path(char* name):
 	free(full)
 	return text
 
+# Another program's write: a replace-by-rename where lib.fs exists, a plain
+# truncating write on Windows (which has no lib.fs adapter).
 void sg_write(char* path, char* text):
 	io_result result
+	if (os_windows()):
+		assert_equal(IO_OK, file_write_text_checked(path, text, strlen(text), &result))
+		return
 	assert_equal(IO_OK, file_write_durable(path, text, strlen(text), &result))
 
 char* sg_read(char* path):
@@ -78,9 +84,10 @@ void test_clean_save_replaces_via_temp_and_leaves_nothing_behind():
 	assert_strings_equal(c"flowchart LR\nA --> B\n", sg_read(path))
 	assert_equal(0, mm_editor_dirty(e))
 	assert_equal(0, sg_leftovers())
-	file_stat st
-	assert_equal(0, file_stat_path(path, &st))
-	assert_equal(384, st.mode & FILE_MODE_PERM_MASK)
+	if (os_windows() == 0):
+		file_stat st
+		assert_equal(0, file_stat_path(path, &st))
+		assert_equal(384, st.mode & FILE_MODE_PERM_MASK)
 	assert_equal(MM_DISK_SAME, mm_editor_poll(e, 1))
 	mm_editor_free(e)
 
@@ -163,6 +170,8 @@ void test_writer_creating_the_path_after_the_claim_wins():
 	mm_editor_free(e)
 
 void test_in_place_writer_after_placement_is_recovered_not_lost():
+	# Positional writes need lib.fs, which Windows does not have.
+	if (os_windows()): return
 	sg_reset_dir()
 	char* path = sg_path(c"race3.mmd")
 	sg_write(path, c"flowchart LR\nA\n")
