@@ -137,10 +137,27 @@ x64, including the guard allocator's leak checks.
   [evolution] … }` block (brace on the same or next line) draws a band under
   the component and places sub-components at its visibility; a range is
   inferred from the children when omitted and children outside an explicit
-  range fail. Pipelines must belong to a top-level component. Mermaid 12.2.0
-  has no `evolve A->B` renaming, `limited by` links, `(ecosystem)` or `submap`
-  (OnlineWardleyMaps syntax its grammar rejects), so those stay diagnosed;
-  trend indicators (`-.-`) are not supported either.
+  range fail. Pipelines must belong to a top-level component.
+
+  Out of scope for the pinned version: mermaid@12.2.0's Wardley grammar
+  (`packages/parser/src/language/wardley/wardley.langium`, the Langium
+  `WardleyGrammar` its `@mermaid-js/parser` ships) cannot parse these
+  OnlineWardleyMaps constructs, so they stay diagnosed here as upstream
+  rejects them:
+  - `evolve A->B 0.8` renaming: `Evolve` is `KW_EVOLVE component=(STRING |
+    ID | NAME_WITH_SPACES) target=WARDLEY_NUMBER EOL`, and
+    `NAME_WITH_SPACES` excludes `->` (`-(?!>)`), so only `evolve Name 0.8`
+    exists.
+  - `(ecosystem)`: `Decorator` is `'(' STRATEGY ')'` with `terminal
+    STRATEGY: 'build' | 'buy' | 'outsource' | 'market'`.
+  - `limited by` and `submap`: neither is a keyword (the terminals are
+    `size`, `evolution`, `anchor`, `component`, `label`, `inertia`, `evolve`,
+    `pipeline`, `note`, `annotations`, `annotation`, `accelerator`,
+    `deaccelerator`) nor a `Statement` alternative.
+  - Trend indicators `Component -.- (x, y)`: `wardley.md` shows them in a
+    plain `txt` block, but `LINK_ARROW` is `'-->' | '-.->' | '>'` plus the
+    labelled flows, so `-.-` and the parenthesised `(x, y)` target do not
+    parse.
 
 - **Icons (`icons.w`, mindmap and treeView):** an icon reference's last name
   segment (after any `pack:` prefix and a short `fa-`/`mdi-`-style tag) is

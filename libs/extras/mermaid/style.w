@@ -772,16 +772,20 @@ list[char*] mm_theme_rows():
 
 # Per-theme scalars (which): 0 stroke width, 1 label font size, 2/3 drop
 # shadow dx/dy, 4 shadow color, 5 shadow alpha in hundredths, 6 whether neo
-# node strokes use the gradient. The redux themes name an SVG filter
-# (url(#drop-shadow)) instead of a drop-shadow(); natively they use neo's.
+# node strokes use the gradient, 7 shadow blur (stdDeviation). The classic
+# and neo themes use their dropShadow CSS drop-shadow(); the redux themes name
+# url(#drop-shadow), the filter rendering-util/insertLookDefs.ts defines: an
+# unblurred feDropShadow offset 4px at 0.06 opacity, black on light themes and
+# white on dark ones.
 int mm_theme_scalar(int theme, int which):
 	list[int] widths = list[int]{1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 2}
 	list[int] sizes = list[int]{16, 16, 16, 16, 16, 14, 14, 14, 14, 14, 14}
-	list[int] dxs = list[int]{1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0}
-	list[int] dys = list[int]{2, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1}
-	list[int] colors = list[int]{0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0, 0xb9b9b9, 0, 0, 0, 0}
-	list[int] alphas = list[int]{100, 100, 100, 50, 100, 25, 20, 25, 25, 25, 25}
+	list[int] dxs = list[int]{1, 1, 1, 1, 1, 0, 1, 4, 4, 4, 4}
+	list[int] dys = list[int]{2, 2, 2, 2, 2, 1, 2, 4, 4, 4, 4}
+	list[int] colors = list[int]{0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0, 0xb9b9b9, 0, 0xffffff, 0, 0xffffff}
+	list[int] alphas = list[int]{100, 100, 100, 50, 100, 25, 20, 6, 6, 6, 6}
 	list[int] gradients = list[int]{0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0}
+	list[int] blurs = list[int]{2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0}
 	int result = 0
 	if (which == 0): result = widths[theme - 1]
 	else if (which == 1): result = sizes[theme - 1]
@@ -790,6 +794,7 @@ int mm_theme_scalar(int theme, int which):
 	else if (which == 4): result = colors[theme - 1]
 	else if (which == 5): result = alphas[theme - 1]
 	else if (which == 6): result = gradients[theme - 1]
+	else if (which == 7): result = blurs[theme - 1]
 	__w_list_free(cast(__w_list*, widths))
 	__w_list_free(cast(__w_list*, sizes))
 	__w_list_free(cast(__w_list*, dxs))
@@ -797,7 +802,16 @@ int mm_theme_scalar(int theme, int which):
 	__w_list_free(cast(__w_list*, colors))
 	__w_list_free(cast(__w_list*, alphas))
 	__w_list_free(cast(__w_list*, gradients))
+	__w_list_free(cast(__w_list*, blurs))
 	return result
+
+# Upstream theme fontFamily (themes/theme-*.js): the classic themes use
+# "trebuchet ms", neo/neo-dark arial and the redux family "Recursive Variable",
+# each followed by arial and sans-serif.
+char* mm_theme_font_family(int theme):
+	if (theme >= 8): return c"\"Recursive Variable\", arial, sans-serif"
+	if (theme == 6 || theme == 7): return c"arial, sans-serif"
+	return c"\"trebuchet ms\", verdana, arial, sans-serif"
 
 # Resolve every theme variable. user holds MM_THEME_COUNT explicit values
 # (MM_THEME_UNSET when absent); dark is -1 for the theme's own mode. A variable

@@ -531,6 +531,7 @@ void mm_serialize_frontmatter(mm_serializer* out, mm_document* d, int css_classe
 		else: mm_serialize_pair_add(pairs, c"config.theme", name)
 	else if (d.theme_values != 0 || d.look != 0 || d.layout_algorithm != 0 || d.edge_curve != 0 || d.packet_bits != 32 || d.packet_msb != 0 || d.ticket_base_url != 0): out.failed = 1
 	if (d.look == 1): mm_serialize_pair_add(pairs, c"config.look", c"neo")
+	else if (d.look == 2): mm_serialize_pair_add(pairs, c"config.look", c"handDrawn")
 	else if (d.look != 0): out.failed = 1
 	if (d.layout_algorithm == 1): mm_serialize_pair_add(pairs, c"config.layout", c"force")
 	else if (d.layout_algorithm == 2): mm_serialize_pair_add(pairs, c"config.layout", c"elk")

@@ -1,0 +1,12 @@
+sequenceDiagram
+title Half-arrow messages
+participant Client
+participant Server
+Client-|\Server: Request (top half)
+Server--|/Client: Partial reply (bottom half, dotted)
+Client-\\Server: Stick top
+Server--//Client: Stick bottom, dotted
+Client/|-Server: Reverse top
+Server\|--Client: Reverse bottom, dotted
+Client//-Server: Reverse stick top
+Server\\-Client: Reverse stick bottom

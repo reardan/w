@@ -1,0 +1,17 @@
+zenuml
+title Cloud participants
+@Actor <<Person>> Shopper
+@CloudFront CDN as Edge cache
+@Lambda Checkout 180 #FFEBE6
+@DynamoDB Orders
+@SQS Jobs
+@AzureFunction Billing
+@PubSub Events #0747A6
+<<Repository>> Archive
+Shopper->CDN: GET /cart
+Checkout.place(order) {
+  Orders.put(order)
+  Jobs->Billing: invoice
+  Billing->Events: billed
+  Archive.store(order)
+}
