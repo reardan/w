@@ -124,13 +124,41 @@ ui_color mm_ui_alpha(ui_color color, int hundredths):
 	color.a = color.a * cast(float32, hundredths) / 100.0
 	return color
 
+# `look: handDrawn` natively: the same seeded double strokes as the SVG
+# (rough.w). The shape is filled solid underneath: upstream's 1.5px hachure
+# gap at 1.5px weight covers it, so the native preview skips the hatch lines.
+void mm_ui_rough(ui_renderer* r, mm_scene* scene, mm_primitive* p, int index, float32 ox, float32 oy, float32 zoom, ui_color ink, ui_color paper, float32 stroke, int dash, int gap):
+	int solid = 0
+	mm_rough* rough = mm_rough_primitive(scene, p, index, &solid)
+	if (p.kind != MM_LINE && paper.a != 0.0):
+		if (p.kind == MM_POLYGON): mm_ui_polygon(r, p, ox, oy, zoom, mm_ui_color(-1), paper)
+		else:
+			ui_rect box = ui_rect_new(ox + cast(float32, p.x) * zoom, oy + cast(float32, p.y) * zoom, cast(float32, p.x2 - p.x) * zoom, cast(float32, p.y2 - p.y) * zoom)
+			float32 radius = cast(float32, mm_paint_radius(p)) * zoom
+			if (p.kind == MM_CIRCLE): radius = box.w * 0.5
+			ui_draw_rrect(r, box, radius, paper)
+	float32 scale = zoom / 10.0
+	list[int] runs = rough.strokes
+	int at = 0
+	while (at < runs.length):
+		int count = runs[at]
+		for i in range(1, count):
+			float32 ax = ox + cast(float32, runs[at + 1 + (i - 1) * 2]) * scale
+			float32 ay = oy + cast(float32, runs[at + 2 + (i - 1) * 2]) * scale
+			float32 bx = ox + cast(float32, runs[at + 1 + i * 2]) * scale
+			float32 by = oy + cast(float32, runs[at + 2 + i * 2]) * scale
+			mm_ui_line_dash(r, ax, ay, bx, by, dash, gap, ink, stroke)
+		at = at + 1 + count * 2
+	mm_rough_free(rough)
+
 void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoom, float32 pan_x, float32 pan_y):
 	if (scene == 0 || zoom <= 0.0): return
 	if (r.clip_depth[r.layer] >= ui_render_clip_depth): return
 	ui_clip_push(r, viewport)
 	ui_rect visible = ui_clip_current(r)
 	if (scene.has_background): ui_render_rect(r, viewport, mm_ui_color(scene.background))
-	for mm_primitive* p in scene.items:
+	for index in range(scene.items.length):
+		mm_primitive* p = scene.items[index]
 		int stroke_rgb = mm_paint_stroke(p)
 		# Native strokes approximate a gradient stroke with its first stop.
 		if ((p.effects & 2) && stroke_rgb >= 0): stroke_rgb = scene.gradient_start
@@ -148,7 +176,8 @@ void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoo
 		int dash = 0
 		int gap = 0
 		mm_ui_dash(p, &dash, &gap)
-		if (p.kind == MM_LINE): mm_ui_line_dash(r, x, y, x2, y2, dash, gap, ink, stroke)
+		if (mm_rough_drawn(scene, p)): mm_ui_rough(r, scene, p, index, viewport.x + pan_x, viewport.y + pan_y, zoom, ink, paper, stroke, dash, gap)
+		else if (p.kind == MM_LINE): mm_ui_line_dash(r, x, y, x2, y2, dash, gap, ink, stroke)
 		else if (p.kind == MM_BOX || p.kind == MM_CIRCLE):
 			ui_rect box = ui_rect_new(x, y, x2 - x, y2 - y)
 			float32 radius = cast(float32, mm_paint_radius(p)) * zoom

@@ -184,7 +184,7 @@ void test_directives_anywhere_and_precedence():
 	mm_document_free(d)
 	yaml_reject(c"flowchart LR\nA\n%%{init: {'theme': 'dark'}\n", c"unterminated Mermaid directive")
 	yaml_reject(c"flowchart LR\nA\n%%{init: {'theme': 'dark'}}%% B\n", c"unexpected text after Mermaid directive")
-	yaml_reject(c"flowchart LR\nA\n%%{init: {'theme': 'dark'}}%%\n%%{init: {'look': 'handDrawn'}}%%\n", c"unsupported look; supported: classic, neo")
+	yaml_reject(c"flowchart LR\nA\n%%{init: {'theme': 'dark'}}%%\n%%{init: {'look': 'sketch'}}%%\n", c"unsupported look; supported: classic, neo, handDrawn")
 
 void test_unknown_keys_are_ignored_deterministically():
 	char* source = c"---\nunknownTop: 1\nconfig:\n  fontFamilyX: serif\n  flowchart:\n    padding: 5\n  gitGraph:\n    rotateCommitLabel: false\n  sequence:\n    hideUnusedParticipants: true\n  elk:\n    mergeEdges: true\n---\n%%{init: {'maxTextSize': 90000, 'kanban': {'bogusKey': 200}, 'packet': {'rowHeight': 40}}}%%\nflowchart LR\nA\n"

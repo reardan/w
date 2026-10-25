@@ -134,7 +134,7 @@ void test_style_rich_labels():
 	parity_svg(c"sequenceDiagram\nA->>B: one<br>two\n", c">two</text>")
 
 void test_style_unsupported_options():
-	parity_reject(c"---\nconfig:\n  look: handDrawn\n---\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo")
+	parity_reject(c"---\nconfig:\n  look: sketch\n---\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo, handDrawn")
 	parity_reject(c"flowchart LR\nA\nstyle A text-shadow:1px\n", c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry")
 	parity_reject(c"---\nconfig:\n  themeCSS: \"#A rect { fill: red }\"\n---\nflowchart LR\nA\n", c"themeCSS supports .class { property: value; } rules")
 	# Unknown theme variables are ignored and recorded, as other unknown keys are.
