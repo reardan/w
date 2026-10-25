@@ -332,7 +332,8 @@ x64, including the guard allocator's leak checks.
   slanted forms) and `id@{ shape: …, label: … }` with the expanded shape
   catalogue (`shape_catalog.w`/`shapes.w`: documents, cylinders, braces,
   forks, hourglass, bolt, delay, card, flag, cloud, bang, folder, data store,
-  console, browser, person, bucket, …). Links cover `-->`, `---`, `-.->`,
+  console, browser, person, bucket, …; the flowchart shapes share their
+  names, outlines and sizes with flowcharts). Links cover `-->`, `---`, `-.->`,
   `-.-`, `==>`, `===` and longer forms, `x`/`o` heads, `<` bidirectional heads,
   pipe and inline (`-- text -->`, `-. text .->`) labels, chains and `&`
   groups. `classDef`, `class`, `:::class`, `style` and `linkStyle` apply. A

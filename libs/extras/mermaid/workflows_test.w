@@ -349,3 +349,63 @@ void test_workflow_cross_lane_routing_avoids_steps():
 		string_free(text)
 	__w_list_free(cast(__w_list*, directions))
 	__w_list_free(cast(__w_list*, labels))
+
+# Whether scene s holds a polygon with exactly the points of `outline`.
+int workflow_has_outline(mm_scene* s, mm_primitive* outline):
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_POLYGON || p.points.length != outline.points.length || p.x != outline.x || p.y != outline.y): continue
+		int same = 1
+		for i in range(p.points.length):
+			if (p.points[i] != outline.points[i]): same = 0
+		if (same): return 1
+	return 0
+
+# The outline shapes.w draws for a code in node i's bounds.
+int workflow_outline_matches(mm_scene* s, int i, int code):
+	mm_bounds* b = s.nodes[i]
+	mm_scene* t = new mm_scene()
+	t.items = new list[mm_primitive*]
+	t.nodes = new list[mm_bounds*]
+	mm_shape_draw(t, code, b.x, b.y, b.w, b.h)
+	int found = t.items.length > 0 && t.items[0].kind == MM_POLYGON && workflow_has_outline(s, t.items[0])
+	mm_scene_free(t)
+	return found
+
+# One shape catalogue for every family: names, codes and outlines are shared
+# by flowcharts and swimlanes.
+void test_workflow_flowchart_share_shape_catalogue():
+	for code in range(MM_SHAPE_CYLINDER, MM_SHAPE_LAST + 1):
+		char* name = mm_shape_name(code)
+		asserts(c"every catalogue code has a name", name != 0)
+		assert_equal(code, mm_shape_lookup(name))
+		# Flowcharts take the flowchart shapes, not the architecture-style extras.
+		if (code <= MM_SHAPE_DATA_STORE): assert_equal(code, mm_flow_shape_code(name))
+		else: assert_equal(-1, mm_flow_shape_code(name))
+		free(name)
+	asserts(c"bracket-only codes have no name", mm_shape_name(MM_SHAPE_ICON) == 0)
+	assert_equal(MM_SHAPE_TRAP_BOTTOM, mm_shape_lookup(c"trapezoid-base-bottom"))
+	assert_equal(MM_SHAPE_TRAP_TOP, mm_shape_lookup(c"trapezoid-base-top"))
+	assert_equal(MM_SHAPE_NOTCH_PENTAGON, mm_shape_lookup(c"trapezoidal-pentagon"))
+	assert_equal(MM_SHAPE_TRAP_BOTTOM, mm_flow_shape_code(c"trapezoid-bottom"))
+	list[char*] names = list[char*]{c"cyl", c"lin-cyl", c"docs", c"st-rect", c"tri", c"hourglass", c"tag-doc", c"bow-rect", c"flag", c"notch-pent"}
+	for char* name in names:
+		int code = mm_shape_lookup(name)
+		string_builder* flow = string_from(c"flowchart TD\nA@{ shape: ")
+		string_append(flow, name)
+		string_append(flow, c", label: \"Shape\" }\n")
+		mm_document* fd = mm_parse(flow.data, flow.length)
+		mm_scene* fs = mm_render(fd)
+		asserts(c"flowchart draws the shared outline", workflow_outline_matches(fs, 0, code))
+		string_builder* swim = string_from(c"swimlane-beta\nsubgraph L\nA@{ shape: ")
+		string_append(swim, name)
+		string_append(swim, c", label: \"Shape\" }\nend\n")
+		mm_document* sd = mm_parse(swim.data, swim.length)
+		mm_scene* ss = mm_render(sd)
+		asserts(c"swimlane draws the shared outline", workflow_outline_matches(ss, 1, code))
+		mm_scene_free(fs)
+		mm_scene_free(ss)
+		mm_document_free(fd)
+		mm_document_free(sd)
+		string_free(flow)
+		string_free(swim)
+	__w_list_free(cast(__w_list*, names))

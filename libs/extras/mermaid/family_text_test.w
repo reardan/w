@@ -155,3 +155,68 @@ void test_pie_legend_and_boxes_use_measured_widths():
 	asserts(c"narrow commit id narrower than a per-character estimate", third.x - second.x < 12 * 8 + 60)
 	mm_scene_free(s)
 	mm_document_free(d)
+
+void test_vertical_timeline_wraps_like_horizontal():
+	mm_document* d = family_parse(c"timeline TD\n2024 : A deliberately long event description that wraps inside its box\nA period title long enough to wrap in the column : Short\n")
+	mm_scene* s = mm_render(d)
+	mm_bounds* period = s.nodes[0]
+	# Columns keep the 170px default instead of growing to the line.
+	assert_equal(170, period.w)
+	mm_bounds* second = s.nodes[1]
+	assert_equal(170, second.w)
+	int event_lines = 0
+	int event_x = -1
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_BOX && p.y == period.y && p.x > period.x + period.w):
+			event_x = p.x
+			assert_equal(170, p.x2 - p.x)
+	asserts(c"event box found", event_x > 0)
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_TEXT || p.x != event_x + 15): continue
+		asserts(c"wrapped event line fits its box", family_right(p) <= event_x + 170 - 15)
+		if (p.y < second.y): event_lines = event_lines + 1
+	asserts(c"event wraps onto several lines", event_lines >= 3)
+	# The row grows with the wrapped event: 45px plus 18px per extra line.
+	assert_equal(45 + (event_lines - 1) * 18, period.h)
+	# The long period title wraps inside its column too.
+	int title_lines = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT && p.x == 75 && p.y >= second.y && p.y < second.y + second.h): title_lines = title_lines + 1
+	asserts(c"period title wraps", title_lines >= 2)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_journey_task_labels_wrap():
+	mm_document* d = family_parse(c"journey\nsection Day\nA task label long enough to wrap inside the fixed width task box: 3: Me\nShort: 4: Me\n")
+	mm_scene* s = mm_render(d)
+	mm_bounds* task = s.nodes[0]
+	mm_bounds* other = s.nodes[1]
+	assert_equal(160, task.w)
+	int lines = 0
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_TEXT || p.x != task.x + 10 || p.y < task.y || p.y > task.y + task.h): continue
+		asserts(c"wrapped task line fits its box", family_right(p) <= task.x + task.w - 10)
+		lines = lines + 1
+	asserts(c"task label wraps", lines >= 3)
+	# Every task box shares the taller height.
+	assert_equal(task.h, other.h)
+	asserts(c"task box grows", task.h > 50)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_requirement_boxes_use_measured_rows():
+	mm_document* d = family_parse(c"requirementDiagram\nrequirement r {\n  id: 1\n  text: A requirement text that is measured\n}\nelement e {\n  type: db\n}\nr - satisfies -> e\n")
+	mm_scene* s = mm_render(d)
+	mm_bounds* r = s.nodes[0]
+	# 10px padding, the type line (line height + 6) and the name, the 20px
+	# divider gap and two property rows (line height + 6); the width follows
+	# the widest measured line.
+	int row = MM_TEXT_LINE + 6
+	assert_equal(10 + row + MM_TEXT_LINE + 20 + row * 2 + 10, r.h)
+	assert_equal(mm_text_width(c"text: A requirement text that is measured", 0) + 24, r.w)
+	mm_primitive* type = family_text(s, c"<<requirement>>")
+	asserts(c"type line centered above the name", type != 0 && type.y < r.y + 20 && type.x == r.x + (r.w - mm_text_width(c"<<requirement>>", 0)) / 2)
+	mm_primitive* text = family_text(s, c"text: A requirement text that is measured")
+	asserts(c"row inside the box", text != 0 && family_right(text) <= r.x + r.w - 12)
+	mm_scene_free(s)
+	mm_document_free(d)

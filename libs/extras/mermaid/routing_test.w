@@ -286,3 +286,195 @@ void test_large_graph_budgets():
 	assert_strings_equal(c"force layout node limit exceeded", d.error)
 	mm_document_free(d)
 	string_free(force)
+
+# Subgraphs of `per` chained nodes each, plus random edges between nodes of
+# different subgraphs (laid out against their group boxes, so not
+# channel-routed).
+char* routing_nested_flow(char* direction, int groups, int per, int edges, int seed):
+	string_builder* s = string_from(c"flowchart ")
+	string_append(s, direction)
+	string_append_char(s, 10)
+	for g in range(groups):
+		string_append(s, c"subgraph g")
+		string_append_int(s, g)
+		string_append(s, c"[Group ")
+		string_append_int(s, g)
+		string_append(s, c"]\n")
+		for k in range(per):
+			string_append(s, c"n")
+			string_append_int(s, g * per + k)
+			if (k + 1 < per):
+				string_append(s, c" --> n")
+				string_append_int(s, g * per + k + 1)
+			string_append_char(s, 10)
+		string_append(s, c"end\n")
+	int state = seed
+	int nodes = groups * per
+	for k in range(edges):
+		int a = routing_next(&state) % nodes
+		int b = routing_next(&state) % nodes
+		if (a / per == b / per): continue
+		string_append(s, c"n")
+		string_append_int(s, a)
+		string_append(s, c" --> n")
+		string_append_int(s, b)
+		string_append_char(s, 10)
+	char* text = s.data
+	free(s)
+	return text
+
+# Quality of the direct routes the obstacle router replaces (the renderer
+# before it), for the before/after comparisons below.
+mm_route_quality* routing_measure_direct(char* text):
+	mm_render_obstacle_enabled = 0
+	mm_scene* s = 0
+	mm_document* d = 0
+	mm_route_quality* q = routing_measure(text, &s, &d)
+	mm_render_obstacle_enabled = 1
+	mm_scene_free(s)
+	mm_document_free(d)
+	return q
+
+void routing_print(char* name, mm_route_quality* q):
+	print_error(name)
+	print_int0(c": crossings ", q.crossings)
+	print_int0(c" node hits ", q.node_hits)
+	print_int0(c" title hits ", q.title_hits)
+	print_int0(c" end hits ", q.end_hits)
+	print_int0(c" overlaps ", q.overlaps)
+	print_int0(c" label overlaps ", q.label_overlaps)
+	print_int0(c" label-node ", q.label_node_overlaps)
+	print_int(c" shared ports ", q.shared_ports)
+
+void test_self_loops_avoid_neighbors():
+	# A's loop would run through B, packed beside it in the same rank.
+	char* text = c"---\nconfig:\n  flowchart:\n    nodeSpacing: 20\n---\nflowchart TB\nR --> A\nR --> B\nA --> A\nB --> B\nR --> C\nC --> C\n"
+	mm_route_quality* before = routing_measure_direct(text)
+	routing_print(c"self loops before", before)
+	mm_scene* s = 0
+	mm_document* d = 0
+	mm_route_quality* q = routing_measure(text, &s, &d)
+	routing_print(c"self loops after", q)
+	asserts(c"direct loops hit their neighbors", before.node_hits > 0)
+	assert_equal(0, q.node_hits)
+	assert_equal(0, q.overlaps)
+	mm_edge_route* r = mm_edge_route_of(s.nodes[1], d.edges[2], 0)
+	asserts(c"blocked loop gets an obstacle route", r != 0 && r.points != 0)
+	free(before)
+	free(q)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_same_rank_edges_route_around_nodes():
+	# Three nodes held in one row by persisted positions; A and B are joined
+	# both ways past M, and A to M twice.
+	char* text = c"flowchart TB\nA --> B\nB --> A\nA --> M\nA -->|again| M\nM\n%% @w-position \"A\" 40 40\n%% @w-position \"M\" 300 40\n%% @w-position \"B\" 560 40\n"
+	mm_route_quality* before = routing_measure_direct(text)
+	routing_print(c"same rank before", before)
+	mm_scene* s = 0
+	mm_document* d = 0
+	mm_route_quality* q = routing_measure(text, &s, &d)
+	routing_print(c"same rank after", q)
+	asserts(c"direct same-rank routes run through their ends", before.end_hits > 0)
+	assert_equal(0, q.end_hits)
+	assert_equal(0, q.node_hits)
+	assert_equal(0, q.overlaps)
+	assert_equal(0, q.shared_ports)
+	# Four A-side ports in one 80px gap: the route ordering keeps 4 crossings.
+	asserts(c"same-rank crossings pinned", q.crossings <= 4)
+	# Same-rank edges leave by the facing sides, with arrowheads level.
+	mm_edge_route* r = mm_edge_route_of(s.nodes[0], d.edges[2], 0)
+	asserts(c"side ports", r != 0 && r.points != 0 && r.from_dx == 1 && r.to_dx == -1)
+	free(before)
+	free(q)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_nested_subgraph_edges_avoid_nodes_and_titles():
+	list[char*] directions = list[char*]{c"TB", c"LR"}
+	for char* direction in directions:
+		char* text = routing_nested_flow(direction, 4, 3, 12, 5)
+		mm_route_quality* before = routing_measure_direct(text)
+		routing_print(c"nested before", before)
+		mm_scene* s = 0
+		mm_document* d = 0
+		mm_route_quality* q = routing_measure(text, &s, &d)
+		routing_print(c"nested after", q)
+		asserts(c"direct nested routes cross nodes", before.node_hits > 0)
+		assert_equal(0, q.node_hits)
+		assert_equal(0, q.title_hits)
+		assert_equal(0, q.overlaps)
+		asserts(c"no more crossings than direct routes", q.crossings <= before.crossings)
+		# Deterministic display list.
+		mm_scene* again = mm_render(d)
+		char* first = mm_svg(s)
+		char* second = mm_svg(again)
+		assert_strings_equal(first, second)
+		free(first)
+		free(second)
+		mm_scene_free(again)
+		free(before)
+		free(q)
+		mm_scene_free(s)
+		mm_document_free(d)
+		free(text)
+	__w_list_free(cast(__w_list*, directions))
+
+void test_agentflow_curves_follow_routes():
+	# The long A --> D edge has a curve and two nodes in its way.
+	list[char*] curves = list[char*]{c"step", c"linear", c"basis"}
+	for char* curve in curves:
+		string_builder* text = string_from(c"agentflow-beta TB\nA --> B\nB --> C\nC --> D\nA e1@--> D\nX --> B\nX --> D\nflow G[\"Group\"]\n  P --> Q\nend\nA e2@--> Q\ne1@{curve: ")
+		string_append(text, curve)
+		string_append(text, c"}\ne2@{curve: ")
+		string_append(text, curve)
+		string_append(text, c"}\n")
+		mm_route_quality* before = routing_measure_direct(text.data)
+		routing_print(curve, before)
+		mm_scene* s = 0
+		mm_document* d = 0
+		mm_route_quality* q = routing_measure(text.data, &s, &d)
+		routing_print(curve, q)
+		assert_equal(0, q.node_hits)
+		assert_equal(0, q.title_hits)
+		mm_edge_route* r = mm_edge_route_of(s.nodes[0], d.edges[3], 0)
+		asserts(c"curved agentflow edge keeps its channel", r != 0 && r.lanes != 0 && r.lanes.length == 2)
+		free(before)
+		free(q)
+		mm_scene_free(s)
+		mm_document_free(d)
+		string_free(text)
+	__w_list_free(cast(__w_list*, curves))
+
+void test_obstacle_router_unit():
+	# A wall between the stubs: the route goes around it, clear of the wall.
+	list[int] rects = list[int]{100, -200, 140, 200}
+	list[int] segs = new list[int]
+	list[int] kinds = new list[int]
+	list[int] out = new list[int]
+	list[int] chosen = list[int]{0, 0}
+	list[int] starts = list[int]{0, 0, 0, 0}
+	list[int] targets = list[int]{240, 0, 0, 0}
+	asserts(c"route found", mm_obstacle_route(rects, segs, kinds, starts, targets, out, chosen))
+	asserts(c"route has corners", out.length >= 8)
+	for k in range(out.length / 2 - 1): asserts(c"leg clear of the wall", mm_obstacle_segment_blocked(rects, 0, out[k * 2], out[k * 2 + 1], out[k * 2 + 2], out[k * 2 + 3]) == 0)
+	# An occupied unrelated leg on the free line pushes the route off it.
+	while (out.length > 0): out.pop()
+	__w_list_free(cast(__w_list*, rects))
+	rects = new list[int]
+	segs.push(-100)
+	segs.push(0)
+	segs.push(400)
+	segs.push(0)
+	kinds.push(2)
+	starts[2] = 1
+	targets[2] = 1
+	asserts(c"route found", mm_obstacle_route(rects, segs, kinds, starts, targets, out, chosen))
+	for k in range(out.length / 2 - 1): asserts(c"no collinear overlap", mm_render_segments_overlap(out, k * 2, segs, 0) == 0)
+	__w_list_free(cast(__w_list*, rects))
+	__w_list_free(cast(__w_list*, segs))
+	__w_list_free(cast(__w_list*, kinds))
+	__w_list_free(cast(__w_list*, out))
+	__w_list_free(cast(__w_list*, chosen))
+	__w_list_free(cast(__w_list*, starts))
+	__w_list_free(cast(__w_list*, targets))

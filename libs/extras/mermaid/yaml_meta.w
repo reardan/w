@@ -6,7 +6,11 @@
 # else is a string. Each top-level key becomes an mm_property whose value is
 # the scalar text, or canonical JSON for a mapping or sequence. Prototype-
 # shaped keys (__proto__, constructor, prototype) are dropped at every level.
+# Quoted and block scalars come from the shared YAML scalar readers in
+# config.w (mm_yaml_quoted, mm_yaml_block_text), so metadata and frontmatter
+# read strings identically.
 import libs.extras.mermaid.parse_common
+import libs.extras.mermaid.config
 
 const int MM_YMETA_MAX_DEPTH = 32
 
@@ -102,74 +106,12 @@ void mm_ymeta_emit_scalar(mm_ymeta* y, string_builder* out):
 	if (y.type == MM_VALUE_STRING): mm_ymeta_json_string(out, y.scalar)
 	else: string_append(out, y.scalar)
 
-int mm_ymeta_hex(int c):
-	if (c >= '0' && c <= '9'): return c - '0'
-	if (c >= 'a' && c <= 'f'): return c - 'a' + 10
-	if (c >= 'A' && c <= 'F'): return c - 'A' + 10
-	return -1
-
-void mm_yaml_utf8(string_builder* out, int code):
-	if (code < 128): string_append_char(out, code)
-	else if (code < 2048):
-		string_append_char(out, 192 + code / 64)
-		string_append_char(out, 128 + code % 64)
-	else:
-		string_append_char(out, 224 + code / 4096)
-		string_append_char(out, 128 + code / 64 % 64)
-		string_append_char(out, 128 + code % 64)
-
 void mm_ymeta_quoted(mm_ymeta* y):
-	int quote = mm_ymeta_peek(y)
-	int start = y.pos
-	y.pos = y.pos + 1
-	string_builder* text = string_new()
-	while (y.doc.error == 0):
-		int c = mm_ymeta_peek(y)
-		if (c == 0):
-			mm_ymeta_fail(y, start, c"unterminated quoted metadata value")
-			break
-		y.pos = y.pos + 1
-		if (c == quote):
-			if (quote == 39 && mm_ymeta_peek(y) == 39):
-				string_append_char(text, 39)
-				y.pos = y.pos + 1
-				continue
-			break
-		if (c == 10):
-			# Line folding: a single break becomes a space.
-			while (text.length > 0 && text.data[text.length - 1] == 32):
-				text.length = text.length - 1
-				text.data[text.length] = 0
-			while (mm_ymeta_peek(y) == 32 || mm_ymeta_peek(y) == 9): y.pos = y.pos + 1
-			if (mm_ymeta_peek(y) == 10): string_append_char(text, 10)
-			else: string_append_char(text, 32)
-			continue
-		if (quote == '"' && c == '\\'):
-			int e = mm_ymeta_peek(y)
-			y.pos = y.pos + 1
-			if (e == 'n'): string_append_char(text, 10)
-			else if (e == 't'): string_append_char(text, 9)
-			else if (e == 'r'): string_append_char(text, 13)
-			else if (e == '0'): string_append_char(text, 32)
-			else if (e == '"' || e == '\\' || e == '/' || e == 32): string_append_char(text, e)
-			else if (e == 'u' || e == 'x'):
-				int count = 4
-				if (e == 'x'): count = 2
-				int code = 0
-				for i in range(count):
-					int digit = mm_ymeta_hex(mm_ymeta_peek(y))
-					if (digit < 0):
-						mm_ymeta_fail(y, y.pos, c"invalid metadata escape")
-						break
-					code = code * 16 + digit
-					y.pos = y.pos + 1
-				if (code == 0): code = 32
-				mm_yaml_utf8(text, code)
-			else: mm_ymeta_fail(y, y.pos - 1, c"invalid metadata escape")
-			continue
-		string_append_char(text, c)
-	mm_ymeta_set(y, strclone(text.data), MM_VALUE_STRING)
-	string_free(text)
+	int next = 0
+	char* text = mm_yaml_quoted(y.doc, y.base + y.pos, y.base + y.length, &next, c"unterminated quoted metadata value", 1, 1)
+	y.pos = next - y.base
+	if (y.pos > y.length): y.pos = y.length
+	mm_ymeta_set(y, text, MM_VALUE_STRING)
 
 # Plain scalar: flow context stops at , ] } and every context at ` #` or a newline.
 void mm_ymeta_plain(mm_ymeta* y, int flow):
@@ -344,56 +286,19 @@ void mm_ymeta_line_end(mm_ymeta* y):
 	if (mm_ymeta_peek(y) == 10): y.pos = y.pos + 1
 	else if (mm_ymeta_peek(y) != 0): mm_ymeta_fail(y, y.pos, c"unexpected text after metadata value")
 
-# `|` literal or `>` folded block scalar, with optional - / + chomping.
+# `|` literal or `>` folded block scalar (chomping and indentation
+# indicators), read by the shared block-scalar reader.
 void mm_ymeta_block_scalar(mm_ymeta* y, int indent):
-	int folded = mm_ymeta_peek(y) == '>'
-	y.pos = y.pos + 1
-	int chomp = 0
-	if (mm_ymeta_peek(y) == '-'): chomp = -1
-	if (mm_ymeta_peek(y) == '+'): chomp = 1
-	if (chomp != 0): y.pos = y.pos + 1
-	mm_ymeta_line_end(y)
-	string_builder* text = string_new()
-	int content_indent = -1
-	int pending = 0
-	int any = 0
-	while (y.pos < y.length && y.doc.error == 0):
-		int content = mm_ymeta_content(y, y.pos)
-		int c = mm_ymeta_at(y, content)
-		if (c == 10 || c == 0):
-			pending = pending + 1
-			y.pos = content
-			if (c == 10): y.pos = y.pos + 1
-			continue
-		int column = mm_ymeta_indent(y, y.pos)
-		if (content_indent < 0):
-			if (column <= indent): break
-			content_indent = column
-		if (column < content_indent): break
-		if (any && folded && pending == 0): string_append_char(text, 32)
-		else if (any && folded == 0): string_append_char(text, 10)
-		for i in range(pending): string_append_char(text, 10)
-		pending = 0
-		# Indentation beyond the content indent is content.
-		int skip = 0
-		int at = y.pos
-		while (skip < content_indent && (mm_ymeta_at(y, at) == 32 || mm_ymeta_at(y, at) == 9)):
-			if (mm_ymeta_at(y, at) == 9): skip = skip + 4
-			else: skip = skip + 1
-			at = at + 1
-		int end = at
-		while (mm_ymeta_at(y, end) != 0 && mm_ymeta_at(y, end) != 10): end = end + 1
-		int stop = end
-		while (stop > at && mm_ymeta_at(y, stop - 1) == 13): stop = stop - 1
-		string_append_bytes(text, y.text + at, stop - at)
-		any = 1
-		y.pos = end
-		if (mm_ymeta_peek(y) == 10): y.pos = y.pos + 1
-	if (any && chomp != -1): string_append_char(text, 10)
-	if (chomp == 1):
-		for i in range(pending): string_append_char(text, 10)
-	mm_ymeta_set(y, strclone(text.data), MM_VALUE_STRING)
-	string_free(text)
+	int header = y.pos
+	int end = header
+	while (end < y.length && mm_ymeta_at(y, end) != 10): end = end + 1
+	int body = end
+	if (body < y.length): body = body + 1
+	int next = 0
+	char* text = mm_yaml_block_text(y.doc, y.base + header, y.base + end, indent, y.base + body, y.base + y.length, 4, &next, y.base + header, c"unexpected text after metadata value")
+	if (text == 0): text = strclone(c"")
+	y.pos = next - y.base
+	mm_ymeta_set(y, text, MM_VALUE_STRING)
 
 int mm_ymeta_column(mm_ymeta* y, int at):
 	int start = mm_ymeta_line_start(y, at)

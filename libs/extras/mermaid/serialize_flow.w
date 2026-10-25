@@ -35,13 +35,13 @@ void mm_serialize_shape(mm_serializer* out, mm_node* n):
 		close = c"/]"
 		if (n.shape == 25 || n.shape == 27): open = c"[\\"
 		if (n.shape == 25 || n.shape == 26): close = c"\\]"
-	else if (n.shape == MM_FLOW_CYLINDER):
+	else if (n.shape == MM_SHAPE_CYLINDER):
 		open = c"[("
 		close = c")]"
-	else if (n.shape == MM_FLOW_DOUBLE_CIRCLE):
+	else if (n.shape == MM_SHAPE_DOUBLE_CIRCLE):
 		open = c"((("
 		close = c")))"
-	else if (n.shape == MM_FLOW_ODD): open = c">"
+	else if (n.shape == MM_SHAPE_ODD): open = c">"
 	else if (n.shape != 0): out.failed = 1
 	string_append(out.text, open)
 	mm_serialize_flow_label(out, n.label)
@@ -337,15 +337,6 @@ void mm_serialize_scope_items(mm_serializer* out, mm_document* d, int scope, int
 	__w_list_free(cast(__w_list*, blocks))
 	__w_list_free(cast(__w_list*, keys))
 
-# Shape names `@{ shape: ... }` accepts, one per code.
-char* mm_serialize_shape_name(int code):
-	list[char*] names = list[char*]{c"rect", c"rounded", c"stadium", c"fr-rect", c"cyl", c"circle", c"diam", c"hex", c"lean-r", c"lean-l", c"trap-b", c"trap-t", c"dbl-circ", c"text", c"notch-rect", c"lin-rect", c"sm-circ", c"fr-circ", c"fork", c"hourglass", c"brace", c"brace-r", c"braces", c"bolt", c"doc", c"delay", c"h-cyl", c"lin-cyl", c"curv-trap", c"div-rect", c"tri", c"win-pane", c"f-circ", c"notch-pent", c"flip-tri", c"sl-rect", c"docs", c"st-rect", c"bow-rect", c"cross-circ", c"tag-doc", c"tag-rect", c"flag", c"odd", c"lin-doc", c"datastore", c"folder", c"bucket", c"console", c"browser", c"person", c"bang", c"cloud", c"collapsedGroup"}
-	char* result = 0
-	for char* name in names:
-		if (result == 0 && mm_shape_lookup(name) == code): result = name
-	__w_list_free(cast(__w_list*, names))
-	return result
-
 # The swimlane bracket form of a shape code, or 0 when it has none.
 int mm_serialize_swim_bracket(int shape, char** open, char** close):
 	list[int] codes = list[int]{MM_SHAPE_RECT, MM_SHAPE_ROUNDED, MM_SHAPE_CIRCLE, MM_SHAPE_DIAMOND, MM_SHAPE_STADIUM, MM_SHAPE_FRAMED, MM_SHAPE_HEXAGON, MM_SHAPE_LEAN_RIGHT, MM_SHAPE_LEAN_LEFT, MM_SHAPE_TRAP_BOTTOM, MM_SHAPE_TRAP_TOP, MM_SHAPE_CYLINDER, MM_SHAPE_DOUBLE_CIRCLE, MM_SHAPE_ODD}
@@ -403,7 +394,7 @@ void mm_serialize_swim_node(mm_serializer* out, mm_document* d, int i, int depth
 	char* close = 0
 	if (shaped == 0 && mm_serialize_swim_bracket(n.shape, &open, &close) == 0):
 		# A shape without a bracket form goes into the metadata block.
-		char* name = mm_serialize_shape_name(n.shape)
+		char* name = mm_shape_name(n.shape)
 		if (name == 0 || n.metadata.length != 0): out.failed = 1
 		else:
 			mm_out(out, c"@{ shape: ")
@@ -412,6 +403,7 @@ void mm_serialize_swim_node(mm_serializer* out, mm_document* d, int i, int depth
 				mm_out(out, c", label: ")
 				mm_serialize_yaml_string(out, n.label)
 			mm_out(out, c" }")
+		if (name != 0): free(name)
 		mm_out_line(out)
 		mm_serialize_node_style(out, d, n)
 		return

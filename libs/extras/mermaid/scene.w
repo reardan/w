@@ -77,6 +77,20 @@ struct mm_edge_route:
 	int placed
 	int label_x
 	int label_y
+	# Obstacle-aware route (routing.w) for an edge the channels do not cover
+	# (same-rank, self loop, endpoints in different subgraphs, moved
+	# endpoint): absolute polyline from port to port when drawn, the endpoint
+	# snapshot it was routed at, the outward port directions and its axis.
+	list[int] points
+	int points_from_x
+	int points_from_y
+	int points_to_x
+	int points_to_y
+	int from_dx
+	int from_dy
+	int to_dx
+	int to_dy
+	int points_horizontal
 
 struct mm_bounds:
 	int x
@@ -184,11 +198,16 @@ void mm_marker(mm_scene* s, int x, int y, int dx, int dy, int card):
 	if (card == 0 || card == 2): mm_draw(s, MM_CIRCLE, cx - 4, cy - 4, cx + 4, cy + 4, 0, c"")
 	else: mm_line(s, cx + px * 7, cy + py * 7, cx - px * 7, cy - py * 7, 0)
 
+void mm_edge_route_clear_points(mm_edge_route* r):
+	if (r.points != 0): __w_list_free(cast(__w_list*, r.points))
+	r.points = 0
+
 void mm_edge_route_clear(mm_edge_route* r):
 	if (r.lanes != 0): __w_list_free(cast(__w_list*, r.lanes))
 	if (r.spans != 0): __w_list_free(cast(__w_list*, r.spans))
 	if (r.gaps != 0): __w_list_free(cast(__w_list*, r.gaps))
 	if (r.bends != 0): __w_list_free(cast(__w_list*, r.bends))
+	mm_edge_route_clear_points(r)
 	r.bends = 0
 	r.lanes = 0
 	r.spans = 0

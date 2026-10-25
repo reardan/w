@@ -19,6 +19,12 @@ struct mm_route_quality:
 	# Collinear overlaps (> 4px) between path segments of two edges that share
 	# no endpoint: drawn on top of each other, they cannot be told apart.
 	int overlaps
+	# (edge, group) pairs where a path enters the title area of a group that
+	# is not one of its endpoints.
+	int title_hits
+	# (edge, endpoint) pairs where a path runs through the inside of its own
+	# endpoint box instead of leaving from its border.
+	int end_hits
 
 int mm_route_orientation(float ax, float ay, float bx, float by, float cx, float cy):
 	float value = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
@@ -165,6 +171,29 @@ mm_route_quality* mm_route_measure(mm_document* d, mm_scene* s):
 				if (mm_route_segment_hits_box(segments, at, s.nodes[n])): hit = 1
 				at = at + 4
 			q.node_hits = q.node_hits + hit
+		for n in range(2):
+			int end = from
+			if (n == 1): end = to
+			if (n == 1 && to == from): continue
+			if (mm_route_obstacle(d, s, end) == 0): continue
+			int hit = 0
+			int at = first
+			while (at < segments.length && hit == 0):
+				if (mm_route_segment_hits_box(segments, at, s.nodes[end])): hit = 1
+				at = at + 4
+			q.end_hits = q.end_hits + hit
+		list[int] title = new list[int]
+		for n in range(d.nodes.length):
+			if (n == from || n == to): continue
+			while (title.length > 0): title.pop()
+			if (mm_group_title_box(d, s, n, title) == 0): continue
+			int hit = 0
+			int at = first
+			while (at < segments.length && hit == 0):
+				if (mm_render_segment_enters(segments[at], segments[at + 1], segments[at + 2], segments[at + 3], title[0], title[1], title[2], title[3])): hit = 1
+				at = at + 4
+			q.title_hits = q.title_hits + hit
+		__w_list_free(cast(__w_list*, title))
 		mm_route_edge_scene_free(view)
 		mm_scene* full = mm_route_edge_scene(d, s, e, 0)
 		for mm_primitive* p in full.items:
