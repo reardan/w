@@ -1628,7 +1628,6 @@ list[char*] gen_reverse_expected():
 	}
 
 
-
 void append_flag(string_builder* out, int value):
 	if (value): string_append_char(out, '1')
 	else: string_append_char(out, '0')

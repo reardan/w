@@ -152,8 +152,6 @@ void test_group_flow_1():
 	aggregate_groups_case(c"struct Wide:\n\tref[g0] int* p0\n\tref[g1] int* p1\n\tref[g2] int* p2\n\tref[g3] int* p3\n\tref[g4] int* p4\n\tref[g5] int* p5\n\tref[g6] int* p6\n\tref[g7] int* p7\n\tref[g8] int* p8\n\tref[g9] int* p9\n\tref[g10] int* p10\n\tref[g11] int* p11\n\tref[g12] int* p12\n\tref[g13] int* p13\n\tref[g14] int* p14\n\tref[g15] int* p15\n\tref[g16] int* p16\n\tref[g17] int* p17\n\tref[g18] int* p18\n\tref[g19] int* p19\n\tref[g20] int* p20\n\tref[g21] int* p21\n\tref[g22] int* p22\n\tref[g23] int* p23\n\tref[g24] int* p24\n\tref[g25] int* p25\n\tref[g26] int* p26\n\tref[g27] int* p27\n\tref[g28] int* p28\n\tref[g29] int* p29\n\tref[g30] int* p30\n\tref[g31] int* p31\n\tref[g32] int* p32\nref[g30] int* last(ref[g0,g1,g2,g3,g4,g5,g6,g7,g8,g9,g10,g11,g12,g13,g14,g15,g16,g17,g18,g19,g20,g21,g22,g23,g24,g25,g26,g27,g28,g29,g30,g31,g32] Wide value):\n\treturn value.p30\nint main():\n\treturn 0\n", c"32 lifetime groups")
 
 
-
-
 # Coverage-drive addition: duplicate named initialization of a borrowed
 # aggregate (compiler/safe.w safe_record_construct).
 void test_borrowed_aggregate_duplicate_initializer():

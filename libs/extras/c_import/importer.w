@@ -56,8 +56,6 @@ struct ci_struct_layout:
 	int max_align
 
 
-
-
 # Session state shared by every c_import statement in one compilation.
 map[char*, int] ci_imported_functions
 map[char*, int] ci_const_values

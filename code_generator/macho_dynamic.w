@@ -23,9 +23,9 @@ import code_generator.code_emitter
 import code_generator.dynamic_registry
 
 
-int strlen(char *s);
-int strcmp(char *a, char *b);
-void error(char *s);
+int strlen(char* s);
+int strcmp(char* a, char* b);
+void error(char* s);
 int op(int msb, int low);   /* arm64.w */
 
 
@@ -59,7 +59,7 @@ void macho_bw_uleb(int v):
 	macho_bw_int8(v)
 
 
-void macho_bw_cstr(char *s):
+void macho_bw_cstr(char* s):
 	int i = 0
 	while (s[i]):
 		macho_bw_int8(s[i])

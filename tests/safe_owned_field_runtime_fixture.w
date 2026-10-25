@@ -26,7 +26,7 @@ int field_exercise():
 
 
 struct FieldMixedOwner:
-	own[item,data] OwnedView* child
+	own[item, data] OwnedView* child
 	int tag
 
 
@@ -36,14 +36,14 @@ int field_mixed():
 	int[2] second
 	first[0] = 4
 	second[0] = 9
-	own[a,b] FieldMixedOwner* holder = new FieldMixedOwner(owned_view_new(&item, first), 1)
+	own[a, b] FieldMixedOwner* holder = new FieldMixedOwner(owned_view_new(&item, first), 1)
 	holder.child = owned_view_new(&item, second)
 	ref int[] data = holder.child.data
 	return data[0] + data.length
 
 
 struct FieldExclusiveOwner:
-	own[item,shared] ExclusiveOwner* child
+	own[item, shared] ExclusiveOwner* child
 	int tag
 
 
@@ -51,7 +51,7 @@ int field_exclusive():
 	int first = 3
 	int second = 4
 	int shared = 7
-	own[a,b] FieldExclusiveOwner* holder = new FieldExclusiveOwner(exclusive_new(&first, &shared), 1)
+	own[a, b] FieldExclusiveOwner* holder = new FieldExclusiveOwner(exclusive_new(&first, &shared), 1)
 	holder.child = exclusive_new(&second, &shared)
 	refmut int* value = holder.child.item
 	*value = 11

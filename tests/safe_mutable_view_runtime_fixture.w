@@ -9,7 +9,7 @@ int mutable_view_exercise():
 	int value = 3
 	int[3] text
 	text[1] = 8
-	own[a,b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 7))
+	own[a, b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 7))
 	MutableViewIncrement* increment = mutable_view_increment
 	for i in range(100):
 		refmut MutableViewOuter* view = mutable_view_identity[MutableViewOuter](owner)
@@ -26,7 +26,7 @@ int mutable_view_exercise():
 int mutable_view_nested_child():
 	int value = 7
 	int[2] text
-	own[a,b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
+	own[a, b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
 	refmut MutableViewLeaf* child = owner.child
 	refmut int* stored = child.stored
 	*stored = 8
@@ -39,7 +39,7 @@ int mutable_view_nested_child():
 int mutable_view_deferred():
 	int value = 7
 	int[2] text
-	own[a,b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
+	own[a, b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
 	refmut MutableViewOuter* view = owner
 	defer (mutable_view_increment(view))
 	return 0

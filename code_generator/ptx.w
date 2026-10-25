@@ -28,8 +28,8 @@ the --ptx=<path> file, so the emitter is testable without a GPU.
 This file is compiled by the committed seed: only seed-understood syntax.
 */
 
-void error(char *s);                    /* compiler/tokenizer.w */
-int sym_lookup(char *s);                /* compiler/symbol_table.w */
+void error(char* s);                    /* compiler/tokenizer.w */
+int sym_lookup(char* s);                /* compiler/symbol_table.w */
 int be_function_define_declare(char* name);   /* code_generator/arm64.w */
 void be_function_prologue();
 void be_return_bare(); /* x86.w */

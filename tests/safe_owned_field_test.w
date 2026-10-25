@@ -94,7 +94,6 @@ void owned_field_case(char* source, char* diagnostic, int relaxed = 0, int seed 
 	free(full)
 
 
-
 void test_owned_field_0():
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* value = new int\n\t*value = 9\n\tpair.first = value\n\tref int* p = pair.first\n\treturn *p - 9\n", 0)
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\tpair.first = new int\n\trefmut int* p = pair.first\n\t*p = 7\n\treturn *p - 7\n", 0)

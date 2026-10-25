@@ -413,5 +413,3 @@ void at_emit(string_builder* out, char* parser_name):
 			string_append(out, g_report_lines[i])
 			string_append_char(out, 10)
 			i = i + 1
-
-

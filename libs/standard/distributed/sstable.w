@@ -67,7 +67,6 @@ import lib.fs
 import libs.standard.distributed.storage_io
 
 
-
 const int sstable_version = 1
 
 
