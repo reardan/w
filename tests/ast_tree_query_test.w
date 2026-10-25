@@ -275,3 +275,27 @@ void test_global_initializer_records():
 	process_result_free(result)
 	unlink(path)
 	free(path)
+
+
+# A generic named before its declaration retains the instance it resolves to.
+void test_forward_generic_payload():
+	char* path = cstr(f"bin/ast_forward_generic_query_{getpid()}.w")
+	char* source = c"int use():\n\treturn later_pick[int](3, 4)\nT later_pick[T](T a, T b):\n\treturn a\nint main():\n\treturn use()\n"
+	assert1(file_write_text(path, source))
+	process_result* result = tree_test_run_filtered(path, path, 0)
+	assert_equal(0, result.status)
+	list[char*] lines = split(result.stdout_text, 10)
+	int found = 0
+	for i in range(lines.length):
+		if (lines[i][0] == 0): continue
+		json_value* row = json_parse(lines[i])
+		if ((strcmp(jfield_string(row, c"record"), c"node") == 0) && (jfield_int(row, c"op", 0) == 135)):
+			assert_strings_equal(c"later_pick$int", jfield_string(row, c"payload_text"))
+			found = found + 1
+		json_free(row)
+	assert_equal(1, found)
+	for i in range(lines.length): free(lines[i])
+	lines.free()
+	process_result_free(result)
+	unlink(path)
+	free(path)

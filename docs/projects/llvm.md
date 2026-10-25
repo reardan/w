@@ -86,54 +86,142 @@ point, and the output file is left untouched.
 
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
-  `string` handles, records (structs whose fields are all of these,
-  including fixed arrays and nested records), fixed arrays `T[N]` and slice
-  handles.
+  enums, `float32` (`float`) and `float64`, pointers of any level,
+  function values and aliases of them, `string` handles, records (structs
+  whose fields are all of these, including fixed arrays and nested
+  records), fixed arrays `T[N]`, slices `T[]` and slice values, generator
+  handles, the built-in `list[T]`, `map[K, V]` and `set[T]` containers of
+  any of these, generic records (`pair[int]`), and checked pointers
+  (`own`, `optown`, `ref`, `refmut`, `optref`, `optrefmut`) with checked
+  slices (`ref T[]`) and borrowed records as locals and fields.
 - Locals with or without initializers (storage is zeroed at the
-  declaration, as are fixed-array headers), `name := value`, parameters,
-  globals with constant, C string, `&global` or function initializers, and
-  `const` globals.
+  declaration, as are fixed-array headers; a record's fixed-array fields
+  get their inline headers wherever a record comes into being: its
+  declaration, `new`, a record copy and a global's initializer),
+  parameters, globals with constant, C string, `&global` or function
+  initializers, and `const` globals.
 - Records by value: record parameters (the caller passes the address of
   its own copy), record results (written to a caller buffer passed as a
   hidden first argument), assignment from calls, fields of a call's result
-  and `T(field: value, ...)` literals. Every fixed-array header, also one
-  nested in a record, a record global or a heap record, names its own
-  storage after each copy, as the native backend keeps it. Fixed arrays and
-  slices decay to their data pointer where a pointer is expected,
-  including through function values.
+  and `T(field: value, ...)` literals.
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and
   compound assignments, `++`/`--`, address-of, dereference, field access,
-  pointer subscripts, bounds-checked array subscripts, record copies,
+  pointer subscripts, bounds-checked array, slice and string subscripts,
+  ranges `a[i:j]`/`a[i:]`/`a[:j]` over arrays, slices and strings (a
+  bounds-checked, freshly allocated `{data, length}` descriptor, as the
+  native legacy range ABI builds it), array-to-slice decay and decay of
+  arrays and slices to their data pointer, record copies,
   `new T`, `new T()` and `new T(field: value, ...)`, C and UTF-8 string
   literals, string equality, direct, indirect and `syscall` calls, the
-  `print`/`println` builtins and the `max`/`min`/`abs`/`strlen`/`len`
+  `print`/`println` builtins, `enum_name` and the `max`/`min`/`abs`/
+  `strlen`/`len`
   helpers, the limb
   and bit intrinsics (`mul_hi`, `mul_wide`, `add_carry`, `shr`, `rotl`,
   `rotr`, `popcount`, `clz`, `ctz`) and the host atomics.
+- Generic functions with explicit (`max[int](a, b)`) or inferred type
+  arguments, including generic methods: each instantiation is retained as
+  an ordinary function under its mangled name (`max$int`), and a generic
+  call names it, as does a generic referenced before its declaration
+  (the front end retains that reference's mangled instance name).
+- Checked owners, with the drops the tree leaves implicit reproduced from
+  types as `grammar/safe_cleanup.w` does: moving an owner into an owner
+  destination (argument, return, initializer, assignment, `new T(...)`
+  field) clears a named source local, parameter or owned field; assigning
+  to an owner drops the value it replaces; and owners still in scope are
+  dropped, newest first, at block ends, `break`/`continue`, and returns
+  (then the function's owner parameters). A drop runs the audited
+  destructor for `lib/safe_buffer.w` and `lib/safe_thread.w` records,
+  else drops owned fields in reverse order and frees the allocation.
+- Floats: literals, arithmetic, comparisons, unary minus, compound
+  assignment and `++`/`--`, implicit and `cast` conversions between
+  integers, `float32` and `float64`, and mixed integer/float operands, all
+  with the native backend's SSE semantics (see below).
+- f-strings, with every value type the native lowering accepts except
+  `var` (integers, `char`, `bool`, enums, `char*`, `string`, `float32`,
+  `float64`) and the `{value:spec}` format mini-language, through the same
+  `__w_template_*` runtime calls; a string literal or f-string passed
+  where a `char*` is wanted decays to its data pointer.
+- `lib/testing.w` programs: wllvm builds `__w_test_main` from the retained
+  forest the way the native driver synthesizes it (compiler/test_registry.w).
+  Their crash handler reaches the `stack_trace_collect` trap stub when it
+  installs, so run them with `W_CRASH_TRACE=0`.
 - Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
-  to three arguments, `switch` (int-like, `string` and `char*` scrutinees,
-  multi-value cases, `default`), `break`, `continue`, `goto` and labels,
-  `pass`, `return`, legacy `defer` and checked `defer:`, `unsafe:` blocks
-  and expression statements. The front end already expands each exit's
-  deferred statements into its retained tree (`deferred exit` children of
-  `return`, `break`, `continue` and block ends), so they lower in order;
-  a record result is copied to the caller's buffer before they run.
+  to three arguments, cursor loops (`for x in l`, `for i, x in l`,
+  `enumerate`, `for k, v in m`, `for k in s`, fixed arrays and slices,
+  strings through `lib.utf8`, and `T*` iterables with `T_iter_*`
+  functions, generators included), `switch` (int-like, `string` and
+  `char*` scrutinees, multi-value cases, `default`), `break`, `continue`,
+  `goto` and labels, `pass`, `return`, `yield`, legacy `defer` and checked
+  `defer:`, `unsafe:` blocks, `name := value`, parallel assignment
+  (`a, b = b, a + b`: every target address, then every value, then the
+  stores) and expression statements. The front end already expands each
+  exit's deferred statements into its retained tree (`deferred exit`
+  children of `return`, `break`, `continue` and block ends), so they lower
+  in order: a record result is copied to the caller's buffer before they
+  run, and they run before the exit's owner drops (and before a
+  generator's `return` finishes it), as natively.
+- Containers: `new list[T]`/`new map[K, V]`/`new set[T]`, map defaults
+  (`new map[K, V](value)`, a factory, or an empty inner container),
+  `list[T]{...}`/`map[K, V]{k: v}`/`set[T]{...}` literals, `l[i]` as a
+  place, `l[a:b]` slices, `m[k]` reads, stores and compound stores,
+  `.length`, `in`, every list, map and set method, and the `it` forms
+  (`l.map(it * 2)`, `l.filter(...)`, `l.min_by(...)`, ...), and the
+  prelude's `print(list)`, `len`, `any`/`all`, `split`/`join`,
+  `input`/`read_all`/`ints`/`lines`/`words`. Each lowers
+  to the same `structures/` runtime call the native front end makes, with
+  the element slot size and key kind taken from the retained types.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one, and an out-of-range array subscript traps; LLVM traps report a
 different signal (SIGILL) from the native backend's. Calls and operands
 preserve evaluation order.
 
-Not yet supported, and rejected with a diagnostic: floats, containers
-(`list`, `map`, `set`, cursor `for` loops), records returned through
-function values (the native backend does not support them either),
-generics, f-strings, generators, checked pointers (`own`, `ref`, ... and their
+A float value travels in its 64-bit word as its bit pattern (a `float32`
+in the low 32 bits) and is bitcast around each LLVM `float`/`double`
+operation, so it uses the same internal ABI as every other word. The
+native semantics are spelled out where LLVM's differ: float `==` is true
+and `!=` false on NaN operands (`ucomisd` + `sete`), the ordered
+comparisons are false; float-to-integer conversion uses the
+`cvttss2si`/`cvttsd2si` intrinsics, whose out-of-range result is
+`0x8000000000000000` (LLVM's `fptosi` is poison there), and a float cast to
+a narrow integer keeps that whole word as natively; integer-to-float takes
+the whole signed word. LLVM leaves a NaN result's sign and payload open
+and folds `0.0 / 0.0` to `0x7ff8...`, so each arithmetic result selects
+the SSE answer explicitly: the first NaN operand quieted, else the second,
+else the default NaN `0xfff8...` (`0xffc00000` for `float32`).
+
+Not yet supported, and rejected with a diagnostic: the storage-only
+`float16`/`bfloat16`, `var`, records returned through function values (the
+native backend does not support them either), checked slices, borrowed
+records and records holding checked pointers passed or returned by value
+(the safe-mode call ABI), arrays of records holding fixed arrays (the
+native backend leaves their element headers zeroed), GPU code, C imports and
+other `extern` functions
 slices), GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
-`thread_create`, ...). Containers are the largest gap: about half of the
-rejected test programs below declare one.
+`thread_create`, ...). A container trap (out-of-range index, missing
+key) prints its message and then reaches the `print_stack_trace` trap
+stub.
+
+Generators are stackful coroutines (`lib/generator.w`) and lower with the
+native runtime unchanged. The body is an ordinary function whose last
+parameter is the hidden `__w_gen_self`; `yield v` calls
+`__w_gen_yield(self, v)`, and `return` or falling off the end calls
+`__w_gen_return(self)`. A call `counter(a, b)` stores its arguments into
+an entry-block argv (last argument first) and calls
+`__w_gen_create(@wg<n>, argv, argc)`. `__w_gen_create` seeds the new
+stack for the native stack-argument convention (a zero return address,
+then self, then the arguments), so `@wg<n>` is a per-generator entry
+thunk: it reads those words relative to
+`llvm.addressofreturnaddress` and calls the body with register
+arguments. `"stackrealign"` covers the stack, which is not call-aligned
+there. `gen_switch` is module assembly with the native stub's protocol:
+push rbx, rbp and r12-r15, store rsp through the first argument, load the
+second, pop and return. A cursor loop over a generator calls `gen_free`
+on its exit edges, and a `return` inside such loops frees each enclosing
+generator first, as `for_cleanup_emit_all` does.
 
 ## Evidence (2026-10-24)
 
@@ -160,11 +248,15 @@ times on the development container (x86-64, Clang 18.1.3). W x64 is
 | sha256_1m | 0.151s | 0.296s | 0.109s | 0.108s |
 | regex_backtrack | 0.273s | 0.574s | 0.145s | 0.152s |
 | matmul_256 | 0.199s | 0.404s | 0.166s | 0.173s |
+| siphash_keys | 0.313s | 0.498s | 0.242s | 0.282s |
+| strcmp_sort | 0.221s | 0.367s | 0.155s | 0.159s |
 
 At `-O2` the LLVM build of the W source runs as fast as the hand-written C
 twin, 1.07x to 1.9x faster than W's own x64 code (`sum` folds to a
-constant under both LLVM builds). `siphash_keys`, `inflate_corpus` and
-`strcmp_sort` use containers and are not yet accepted.
+constant under both LLVM builds). The container benchmarks
+(`siphash_keys` maps and sets, `strcmp_sort` lists) run their runtime
+helpers through LLVM too. `inflate_corpus` uses generics and is not yet
+accepted.
 
 ## Tests
 
@@ -177,8 +269,14 @@ constant under both LLVM builds). `siphash_keys`, `inflate_corpus` and
 lowering, unsupported-program diagnostics, CLI errors and input/output
 identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
-`tests/wllvm_scalar_fixture.w` and `tests/wllvm_memory_fixture.w` with
-W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
+`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
+`tests/wllvm_generic_fixture.w`, `tests/wllvm_container_fixture.w`,
+`tests/wllvm_float_fixture.w` (floats, NaN and conversion edge cases,
+f-strings), `tests/wllvm_registry_fixture.w` (the synthesized test
+registry), `tests/wllvm_slice_fixture.w`,
+`tests/wllvm_generator_fixture.w` and `tests/wllvm_control_fixture.w`
+(`switch`, `defer`, `goto`, records by value) with W's x64 backend and
+with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, and checks that a library trap stub
 leaves the rest of the program working. Without Clang it reports the
@@ -188,13 +286,5 @@ import graph.
 
 ## Next steps
 
-1. Containers: `list`/`map`/`set` values are runtime pointers whose
-   operations are calls into `structures/`, which already lower; the
-   missing piece is reproducing each operation's helper protocol (element
-   slot sizes, key kinds, aggregate variants) from retained types.
-2. Floats and f-strings. `lib.testing` programs take `main` from the
-   library and their test list from the compiler-synthesized
-   `__w_test_main`; wllvm requires the input module to define `main` and
-   does not lower that synthesized runner yet.
-3. Other targets: arm64 Linux needs only a different `_start` and syscall
+1. Other targets: arm64 Linux needs only a different `_start` and syscall
    constraint string.

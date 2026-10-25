@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_control_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_control_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -72,6 +72,41 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"call i32 @llvm.fshl.i32(")
 	unlink(first)
 	free(a)
+	# Generic instances are ordinary functions under their mangled names;
+	# checked owners lower to plain pointers plus their implicit drops.
+	wllvm_test_emit(c"tests/wllvm_generic_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"icmp ne i64")
+	unlink(first)
+	# Containers lower to calls into the auto-imported runtime.
+	wllvm_test_emit(c"tests/wllvm_container_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"phi i64")
+	unlink(first)
+	# Floats ride in the word as bit patterns; f-strings call the runtime.
+	wllvm_test_emit(c"tests/wllvm_float_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"bitcast i64 ")
+	assert_contains(a, c"fdiv double")
+	assert_contains(a, c"fcmp ueq double")
+	assert_contains(a, c"sitofp i64 ")
+	assert_contains(a, c"fpext float ")
+	assert_contains(a, c"call i64 @llvm.x86.sse2.cvttsd2si64(")
+	assert_contains(a, c"c\"specs [\\00\"")
+	unlink(first)
+	free(a)
+	# Generators: module-assembly gen_switch and realigning entry thunks.
+	wllvm_test_emit(c"tests/wllvm_generator_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"module asm \"__wllvm_gen_switch:\"")
+	assert_contains(a, c"call ptr @llvm.addressofreturnaddress.p0()")
+	assert_contains(a, c"\"stackrealign\"")
+	unlink(first)
+	free(a)
 	# Records by value: hidden result buffers, parameter copies, headers.
 	wllvm_test_emit(c"tests/wllvm_control_fixture.w", first)
 	a = file_read_text(first)
@@ -110,17 +145,17 @@ void wllvm_test_reject(char* source):
 
 
 void test_wllvm_rejects_unsupported_programs():
-	wllvm_test_reject(c"float value(float x):\n\treturn x + 1.0\nint main():\n\treturn 0\n")
-	wllvm_test_reject(c"int main():\n\tlist[int] values = new list[int]\n\treturn 0\n")
-	wllvm_test_reject(c"import lib.generator\ngenerator int values():\n\tyield 1\nint main():\n\treturn 0\n")
+	wllvm_test_reject(c"float16 value(float16 x):\n\treturn x\nint main():\n\treturn 0\n")
+	# assembly stubs other than gen_switch have no LLVM lowering
+	wllvm_test_reject(c"int main():\n\treturn repl_setjmp(0)\n")
 	# the native backend leaves the element headers of this array zeroed
 	wllvm_test_reject(c"struct holder:\n\tint[2] items\nint main():\n\tholder[2] all\n\treturn 0\n")
+	# checked slices and borrowed records cross calls by the safe-mode ABI
+	wllvm_test_reject(c"int first(ref int[] v):\n\treturn v[0]\nint main():\n\tint[2] a\n\tref int[] s = a\n\treturn first(s)\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
-	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat f = 1.0\n")
+	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat16 f = 1.0\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
-	# checked owners free themselves at scope exit, which the tree leaves implicit
-	wllvm_test_reject(c"int main():\n\town int* value = new int\n\t*value = 3\n\treturn *value - 3\n")
 
 
 void test_wllvm_cli_errors():
@@ -233,6 +268,12 @@ void test_wllvm_native_differential():
 		return
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
+	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
+	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
+	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
+	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
 	wllvm_test_differential(clang, c"tests/wllvm_control_fixture.w", 23)
 	free(clang)
 
