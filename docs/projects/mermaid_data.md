@@ -16,7 +16,7 @@ the original source remains available for lossless writing and editing.
 | `pie` | Quoted labels, positive decimal values, `showData`, title; colored sectors and matching legend keys, angular proportions, collision-safe legend rows (measured widths) with percentages and optional values; interior percentages for wedges of at least 0.55 rad, rounded to whole numbers with a `%` sign as upstream 12.2.0 draws them (`25%`), outside percentages with two-segment leader lines for thinner ones, cluster-spread per side one 18px pitch apart in angular order (never overlapping, leaders never crossing) with the legend moved clear | Custom slice palettes; upstream draws no outside labels |
 | `quadrantChart` | Title, one- or two-ended x/y labels, four quadrant names (wrapped inside their quadrant), hyphenated unquoted axis labels (y labels right-aligned on measured widths), labeled points in `[0,1]²` (labels flip left of points that would leave the plot), direct point styles and forward `classDef` references with direct-over-class precedence | Chart configuration and typography |
 | `xychart-beta` | Categorical, numeric-range or inferred x axis, numeric y range, bar and line series with point annotations and matching colored legend keys, horizontal layout; signed values and zero baseline; value labels right-aligned against the axis and category labels centred on their band, wrapped to its width when the widest would collide (the axis title and legend move down) | Configuration and custom plot palettes |
-| `sankey-beta` | CSV source/target/value records, quoted commas, doubled quotes and multiline fields (LF or CRLF); DAG validation, node aggregation, proportional smooth ribbons, longest-path columns; global node ordering: the weighted predecessor order, then up to eight alternating forward/backward barycenter sweeps (d3-sankey-style relaxation), keeping the order with the fewest value-weighted ribbon crossings (ties keep the earlier order, so it is deterministic and never worse than one pass); ribbons stack inside each node in the vertical order of their far ends, so ribbons sharing a node never cross; centred measured value labels; multiline label layout | Configuration; crossings between ribbons spanning different column pairs are not counted, and charts over 4000 flows skip the relaxation |
+| `sankey-beta` | CSV source/target/value records, quoted commas, doubled quotes and multiline fields (LF or CRLF); DAG validation, node aggregation, proportional smooth ribbons, longest-path columns; global node ordering: the weighted predecessor order, then up to eight alternating forward/backward barycenter sweeps (d3-sankey-style relaxation) and up to four passes of adjacent transpositions, keeping the order with the fewest value-weighted global ribbon crossings (every pair of ribbons whose x spans overlap, including ribbons between different column pairs; ties keep the earlier order, so it is deterministic and never worse than one pass); ribbons stack inside each node in the vertical order of their far ends, so ribbons sharing a node never cross; centred measured value labels; multiline label layout | Configuration; the ordering is a bounded heuristic, not an exact minimizer, and slots inside a node follow far-end centers rather than the crossing count |
 | `radar-beta` | Named axes and curves, positional and keyed curve values with axes declared before or after curves, min/max, circle/polygon graticule, bounded ticks, colored curves and matching legend keys; on circle graticules curves are the upstream closed cubic spline with `config.radar.curveTension` (default 0.17), polygon graticules keep straight edges | Custom curve palettes |
 | `treemap-beta` | Indented quoted groups and positive valued leaves; recursive aggregate weights and stable weight-sorted squarified rectangle subdivision; labels in tiny cells use the accompanying hierarchy key; `classDef` (fill, stroke, color, stroke-width) assigned with `:::class` on groups or leaves, outranking the theme | `style` statements and per-depth palettes |
 | `venn-beta` | One to eight named/labeled sets and labeled `union` intersections of any arity; only declared overlaps (plus the pairs a three-or-more-set union implies); explicit set/intersection sizes for any number of sets; text nodes attached to the preceding set or union | Styles; fitting higher-order region areas |
@@ -73,9 +73,27 @@ goes to the point of its exclusive region (inside its member circles, outside
 the others) with the largest boundary clearance, found by a refined grid
 search. More than eight sets are rejected, matching upstream's eight-colour
 `venn1`-`venn8` palette.
-Sankey ordering is a bounded barycenter relaxation, not an exact crossing
-minimizer (a non-planar stage keeps the crossings the sweeps cannot remove);
-its smooth ribbon boundaries are sampled into polygons.
+Sankey ordering is a bounded barycenter relaxation plus adjacent
+transpositions, not an exact crossing minimizer (a non-planar stage keeps the
+crossings the heuristics cannot remove). The crossing count is global and
+geometric (`mm_data_sankey_crossings` in `data_render.w`): the x axis is cut at
+every column edge into gaps and column interiors, gaps into four pieces; the
+drawn center lines of all ribbons alive across a piece (from their slots, with
+the drawn smoothstep) are ranked at its two edges, and the value-weighted
+inversions between the rankings are the crossings, so a long ribbon is counted
+against the ribbons of every column pair it passes and a crossing landing on a
+sample point still counts once. Each count is a merge-sort inversion count,
+O(k log k) for k ribbons per piece. The relaxation shares a fixed work budget
+(`MM_DATA_SANKEY_WORK_BUDGET`, 400,000 units of about 5 S + E + N R per count
+for S summed ribbon spans, E flows, N nodes and R columns): eight sweeps, then
+the remaining trials for at most four transposition passes; a chart too large
+for that gets fewer sweeps, down to one, instead of skipping the relaxation.
+Slot computation is O(E log E) at any size (the earlier 4000-flow fallback is
+gone). The stress fixture in `data_test.w` (256 flows, the item limit, over 8
+columns) drops its global count from about 49,900 to 41,300 and its drawn
+crossings from 2,250 under the previous same-column-pair count to about 1,990.
+Two ribbons that cross and cross back inside one gap piece are not counted.
+Smooth ribbon boundaries are sampled into polygons.
 Treemap dimensions are rounded to whole pixels. At extreme weight ratios a
 subpixel leaf may have no visible rectangle; the hierarchy key always retains
 every entry and its exact value. The renderer does not force every leaf to have a visible rectangle at the cost
