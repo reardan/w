@@ -132,6 +132,15 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"vcvtps2ph")
 	unlink(first)
 	free(a)
+	# Indirect calls pass their words in registers and, in native order, on
+	# the stack, with rbx clobbered (natively generated code uses it).
+	wllvm_test_emit(c"tests/wllvm_calls_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"asm sideeffect alignstack \"pushq %rdi; pushq %rsi; callq *$3; addq $$16, %rsp\"")
+	assert_contains(a, c"~{rbx}")
+	unlink(first)
+	free(a)
 	# Generators: module-assembly gen_switch and realigning entry thunks.
 	wllvm_test_emit(c"tests/wllvm_generator_fixture.w", first)
 	a = file_read_text(first)
@@ -306,8 +315,10 @@ void wllvm_test_differential(char* clang, char* fixture, int expected):
 		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", optimization, c"--cc", clang, fixture, c"-o", native}))
 		process_result* result = wllvm_test_run(list[char*]{native})
 		assert_equal(baseline.status, result.status)
-		assert_strings_equal(baseline.stdout_text, result.stdout_text)
-		assert_strings_equal(baseline.stderr_text, result.stderr_text)
+		# lib/testing.w output names each test's address, which differs.
+		if (ends_with(fixture, c"_test.w") == 0):
+			assert_strings_equal(baseline.stdout_text, result.stdout_text)
+			assert_strings_equal(baseline.stderr_text, result.stderr_text)
 		process_result_free(result)
 	options.free()
 	process_result_free(baseline)
@@ -342,6 +353,13 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_operator_fixture.w", 7)
 	wllvm_test_differential(clang, c"tests/wllvm_control_fixture.w", 23)
 	wllvm_test_differential(clang, c"tests/wllvm_propagate_fixture.w", 44)
+	wllvm_test_differential(clang, c"tests/wllvm_calls_fixture.w", 78)
+	# Callee after its arguments, var casts and conditionals, array decay in
+	# switch cases and conditional arms, narrow-float list slots, and calls
+	# into lib/dlcall.w's native-ABI trampolines.
+	list[char*] corpus = list[char*]{c"tests/ast_callback_expression_fixture.w", c"tests/ast_var_expression_fixture.w", c"tests/array_decay_test.w", c"tests/bfloat16_test.w", c"tests/dlcall_test.w"}
+	for fixture in corpus: wllvm_test_differential(clang, fixture, 0)
+	corpus.free()
 	# Checked slices, borrowed records and records holding owners by value,
 	# under the guard-page allocator's leak count (0 = no leak, no fault).
 	list[char*] safe_fixtures = list[char*]{c"tests/safe_slice_runtime_fixture.w", c"tests/safe_aggregate_runtime_fixture.w", c"tests/safe_owned_field_runtime_fixture.w", c"tests/safe_mutable_slice_runtime_fixture.w", c"tests/safe_extension_runtime_fixture.w"}

@@ -434,6 +434,27 @@ operand before the second, and the default NaN is positive (`0x7ff8...`,
 native arm64 build, as do the container, slice and generator fixtures,
 `setjmp_test` and `stack_trace_test`.
 
+### Calls into natively generated code
+
+A function value may point at code the native backend generated at run
+time: the in-process REPL (`repl/core.w`), the incremental compiler and
+`tests/ast_function_record_test.w` run functions they compiled into their
+code buffer, and `lib/dlcall.w`'s trampolines take W's native stack
+arguments. Native x86-64 W code takes its arguments on the stack (the
+first at the highest offset, the caller popping them) and uses `rbx` as
+scratch. So on x86-64 an indirect call of up to six words is inline asm
+that loads them into the System V registers (for wllvm's own functions)
+and also pushes them in native order, padded to keep the call 16-byte
+aligned, with `rbx` and every caller-saved register clobbered. A wider
+indirect call pushes its words from an entry-block array, unless some W
+function of more than six parameters is used as a value in the program,
+in which case it stays an ordinary System V call. The callee is
+evaluated after the arguments, as the native call loads it. A runtime
+stub used as a value (`repl_error_jump = repl_longjmp`) is its module-asm
+twin's address. The symbol table keeps the first `sym_max_param_slots`
+parameter types only; later ones come from the definition's parameter
+locals.
+
 Not yet supported, and rejected with a diagnostic: records returned
 through function values (the native backend does not support them
 either), arrays of
