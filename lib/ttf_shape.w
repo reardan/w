@@ -665,6 +665,35 @@ int ttf_indic_vowel_constraint(char* code, int a, int b):
 # script id, or -1 to guess from the text. language: an OpenType
 # language-system tag (otl_tag), or 0. Returns an owned buffer in visual
 # order; free it with otl_buffer_free.
+# A font with no space glyph to hide default ignorables (VS16 after an
+# emoji, ZWJ) behind drops them instead, as HarfBuzz does, merging a
+# dropped glyph's cluster into its neighbor's.
+void ttf_shape_drop_ignorables(otl_buffer* b):
+	int i = 0
+	while (i < b.count):
+		otl_glyph* g = &b.glyphs[i]
+		if ((g.cp < 0) || !ut_default_ignorable(g.cp)):
+			i = i + 1
+			continue
+		int cluster = g.cluster
+		if ((i + 1 < b.count) && (b.glyphs[i + 1].cluster == cluster)):
+			otl_buffer_delete(b, i)
+			continue
+		if (i > 0):
+			int old = b.glyphs[i - 1].cluster
+			if (cluster < old):
+				int k = i - 1
+				while ((k >= 0) && (b.glyphs[k].cluster == old)):
+					b.glyphs[k].cluster = cluster
+					k = k - 1
+		else if ((i + 1 < b.count) && (cluster < b.glyphs[i + 1].cluster)):
+			int old = b.glyphs[i + 1].cluster
+			int k = i + 1
+			while ((k < b.count) && (b.glyphs[k].cluster == old)):
+				b.glyphs[k].cluster = cluster
+				k = k + 1
+		otl_buffer_delete(b, i)
+
 otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int rtl, int script, int language, int flags):
 	otl_buffer* b = otl_buffer_new(count + 4)
 	if (script < 0): script = ttf_guess_script(cps, count)
@@ -758,5 +787,6 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 			g.x_offset = 0
 			g.attach_kind = 0
 	otl_position_finish(b, rtl)
+	if (space == 0): ttf_shape_drop_ignorables(b)
 	if (rtl): otl_buffer_reverse(b)
 	return b

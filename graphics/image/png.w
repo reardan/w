@@ -1,4 +1,5 @@
-# Bounded PNG decoder: non-interlaced 8-bit gray/RGB/indexed/GA/RGBA.
+# Bounded PNG decoder: non-interlaced 8-bit gray/RGB/indexed/GA/RGBA;
+# png_encode_rgba writes plain RGBA PNGs (test goldens, tools).
 import lib.lib
 import lib.bytes
 import lib.result
@@ -229,3 +230,49 @@ wresult[rgba_image*]* png_decode_n(char* data, int length, image_limits* limits)
 	wresult[rgba_image*]* result = png_decode_impl(data, length, limits)
 	free(defaults)
 	return result
+
+
+void png_put_be32(string_builder* out, int n):
+	string_append_char(out, shr(n, 24) & 255)
+	string_append_char(out, shr(n, 16) & 255)
+	string_append_char(out, shr(n, 8) & 255)
+	string_append_char(out, n & 255)
+
+
+void png_put_chunk(string_builder* out, char* kind, char* bytes, int length):
+	png_put_be32(out, length)
+	int start = out.length
+	string_append_bytes(out, kind, 4)
+	if (length > 0): string_append_bytes(out, bytes, length)
+	png_put_be32(out, crc32_of(out.data + start, length + 4))
+
+
+# Encode width x height straight-alpha RGBA rows (tightly packed, top to
+# bottom) as an 8-bit RGBA PNG with no row filters. Caller frees the
+# returned builder. For test goldens and tools, not for size.
+string_builder* png_encode_rgba(int width, int height, char* rgba):
+	string_builder* out = string_new()
+	string_append_char(out, 137)
+	string_append(out, c"PNG\r\n")
+	string_append_char(out, 26)
+	string_append_char(out, 10)
+	string_builder* header = string_new()
+	png_put_be32(header, width)
+	png_put_be32(header, height)
+	string_append_char(header, 8)
+	string_append_char(header, 6)
+	string_append_char(header, 0)
+	string_append_char(header, 0)
+	string_append_char(header, 0)
+	png_put_chunk(out, c"IHDR", header.data, header.length)
+	string_free(header)
+	string_builder* raw = string_new()
+	for y in range(height):
+		string_append_char(raw, 0)
+		string_append_bytes(raw, rgba + y * width * 4, width * 4)
+	zlib_result* compressed = zlib_compress(raw.data, raw.length, DEFLATE_LEVEL_BEST())
+	string_free(raw)
+	png_put_chunk(out, c"IDAT", compressed.data, compressed.length)
+	zlib_result_free(compressed)
+	png_put_chunk(out, c"IEND", c"", 0)
+	return out

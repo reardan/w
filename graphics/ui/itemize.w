@@ -18,8 +18,12 @@
 # and the default Regular that covers it, else the face supplying its base
 # character in codepoint text. Default-ignorable and control characters
 # count as covered, and a combining mark therefore stays in its base's face
-# whenever that face has the mark. Each face shapes at the strike's ppem.
+# whenever that face has the mark. A grapheme presented as emoji (UTS #51:
+# VS16, or a character with Emoji_Presentation) first takes the first of
+# those faces with color glyphs that covers it, and one presented as text
+# (VS15) the first without. Each face shapes at the strike's ppem.
 import lib.lib
+import lib.emoji
 import lib.utf8
 import lib.unicode_text
 import graphics.ui.bidi_portable
@@ -71,9 +75,29 @@ int __ui_item_covers(int face, char* text, int start, int end):
 		if (ttf_glyph_id(font, cp) == 0): return 0
 	return 1
 
+# The first of previous, base_face, the fallbacks and the default Regular
+# that covers text[start, end) and has color glyphs exactly when color is
+# set, else -1.
+int __ui_item_face_presented(int base_face, int previous, char* text, int start, int end, int color):
+	int i = 0 - 2
+	while (i <= ui_font_st.fallback_count):
+		int f = previous
+		if (i == 0 - 1): f = base_face
+		else if (i == ui_font_st.fallback_count): f = UI_FACE_REGULAR
+		else if (i >= 0): f = ui_font_st.fallbacks[i]
+		i = i + 1
+		if (f < 0): continue
+		if ((ui_font_face_has_color(f) != 0) != (color != 0)): continue
+		if (__ui_item_covers(f, text, start, end)): return f
+	return 0 - 1
+
 # The face for the grapheme text[start, end) in a strike of base_face,
 # preferring previous (-1 for none); see the header comment.
 int __ui_item_face(int base_face, int previous, char* text, int start, int end):
+	int presentation = emoji_presentation_utf8(text, start, end)
+	if (presentation != EMOJI_PRESENTATION_NONE):
+		int presented = __ui_item_face_presented(base_face, previous, text, start, end, presentation == EMOJI_PRESENTATION_EMOJI)
+		if (presented >= 0): return presented
 	if ((previous >= 0) && __ui_item_covers(previous, text, start, end)): return previous
 	if (__ui_item_covers(base_face, text, start, end)): return base_face
 	for i in range(ui_font_st.fallback_count):
