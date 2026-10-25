@@ -3,11 +3,13 @@
 # A block diagram is a grid filled in statement order (upstream's
 # `columns N` rows), so moving a block means moving it to another cell of
 # its composite: adjacent siblings swap their source items, one validated
-# splice per step. Resizing a block changes its column span (`id:N`).
+# splice per step. Resizing a block changes its column span (`id:N`, or
+# `block:id:N` for a composite).
 # Outlines (mindmap, treeView, kanban) move a subtree among its siblings
 # (mm_outline_reorder) or under another parent (mm_outline_reparent); a
 # kanban card moves into another column. No coordinates are stored, so
-# the source stays meaningful to every Mermaid renderer.
+# the source stays meaningful to every Mermaid renderer. A multi-selection
+# moves as one transaction of such steps (mm_editor_slot_move_set).
 import libs.extras.mermaid.edit_outline
 
 # The moved item's index after the last successful slot command, so a
@@ -105,10 +107,8 @@ int mm_bs_attempt(mm_editor* e, list[mm_ee_splice*] edits, mm_expect* x, int a, 
 char* mm_bs_line_text(mm_document* d, int start, int end, int into_end):
 	string_builder* text = string_new()
 	string_append_bytes(text, d.source + start, end - start)
-	if (text.length > 0 && text.data[text.length - 1] != 10 && into_end == 0): string_append_char(text, 10)
-	if (into_end && text.length > 0 && text.data[text.length - 1] == 10 && d.source[d.source_end - 1] != 10):
-		text.length = text.length - 1
-		text.data[text.length] = 0
+	if (text.length > 0 && text.data[text.length - 1] != 10 && into_end == 0): mm_append_newline(text, d)
+	if (into_end && text.length > 0 && text.data[text.length - 1] == 10 && d.source[d.source_end - 1] != 10): mm_strip_newline(text)
 	char* result = text.data
 	free(text)
 	return result
@@ -122,7 +122,7 @@ char* mm_bs_own_line(mm_document* d, int start, int end):
 	string_builder* text = string_new()
 	string_append_bytes(text, d.source + line, code - line)
 	string_append_bytes(text, d.source + start, end - start)
-	string_append_char(text, 10)
+	mm_append_newline(text, d)
 	char* result = text.data
 	free(text)
 	return result
@@ -168,8 +168,12 @@ int mm_bs_swap(mm_editor* e, int a, int b):
 		char* line = mm_bs_own_line(d, as, ae)
 		mm_ee_add(edits, cut, ae, c"")
 		if (bwe == d.source_end && d.source[bwe - 1] != 10):
-			string_builder* text = string_from(c"\n")
-			string_append_bytes(text, line, strlen(line) - 1)
+			string_builder* text = string_new()
+			mm_append_newline(text, d)
+			string_builder* bare = string_from(line)
+			mm_strip_newline(bare)
+			string_append(text, bare.data)
+			string_free(bare)
 			mm_ee_add(edits, bwe, bwe, text.data)
 			string_free(text)
 		else: mm_ee_add(edits, bwe, bwe, line)
@@ -306,26 +310,64 @@ int mm_editor_slot_column(mm_editor* e, int index, int delta):
 	__w_list_free(cast(__w_list*, columns))
 	return ok
 
-# A block leaf's column span (`id:N`; 1 drops the suffix). Spans wider than
-# the composite's columns fail validation and change nothing.
+# A block's column span: a leaf's `id:N`, a composite's `block:id:N`.
+int mm_block_span_of(mm_document* d, int index):
+	int span = d.nodes[index].value_x
+	if (d.nodes[index].group): span = d.nodes[index].value_y
+	if (span < 1): span = 1
+	return span
+
+# The `:N` suffix range after a composite's `block:id` header ([id end,
+# suffix end), empty when it has none). 0 when the header is not that shape.
+int mm_bs_composite_suffix(mm_document* d, int index, int* start, int* end):
+	mm_ee_scan* scan = mm_ee_scan_new(d)
+	int u = mm_ee_group_unit(scan, index)
+	int found = 0
+	if (u >= 0):
+		mm_ee_unit* unit = scan.units[u]
+		char* id = d.nodes[index].id
+		int at = unit.code + 5
+		if (mm_ee_word_is(d, unit.code, unit.code + 5, c"block") && at < unit.code_end && d.source[at] == ':' && mm_ee_word_is(d, at + 1, unit.code_end, id)):
+			int stop = at + 1 + strlen(id)
+			*start = stop
+			*end = stop
+			int p = stop
+			while (p < unit.code_end && (d.source[p] == 32 || d.source[p] == 9)): p = p + 1
+			if (p < unit.code_end && d.source[p] == ':'):
+				p = p + 1
+				while (p < unit.code_end && (d.source[p] == 32 || d.source[p] == 9)): p = p + 1
+				int digits = p
+				while (p < unit.code_end && d.source[p] >= '0' && d.source[p] <= '9'): p = p + 1
+				if (p > digits): *end = p
+			found = 1
+	mm_ee_scan_free(scan)
+	return found
+
+# A block's column span (`id:N`, or `block:id:N` for a composite; 1 drops
+# the suffix). Spans wider than the parent's columns fail validation and
+# change nothing.
 int mm_editor_block_span(mm_editor* e, int index, int span):
 	mm_editor_move_cancel(e)
 	mm_document* d = e.document
 	if (mm_slot_resizable(d, index) == 0 || span < 1 || span > 64): return 0
-	if (d.nodes[index].value_x == span): return 1
-	mm_ee_scan* scan = mm_ee_scan_new(d)
-	int start = 0
+	if (mm_block_span_of(d, index) == span): return 1
+	int suffix = 0
 	int end = 0
-	int ws = 0
-	int we = 0
-	int found = mm_bs_locate(scan, index, &start, &end, &ws, &we)
-	mm_ee_scan_free(scan)
-	if (found == 0 || start < 0): return 0
-	# An existing `:N` suffix: digits, then a single colon.
-	int digits = end
-	while (digits > start && d.source[digits - 1] >= '0' && d.source[digits - 1] <= '9'): digits = digits - 1
-	int suffix = end
-	if (digits < end && digits - 1 > start && d.source[digits - 1] == ':' && d.source[digits - 2] != ':'): suffix = digits - 1
+	if (d.nodes[index].group):
+		if (mm_bs_composite_suffix(d, index, &suffix, &end) == 0): return 0
+	else:
+		mm_ee_scan* scan = mm_ee_scan_new(d)
+		int start = 0
+		int ws = 0
+		int we = 0
+		int found = mm_bs_locate(scan, index, &start, &end, &ws, &we)
+		mm_ee_scan_free(scan)
+		if (found == 0 || start < 0): return 0
+		# An existing `:N` suffix: digits, then a single colon.
+		int digits = end
+		while (digits > start && d.source[digits - 1] >= '0' && d.source[digits - 1] <= '9'): digits = digits - 1
+		suffix = end
+		if (digits < end && digits - 1 > start && d.source[digits - 1] == ':' && d.source[digits - 2] != ':'): suffix = digits - 1
 	string_builder* text = string_new()
 	if (span > 1):
 		string_append_char(text, ':')
@@ -334,7 +376,8 @@ int mm_editor_block_span(mm_editor* e, int index, int span):
 	mm_ee_add(edits, suffix, end, text.data)
 	mm_node* want = new mm_node()
 	*want = *d.nodes[index]
-	want.value_x = span
+	if (want.group): want.value_y = span
+	else: want.value_x = span
 	mm_expect* x = mm_expect_new(d)
 	x.nodes[index] = want
 	int ok = mm_bs_attempt(e, edits, x, -1, -1)
@@ -347,10 +390,338 @@ int mm_editor_block_span(mm_editor* e, int index, int span):
 # The span a resize gesture's width asks for: the cell's width per column
 # (columns are at least 180 wide with 40 gaps) scaled to the new width.
 int mm_editor_block_span_for(mm_editor* e, int index, int old_width, int width):
-	int span = e.document.nodes[index].value_x
-	if (span < 1): span = 1
+	int span = mm_block_span_of(e.document, index)
 	int unit = (old_width + 40) / span
 	if (unit < 1): unit = 1
 	int next = (width + 40 + unit / 2) / unit
 	if (next < 1): next = 1
 	return next
+
+# ---------------------------------------------------------------- multi-selection
+#
+# A multi-selection moves as one transaction (one undo step, rolled back
+# whole on any refusal) of the single-item steps above, so every
+# intermediate source is validated like a single move. Items inside another
+# selected item (a card of a selected column, a branch under a selected
+# branch, a member of a selected composite) ride along with it. The moved
+# items keep their relative (source) order:
+# - siblings dropped on a sibling move as one contiguous run that takes the
+#   target's place: after it when the target follows the dragged item,
+#   before it otherwise (block cells, outline siblings, kanban cards of one
+#   column, kanban columns);
+# - outline items dropped on a node of another branch become that node's
+#   last children; kanban cards dropped on another column become its last
+#   cards, and dropped on a card of another column land before that card.
+
+# Adjacent sibling swaps one multi-selection command may spend.
+const int MM_SLOT_SWAPS = 512
+
+# Every moved item's index after the last successful set command, in order.
+list[int] mm_slot_moved_set
+
+void mm_slot_moved_reset():
+	if (mm_slot_moved_set == 0): mm_slot_moved_set = new list[int]
+	while (mm_slot_moved_set.length > 0): mm_slot_moved_set.pop()
+
+# The children of parent (-1: the top level), in node order; caller frees.
+list[int] mm_slot_children(mm_document* d, int parent):
+	list[int] result = new list[int]
+	for i in range(d.nodes.length):
+		if (d.nodes[i].parent == parent): result.push(i)
+	return result
+
+# Index maps of the outline primitives. A swap of the adjacent subtrees
+# [first, second) and [second, second_end):
+int mm_slot_map_swap(int i, int first, int second, int second_end):
+	if (i >= first && i < second): return i + second_end - second
+	if (i >= second && i < second_end): return i - (second - first)
+	return i
+
+# Moving the subtree [index, last) before old node target (outside it):
+int mm_slot_map_move(int i, int index, int last, int target):
+	int size = last - index
+	int t = target
+	if (t >= last): t = t - size
+	if (i >= index && i < last): return t + i - index
+	int r = i
+	if (r >= last): r = r - size
+	if (r >= t): r = r + size
+	return r
+
+int mm_slot_contains(list[int] items, int value):
+	return mm_slot_position(items, value) >= 0
+
+# The selected items no other selected item contains, ascending; 0 when one
+# cannot move.
+list[int] mm_slot_roots(mm_document* d, list[int] indices):
+	list[int] roots = new list[int]
+	for i in range(d.nodes.length):
+		if (mm_slot_contains(indices, i) == 0): continue
+		int carried = 0
+		for int k in indices:
+			if (k != i && mm_position_within(d, i, k)): carried = 1
+		if (carried): continue
+		if (mm_slot_movable(d, i) == 0):
+			__w_list_free(cast(__w_list*, roots))
+			return 0
+		roots.push(i)
+	return roots
+
+# Reorder parent's children into `desired` (their current sibling
+# positions, in the wanted order) by adjacent validated swaps. Outline
+# indices in track follow the swaps; a block parent is named by id, since
+# block node order follows first mentions rather than subtrees.
+int mm_slot_permute(mm_editor* e, int parent, char* parent_id, list[int] desired, list[int] track, int* budget):
+	int n = desired.length
+	list[int] cur = new list[int]
+	for i in range(n): cur.push(i)
+	int ok = 1
+	for i in range(n):
+		if (ok == 0): break
+		int j = i
+		while (j < n && cur[j] != desired[i]): j = j + 1
+		if (j >= n): ok = 0
+		while (ok && j > i):
+			if (*budget <= 0):
+				ok = 0
+				break
+			*budget = *budget - 1
+			mm_document* d = e.document
+			int at = parent
+			if (parent_id != 0): at = mm_find_node(d, parent_id)
+			list[int] kids = mm_slot_children(d, at)
+			if (kids.length != n || (parent_id != 0 && at < 0)): ok = 0
+			else:
+				int a = kids[j - 1]
+				int b = kids[j]
+				int b_end = mm_oe_subtree_end(d, b)
+				if (d.kind == MM_BLOCK): ok = mm_bs_swap(e, a, b)
+				else: ok = mm_outline_reorder(e, a, 0)
+				if (ok && track != 0):
+					for k in range(track.length): track[k] = mm_slot_map_swap(track[k], a, b, b_end)
+			__w_list_free(cast(__w_list*, kids))
+			int t = cur[j - 1]
+			cur[j - 1] = cur[j]
+			cur[j] = t
+			j = j - 1
+	__w_list_free(cast(__w_list*, cur))
+	return ok
+
+# Sibling positions of kids with the chosen ones as a run before position
+# `before` (kids.length: at the end), others in order; caller frees.
+list[int] mm_slot_insert_order(list[int] kids, list[int] chosen, int before):
+	list[int] order = new list[int]
+	for p in range(kids.length + 1):
+		if (p == before):
+			for q in range(kids.length):
+				if (mm_slot_contains(chosen, kids[q])): order.push(q)
+		if (p < kids.length && mm_slot_contains(chosen, kids[p]) == 0): order.push(p)
+	return order
+
+# The run order of a sibling drop: the chosen run takes target's place,
+# after it when it follows primary, before it otherwise. 0 when target is
+# chosen or not a sibling.
+list[int] mm_slot_run_order(list[int] kids, list[int] chosen, int primary, int target):
+	int t = mm_slot_position(kids, target)
+	int p = mm_slot_position(kids, primary)
+	if (t < 0 || p < 0 || mm_slot_contains(chosen, target)): return 0
+	int before = t
+	if (t > p): before = t + 1
+	return mm_slot_insert_order(kids, chosen, before)
+
+# Every chosen sibling `steps` slots later (negative: earlier), keeping the
+# gaps between them; 0 when one would leave the row.
+list[int] mm_slot_shift_order(list[int] kids, list[int] chosen, int steps):
+	list[int] order = new list[int]
+	for p in range(kids.length): order.push(p)
+	int count = steps
+	if (count < 0): count = 0 - count
+	int n = kids.length
+	for s in range(count):
+		for k in range(n):
+			int p = n - 1 - k
+			if (steps < 0): p = k
+			if (mm_slot_contains(chosen, kids[order[p]]) == 0): continue
+			int q = p + 1
+			if (steps < 0): q = p - 1
+			if (q < 0 || q >= n || mm_slot_contains(chosen, kids[order[q]])):
+				__w_list_free(cast(__w_list*, order))
+				return 0
+			int t = order[p]
+			order[p] = order[q]
+			order[q] = t
+	return order
+
+# Record the moved items (tracked outline indices, or block ids).
+void mm_slot_note(mm_editor* e, list[int] track, list[char*] ids, int primary_slot):
+	mm_slot_moved_reset()
+	for k in range(track.length):
+		int at = track[k]
+		if (ids != 0): at = mm_find_node(e.document, ids[k])
+		mm_slot_moved_set.push(at)
+		if (k == primary_slot): mm_slot_moved = at
+
+# Reorder chosen siblings (all children of one parent) into the order
+# built by `mode`: 0 a run at target's place, 1 shifted by steps.
+int mm_slot_sibling_set(mm_editor* e, list[int] roots, int primary, int target, int steps, int mode):
+	mm_document* d = e.document
+	int parent = d.nodes[roots[0]].parent
+	for int r in roots:
+		if (d.nodes[r].parent != parent): return 0
+	if (mode == 0 && (target < 0 || d.nodes[target].parent != parent)): return 0
+	list[int] kids = mm_slot_children(d, parent)
+	list[int] order = 0
+	if (mode == 0): order = mm_slot_run_order(kids, roots, primary, target)
+	else: order = mm_slot_shift_order(kids, roots, steps)
+	__w_list_free(cast(__w_list*, kids))
+	if (order == 0): return 0
+	char* parent_id = 0
+	list[char*] ids = 0
+	if (d.kind == MM_BLOCK):
+		parent_id = strclone(d.nodes[parent].id)
+		ids = new list[char*]
+		for int r in roots: ids.push(strclone(d.nodes[r].id))
+	list[int] track = new list[int]
+	int primary_slot = 0
+	for k in range(roots.length):
+		track.push(roots[k])
+		if (roots[k] == primary): primary_slot = k
+	int budget = MM_SLOT_SWAPS
+	mm_editor_begin(e)
+	int ok = mm_slot_permute(e, parent, parent_id, order, track, &budget)
+	if (ok):
+		mm_editor_commit(e)
+		mm_slot_note(e, track, ids, primary_slot)
+	else: mm_editor_rollback(e)
+	if (ids != 0):
+		for char* id in ids: free(id)
+		__w_list_free(cast(__w_list*, ids))
+	if (parent_id != 0): free(parent_id)
+	__w_list_free(cast(__w_list*, track))
+	__w_list_free(cast(__w_list*, order))
+	return ok
+
+# Outline roots gathered under parent as a run before anchor (-1: as its
+# last children), in their source order.
+int mm_slot_gather(mm_editor* e, list[int] roots, int primary, int parent, int anchor):
+	list[int] track = new list[int]
+	int primary_slot = 0
+	for k in range(roots.length):
+		track.push(roots[k])
+		if (roots[k] == primary): primary_slot = k
+	int n = roots.length
+	# Tracked after the roots: the parent, then the anchor.
+	track.push(parent)
+	track.push(anchor)
+	mm_editor_begin(e)
+	int ok = 1
+	for k in range(n):
+		if (ok == 0): break
+		mm_document* d = e.document
+		int at = track[k]
+		int into = track[n]
+		if (d.nodes[at].parent == into): continue
+		int last = mm_oe_subtree_end(d, at)
+		int target = mm_oe_subtree_end(d, into)
+		ok = mm_outline_reparent(e, at, into)
+		if (ok):
+			for j in range(track.length):
+				if (track[j] >= 0): track[j] = mm_slot_map_move(track[j], at, last, target)
+	if (ok):
+		mm_document* d = e.document
+		list[int] kids = mm_slot_children(d, track[n])
+		list[int] chosen = new list[int]
+		for k in range(n): chosen.push(track[k])
+		int before = kids.length
+		if (track[n + 1] >= 0): before = mm_slot_position(kids, track[n + 1])
+		if (before < 0): ok = 0
+		if (ok):
+			list[int] order = mm_slot_insert_order(kids, chosen, before)
+			int budget = MM_SLOT_SWAPS
+			ok = mm_slot_permute(e, track[n], 0, order, track, &budget)
+			__w_list_free(cast(__w_list*, order))
+		__w_list_free(cast(__w_list*, chosen))
+		__w_list_free(cast(__w_list*, kids))
+	if (ok):
+		mm_editor_commit(e)
+		while (track.length > n): track.pop()
+		mm_slot_note(e, track, 0, primary_slot)
+	else: mm_editor_rollback(e)
+	__w_list_free(cast(__w_list*, track))
+	return ok
+
+# Move the selected items (indices) to target's cell or slot as one undo
+# step, primary being the dragged one; see the semantics above.
+int mm_editor_slot_move_set(mm_editor* e, list[int] indices, int primary, int target):
+	mm_editor_move_cancel(e)
+	mm_document* d = e.document
+	if (indices == 0 || indices.length == 0 || target < 0 || target >= d.nodes.length): return 0
+	if (indices.length == 1):
+		int moved = mm_editor_slot_move(e, indices[0], target)
+		if (moved):
+			mm_slot_moved_reset()
+			mm_slot_moved_set.push(mm_slot_moved)
+		return moved
+	list[int] roots = mm_slot_roots(d, indices)
+	if (roots == 0): return 0
+	int ok = roots.length > 0
+	# The dragged item, or the selected item carrying it.
+	int lead = -1
+	for int r in roots:
+		if (r == primary || mm_position_within(d, primary, r)): lead = r
+		if (r == target || mm_position_within(d, target, r)): ok = 0
+	if (lead < 0 && roots.length > 0): lead = roots[0]
+	int siblings = 1
+	for int r in roots:
+		if (d.nodes[r].parent != d.nodes[target].parent): siblings = 0
+	if (ok && siblings): ok = mm_slot_sibling_set(e, roots, lead, target, 0, 0)
+	else if (ok && d.kind == MM_BLOCK): ok = 0
+	else if (ok):
+		int parent = target
+		int anchor = -1
+		if (d.kind == MM_KANBAN):
+			for int r in roots:
+				if (d.nodes[r].parent < 0): ok = 0
+			if (d.nodes[target].parent >= 0):
+				parent = d.nodes[target].parent
+				anchor = target
+		if (ok): ok = mm_slot_gather(e, roots, lead, parent, anchor)
+	__w_list_free(cast(__w_list*, roots))
+	return ok
+
+# Arrow keys on a multi-selection of siblings: every item moves delta slots
+# (block rows: delta is a multiple of the columns), keeping their gaps.
+int mm_editor_slot_step_set(mm_editor* e, list[int] indices, int delta):
+	mm_editor_move_cancel(e)
+	if (indices == 0 || indices.length == 0 || delta == 0): return 0
+	list[int] roots = mm_slot_roots(e.document, indices)
+	if (roots == 0): return 0
+	int ok = 0
+	if (roots.length > 0): ok = mm_slot_sibling_set(e, roots, roots[0], -1, delta, 1)
+	__w_list_free(cast(__w_list*, roots))
+	return ok
+
+# Kanban: selected cards of one column move to the previous/next column as
+# its last cards, in order; selected columns move among the columns.
+int mm_editor_slot_column_set(mm_editor* e, list[int] indices, int delta):
+	mm_document* d = e.document
+	if (d.kind != MM_KANBAN || indices == 0 || indices.length == 0): return 0
+	list[int] roots = mm_slot_roots(d, indices)
+	if (roots == 0): return 0
+	int ok = roots.length > 0
+	int column = -1
+	if (ok): column = d.nodes[roots[0]].parent
+	for int r in roots:
+		if (d.nodes[r].parent != column): ok = 0
+	if (ok && column < 0):
+		__w_list_free(cast(__w_list*, roots))
+		return mm_editor_slot_step_set(e, indices, delta)
+	if (ok):
+		mm_editor_move_cancel(e)
+		list[int] columns = mm_slot_children(d, -1)
+		int at = mm_slot_position(columns, column) + delta
+		ok = at >= 0 && at < columns.length
+		if (ok): ok = mm_slot_gather(e, roots, roots[0], columns[at], -1)
+		__w_list_free(cast(__w_list*, columns))
+	__w_list_free(cast(__w_list*, roots))
+	return ok

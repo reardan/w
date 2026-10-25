@@ -2,9 +2,10 @@
 # Real X11/XTest editor workflows; run through the opt-in Xvfb target:
 # the pointer/keyboard flowchart workflow, keyboard-only edit/undo/redo
 # chains in each graphically editable family, group editing and
-# multi-selection (Space, Ctrl+A, rubber band), C4 geometry, block cell and
-# kanban card moves, inspector line typing, and external-change
-# detection with refused saves, Keep mine, reload and deletion.
+# multi-selection (Space, Ctrl+A, rubber band), C4 geometry, block cell
+# (single and multi-selection) and kanban card moves, inspector line
+# typing, and external-change detection with refused saves, Keep mine,
+# reload and deletion.
 import tools.host_tools
 import lib.str
 import lib.format
@@ -317,6 +318,27 @@ void mu_layouts(char* work):
 	ht_require(contains(wider, c"\nb a:2 c\n"), c"block: span not written")
 	mu_undo(swapped, c"block: undo of the span")
 	mu_undo(source, c"block: undo of the move")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+	# Multi-selection reorder: Space extends a Tab selection of two cells,
+	# Right moves both one cell as one undo step, Left brings them back.
+	path = path_join(work, c"block_multi.mmd")
+	source = c"block\ncolumns 4\na b c d\n"
+	ht_write(path, source, strlen(source))
+	editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"space")
+	mu_key(c"Tab")
+	mu_key(c"space")
+	mu_key(c"Right")
+	char* runs = mu_saved_change(source, c"block: multi-selection move was not saved")
+	ht_require(contains(runs, c"\nc a b d\n"), c"block: the selected cells did not move together")
+	mu_key(c"Right")
+	char* further = mu_saved_change(runs, c"block: second multi-selection move was not saved")
+	ht_require(contains(further, c"\nc d a b\n"), c"block: the selection did not follow the moved cells")
+	mu_undo(runs, c"block: undo of the second multi-selection move")
+	mu_undo(source, c"block: the multi-selection move was not one undo step")
 	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
 	mu_quit(editor)
 	path = path_join(work, c"kanban.mmd")
