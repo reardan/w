@@ -15,10 +15,15 @@ void mm_serialize_requirement_value(mm_serializer* out, char* value):
 	else: mm_serialize_quote(out, value)
 
 void mm_serialize_requirement_body(mm_serializer* out, mm_document* d):
-	if (d.notes.length != 0 || d.narrative.length != 0 || d.data != 0 || d.railroad != 0 || strcmp(d.direction, c"TB") != 0): out.failed = 1
+	if (d.notes.length != 0 || d.narrative.length != 0 || d.data != 0 || d.railroad != 0 || mm_in_words(d.direction, c"|TB|BT|LR|RL|") == 0): out.failed = 1
 	mm_out(out, c"requirementDiagram\n")
 	out.depth = 1
 	mm_serialize_accessibility(out, d)
+	if (strcmp(d.direction, c"TB") != 0):
+		mm_out_indent(out)
+		mm_out(out, c"direction ")
+		mm_out(out, d.direction)
+		mm_out_line(out)
 	mm_serialize_class_defs(out, d)
 	for mm_node* n in d.nodes:
 		if (n.declared == 0 || n.group || n.parent != -1 || n.attributes.length != 0): out.failed = 1

@@ -474,7 +474,14 @@ void mm_serialize_yaml_level(mm_serializer* out, list[mm_serialize_pair*] pairs,
 		string_builder* full = string_from(prefix)
 		string_append(full, segment)
 		mm_serialize_yaml_spaces(out, indent)
-		if (mm_serialize_is_id(segment) == 0 && index_of(segment, c"-") < 0): mm_serialize_yaml_string(out, segment)
+		if (index_of(segment, c"\x1f") >= 0):
+			# A literal dot inside a member key (`.ts:`), stored as MM_CONFIG_KEY_DOT.
+			char* dotted = strclone(segment)
+			for i in range(strlen(dotted)):
+				if (dotted[i] == MM_CONFIG_KEY_DOT): dotted[i] = '.'
+			mm_serialize_yaml_string(out, dotted)
+			free(dotted)
+		else if (mm_serialize_is_id(segment) == 0 && index_of(segment, c"-") < 0): mm_serialize_yaml_string(out, segment)
 		else: mm_out(out, segment)
 		mm_out_char(out, ':')
 		char* scalar = 0
@@ -526,6 +533,7 @@ void mm_serialize_frontmatter(mm_serializer* out, mm_document* d, int css_classe
 	if (d.look == 1): mm_serialize_pair_add(pairs, c"config.look", c"neo")
 	else if (d.look != 0): out.failed = 1
 	if (d.layout_algorithm == 1): mm_serialize_pair_add(pairs, c"config.layout", c"force")
+	else if (d.layout_algorithm == 2): mm_serialize_pair_add(pairs, c"config.layout", c"elk")
 	else if (d.layout_algorithm != 0): out.failed = 1
 	if (d.font_family != 0): mm_serialize_pair_add(pairs, c"config.fontFamily", d.font_family)
 	if (d.font_size != 0):

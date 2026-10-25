@@ -489,6 +489,18 @@ void mm_serialize_flow_edge_metadata(mm_serializer* out, mm_document* d):
 			mm_serialize_agent_metadata(out, edge.metadata)
 			mm_out_line(out)
 			continue
+		# `class e1 name` assignments on an edge ID, in their original order;
+		# the edge's own style (linkStyle) already includes their properties.
+		if (edge.metadata != 0 && edge.metadata.length != 0):
+			if (d.kind != MM_FLOW || edge.id == 0): out.failed = 1
+			else:
+				for mm_property* property in edge.metadata:
+					if (strcmp(property.key, c"class") != 0 || property.value[0] == 0 || index_of(property.value, c"\n") >= 0 || index_of(property.value, c" ") >= 0): out.failed = 1
+					string_append(out.text, c"class ")
+					string_append(out.text, edge.id)
+					string_append_char(out.text, 32)
+					string_append(out.text, property.value)
+					mm_out_line(out)
 		if (edge.animate == 0 && edge.curve == 0): continue
 		if (edge.id == 0 || edge.animate < 0 || edge.animate > 3 || edge.curve < 0 || edge.curve > 3):
 			out.failed = 1

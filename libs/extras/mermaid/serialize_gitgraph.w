@@ -40,13 +40,37 @@ void mm_serialize_git_checkout(mm_serializer* out, mm_document* d, int* current,
 	mm_out_line(out)
 	*current = branch
 
-void mm_serialize_git_properties(mm_serializer* out, mm_node* n, int ordinal, int merge):
+# The id a commit command names: none for a generated id (`commit-N`, or
+# `commit-N-M` when a custom id took `commit-N`), the original id for a
+# commit whose id a later commit rebound (stored as `<id>~<n>`).
+char* mm_serialize_git_written_id(mm_node* n, int ordinal):
 	string_builder* generated = string_from(c"commit-")
 	string_append_int(generated, ordinal)
-	if (strcmp(n.id, generated.data) != 0):
-		mm_out(out, c" id: ")
-		mm_serialize_quote(out, n.id)
+	int implicit = strcmp(n.id, generated.data) == 0
+	string_append_char(generated, '-')
+	if (starts_with(n.id, generated.data)): implicit = 1
 	string_free(generated)
+	if (implicit): return 0
+	int length = strlen(n.label)
+	if (strcmp(n.label, n.id) != 0 && length > 0 && starts_with(n.id, n.label) && n.id[length] == '~'): return n.label
+	return n.id
+
+# 1 when a commit's label is the one its command implies.
+int mm_serialize_git_label_ok(mm_node* n, int ordinal):
+	if (strcmp(n.label, n.id) == 0): return 1
+	char* written = mm_serialize_git_written_id(n, ordinal)
+	return written != 0 && written == n.label
+
+void mm_serialize_git_properties(mm_serializer* out, mm_node* n, int ordinal, int merge):
+	char* written = mm_serialize_git_written_id(n, ordinal)
+	if (written != 0):
+		mm_out(out, c" id: ")
+		mm_serialize_quote(out, written)
+	for mm_property* property in n.metadata:
+		if (merge || strcmp(property.key, c"msg") != 0 || property.value[0] == 0 || n.metadata.length != 1): out.failed = 1
+		else:
+			mm_out(out, c" msg: ")
+			mm_serialize_quote(out, property.value)
 	if (n.annotation[0] != 0):
 		mm_out(out, c" tag: ")
 		mm_serialize_quote(out, n.annotation)
@@ -141,7 +165,7 @@ void mm_serialize_gitgraph_body(mm_serializer* out, mm_document* d, int variant)
 			mm_serialize_git_properties(out, n, ordinal, 1)
 			mm_out_line(out)
 		else:
-			if (strcmp(n.label, n.id) != 0 || n.metadata.length != 0): out.failed = 1
+			if (mm_serialize_git_label_ok(n, ordinal) == 0): out.failed = 1
 			mm_out(out, c"  commit")
 			mm_serialize_git_properties(out, n, ordinal, 0)
 			mm_out_line(out)

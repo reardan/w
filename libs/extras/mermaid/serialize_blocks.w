@@ -82,6 +82,11 @@ void mm_serialize_block_scope(mm_serializer* out, mm_document* d, int scope, int
 				mm_out_char(out, ':')
 				if (mm_serialize_is_id(n.id) == 0): out.failed = 1
 				mm_out(out, n.id)
+				# `block:id:2` spans parent columns; only a named block can say so.
+				if (n.value_y != 1):
+					mm_out_char(out, ':')
+					mm_out_int(out, n.value_y)
+			else if (n.value_y != 1): out.failed = 1
 			string_free(generated)
 			if (n.label[0] != 0 || n.shape != 0 || n.direction[0] != 0): out.failed = 1
 			mm_out_line(out)
