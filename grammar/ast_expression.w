@@ -726,10 +726,26 @@ void ast_expression_note_root(expression_ast* tree, int root):
 	ast_expression_note_constant(tree, ast_expression_literal_before(tree, root, tree.end_offset))
 
 
+# The instance a forward generic reference (ast_forward_generic) names
+# once its declaration is drained: the reference's spelling and type
+# arguments, mangled. The caller frees it.
+char* ast_expression_forward_callee(expression_ast* tree, int id):
+	int count = tree.high[id]
+	int args = cast(int, malloc((count + 1) * __word_size__))
+	int argument = tree.left[id]
+	for i in range(count):
+		save_ptr(args + i * __word_size__, tree.value[argument])
+		argument = tree.next_arg[argument]
+	char* mangled = generic_mangle(&tree.type_names[tree.value[id]], args, count)
+	free(cast(char*, args))
+	return mangled
+
+
 # The mangled callee name of generic call node id ('G' or 'W'), as its
 # committed instantiation (ast_expression_commit_generic) spells it.
 # The caller frees it.
 char* ast_expression_generic_callee(expression_ast* tree, int id):
+	if (tree.op[id] == ast_forward_generic): return ast_expression_forward_callee(tree, id)
 	if (tree.generic_instance[id] >= 0): return strclone(generic_inst_mangled(tree.generic_instance[id]))
 	int count = generic_def_param_count(tree.value[id])
 	int args = cast(int, malloc(count * __word_size__))

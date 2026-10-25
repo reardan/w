@@ -411,7 +411,7 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
 		int high = tree.high[i]
-		if ((op == 'G') || (op == 'W')):
+		if ((op == 'G') || (op == 'W') || (op == ast_forward_generic)):
 			char* callee = ast_expression_generic_callee(tree, i)
 			payload = retained_intern(callee)
 			free(callee)
