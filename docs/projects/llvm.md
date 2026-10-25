@@ -87,7 +87,7 @@ point, and the output file is left untouched.
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
   `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]`, slice handles, and the built-in `list[T]`, `map[K, V]`
+  arrays `T[N]`, slices `T[]` and slice values, and the built-in `list[T]`, `map[K, V]`
   and `set[T]` containers of any of these.
 - Locals with or without initializers (storage is zeroed at the
   declaration, as are fixed-array headers), parameters, globals with
@@ -97,10 +97,15 @@ point, and the output file is left untouched.
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and
   compound assignments, `++`/`--`, address-of, dereference, field access,
-  pointer subscripts, bounds-checked array subscripts, record copies,
+  pointer subscripts, bounds-checked array, slice and string subscripts,
+  ranges `a[i:j]`/`a[i:]`/`a[:j]` over arrays, slices and strings (a
+  bounds-checked, freshly allocated `{data, length}` descriptor, as the
+  native legacy range ABI builds it), array-to-slice decay and decay of
+  arrays and slices to their data pointer, record copies,
   `new T` and `new T(field=value, ...)`, C and UTF-8 string literals,
   string equality, direct, indirect and `syscall` calls, the `print`/
-  `println` builtins and the `max`/`min`/`abs`/`strlen` helpers, the limb
+  `println` builtins, `enum_name` and the `max`/`min`/`abs`/`strlen`
+  helpers, the limb
   and bit intrinsics (`mul_hi`, `mul_wide`, `add_carry`, `shr`, `rotl`,
   `rotr`, `popcount`, `clz`, `ctz`) and the host atomics.
 - Containers: `new list[T]`/`new map[K, V]`/`new set[T]`, map defaults
@@ -118,7 +123,8 @@ point, and the output file is left untouched.
   `enumerate`, `for k, v in m`, `for k in s`, fixed arrays and slices,
   strings through `lib.utf8`, and `T*` iterables with `T_iter_*`
   functions), `break`, `continue`, `pass`, `return`, `unsafe:` blocks,
-  `name := value` and expression statements.
+  `name := value`, parallel assignment (`a, b = b, a + b`: every target
+  address, then every value, then the stores) and expression statements.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one, and an out-of-range array subscript traps; LLVM traps report a
@@ -127,12 +133,26 @@ preserve evaluation order.
 
 Not yet supported, and rejected with a diagnostic: floats, records
 passed or returned by value, arrays inside records, generics, f-strings, `switch`, `defer`,
-`goto`, generators, checked pointers (`own`, `ref`, ... and their
+`goto`, generators (see below), checked pointers (`own`, `ref`, ... and their
 slices), GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
 `thread_create`, ...). A container trap (out-of-range index, missing
 key) prints its message and then reaches the `print_stack_trace` trap
 stub.
+
+Generators are stackful coroutines: `lib/generator.w` builds an initial
+frame on a private mmap'd stack and `gen_switch`, an assembly stub from
+`code_generator/x64_asm.w`, swaps stack pointers. Supporting them needs
+`gen_switch` as module-level inline assembly (save the SysV callee-saved
+registers, store `rsp` through the first argument, load the second, pop
+and return), a per-generator entry thunk that unpacks the arguments
+`__w_gen_create` leaves on the new stack (it lays them out for the native
+stack-argument convention, not LLVM's register arguments), calls the body
+with them and the hidden trailing `generator*` and then calls
+`__w_gen_return`, 16-byte stack alignment at that call, and lowering
+`yield v` to `__w_gen_yield(self, v)`, `return` to `__w_gen_return(self)`
+and the call site to `__w_gen_create(thunk, argv, argc)`; the
+`generator_iter_*` cursor loop then works as it is.
 
 ## Evidence (2026-10-24)
 
@@ -180,8 +200,8 @@ accepted.
 lowering, unsupported-program diagnostics, CLI errors and input/output
 identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
-`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w` and
-`tests/wllvm_container_fixture.w` with
+`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
+`tests/wllvm_container_fixture.w` and `tests/wllvm_slice_fixture.w` with
 W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, and checks that a library trap stub
