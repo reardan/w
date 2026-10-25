@@ -135,6 +135,13 @@ int wllvm_link(char* path, char* level, char* ir, char* output):
 	if (llvm_arm64):
 		args.push(c"--target=aarch64-linux-gnu")
 		args.push(c"-fuse-ld=lld")
+		# 4KB segments at page-aligned file offsets, as the native arm64
+		# image has: ld.lld's 64KB default leaves an unmapped gap between
+		# the header and text segments, which lib/stack_trace.w's walk down
+		# to the ELF header cannot cross, and separate-loadable-segments
+		# gives every PT_LOAD the one vaddr - offset wllvm_map_image needs.
+		args.push(c"-Wl,-z,max-page-size=4096")
+		args.push(c"-Wl,-z,separate-loadable-segments")
 	char** vector = strv_new(args.length)
 	for i in range(args.length): strv_set(vector, i, args[i])
 	process_result* result = process_run(path, vector, 0, 0, 600000)

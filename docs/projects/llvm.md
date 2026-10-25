@@ -49,8 +49,16 @@ functions the native backends write in assembly
 registers and the same memory layouts: `repl_setjmp`/`setjmp` (declared
 `returns_twice`), `repl_longjmp`/`longjmp`, `thread_create`,
 `stack_create` and `__w_tls_set`; `__w_tls_size()` reads the block size
-the module settles once every function is emitted. These and
-`thread_local` globals (`gs:[0]`) are x86-64 only; AArch64 rejects them.
+the module settles once every function is emitted. On AArch64,
+`repl_setjmp`/`repl_longjmp` are AAPCS64 module asm instead: the eight-word
+`jmp_buf` keeps the native layout (`x30`, `sp`, `x29` in words 0-2, which
+`lib/stack_trace.w` reads), and its word 3 points at an 18-word area in
+the calling function's entry block that holds `x19`-`x28` and `d8`-`d15`,
+so a `longjmp` restores every callee-saved register LLVM may have live.
+`thread_create`, `stack_create`, `__w_tls_*` and `thread_local` globals
+(`gs:[0]`) stay x86-64 only and AArch64 rejects them, as `bin/wv2 arm64`
+does: the native arm64 backend has no such stubs either (`lib/thread.w`
+is x86-only, and an arm64 ELF fails with "no __w_tls_size stub").
 
 ### C imports
 
@@ -295,9 +303,12 @@ produces that image:
   headers, `.symtab` and `.debug_line` are mapped at the image base plus
   their file offset, where the reader looks. It does so only when every
   `PT_LOAD` shares one address-to-offset delta and the first maps the ELF
-  header: GNU ld's default static layout (clang's default linker here).
-  Other layouts, `lld` among them, and IR linked by hand are left alone,
-  and traces then print nothing, like a native binary without symbols.
+  header: GNU ld's default static layout (clang's default linker here),
+  and the AArch64 ld.lld link, which runs with `-z max-page-size=4096 -z
+  separate-loadable-segments` (lld's 64KB default leaves an unmapped gap
+  after the header that the reader's walk down to it cannot cross).
+  Other layouts and IR linked by hand are left alone, and traces then
+  print nothing, like a native binary without symbols.
 - The lib/signal.w handler thunk passes `(sig, &uc_mcontext)` in rdi/rsi
   on an aligned stack as well as on the W stack, and `st_call_site` also
   accepts LLVM's indirect call forms (`call *%reg`, `call *rel32(%rip)`).
@@ -309,7 +320,19 @@ the `crash_*_fixture` programs compare equal). What differs: a frame's
 file is the base name (`crash_deep_chain_fixture.w:29`), since LLVM's
 DWARF 2 file table splits the directory off and the reader prints only
 the entry's name; register values, addresses and the build-id differ as
-they do between any two builds.
+they do between any two builds. `__w_test_main` is private and
+`alwaysinline`, so a `lib/testing.w` trace goes from `__w_run_tests`
+straight to `execute_tests`, as native's zero-sized symbol makes it.
+
+On AArch64 traces print (symbols and lines resolve), but the walk is
+`st_scan`'s heuristic one, which can add stale frames: `lib/stack_trace.w`
+recognizes only the native prologue (`stp x29, x30, [x28, #-16]!`) as a
+frame-pointer image, while LLVM keeps its `x29` frame records on `sp`.
+Teaching the reader the AAPCS64 prologue (and the DWARF include
+directory) is a change to an audited runtime file whose digest
+`compiler/safe_runtime.w` pins, so it is left for review. There is no
+AArch64 Linux crash report, natively or here: `lib/crash.w` has no arm64
+Linux sigcontext accessors and installs no handler.
 
 A float value travels in its 64-bit word as its bit pattern (a `float32`
 in the low 32 bits) and is bitcast around each LLVM `float`/`double`
@@ -333,8 +356,8 @@ comparisons stay false, since `<` and `<=` swap into `gt`/`ge`); and with
 FPCR.DN clear a signaling NaN operand wins over a quiet one, the first
 operand before the second, and the default NaN is positive (`0x7ff8...`,
 `0x7fc00000`). `tests/wllvm_float_fixture.w` runs under qemu against the
-native arm64 build. Generators are rejected on AArch64: their entry thunk
-and `gen_switch` follow the x86-64 stack layout.
+native arm64 build, as do the container, slice and generator fixtures,
+`setjmp_test` and `stack_trace_test`.
 
 Not yet supported, and rejected with a diagnostic: `var`, records returned
 through function values (the native backend does not support them
@@ -359,7 +382,21 @@ thunk: it reads those words relative to
 arguments. `"stackrealign"` covers the stack, which is not call-aligned
 there. `gen_switch` is module assembly with the native stub's protocol:
 push rbx, rbp and r12-r15, store rsp through the first argument, load the
-second, pop and return. A cursor loop over a generator calls `gen_free`
+second, pop and return.
+
+AArch64 follows `lib/__arch__/arm64`'s generator ABI
+(`__w_gen_switch_regs()` = 1): `__w_gen_create` lays the new stack out
+top down as the arguments, self, a zero return slot, the function and a
+zero `x29`, with the resume point at the `x29` slot. `gen_switch` is
+`stp x29, x30, [sp, #-16]!`, store `sp` through `x0`, `sp = x1`, `ldp
+x29, x30, [sp], #16`, `ret`, so the first switch into a new generator
+returns to the function word. That is `__wllvm_genentry_<n>`, a module-asm
+stub that passes the old `sp` (the frame) in `x0`, aligns `sp` and calls
+`__wllvm_genbody_<n>(frame)`, which loads self at frame + 8 and argument
+i at frame + 16 + 8 * (count - 1 - i) and calls the body. Each switch is
+an inline-asm `bl __wllvm_gen_switch` that clobbers every register but
+`x18`, `x29` and `sp` (`x2`-`x28`, `x30`, `q0`-`q31`, flags, memory),
+so nothing LLVM holds in a register crosses the switch. A cursor loop over a generator calls `gen_free`
 on its exit edges, and a `return` inside such loops frees each enclosing
 generator first, as `for_cleanup_emit_all` does.
 
