@@ -13,6 +13,7 @@
 import lib.args
 import lib.time
 import libs.extras.mermaid.editor
+import libs.extras.mermaid.edit_outline
 import graphics.mermaid_canvas
 import graphics.mermaid_access
 import graphics.__arch__.access_platform
@@ -66,9 +67,43 @@ char* wm_disk_message(int state):
 
 # Mirror a selection into fields only on selection changes, preserving typing.
 void wm_selection_fields(mm_canvas* canvas, mm_editor* e, ui_textbox_state* id, ui_textarea_state* label):
+	if (canvas.node < 0 && canvas.edge >= 0 && canvas.edge < e.document.edges.length):
+		# A connection: the label field edits the connection label.
+		ui_textbox_set(id, c"")
+		char* text = e.document.edges[canvas.edge].label
+		if (text == 0): text = c""
+		ui_textarea_set(label, text)
+		return
 	if (canvas.node < 0 || canvas.node >= e.document.nodes.length): return
 	ui_textbox_set(id, e.document.nodes[canvas.node].id)
 	ui_textarea_set(label, e.document.nodes[canvas.node].label)
+
+# Shift, Ctrl or Cmd on a canvas press extends the selection.
+int wm_press_mods(int mods):
+	if (mods & (GFX_MOD_SHIFT | GFX_MOD_CTRL | GFX_MOD_SUPER)): return MM_CANVAS_EXTEND
+	return 0
+
+# The group a structural command targets: the group id field, else -1.
+int wm_group_target(mm_editor* e, ui_textbox_state* group):
+	if (group.length == 0): return -1
+	int index = mm_find_node(e.document, &group.text[0])
+	if (index < 0 || e.document.nodes[index].group == 0): return -2
+	return index
+
+# ER inspector attribute text "type name [PK|FK|UK...]": split on blanks.
+int wm_attribute_add(mm_editor* e, int index, char* text):
+	list[char*] words = split(text)
+	int ok = 0
+	if (words.length >= 2):
+		string_builder* keys = string_new()
+		for i in range(2, words.length):
+			if (keys.length > 0): string_append(keys, c",")
+			string_append(keys, words[i])
+		ok = mm_editor_attribute_add(e, index, words[0], words[1], keys.data, c"")
+		string_free(keys)
+	for char* word in words: free(word)
+	__w_list_free(cast(__w_list*, words))
+	return ok
 
 int main(int argc, int argv):
 	args_init(argc, argv)
@@ -90,6 +125,11 @@ int main(int argc, int argv):
 	ui_textarea_state node_label
 	ui_textbox_init(&node_id)
 	ui_textarea_init(&node_label)
+	# Inspector fields: target group id and a member/attribute line.
+	ui_textbox_state group_id
+	ui_textbox_state member_text
+	ui_textbox_init(&group_id)
+	ui_textbox_init(&member_text)
 	gfx_window* win = gfx_window_open(c"W Mermaid", 1280, 800)
 	if (win == 0):
 		mm_editor_free(e)
@@ -160,6 +200,7 @@ int main(int argc, int argv):
 		int now = time_monotonic_ms()
 		if (ctx.input.mouse_pressed || ctx.nav_count > 0): last_source_time = 0
 		int old_selection = canvas.node
+		int old_edge = canvas.edge
 		int disk_reload = 0
 		int disk_keep = 0
 		if (mm_access_apply(&ctx, WM_CANVAS_FOCUS, &canvas, e)): status = c"Selected from the accessibility tree."
@@ -212,6 +253,21 @@ int main(int argc, int argv):
 					ui_textbox_set(&node_id, c"")
 					ui_textarea_set(&node_label, c"")
 					focus_id = 1
+				else if (key == 'a' && ctx.focus == WM_CANVAS_FOCUS):
+					mm_canvas_select_all(&canvas, e)
+					string_builder* count = string_new()
+					string_append_int(count, mm_canvas_selection_count(&canvas, e))
+					string_append(count, c" selected. Arrows move them; Delete removes them.")
+					free(wm_message)
+					wm_message = count.data
+					free(count)
+					status = wm_message
+				else if (key == 'g' && ctx.focus == WM_CANVAS_FOCUS && canvas.node >= 0):
+					if (mm_editor_ungroup(e, canvas.node)):
+						mm_canvas_reset(&canvas, e)
+						changed = 1
+						status = c"Group removed; its members stay. Ctrl+Z to undo."
+					else: status = c"Select a group to ungroup."
 				else if (key == 'q'): closing = 1
 				else if (key == '0'): fit = 1
 				else if (key == '+' || key == '='): mm_canvas_zoom(&canvas, 1.25, preview_width / 2.0, preview_height / 2.0)
@@ -220,6 +276,9 @@ int main(int argc, int argv):
 				ctx.chars[i] = 0
 			else if (ctx.focus == WM_CANVAS_FOCUS):
 				if (key == 9): mm_canvas_cycle(&canvas, e, ctx.char_mods[i] & GFX_MOD_SHIFT)
+				else if (key == 32):
+					mm_canvas_toggle_focused(&canvas, e)
+					status = c"Space toggles the focused item; Tab moves on keeping the selection."
 				ctx.chars[i] = 0
 		if (ctx.focus == WM_CANVAS_FOCUS && closing == 0 && canvas.gesture == 0):
 			for i in range(ctx.nav_count):
@@ -227,13 +286,19 @@ int main(int argc, int argv):
 				int step = 1
 				if (ctx.nav_mods[i] & GFX_MOD_SHIFT): step = 10
 				if (key == GFX_NAV_DELETE): changed = mm_canvas_delete(&canvas, e) || changed
+				else if (ctx.nav_mods[i] & GFX_MOD_ALT):
+					# Alt+arrows resize the selected node (stored as @w-size).
+					if (key == GFX_NAV_LEFT): changed = mm_canvas_grow(&canvas, e, 0 - step, 0) || changed
+					else if (key == GFX_NAV_RIGHT): changed = mm_canvas_grow(&canvas, e, step, 0) || changed
+					else if (key == GFX_NAV_UP): changed = mm_canvas_grow(&canvas, e, 0, 0 - step) || changed
+					else if (key == GFX_NAV_DOWN): changed = mm_canvas_grow(&canvas, e, 0, step) || changed
 				else if (key == GFX_NAV_LEFT): changed = mm_canvas_nudge(&canvas, e, 0 - step, 0) || changed
 				else if (key == GFX_NAV_RIGHT): changed = mm_canvas_nudge(&canvas, e, step, 0) || changed
 				else if (key == GFX_NAV_UP): changed = mm_canvas_nudge(&canvas, e, 0, 0 - step) || changed
 				else if (key == GFX_NAV_DOWN): changed = mm_canvas_nudge(&canvas, e, 0, step) || changed
 				ctx.navs[i] = 0
 		if (changed): mm_canvas_source_sync(&area, e.document.source)
-		if (old_selection != canvas.node): wm_selection_fields(&canvas, e, &node_id, &node_label)
+		if (old_selection != canvas.node || old_edge != canvas.edge): wm_selection_fields(&canvas, e, &node_id, &node_label)
 		ui_disable(&ctx, closing)
 		ui_region_push(&ctx, ui_rect_new(12.0, 10.0, width - 24.0, 34.0))
 		float32 path_width = width - 320.0
@@ -376,11 +441,15 @@ int main(int argc, int argv):
 		ui_clip_push(&renderer, left)
 		ui_region_push(&ctx, ui_rect_new(left.x, left.y, left.w - 8.0, 212.0))
 		char* selection_text = c"New node / selection"
-		if (canvas.node >= 0): selection_text = c"Selected node"
+		int selected_count = mm_canvas_selection_count(&canvas, e)
+		if (selected_count > 1): selection_text = c"Several selected"
+		else if (canvas.node >= 0 && e.document.nodes[canvas.node].group): selection_text = c"Selected group"
+		else if (canvas.node >= 0): selection_text = c"Selected node"
 		else if (canvas.edge >= 0): selection_text = c"Selected connection"
 		ui_label(&ctx, selection_text)
 		ui_same_line(&ctx)
-		ui_disable(&ctx, closing || mm_graph_edit_family(e.document.kind) == 0)
+		int outline = mm_outline_family(e.document.kind)
+		ui_disable(&ctx, closing || mm_canvas_edit_family(e.document.kind) == 0 || outline)
 		if (ui_button(&ctx, c"New")):
 			mm_canvas_reset(&canvas, e)
 			ui_textbox_set(&node_id, c"")
@@ -402,7 +471,7 @@ int main(int argc, int argv):
 			focus_label = 0
 		label_focus_id = ctx.next_id
 		ui_textarea(&ctx, ui_layout_next(&ctx, left.w - 112.0, 34.0), &node_label)
-		int can_add = e.document.error == 0 && mm_graph_edit_family(e.document.kind) && mm_editor_identifier(&node_id.text[0]) && mm_find_node(e.document, &node_id.text[0]) < 0
+		int can_add = e.document.error == 0 && mm_canvas_edit_family(e.document.kind) && outline == 0 && mm_editor_identifier(&node_id.text[0]) && mm_find_node(e.document, &node_id.text[0]) < 0
 		ui_disable(&ctx, closing || can_add == 0)
 		if (ui_button(&ctx, c"Add")):
 			if (mm_editor_add_graph_node(e, &node_id.text[0], node_label.buf.data)):
@@ -413,9 +482,15 @@ int main(int argc, int argv):
 			else: status = c"Use a plain label without quotes or controls."
 		ui_same_line(&ctx)
 		char* label_reason = mm_editor_edit_reason(e, MM_EDIT_LABEL, canvas.node)
-		ui_disable(&ctx, closing || label_reason[0] != 0)
+		int edge_label = canvas.node < 0 && canvas.edge >= 0 && mm_editor_edge_editable(e, canvas.edge) && e.document.kind != MM_REQUIREMENT
+		ui_disable(&ctx, closing || (label_reason[0] != 0 && edge_label == 0))
 		if (ui_button(&ctx, c"Apply")):
-			if (mm_editor_set_label(e, canvas.node, node_label.buf.data)):
+			if (edge_label):
+				if (mm_editor_edge_label(e, canvas.edge, node_label.buf.data)):
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Connection label updated. Ctrl+Z to undo."
+				else: status = c"Connection label cannot be represented here; use source editing."
+			else if (mm_editor_set_label(e, canvas.node, node_label.buf.data)):
 				mm_canvas_source_sync(&area, e.document.source)
 				status = c"Label updated. Ctrl+Z to undo."
 			else: status = c"Label cannot be represented here; use source editing."
@@ -426,6 +501,7 @@ int main(int argc, int argv):
 			operation = MM_EDIT_EDGE_DELETE
 			selected_index = canvas.edge
 		char* delete_reason = mm_editor_edit_reason(e, operation, selected_index)
+		if (selected_count > 1): delete_reason = c""
 		ui_disable(&ctx, closing || delete_reason[0] != 0)
 		if (ui_button(&ctx, c"Delete")):
 			if (mm_canvas_delete(&canvas, e)):
@@ -439,20 +515,162 @@ int main(int argc, int argv):
 			ctx.focus = WM_CANVAS_FOCUS
 			status = c"Click the new top-left position. Escape cancels."
 		ui_same_line(&ctx)
-		ui_disable(&ctx, closing || canvas.node < 0 || mm_graph_edit_family(e.document.kind) == 0)
+		ui_disable(&ctx, closing || canvas.node < 0 || mm_canvas_edit_family(e.document.kind) == 0 || outline)
 		if (ui_button(&ctx, c"Link to")):
 			canvas.connect_from = canvas.node
 			canvas.move_here = 0
 			ctx.focus = WM_CANVAS_FOCUS
 			status = c"Click the destination node. Escape cancels."
-			if (e.document.kind == MM_ER): status = c"Click target: one-to-many relates. Edit cardinality and label in source."
-			if (e.document.kind == MM_CLASS): status = c"Click target: adds an association. Edit relationship kind in source."
+			if (e.document.kind == MM_ER): status = c"Click target: one-to-many relates. Select the connection to change its cardinality."
+			if (e.document.kind == MM_CLASS): status = c"Click target: adds an association. Select the connection to change its kind."
 		ui_disable(&ctx, closing)
 		ui_region_pop(&ctx)
-		float32 source_y = left.y + 218.0
+		# Structure and inspector rows: groups, outline order, connection
+		# kinds and compartments. Every button is one undoable edit.
+		ui_region_push(&ctx, ui_rect_new(left.x, left.y + 214.0, left.w - 8.0, 120.0))
+		if (outline):
+			int at = canvas.node
+			ui_disable(&ctx, closing || at < 0 || e.document.error != 0)
+			if (ui_button(&ctx, c"Add child")):
+				if (mm_outline_add(e, at, node_label.buf.data, 0)):
+					mm_canvas_reset(&canvas, e)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Child added with the label field's text."
+				else: status = c"Type a plain label first; it cannot hold line breaks."
+			ui_same_line(&ctx)
+			if (ui_button(&ctx, c"Add sibling")):
+				if (mm_outline_add(e, at, node_label.buf.data, 1)):
+					mm_canvas_reset(&canvas, e)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Sibling added with the label field's text."
+				else: status = c"A sibling needs a parent and a plain label."
+			ui_same_line(&ctx)
+			if (ui_button(&ctx, c"Up")):
+				if (mm_outline_reorder(e, at, 1)):
+					mm_canvas_reset(&canvas, e)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Moved before its previous sibling."
+			ui_same_line(&ctx)
+			if (ui_button(&ctx, c"Down")):
+				if (mm_outline_reorder(e, at, 0)):
+					mm_canvas_reset(&canvas, e)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Moved after its next sibling."
+			ui_disable(&ctx, closing)
+		else:
+			ui_label(&ctx, c"Group")
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || mm_canvas_edit_family(e.document.kind) == 0)
+			ui_textbox(&ctx, 90.0, &group_id)
+			ui_same_line(&ctx)
+			int target = wm_group_target(e, &group_id)
+			ui_disable(&ctx, closing || canvas.node < 0 || target < 0 || selected_count > 1)
+			if (ui_button(&ctx, c"Into")):
+				if (mm_editor_reparent(e, canvas.node, target)):
+					char* id = strclone(e.document.nodes[canvas.node].id)
+					mm_canvas_reset(&canvas, e)
+					canvas.node = mm_find_node(e.document, id)
+					free(id)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Moved into the group. Ctrl+Z to undo."
+				else: status = c"This family cannot move that item into the group without rewriting other statements."
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || canvas.node < 0 || selected_count > 1)
+			if (ui_button(&ctx, c"Out")):
+				if (mm_editor_reparent(e, canvas.node, -1)):
+					char* id = strclone(e.document.nodes[canvas.node].id)
+					mm_canvas_reset(&canvas, e)
+					canvas.node = mm_find_node(e.document, id)
+					free(id)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Moved to the top level. Ctrl+Z to undo."
+				else: status = c"It cannot leave its group here (an edge inside the group declares it)."
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || canvas.node < 0 || selected_count > 1 || e.document.nodes[canvas.node].group == 0)
+			if (ui_button(&ctx, c"Ungroup")):
+				if (mm_editor_ungroup(e, canvas.node)):
+					mm_canvas_reset(&canvas, e)
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Group removed; its members stay. Ctrl+Z to undo."
+				else: status = c"This group cannot be removed without rewriting its members."
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || can_add == 0 || target < 0)
+			if (ui_button(&ctx, c"Add in")):
+				if (mm_editor_add_node_in(e, &node_id.text[0], node_label.buf.data, target)):
+					canvas.node = mm_find_node(e.document, &node_id.text[0])
+					canvas.edge = -1
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Node added inside the group."
+				else: status = c"The node cannot be added inside that group here."
+			ui_disable(&ctx, closing)
+		if (canvas.node < 0 && canvas.edge >= 0 && canvas.edge < e.document.edges.length && mm_editor_edge_editable(e, canvas.edge)):
+			# Connection kind: one button per connector this family offers.
+			ui_label(&ctx, c"Kind")
+			if (e.document.kind == MM_ER):
+				list[char*] names = list[char*]{c"1-1", c"1-N", c"0-N", c"N-N"}
+				list[int] lefts = list[int]{1, 1, 1, 3}
+				list[int] rights = list[int]{1, 3, 2, 3}
+				for k in range(names.length):
+					ui_same_line(&ctx)
+					if (ui_button(&ctx, names[k])):
+						if (mm_editor_er_cardinality(e, canvas.edge, lefts[k], rights[k], e.document.edges[canvas.edge].dashed)):
+							mm_canvas_source_sync(&area, e.document.source)
+							status = c"Cardinality changed. Ctrl+Z to undo."
+						else: status = c"Cardinality cannot be changed here; use source editing."
+				__w_list_free(cast(__w_list*, names))
+				__w_list_free(cast(__w_list*, lefts))
+				__w_list_free(cast(__w_list*, rights))
+			else:
+				list[char*] kinds = split(mm_editor_edge_kinds(e.document.kind), '|')
+				for char* kind in kinds:
+					if (kind[0] == 0): continue
+					ui_same_line(&ctx)
+					if (ui_button(&ctx, kind)):
+						if (mm_editor_edge_kind(e, canvas.edge, kind)):
+							mm_canvas_source_sync(&area, e.document.source)
+							status = c"Connection kind changed. Ctrl+Z to undo."
+						else: status = c"That kind cannot be written here; use source editing."
+				for char* kind in kinds: free(kind)
+				__w_list_free(cast(__w_list*, kinds))
+		else if (canvas.node >= 0 && selected_count <= 1 && (e.document.kind == MM_CLASS || e.document.kind == MM_ER || e.document.kind == MM_REQUIREMENT)):
+			# Compartments: class members, ER attributes, requirement properties.
+			char* member_name = c"Member"
+			if (e.document.kind == MM_ER): member_name = c"Attribute"
+			if (e.document.kind == MM_REQUIREMENT): member_name = c"Property"
+			ui_label(&ctx, member_name)
+			ui_same_line(&ctx)
+			ui_textbox(&ctx, left.w - 250.0, &member_text)
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || member_text.length == 0)
+			if (ui_button(&ctx, c"Add")):
+				int ok = 0
+				if (e.document.kind == MM_ER): ok = wm_attribute_add(e, canvas.node, &member_text.text[0])
+				else: ok = mm_editor_member_add(e, canvas.node, &member_text.text[0])
+				if (ok):
+					mm_canvas_source_sync(&area, e.document.source)
+					ui_textbox_set(&member_text, c"")
+					status = c"Added to the compartment. Ctrl+Z to undo."
+				else: status = c"Use one plain line (ER: type name [keys])."
+			ui_same_line(&ctx)
+			int last = -1
+			mm_node* n = e.document.nodes[canvas.node]
+			if (e.document.kind == MM_ER && n.attributes != 0): last = n.attributes.length - 1
+			else if (e.document.kind != MM_ER && n.members != 0): last = n.members.length - 1
+			ui_disable(&ctx, closing || last < 0)
+			if (ui_button(&ctx, c"Remove last")):
+				int ok = 0
+				if (e.document.kind == MM_ER): ok = mm_editor_attribute_remove(e, canvas.node, last)
+				else: ok = mm_editor_member_remove(e, canvas.node, last)
+				if (ok):
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Removed. Ctrl+Z to undo."
+				else: status = c"That line cannot be removed here; use source editing."
+			ui_disable(&ctx, closing)
+		ui_region_pop(&ctx)
+		float32 source_y = left.y + 338.0
 		ui_draw_text(&renderer, left.x, source_y, c"Source  (Ctrl+E)", 2, theme.text_muted)
 		source_y = source_y + 24.0
-		ui_rect source_rect = ui_rect_new(left.x, source_y, left.w - 8.0, left.h - 242.0)
+		ui_rect source_rect = ui_rect_new(left.x, source_y, left.w - 8.0, left.h - 362.0)
 		if (source_rect.h < 40.0): source_rect.h = 40.0
 		if (focus_source):
 			ctx.focus = ctx.next_id
@@ -472,7 +690,7 @@ int main(int argc, int argv):
 		if (closing == 0):
 			if (ctx.input.mouse_pressed && ui_rect_contains(preview, ctx.input.press_x, ctx.input.press_y)):
 				ctx.focus = WM_CANVAS_FOCUS
-				if (mm_canvas_press(&canvas, e, cast(float32, ctx.input.press_x) - preview.x, cast(float32, ctx.input.press_y) - preview.y)):
+				if (mm_canvas_press_mods(&canvas, e, cast(float32, ctx.input.press_x) - preview.x, cast(float32, ctx.input.press_y) - preview.y, wm_press_mods(ctx.input.mods))):
 					mm_canvas_source_sync(&area, e.document.source)
 					status = c"Updated. Ctrl+Z to undo."
 				wm_selection_fields(&canvas, e, &node_id, &node_label)
@@ -483,7 +701,7 @@ int main(int argc, int argv):
 				if (ctx.input.mouse_released):
 					if (mm_canvas_release(&canvas, e)):
 						mm_canvas_source_sync(&area, e.document.source)
-						status = c"Moved. Ctrl+Z to undo the whole drag."
+						status = c"Changed. Ctrl+Z to undo the whole drag."
 				else if (ctx.input.mouse_down == 0): mm_canvas_cancel(&canvas, e)
 			if ((ctx.input.scroll_y != 0 || ctx.input.scroll_pixels_y != 0) && canvas.gesture == 0 && ui_rect_contains(preview, ctx.input.scroll_at_x, ctx.input.scroll_at_y)):
 				float32 factor = 1.15
@@ -501,9 +719,10 @@ int main(int argc, int argv):
 			ui_draw_text(&renderer, 12.0, height - 62.0, diagnostic, 2, theme.error)
 			free(diagnostic)
 		else: ui_draw_text(&renderer, 12.0, height - 62.0, status, 2, theme.text_muted)
-		char* help = c"Ctrl+D canvas: Tab selects, arrows move (Shift: 10), Delete removes. Wheel zooms."
+		char* help = c"Ctrl+D canvas: Tab selects, Space/Shift+click add, Ctrl+A all, arrows move (Shift: 10), Alt+arrows resize, Delete removes, Ctrl+G ungroups."
 		if (external != MM_DISK_SAME): help = c"Changed on disk: Ctrl+Shift+R reloads it (discarding edits), Ctrl+K keeps your version."
-		if (mm_graph_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class and state."
+		if (mm_canvas_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView."
+		else if (mm_outline_family(e.document.kind)): help = c"Ctrl+D canvas: Tab selects, Delete removes the subtree; Add child / Add sibling / Up / Down edit the outline."
 		ui_draw_text(&renderer, 12.0, height - 38.0, help, 2, theme.text_muted)
 		ui_clip_pop(&renderer)
 		ui_disable(&ctx, 0)
