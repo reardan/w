@@ -42,7 +42,45 @@ The executable keeps W's no-C-runtime model. The module defines `_start`
 (x86-64) or `svc #0` (AArch64) instructions, so the standard library's own I/O and `malloc`
 (mmap-based) lower like any other W code. The module also defines
 `memset`, `memcpy` and `memmove`, which LLVM may call for large copies,
-as loops marked `"no-builtins"`. Nothing links against libc.
+as loops marked `"no-builtins"`, with hidden visibility. A program
+without C imports links statically against nothing.
+
+### C imports
+
+`extern` functions and objects without a W body, whether declared by hand
+(`c_lib "libc.so.6"`, `extern int printf(char* fmt, ...)`, `= "symbol"`
+aliases) or by `c_import`, lower to LLVM declarations of the library
+symbol, and such a program links dynamically. The front end binds each
+extern symbol to a dynamic-registry import: a function through its GOT
+slot (`sym_got_vaddr`, which the front end now records for every import,
+not only variadic ones), an object through the address it reserved. Calls
+use the C ABI while W functions keep the i64 ABI: each fixed parameter and
+the result take the LLVM type of their W type (`ptr`, `i8` to `i64` with
+`signext`/`zeroext` below 32 bits, `float`, `double`), so a W `int` is an
+`i64` and an `int32` an `i32` whose result sign-extends. A variadic call
+spells its function type (`call i64 (ptr, i64, ptr, ...) @"snprintf"(...)`)
+and passes the tail as words, a `float32` promoted to `double` and a
+fixed array or slice decayed to its data pointer, as the native inline
+call does. `c_import`'s weak imports become `extern_weak`; its integer
+macros and enumerators (`SEEK_END`, `ENOENT`) are constants, and its
+layout padding fields are skipped.
+
+Linking keeps W's own `_start` (`-nostartfiles`) rather than crt1 and
+`__libc_start_main`, the model the native backends use: the dynamic
+loader initializes libc before `_start` runs, and the program still exits
+with `exit_group`, so C `atexit` handlers do not run and buffered stdio
+must be flushed explicitly (`fflush(0)`), exactly as natively. The link
+names every `c_lib` the program declares (`-l:libc.so.6 -l:libm.so.6`),
+since the native image lists each as `DT_NEEDED` and the loader resolves
+an import in any of them; the IR's header comment repeats that command
+for `--emit-llvm` output.
+
+An imported object is the library's own storage rather than a COPY of it
+sized by its W type, so its W type must match the C object: `extern int
+optind` (8 bytes) reads past libc's 4-byte `int` under wllvm, while the
+native COPY space zero-fills the rest. Bit-field records, function values
+of imports (passing `puts` itself as a callback) and AArch64 dynamic links
+(which need an AArch64 sysroot) are not covered.
 
 This is not a switch on `wv2` and does not replace a production backend.
 
@@ -262,6 +300,9 @@ rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
 `tests/wllvm_container_fixture.w`, `tests/wllvm_slice_fixture.w`,
 `tests/wllvm_generic_fixture.w` (generics and checked owners),
+`tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
+variadic, float and narrow-integer signatures, an alias, an imported
+object and a `c_import` constant; linked dynamically),
 `tests/wllvm_float_fixture.w` (floats, NaN and conversion edge cases,
 f-strings) and `tests/wllvm_registry_fixture.w` (the synthesized test
 registry) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status

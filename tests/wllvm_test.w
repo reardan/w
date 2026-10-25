@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_slice_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_slice_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -80,12 +80,31 @@ void test_wllvm_deterministic_ir():
 	assert1(a != 0)
 	assert_contains(a, c"icmp ne i64")
 	unlink(first)
+	free(a)
+	# Imports keep the C ABI and name the libraries to link dynamically;
+	# an alias shares its import's one declaration.
+	wllvm_test_emit(c"tests/wllvm_extern_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"; C imports; link with: clang -nostartfiles -l:libc.so.6 -l:libm.so.6")
+	assert_contains(a, c"declare i64 @\"printf\"(ptr, ...)")
+	assert_contains(a, c"call i64 (ptr, i64, ptr, ...) @\"snprintf\"(ptr ")
+	assert_contains(a, c"declare i32 @\"abs\"(i32)")
+	assert_contains(a, c"declare double @\"sqrt\"(double)")
+	assert_contains(a, c"declare float @\"sqrtf\"(float)")
+	assert_contains(a, c"fpext float ")
+	assert_contains(a, c"@\"stdout\" = external global [8 x i8]")
+	int puts = index_of(a, c"declare i64 @\"puts\"(ptr)")
+	assert1(puts >= 0)
+	assert_equal(-1, index_of(a + puts + 1, c"declare i64 @\"puts\""))
+	unlink(first)
 	# Containers lower to calls into the auto-imported runtime.
 	wllvm_test_emit(c"tests/wllvm_container_fixture.w", first)
 	a = file_read_text(first)
 	assert1(a != 0)
 	assert_contains(a, c"phi i64")
 	unlink(first)
+	free(a)
 	# Floats ride in the word as bit patterns; f-strings call the runtime.
 	wllvm_test_emit(c"tests/wllvm_float_fixture.w", first)
 	a = file_read_text(first)
@@ -250,6 +269,7 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
 	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
+	wllvm_test_differential(clang, c"tests/wllvm_extern_fixture.w", 47)
 	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
 	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
 	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)

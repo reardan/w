@@ -5,7 +5,9 @@ The front end still emits native code to the null device while binding the
 trees: this is not an independent semantic-analysis pass. The tool writes
 LLVM IR text, and for any output not named *.ll hands it to clang to build
 a freestanding x86-64 (default) or AArch64 (--target arm64) Linux
-executable (no C library). LLVM is needed only for that last step.
+executable: static with no C library, or dynamically linked against the
+libraries a program's C imports name. LLVM is needed only for that last
+step.
 */
 import compiler.compiler
 import tools.wllvm_emit
@@ -30,10 +32,12 @@ void wllvm_usage():
 	println(c"unless another level is given; AArch64 links with ld.lld.")
 	println(c"Subset: integer, bool, char, pointer, enum, string-handle and record types;")
 	println(c"locals, globals, fixed arrays, calls (direct, indirect, syscall), if, while,")
-	println(c"for-range, break, continue and return, across every module the entry reaches.")
-	println(c"Floats, containers, generics, records by value and other constructs fail.")
-	println(c"The front end currently also emits native code to the null device.")
-	println(c"To build IR by hand: clang -O2 -static -nostdlib output.ll -o program")
+	println(c"for-range, break, continue and return, across every module the entry reaches;")
+	println(c"generics, floats, containers, checked pointers, and extern/c_import calls")
+	println(c"(linked dynamically, keeping W's _start). Records by value and other")
+	println(c"constructs fail. The front end currently also emits native code to the null")
+	println(c"device. To build IR by hand: clang -O2 -static -nostdlib output.ll -o program")
+	println(c"  (with C imports, the IR names its link: clang -nostartfiles -l:libc.so.6 ...)")
 	println(c"  (AArch64: add --target=aarch64-linux-gnu -fuse-ld=lld)")
 
 
@@ -63,9 +67,19 @@ int wllvm_same_file(char* input, char* output):
 	return (in_stat.ino == out_stat.ino) && (in_stat.dev == out_stat.dev)
 
 
-# Build output from ir with clang; clang's diagnostics pass through.
+# Build output from ir with clang; clang's diagnostics pass through. A
+# program with C imports links dynamically against their libraries but
+# keeps W's own _start (-nostartfiles): the dynamic loader initializes the
+# C library before it runs, and the program exits with exit_group, without
+# C atexit handlers or a stdio flush, as the native backends do.
 int wllvm_link(char* path, char* level, char* ir, char* output):
-	list[char*] args = list[char*]{path, level, c"-static", c"-nostdlib", c"-Wno-override-module", c"-o", output, ir}
+	list[char*] args = list[char*]{path, level, c"-Wno-override-module", c"-o", output, ir}
+	if (llvm_dynamic):
+		args.push(c"-nostartfiles")
+		for soname in llvm_link_libraries: args.push(strjoin(c"-l:", soname))
+	else:
+		args.push(c"-static")
+		args.push(c"-nostdlib")
 	if (llvm_arm64):
 		args.push(c"--target=aarch64-linux-gnu")
 		args.push(c"-fuse-ld=lld")
