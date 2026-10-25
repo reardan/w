@@ -1,0 +1,15 @@
+---
+title: Hand-drawn checkout
+config:
+  look: handDrawn
+  handDrawnSeed: 7
+---
+flowchart LR
+A([Customer]) --> B{In stock?}
+B -->|yes| C[Ship order]
+B -. no .-> D((Backorder))
+C --> E[(Orders)]
+subgraph Warehouse
+C
+E
+end

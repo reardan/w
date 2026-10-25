@@ -213,3 +213,137 @@ void test_canvas_state_diagram_select_connect_drag_and_delete():
 	assert_equal(-1, mm_find_node(e.document, c"Busy"))
 	assert_equal(0, e.document.edges.length)
 	mm_editor_free(e)
+
+float32 ct_cx(mm_editor* e, int i):
+	return cast(float32, e.scene.nodes[i].x + e.scene.nodes[i].w / 2)
+
+float32 ct_cy(mm_editor* e, int i):
+	return cast(float32, e.scene.nodes[i].y + e.scene.nodes[i].h / 2)
+
+void ct_drag(mm_canvas* c, mm_editor* e, float32 x, float32 y, float32 dx, float32 dy):
+	for i in range(1, 11): mm_canvas_motion(c, e, x + dx * cast(float32, i) / 10.0, y + dy * cast(float32, i) / 10.0)
+
+void test_canvas_shift_click_multi_select_drags_and_deletes_as_one_step():
+	mm_editor* e = mm_editor_new(c"bin/canvas_fixture.mmd", c"flowchart LR\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\n")
+	mm_canvas c
+	mm_canvas_init(&c)
+	int a = mm_find_node(e.document, c"A")
+	int b = mm_find_node(e.document, c"B")
+	int ax = e.scene.nodes[a].x
+	int bx = e.scene.nodes[b].x
+	mm_canvas_press(&c, e, ct_cx(e, a), ct_cy(e, a))
+	mm_canvas_release(&c, e)
+	mm_canvas_press_mods(&c, e, ct_cx(e, b), ct_cy(e, b), MM_CANVAS_EXTEND)
+	mm_canvas_release(&c, e)
+	assert_equal(2, mm_canvas_selection_count(&c, e))
+	assert_equal(1, mm_canvas_selected(&c, a))
+	assert_equal(1, mm_canvas_selected(&c, b))
+	# Dragging one member moves the whole selection in one undo step.
+	float32 px = ct_cx(e, a)
+	float32 py = ct_cy(e, a)
+	mm_canvas_press(&c, e, px, py)
+	ct_drag(&c, e, px, py, 30.0, 40.0)
+	assert_equal(bx + 30, e.scene.nodes[b].x)
+	assert_equal(1, mm_canvas_release(&c, e))
+	assert_equal(2, e.history.length)
+	assert_equal(ax + 30, e.scene.nodes[mm_find_node(e.document, c"A")].x)
+	assert_equal(bx + 30, e.scene.nodes[mm_find_node(e.document, c"B")].x)
+	asserts(c"both records", index_of(e.document.source, c"@w-position \"A\"") >= 0 && index_of(e.document.source, c"@w-position \"B\"") >= 0)
+	# Shift-click again removes a member; arrows move what remains.
+	c.node = mm_find_node(e.document, c"A")
+	mm_canvas_toggle_node(&c, e, mm_find_node(e.document, c"B"))
+	mm_canvas_toggle_node(&c, e, mm_find_node(e.document, c"C"))
+	assert_equal(2, mm_canvas_selection_count(&c, e))
+	assert_equal(1, mm_canvas_nudge(&c, e, 10, 0))
+	assert_equal(3, e.history.length)
+	assert_equal(1, mm_canvas_delete(&c, e))
+	assert_equal(4, e.history.length)
+	assert_equal(1, e.document.nodes.length)
+	assert_strings_equal(c"B", e.document.nodes[0].id)
+	assert_equal(1, mm_editor_undo(e, 0))
+	assert_equal(3, e.document.nodes.length)
+	mm_editor_free(e)
+
+void test_canvas_rubber_band_select_all_and_keyboard_extend():
+	mm_editor* e = mm_editor_new(c"bin/canvas_fixture.mmd", c"flowchart LR\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\n")
+	mm_canvas c
+	mm_canvas_init(&c)
+	int a = mm_find_node(e.document, c"A")
+	int b = mm_find_node(e.document, c"B")
+	# A band from the background around A and B only.
+	float32 x0 = cast(float32, e.scene.nodes[a].x - 4)
+	float32 y0 = 1.0
+	float32 x1 = cast(float32, e.scene.nodes[b].x + e.scene.nodes[b].w + 2)
+	float32 y1 = cast(float32, e.scene.height - 1)
+	asserts(c"band starts on background", mm_editor_hit(e, cast(int, x0), cast(int, y0)) < 0)
+	mm_canvas_press_mods(&c, e, x0, y0, MM_CANVAS_EXTEND)
+	assert_equal(3, c.gesture)
+	ct_drag(&c, e, x0, y0, x1 - x0, y1 - y0)
+	assert_equal(0, mm_canvas_release(&c, e))
+	assert_equal(2, mm_canvas_selection_count(&c, e))
+	assert_equal(0, mm_canvas_selected(&c, mm_find_node(e.document, c"C")))
+	assert_equal(1, e.history.length)
+	mm_canvas_select_all(&c, e)
+	assert_equal(3, mm_canvas_selection_count(&c, e))
+	# A plain click collapses to one node.
+	mm_canvas_press(&c, e, ct_cx(e, a), ct_cy(e, a))
+	mm_canvas_release(&c, e)
+	assert_equal(1, mm_canvas_selection_count(&c, e))
+	# Space keeps the set while Tab moves focus.
+	mm_canvas_toggle_focused(&c, e)
+	mm_canvas_cycle(&c, e, 0)
+	mm_canvas_toggle_focused(&c, e)
+	assert_equal(2, mm_canvas_selection_count(&c, e))
+	mm_canvas_reset(&c, e)
+	assert_equal(0, mm_canvas_selection_count(&c, e))
+	mm_editor_free(e)
+
+void test_canvas_resize_handle_and_keyboard_grow_persist_sizes():
+	mm_editor* e = mm_editor_new(c"bin/canvas_fixture.mmd", c"flowchart LR\nA[Alpha] --> B[Beta]\n")
+	mm_canvas c
+	mm_canvas_init(&c)
+	int w = e.scene.nodes[0].w
+	int h = e.scene.nodes[0].h
+	mm_canvas_press(&c, e, ct_cx(e, 0), ct_cy(e, 0))
+	mm_canvas_release(&c, e)
+	float32 hx = cast(float32, e.scene.nodes[0].x + w)
+	float32 hy = cast(float32, e.scene.nodes[0].y + h)
+	mm_canvas_press(&c, e, hx, hy)
+	assert_equal(4, c.gesture)
+	ct_drag(&c, e, hx, hy, 40.0, 20.0)
+	assert_equal(w + 40, e.scene.nodes[0].w)
+	assert_equal(1, mm_canvas_release(&c, e))
+	assert_equal(2, e.history.length)
+	asserts(c"size record", index_of(e.document.source, c"@w-size \"A\"") >= 0)
+	assert_equal(w + 40, e.scene.nodes[0].w)
+	assert_equal(h + 20, e.scene.nodes[0].h)
+	c.node = 0
+	assert_equal(1, mm_canvas_grow(&c, e, 0 - 10, 0))
+	assert_equal(w + 30, e.scene.nodes[0].w)
+	assert_equal(3, e.history.length)
+	mm_editor_free(e)
+
+void test_canvas_groups_select_drag_with_members_and_cycle():
+	mm_editor* e = mm_editor_new(c"bin/canvas_fixture.mmd", c"flowchart LR\nsubgraph G[Group]\n  A[Alpha]\nend\nA --> B[Beta]\n")
+	mm_canvas c
+	mm_canvas_init(&c)
+	int g = mm_find_node(e.document, c"G")
+	int a = mm_find_node(e.document, c"A")
+	int ax = e.scene.nodes[a].x
+	# The group title band is the group, not its member.
+	float32 tx = cast(float32, e.scene.nodes[g].x + 6)
+	float32 ty = cast(float32, e.scene.nodes[g].y + 6)
+	mm_canvas_press(&c, e, tx, ty)
+	assert_equal(g, c.node)
+	ct_drag(&c, e, tx, ty, 50.0, 0.0)
+	assert_equal(ax + 50, e.scene.nodes[a].x)
+	assert_equal(1, mm_canvas_release(&c, e))
+	assert_equal(ax + 50, e.scene.nodes[mm_find_node(e.document, c"A")].x)
+	# Tab reaches the group too.
+	mm_canvas_reset(&c, e)
+	int seen = 0
+	for i in range(6):
+		mm_canvas_cycle(&c, e, 0)
+		if (c.node == mm_find_node(e.document, c"G")): seen = 1
+	assert_equal(1, seen)
+	mm_editor_free(e)

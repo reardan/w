@@ -27,6 +27,12 @@ drawn untinted or a coverage rect in the R8 atlas drawn in the text
 color (COLR's foreground layers). ui_font_color_generation() and the
 color atlas accessors mirror the coverage atlas's.
 
+A strike also carries a hinting mode (issue #824): ui_font_strike
+gives the unhinted strike, and ui_font_strike_hinted(face, ppem,
+UI_HINT_LIGHT) a separate one whose glyphs lib.ttf_hint fits to the
+pixel grid vertically. Hinting never changes advances, kerning or
+shaped positions, so layout and carets are the same in both.
+
 Text is UTF-8 (invalid bytes read as U+FFFD), measured with pair
 kerning from the face's GPOS or kern table. Pure CPU code — the GL
 upload lives in graphics.ui.render.
@@ -34,6 +40,7 @@ upload lives in graphics.ui.render.
 import lib.lib
 import lib.utf8
 import lib.ttf
+import lib.ttf_hint
 import lib.rle
 import lib.mem
 import libs.standard.crypto.base64
@@ -130,11 +137,19 @@ const int ui_font_min_ppem = 4
 const int ui_font_max_ppem = 200
 
 
-# A face at one pixel size, with its line metrics in pixels (y-down
-# from the baseline for the decoration lines, lib.ttf's conventions).
+# Strike hinting modes (lib.ttf_hint's): outlines as designed, or
+# fitted to the pixel grid vertically by the light autohinter.
+const int UI_HINT_NONE = 0
+const int UI_HINT_LIGHT = 1
+
+
+# A face at one pixel size and hinting mode, with its line metrics in
+# pixels (y-down from the baseline for the decoration lines, lib.ttf's
+# conventions).
 struct ui_strike:
 	int32 face
 	int32 ppem
+	int32 hinting       # UI_HINT_NONE or UI_HINT_LIGHT
 	int32 italic        # the true-italic companion strike; -1 unresolved, -2 none
 	int32 ascent
 	int32 descent
@@ -575,12 +590,16 @@ int ui_font_make_color_glyph(int face, int gid, int ppem, ui_glyph* g):
 
 # ---- strikes ---------------------------------------------------------
 
-# Find or create the strike of face at ppem. Returns its id, or -1 for
-# an unknown face or a size outside 4..200 (after printing why).
-int ui_font_strike(int face, int ppem):
+# Find or create the strike of face at ppem with a hinting mode
+# (UI_HINT_NONE or UI_HINT_LIGHT). Returns its id, or -1 for an unknown
+# face or mode or a size outside 4..200 (after printing why).
+int ui_font_strike_hinted(int face, int ppem, int hinting):
 	ui_font_init()
 	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
+		return 0 - 1
+	if ((hinting != UI_HINT_NONE) && (hinting != UI_HINT_LIGHT)):
+		print_error(c"graphics.ui.font: unknown hinting mode\n")
 		return 0 - 1
 	ttf_font* font = ui_font_face_font(face)
 	if (font == 0):
@@ -588,8 +607,8 @@ int ui_font_strike(int face, int ppem):
 		return 0 - 1
 	int i = 0
 	while (i < ui_font_st.strike_count):
-		if ((ui_font_st.strikes[i].face == face) && (ui_font_st.strikes[i].ppem == ppem)):
-			return i
+		ui_strike* found = &ui_font_st.strikes[i]
+		if ((found.face == face) && (found.ppem == ppem) && (found.hinting == hinting)): return i
 		i = i + 1
 	if (ui_font_st.strike_count >= ui_font_max_strikes):
 		print_error(c"graphics.ui.font: strike limit reached\n")
@@ -602,6 +621,7 @@ int ui_font_strike(int face, int ppem):
 	ui_strike* s = &ui_font_st.strikes[id]
 	s.face = face
 	s.ppem = ppem
+	s.hinting = hinting
 	s.italic = 0 - 1
 	s.ascent = ttf_scale_round(font, ppem, font.ascent)
 	s.descent = ttf_scale_round(font, ppem, font.descent)
@@ -611,6 +631,11 @@ int ui_font_strike(int face, int ppem):
 	s.strikeout_thickness = ttf_strikeout_thickness(font, ppem)
 	ui_font_st.strike_count = id + 1
 	return id
+
+
+# The unhinted strike of face at ppem (ui_font_strike_hinted).
+int ui_font_strike(int face, int ppem):
+	return ui_font_strike_hinted(face, ppem, UI_HINT_NONE)
 
 
 # Set up the default faces and the body/title strikes (0 and 1). Runs
@@ -676,10 +701,28 @@ int ui_font_strike_ppem(int strike):
 	return ui_font_st.strikes[i].ppem
 
 
+int ui_font_strike_hinting(int strike):
+	int i = ui_font_strike_valid(strike)
+	return ui_font_st.strikes[i].hinting
+
+
+# A strike of face at ppem with strike's hinting mode: how a strike's
+# companions (italic, fallback faces, device sizes) are found.
+int ui_font_strike_sibling(int strike, int face, int ppem):
+	return ui_font_strike_hinted(face, ppem, ui_font_strike_hinting(strike))
+
+
 # The same face as strike at another size: text scaled cleanly to any
 # size. Returns -1 when ppem is out of range.
 int ui_font_strike_resized(int strike, int ppem):
-	return ui_font_strike(ui_font_strike_face(strike), ppem)
+	return ui_font_strike_sibling(strike, ui_font_strike_face(strike), ppem)
+
+
+# The same face and size as strike in another hinting mode. Returns -1
+# for an unknown mode.
+int ui_font_strike_with_hinting(int strike, int hinting):
+	int i = ui_font_strike_valid(strike)
+	return ui_font_strike_hinted(ui_font_st.strikes[i].face, ui_font_st.strikes[i].ppem, hinting)
 
 
 # The true-italic companion of strike (the same size in its face's
@@ -693,7 +736,7 @@ int ui_font_strike_italic(int strike):
 		int found = 0 - 2
 		if (face == s.face): found = strike
 		else if (face >= 0):
-			found = ui_font_strike(face, s.ppem)
+			found = ui_font_strike_sibling(strike, face, s.ppem)
 			if (found < 0): found = 0 - 2
 		# ui_font_strike may have moved the array.
 		ui_font_st.strikes[strike].italic = found
@@ -863,6 +906,7 @@ int ui_font_resolve(int face, int cp, int* gid):
 ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 	ui_strike* s = &ui_font_st.strikes[strike]
 	int ppem = s.ppem
+	int hinting = s.hinting
 	ui_glyph g
 	g.x = 0
 	g.y = 0
@@ -880,7 +924,7 @@ ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 	g.gid = gid
 	if (ui_font_make_color_glyph(face, gid, ppem, &g)): return g
 	ttf_bitmap bm
-	if (ttf_rasterize(font, gid, ppem, &bm) == 0):
+	if (ttf_rasterize_hinted(font, gid, ppem, 0.0, hinting, &bm) == 0):
 		# A malformed outline still advances, so text stays laid out.
 		g.advance = ttf_scale_round(font, ppem, ttf_advance_units(font, gid))
 		return g

@@ -3,7 +3,12 @@ title Native call hierarchy
 @Actor Client
 @Boundary Service as Order Service
 @Database Repository
+@Queue Events
+// **Checkout** starts the order
 Client->Service.checkout() {
+  new Audit
+  @return
+  Events->Service: Accepted
   order = new Order(cart)
   id = Repository.save(order)
   try {

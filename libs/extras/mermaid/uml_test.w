@@ -32,7 +32,7 @@ void test_uml_class_members_and_compartments():
 	int method_y = 0
 	for mm_primitive* p in s.items:
 		if (strcmp(p.text, c"-int id") == 0): field_y = p.y
-		if (strcmp(p.text, c"+save() bool") == 0): method_y = p.y
+		if (strcmp(p.text, c"+save() : bool") == 0): method_y = p.y
 	asserts(c"attributes precede methods regardless of source order", field_y > 0 && field_y < method_y)
 	char* roundtrip = mm_write(d)
 	assert_strings_equal(source, roundtrip)
@@ -40,7 +40,7 @@ void test_uml_class_members_and_compartments():
 	mm_document_free(d)
 	char* svg = mm_svg(s)
 	asserts(c"scene owns annotation text", index_of(svg, c"&lt;&lt;service&gt;&gt;") >= 0)
-	asserts(c"scene owns members", index_of(svg, c"+load() Item") >= 0)
+	asserts(c"scene owns members", index_of(svg, c"+load() : Item") >= 0)
 	free(svg)
 	mm_scene_free(s)
 
@@ -165,7 +165,7 @@ void test_uml_edit_roundtrip_and_failed_parse():
 	mm_document_free(d)
 
 void test_uml_unsupported_and_malformed_syntax():
-	list[char*] cases = list[char*]{c"classDiagram\nclass A {", c"classDiagram\nnamespace N {\nclass A", c"classDiagram\nA ()== B", c"classDiagram\nclass A~T", c"classDiagram\nclass A:::red", c"classDiagram\nstyle A font-size:99px", c"classDiagram\nclass A {\n<<>>\n}", c"classDiagram\nclass A {\n<<service\n}", c"classDiagram\nA == B", c"classDiagram\nclass A\nnamespace A {\n}", c"stateDiagram-v2\nstate A {\nB --> C", c"stateDiagram-v2\nstate A {\nstate B\n}\nstate B", c"stateDiagram-v2\nstate A <<unknown>>", c"stateDiagram-v2\nA -.-> B", c"stateDiagram-v2\n[*]", c"stateDiagram-v2\nstate A {\n--\n}", c"stateDiagram-v2\n}", c"stateDiagram-v2\nstate \"label\" A"}
+	list[char*] cases = list[char*]{c"classDiagram\nclass A {", c"classDiagram\nnamespace N {\nclass A", c"classDiagram\nA ()== B", c"classDiagram\nclass A~T", c"classDiagram\nclass A:::", c"classDiagram\nstyle A font-size:99px", c"classDiagram\nclass A {\n<<>>\n}", c"classDiagram\nclass A {\n<<service\n}", c"classDiagram\nA == B", c"classDiagram\nclass A\nnamespace A {\n}", c"stateDiagram-v2\nstate A {\nB --> C", c"stateDiagram-v2\nstate A {\nstate B\n}\nstate B", c"stateDiagram-v2\nstate A <<unknown>>", c"stateDiagram-v2\nA -.-> B", c"stateDiagram-v2\n[*]", c"stateDiagram-v2\nstate A {\n--\n}", c"stateDiagram-v2\n}", c"stateDiagram-v2\nstate \"label\" A"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported UML diagnosed", d.error != 0)

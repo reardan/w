@@ -1,0 +1,19 @@
+agentflow-beta LR
+accTitle: Collapsed research pipeline
+request["Request"]@{shape: input}
+flow research["Research"]@{
+  view: collapsed
+  algorithm: elk.layered
+  owner:
+    team: platform
+    reviewers: [ana, bo]
+}
+  search["Search"]@{shape: tool}
+  summarize["Summarize"]@{shape: task}
+  search --> summarize
+end
+publish["Publish"]@{shape: action, retries: 3, enabled: true}
+request e1@--> search
+summarize e2@--> publish
+e1@{ animate: true, animation: fast, curve: basis }
+e2@{ curve: step }

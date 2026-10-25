@@ -1,0 +1,6 @@
+railroad-ebnf-beta
+title "String literal"
+string = '"' { character | escape } '"'
+escape = "\\" ( "\"" | "\\" | "n" | "t" ) ;
+character = ? any character except '"' and \ ?
+whitespace = " " | "\t" | "\n"

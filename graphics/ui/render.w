@@ -506,7 +506,7 @@ void ui_render_color_parts(ui_renderer* r, float32 x, float32 baseline, ui_glyph
 int ui_render_glyph_device(ui_renderer* r, float32 x, float32 y_top, ui_glyph g, int strike, float32 skew, ui_color color):
 	float32 s = r.pixel_scale
 	int ppem = cast(int, cast(float32, ui_font_strike_ppem(strike)) * s + 0.5)
-	int device = ui_font_strike(g.face, ppem)
+	int device = ui_font_strike_sibling(strike, g.face, ppem)
 	if (device < 0): return 0
 	ui_glyph d = ui_font_glyph_id(device, g.gid)
 	if (d.w <= 0): return 0

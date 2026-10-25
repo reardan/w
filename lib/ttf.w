@@ -12,8 +12,10 @@ to line segments and filled by the non-zero winding rule over 4x4
 subsamples per pixel (unhinted grayscale coverage). 'OTTO' fonts with
 CFF outlines load too: Type 2 charstrings with global and local
 subroutines, name-keyed or CID-keyed (FDSelect), cubics flattened the
-same way; ttf_glyph_bbox gives their control-point bounds. Hinting is
-not supported, and ttf_subset handles only glyf fonts.
+same way; ttf_glyph_bbox gives their control-point bounds. Glyphs
+rasterize unhinted here; lib.ttf_hint adds an opt-in vertical light
+autohinter for both outline formats, through the ttf_points recorder
+below. ttf_subset handles only glyf fonts.
 
 Fonts come from a path (ttf_load) or from bytes already in memory
 (ttf_load_bytes, for hosts without a filesystem). Every table read is
@@ -59,6 +61,7 @@ struct ttf_font:
 	int cff_subrs       # the Private DICT's local Subrs INDEX, or 0
 	int cff_fdarray     # CID-keyed: the Font DICT INDEX, or 0
 	int cff_fdselect    # CID-keyed: the FDSelect table
+	char* hint_metrics  # lib.ttf_hint's per-face blue zones (one block), or 0
 
 
 # Out-of-range reads yield 0: a truncated file degrades to a failed
@@ -148,6 +151,7 @@ int ttf_load(ttf_font* f, char* path):
 int ttf_load_bytes(ttf_font* f, char* data, int size):
 	f.data = data
 	f.size = size
+	f.hint_metrics = 0
 	f.cmap4 = 0
 	f.cmap12 = 0
 	if (size < 12):
@@ -449,8 +453,10 @@ int ttf_kern_table_units(ttf_font* f, int left, int right):
 # bytes belong to the caller.
 void ttf_free(ttf_font* f):
 	if (f.data != 0): free(f.data)
+	if (f.hint_metrics != 0): free(f.hint_metrics)
 	f.data = 0
 	f.size = 0
+	f.hint_metrics = 0
 
 
 # Glyph id via a format-12 subtable: sequential groups of
@@ -579,6 +585,37 @@ int ttf_ceil(float32 v):
 	return t
 
 
+# Outline points in font units (y up, after composite transforms), kept
+# alongside the flattened segments when a hinter asks for them (a
+# ttf_outline's points field). flags: bit 0 on-curve, bit 1 starts a
+# contour.
+struct ttf_points:
+	float32* x
+	float32* y
+	char* flags
+	int count
+	int cap
+
+
+void ttf_points_push(ttf_points* p, float32 x, float32 y, int flags):
+	if (p.cap == 0):
+		p.cap = 64
+		p.count = 0
+		p.x = cast(float32*, malloc(p.cap * 4))
+		p.y = cast(float32*, malloc(p.cap * 4))
+		p.flags = cast(char*, malloc(p.cap))
+	if (p.count >= p.cap):
+		int next = p.cap * 2
+		p.x = cast(float32*, realloc(cast(char*, p.x), p.cap * 4, next * 4))
+		p.y = cast(float32*, realloc(cast(char*, p.y), p.cap * 4, next * 4))
+		p.flags = realloc(p.flags, p.cap, next)
+		p.cap = next
+	p.x[p.count] = x
+	p.y[p.count] = y
+	p.flags[p.count] = flags
+	p.count = p.count + 1
+
+
 # Segment accumulator used while flattening one glyph, in y-down pixel
 # space with the baseline at 0. Grows on demand up to a hard ceiling
 # (overflow flags a pathological outline).
@@ -592,6 +629,7 @@ struct ttf_outline:
 	int overflow
 	float32 scale       # pixels per font unit
 	float32 skew        # x += skew * height above the baseline (oblique)
+	ttf_points* points  # also record the outline's points (hinting), or 0
 
 
 void ttf_outline_push(ttf_outline* o, float32 x0, float32 y0, float32 x1, float32 y1):
@@ -727,6 +765,17 @@ int ttf_add_simple(ttf_font* f, ttf_outline* o, int off, int contours, ttf_xform
 		px[i] = tx + o.skew * ty
 		py[i] = 0.0 - ty
 		i = i + 1
+	if (o.points != 0):
+		int first = 0
+		for c in range(contours):
+			if (contour_end[c] - first + 1 >= 2):
+				for k in range(first, contour_end[c] + 1):
+					float32 kx = cast(float32, ux[k])
+					float32 ky = cast(float32, uy[k])
+					int kind = flags[k] & 1
+					if (k == first): kind = kind | 2
+					ttf_points_push(o.points, m.a * kx + m.c * ky + m.dx, m.b * kx + m.d * ky + m.dy, kind)
+			first = contour_end[c] + 1
 
 	int start = 0
 	for c in range(contours):
@@ -847,6 +896,7 @@ int ttf_rasterize_skewed(ttf_font* f, int gid, int ppem, float32 skew, ttf_bitma
 	outline.ys1 = cast(float32*, malloc(outline.cap * 4))
 	outline.scale = cast(float32, ppem) / cast(float32, f.upem)
 	outline.skew = skew
+	outline.points = 0
 	ttf_xform identity
 	identity.a = 1.0
 	identity.b = 0.0
@@ -1627,6 +1677,12 @@ float32 ttf_cff_ty(ttf_cff_run* r, float32 x, float32 y):
 	return 0.0 - (r.m.b * x + r.m.d * y + r.m.dy) * r.o.scale
 
 
+# Record a charstring point for a hinter (font units, transformed by m).
+void ttf_cff_point(ttf_cff_run* r, float32 x, float32 y, int flags):
+	if ((r.o == 0) || (r.o.points == 0)): return
+	ttf_points_push(r.o.points, r.m.a * x + r.m.c * y + r.m.dx, r.m.b * x + r.m.d * y + r.m.dy, flags)
+
+
 void ttf_cff_dump(ttf_cff_run* r, char* op, float32 x, float32 y):
 	string_append(r.path, op)
 	string_append_int(r.path, ttf_floor(x + 0.5))
@@ -1637,6 +1693,7 @@ void ttf_cff_dump(ttf_cff_run* r, char* op, float32 x, float32 y):
 void ttf_cff_line_to(ttf_cff_run* r, float32 x, float32 y):
 	if (r.o != 0): ttf_outline_push(r.o, ttf_cff_tx(r, r.x, r.y), ttf_cff_ty(r, r.x, r.y), ttf_cff_tx(r, x, y), ttf_cff_ty(r, x, y))
 	if (r.path != 0): ttf_cff_dump(r, c" L ", x, y)
+	ttf_cff_point(r, x, y, 1)
 	r.x = x
 	r.y = y
 	ttf_cff_bound(r, x, y)
@@ -1660,6 +1717,7 @@ void ttf_cff_move_by(ttf_cff_run* r, float32 dx, float32 dy):
 	r.start_y = r.y
 	r.open = 1
 	if (r.path != 0): ttf_cff_dump(r, c" M ", r.x, r.y)
+	ttf_cff_point(r, r.x, r.y, 3)
 	ttf_cff_bound(r, r.x, r.y)
 
 
@@ -1679,6 +1737,9 @@ void ttf_cff_curve_by(ttf_cff_run* r, float32 dx1, float32 dy1, float32 dx2, flo
 		ttf_cff_dump(r, c" C ", x1, y1)
 		ttf_cff_dump(r, c" ", x2, y2)
 		ttf_cff_dump(r, c" ", x3, y3)
+	ttf_cff_point(r, x1, y1, 0)
+	ttf_cff_point(r, x2, y2, 0)
+	ttf_cff_point(r, x3, y3, 1)
 	ttf_cff_bound(r, x1, y1)
 	ttf_cff_bound(r, x2, y2)
 	r.x = x3

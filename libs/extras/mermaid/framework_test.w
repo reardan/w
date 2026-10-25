@@ -43,11 +43,19 @@ void test_framework_cynefin_domains_and_transitions():
 	mm_bounds* a = s.nodes[0]
 	mm_bounds* b = s.nodes[1]
 	mm_bounds* c = s.nodes[4]
-	asserts(c"domains occupy separate regions", b.x > a.x + a.w)
-	asserts(c"confusion centered between rows", c.y > a.y + a.h)
+	# Upstream geometry: 800x600 field in 40px padding, adjacent quadrants,
+	# Confusion centred on the cross.
+	assert_equal(880, s.width)
+	assert_equal(680, s.height)
+	assert_equal(400, a.w)
+	assert_equal(300, a.h)
+	assert_equal(a.x + a.w, b.x)
+	assert_equal(a.x + a.w, c.x + c.w / 2)
+	assert_equal(a.y + a.h, c.y + c.h / 2)
 	char* svg = mm_svg(s)
 	asserts(c"items exported", index_of(svg, c"Experiment") >= 0)
-	asserts(c"transition legend exported", index_of(svg, c"complex -&gt; complicated: Learned") >= 0)
+	asserts(c"domain model exported", index_of(svg, c"Probe → Sense → Respond") >= 0)
+	asserts(c"transition label exported", index_of(svg, c">Learned<") >= 0)
 	int last_box = -1
 	int legend = -1
 	for i in range(s.items.length):
@@ -56,6 +64,47 @@ void test_framework_cynefin_domains_and_transitions():
 		if (index_of(p.text, c"Learned") >= 0): legend = i
 	asserts(c"transition text not hidden by region fills", legend > last_box)
 	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_framework_cynefin_confusion_overflow_and_self_loops():
+	mm_document* d = framework_parse(c"cynefin-beta\nconfusion\n\"One\"\n\"Two\"\n\"Three\"\n\"Four\"\n\"Five\"\ncomplex --> complex\n")
+	mm_scene* s = mm_render(d)
+	char* svg = mm_svg(s)
+	asserts(c"confusion caps badges", index_of(svg, c">Three<") >= 0 && index_of(svg, c">Four<") < 0)
+	asserts(c"confusion overflow badge", index_of(svg, c">+2 more<") >= 0)
+	free(svg)
+	for mm_primitive* p in s.items: asserts(c"self-loop transition skipped", p.role != 3)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_framework_ishikawa_upstream_geometry():
+	mm_document* d = framework_parse(c"ishikawa-beta\nBlurry Photo\nProcess\n  Out of focus\n  Shutter speed too slow\nUser\n  Shaky hands\nEquipment\n  Lens\n    Dirty lens\n    Damaged lens\nEnvironment\n  Too dark\n")
+	mm_scene* s = mm_render(d)
+	mm_bounds* head = s.nodes[0]
+	int spine_y = head.y + head.h / 2
+	int spine = 0
+	int min_x = 100000
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_LINE && p.y == spine_y && p.y2 == spine_y && p.style.width == 2): spine = spine + 1
+		if (p.x < min_x): min_x = p.x
+	assert_equal(1, spine)
+	asserts(c"content shifted to the margin", min_x >= 20 && min_x <= 22)
+	mm_bounds* process = s.nodes[1]
+	mm_bounds* user = s.nodes[4]
+	asserts(c"first cause above, second below", process.y + process.h < spine_y && user.y > spine_y)
+	mm_bounds* equipment = s.nodes[6]
+	asserts(c"later pairs sit left of earlier pairs", equipment.x < process.x)
+	asserts(c"head at the right end", head.x > process.x + process.w)
+	# Labels wrap at 15 characters.
+	char* svg = mm_svg(s)
+	asserts(c"cause wrapped", index_of(svg, c">Shutter speed<") >= 0 && index_of(svg, c">too slow<") >= 0)
+	free(svg)
+	int polygons = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_POLYGON): polygons = polygons + 1
+	# One head plus an arrowhead per bone (4 causes, 7 sub-causes).
+	assert_equal(1 + 11, polygons)
 	mm_scene_free(s)
 	mm_document_free(d)
 
@@ -76,7 +125,7 @@ void test_framework_wardley_normalized_axes_and_dependencies():
 	mm_document_free(d)
 
 void test_framework_invalid_input_and_prefixes():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA:::cls", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B", c"ishikawa-beta\n"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(a/b)", c"treeView-beta\nA icon(x) icon(y)", c"treeView-beta\nA:::bad!cls", c"treeView-beta\nA:::", c"treeView-beta\nA ::: x.y", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B", c"ishikawa-beta\n"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid framework fails explicitly", d.error != 0)
@@ -231,7 +280,7 @@ void test_framework_wardley_evolution_notes_pipelines_and_decorators():
 	__w_list_free(cast(__w_list*, samples))
 
 void test_framework_wardley_modifier_diagnostics():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [0.5, 0.5] (rent)", c"wardley-beta\ncomponent A [0.5, 0.5] (build) (buy)", c"wardley-beta\ncomponent A [0.5, 0.5] label [1000, 0]", c"wardley-beta\nevolution A -> B -> C", c"wardley-beta\nevolution A -> -> C -> D", c"wardley-beta\nevolution A -> B -> C -> D\nevolution A -> B -> C -> D", c"wardley-beta\nevolve Missing 0.5", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A->B 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A 0.5\nevolve A 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.6, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\nB [0.6]\n}", c"wardley-beta\nnote \"\" [0.1, 0.1]", c"wardley-beta\nnote Text", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.1, 0.2]\npipeline A [0.3, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n}\npipeline B [0.1, 0.2]", c"wardley-beta\nA +> B"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [0.5, 0.5] (rent)", c"wardley-beta\ncomponent A [0.5, 0.5] (build) (buy)", c"wardley-beta\ncomponent A [0.5, 0.5] label [1000, 0]", c"wardley-beta\nevolution A", c"wardley-beta\nevolution A -> -> C -> D", c"wardley-beta\nevolution A -> B -> C -> D\nevolution A -> B -> C -> D", c"wardley-beta\nevolve Missing 0.5", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A->B 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A 0.5\nevolve A 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.6, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\nB [0.6]\n}", c"wardley-beta\nnote \"\" [0.1, 0.1]", c"wardley-beta\nnote Text", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.1, 0.2]\npipeline A [0.3, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n}\npipeline B [0.1, 0.2]", c"wardley-beta\nA +> B"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		if (d.error == 0): println2(text)
@@ -241,9 +290,91 @@ void test_framework_wardley_modifier_diagnostics():
 	__w_list_free(cast(__w_list*, bad))
 	char* text = c"wardley-beta\ncomponent A [0.5, 0.5] (rent)\n"
 	mm_document* d = mm_parse(text, strlen(text))
-	assert_strings_equal(c"unsupported Wardley decorator; supported: build, buy, outsource, inertia", d.error)
+	assert_strings_equal(c"unsupported Wardley decorator; supported: build, buy, outsource, market, inertia", d.error)
 	mm_document_free(d)
 	text = c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}\n"
 	d = mm_parse(text, strlen(text))
 	assert_strings_equal(c"Wardley pipeline component outside pipeline range", d.error)
+	mm_document_free(d)
+
+int cynefin_is_label(char* text):
+	if (strcmp(text, c"again") == 0): return 1
+	if (text[0] != 't' || text[1] < '0' || text[1] > '9'): return 0
+	return 1
+
+int cynefin_overlap(mm_primitive* a, mm_primitive* b):
+	int ax1 = a.x + mm_text_width(a.text, a.text_style)
+	int bx1 = b.x + mm_text_width(b.text, b.text_style)
+	return a.x < bx1 && b.x < ax1 && a.y < b.y + MM_TEXT_LINE && b.y < a.y + MM_TEXT_LINE
+
+void test_framework_cynefin_dense_transition_routing():
+	# Every ordered pair of domains plus a repeated transition: labels never
+	# overlap each other or domain text, curves never cross domain text, and
+	# no two transitions run alongside each other (upstream's centre-to-centre
+	# curves coincide for repeats and land on the domain names).
+	list[char*] domains = list[char*]{c"complex", c"complicated", c"chaotic", c"clear", c"confusion"}
+	string_builder* text = string_from(c"cynefin-beta\ntitle Dense\ncomplex\n  \"Probe\"\nclear\n  \"Checklist\"\n  \"Runbook\"\nconfusion\n  \"Unknown\"\n")
+	int k = 0
+	for char* a in domains:
+		for char* b in domains:
+			if (strcmp(a, b) == 0): continue
+			string_append(text, a)
+			string_append(text, c" --> ")
+			string_append(text, b)
+			string_append(text, c" : \"t")
+			string_append_int(text, k)
+			string_append(text, c"\"\n")
+			k = k + 1
+	string_append(text, c"complex --> complicated : \"again\"\n")
+	mm_document* d = framework_parse(text.data)
+	mm_scene* s = mm_render(d)
+	list[mm_primitive*] labels = new list[mm_primitive*]
+	list[mm_primitive*] texts = new list[mm_primitive*]
+	# Curve samples per transition: the role-3 lines up to each arrowhead.
+	list[int] xs = new list[int]
+	list[int] ys = new list[int]
+	list[int] owner = new list[int]
+	int transitions = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT):
+			if (cynefin_is_label(p.text)): labels.push(p)
+			else if (strcmp(p.text, c"Dense") != 0): texts.push(p)
+		if (p.role != 3): continue
+		if (p.kind == MM_POLYGON): transitions = transitions + 1
+		if (p.kind == MM_LINE):
+			xs.push(p.x2)
+			ys.push(p.y2)
+			owner.push(transitions)
+	assert_equal(21, transitions)
+	assert_equal(21, labels.length)
+	for i in range(labels.length):
+		for j in range(i + 1, labels.length): asserts(c"transition labels apart", cynefin_overlap(labels[i], labels[j]) == 0)
+		for mm_primitive* t in texts: asserts(c"label clear of domain text", cynefin_overlap(labels[i], t) == 0)
+	for i in range(xs.length):
+		for mm_primitive* t in texts:
+			int x1 = t.x + mm_text_width(t.text, t.text_style)
+			asserts(c"curve clear of domain text", (xs[i] > t.x && xs[i] < x1 && ys[i] > t.y && ys[i] < t.y + MM_TEXT_LINE) == 0)
+	# Two transitions run alongside when several of one's samples lie within
+	# 6px of the other's; a crossing touches at most a couple.
+	for a in range(transitions):
+		for b in range(a + 1, transitions):
+			int close = 0
+			for i in range(xs.length):
+				if (owner[i] != a): continue
+				for j in range(xs.length):
+					if (owner[j] != b): continue
+					int dx = xs[i] - xs[j]
+					int dy = ys[i] - ys[j]
+					if (dx * dx + dy * dy < 36):
+						close = close + 1
+						break
+			asserts(c"transitions do not coincide", close <= 3)
+	__w_list_free(cast(__w_list*, labels))
+	__w_list_free(cast(__w_list*, texts))
+	__w_list_free(cast(__w_list*, xs))
+	__w_list_free(cast(__w_list*, ys))
+	__w_list_free(cast(__w_list*, owner))
+	__w_list_free(cast(__w_list*, domains))
+	string_free(text)
+	mm_scene_free(s)
 	mm_document_free(d)

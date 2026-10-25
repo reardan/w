@@ -3,6 +3,7 @@
 import libs.extras.mermaid.model
 import lib.fmath
 import libs.extras.mermaid.text_metrics
+import libs.extras.mermaid.rough
 
 const int MM_LINE = 1
 const int MM_BOX = 2
@@ -25,9 +26,71 @@ struct mm_primitive:
 	int text_style
 	# Optional owned hyperlink for SVG text; native renderers ignore it.
 	char* href
+	# Optional owned SVG element id (an in-document link target); native renderers ignore it.
+	char* anchor
+	# Optional owned SVG link target (`_blank`, ...) and tooltip of a text run.
+	char* href_target
+	char* tooltip
 	# Theme role (MM_ROLE_* in style_render.w) and categorical series index.
 	int role
 	int series
+	# Label font size in px (0 = MM_TEXT_SIZE) and an owned font-family (0 = scene default).
+	int font_size
+	char* font
+	# Look effects: bit 1 drop shadow, bit 2 gradient stroke (neo look).
+	int effects
+	# Lightness offset for tinted series fills (treemap depth palettes).
+	int tint
+	# Style mask bits set by the document's own styles (classes, style, :::);
+	# theme role paint never overrides them.
+	int user_mask
+
+# Layered-layout geometry of one relationship, kept on its source node's
+# bounds so every renderer of that edge (full scene, canvas hit tests, drag
+# previews) borrowing the bounds sees it. Routes thread long edges through the
+# dummy-node channels the layered layout reserved in intermediate ranks; the
+# endpoint snapshot invalidates a route once either endpoint is moved alone.
+struct mm_edge_route:
+	mm_edge* edge
+	int from_x
+	int from_y
+	int to_x
+	int to_y
+	# Cross-axis channel coordinate per dummy, the rank-axis extent (enter,
+	# exit) the edge crosses at each dummy, and the free gap (start, end)
+	# before each dummy and before the target. Null when the edge has no route.
+	list[int] lanes
+	list[int] spans
+	list[int] gaps
+	# Bend per gap assigned by channel routing between ranks (-1: default).
+	list[int] bends
+	# Axis of the layout that produced the route (1 = LR/RL ranks).
+	int horizontal
+	# Port distribution along the node sides (count 0 = side center).
+	int from_slot
+	int from_count
+	int to_slot
+	int to_count
+	# Cross-axis offset of both ports that spreads parallel edges apart.
+	int offset
+	# Label origin chosen by the collision-avoiding placement (placed = 0: none).
+	int placed
+	int label_x
+	int label_y
+	# Obstacle-aware route (routing.w) for an edge the channels do not cover
+	# (same-rank, self loop, endpoints in different subgraphs, moved
+	# endpoint): absolute polyline from port to port when drawn, the endpoint
+	# snapshot it was routed at, the outward port directions and its axis.
+	list[int] points
+	int points_from_x
+	int points_from_y
+	int points_to_x
+	int points_to_y
+	int from_dx
+	int from_dy
+	int to_dx
+	int to_dy
+	int points_horizontal
 
 struct mm_bounds:
 	int x
@@ -35,6 +98,19 @@ struct mm_bounds:
 	int w
 	int h
 	int rank
+	# Owned geometry records of edges leaving this node (null when none).
+	list[mm_edge_route*] routes
+
+# Uniform-grid index of occupied rectangles (node boxes and placed edge
+# labels) that edge-label placement queries; see routing.w.
+struct mm_label_grid:
+	int cell
+	int columns
+	int rows
+	list[int] head
+	list[int] next
+	list[int] entry_rect
+	list[int] rects
 
 struct mm_scene:
 	list[mm_primitive*] items
@@ -46,6 +122,25 @@ struct mm_scene:
 	int has_title
 	int has_background
 	int background
+	# Owned default SVG font-family from fontFamily configuration (0 = native face).
+	char* font_family
+	# Neo look: drop-shadow offset/blur in px, color, alpha (hundredths), gradient stops.
+	int has_effects
+	int shadow_dx
+	int shadow_dy
+	int shadow_blur
+	int shadow_color
+	int shadow_alpha
+	int gradient_start
+	int gradient_stop
+	# Transient while mm_render_graph draws edges: occupied-area index for
+	# label placement (null otherwise), and 1 to draw edge paths only.
+	mm_label_grid* labels
+	int path_only
+	# `look: handDrawn`: non-text primitives draw as seeded rough.js-style
+	# strokes and hachure fills (rough.w); hand_drawn_seed is handDrawnSeed.
+	int hand_drawn
+	int hand_drawn_seed
 
 void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, char* text):
 	mm_primitive* p = new mm_primitive()
@@ -56,6 +151,7 @@ void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, ch
 	p.y2 = y2
 	p.dashed = dashed
 	p.text = strclone(text)
+	if (kind == MM_TEXT && mm_text_size() != MM_TEXT_SIZE): p.font_size = mm_text_size()
 	s.items.push(p)
 	if (kind == MM_TEXT): x2 = x + mm_text_width(text, 0)
 	if (kind == MM_TEXT): y2 = y + MM_TEXT_LINE
@@ -102,18 +198,58 @@ void mm_marker(mm_scene* s, int x, int y, int dx, int dy, int card):
 	if (card == 0 || card == 2): mm_draw(s, MM_CIRCLE, cx - 4, cy - 4, cx + 4, cy + 4, 0, c"")
 	else: mm_line(s, cx + px * 7, cy + py * 7, cx - px * 7, cy - py * 7, 0)
 
+void mm_edge_route_clear_points(mm_edge_route* r):
+	if (r.points != 0): __w_list_free(cast(__w_list*, r.points))
+	r.points = 0
+
+void mm_edge_route_clear(mm_edge_route* r):
+	if (r.lanes != 0): __w_list_free(cast(__w_list*, r.lanes))
+	if (r.spans != 0): __w_list_free(cast(__w_list*, r.spans))
+	if (r.gaps != 0): __w_list_free(cast(__w_list*, r.gaps))
+	if (r.bends != 0): __w_list_free(cast(__w_list*, r.bends))
+	mm_edge_route_clear_points(r)
+	r.bends = 0
+	r.lanes = 0
+	r.spans = 0
+	r.gaps = 0
+
+void mm_bounds_free(mm_bounds* b):
+	if (b.routes != 0):
+		for mm_edge_route* r in b.routes:
+			mm_edge_route_clear(r)
+			free(r)
+		__w_list_free(cast(__w_list*, b.routes))
+	free(b)
+
+# The geometry record of e on its source bounds b, created on demand.
+mm_edge_route* mm_edge_route_of(mm_bounds* b, mm_edge* e, int create):
+	if (b.routes != 0):
+		for mm_edge_route* r in b.routes:
+			if (r.edge == e): return r
+	if (create == 0): return 0
+	if (b.routes == 0): b.routes = new list[mm_edge_route*]
+	mm_edge_route* r = new mm_edge_route()
+	r.edge = e
+	b.routes.push(r)
+	return r
+
 void mm_scene_free(mm_scene* s):
 	if (s == 0): return
 	for mm_primitive* p in s.items:
 		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
 		free(p.text)
 		if (p.href != 0): free(p.href)
+		if (p.anchor != 0): free(p.anchor)
+		if (p.font != 0): free(p.font)
+		if (p.href_target != 0): free(p.href_target)
+		if (p.tooltip != 0): free(p.tooltip)
 		free(p)
-	for mm_bounds* b in s.nodes: free(b)
+	for mm_bounds* b in s.nodes: mm_bounds_free(b)
 	__w_list_free(cast(__w_list*, s.items))
 	__w_list_free(cast(__w_list*, s.nodes))
 	free(s.accessibility_title)
 	free(s.accessibility_description)
+	if (s.font_family != 0): free(s.font_family)
 	free(s)
 
 void mm_xml(string_builder* out, char* text):
@@ -163,12 +299,182 @@ void mm_svg_color(string_builder* out, char* name, int color):
 		for i in range(6): string_append_char(out, digits[(color >> ((5 - i) * 4)) & 15])
 	string_append_char(out, '"')
 
+# Text flags after font-weight / font-style styles override the run's own.
+int mm_text_flags(mm_primitive* p):
+	int flags = p.text_style
+	if (p.style.mask & 64): flags = flags - (flags & MM_TEXT_BOLD) + (p.style.font & MM_TEXT_BOLD)
+	if (p.style.mask & 128): flags = flags - (flags & MM_TEXT_ITALIC) + (p.style.font & MM_TEXT_ITALIC)
+	return flags
+
+int mm_paint_font_size(mm_primitive* p):
+	if (p.style.mask & 256): return p.style.font_size
+	if (p.font_size > 0): return p.font_size
+	return MM_TEXT_SIZE
+
+# Box corner radius: rx/ry style, else the shape's own rounding.
+int mm_paint_radius(mm_primitive* p):
+	if (p.style.mask & 1024): return p.style.radius
+	if (p.kind == MM_BOX && p.dashed == 1): return 12
+	if (p.kind == MM_BOX && p.dashed == 3): return (p.y2 - p.y) / 2
+	return 0
+
+# Hundredths as a CSS number: 50 -> 0.5, 100 -> 1.
+void mm_svg_fraction(string_builder* out, char* name, int value):
+	string_append_char(out, ' ')
+	string_append(out, name)
+	string_append(out, c"=\"")
+	if (value >= 100): string_append_char(out, '1')
+	else:
+		string_append(out, c"0.")
+		string_append_char(out, '0' + value / 10)
+		if (value % 10): string_append_char(out, '0' + value % 10)
+	string_append_char(out, '"')
+
+# stroke-dasharray style, else the primitive's own dashed line pattern.
+void mm_svg_dash(string_builder* out, mm_primitive* p):
+	if (p.style.mask & 16):
+		if (p.style.dash > 0):
+			string_append(out, c" stroke-dasharray=\"")
+			string_append_int(out, p.style.dash)
+			string_append_char(out, ' ')
+			string_append_int(out, p.style.gap)
+			string_append_char(out, '"')
+	else if (p.kind == MM_LINE && p.dashed): string_append(out, c" stroke-dasharray=\"6 4\"")
+
 void mm_svg_paint(string_builder* out, mm_primitive* p):
 	mm_svg_color(out, c"fill", mm_paint_fill(p))
 	int stroke = mm_paint_stroke(p)
 	if (p.kind == MM_TEXT): stroke = -1
-	mm_svg_color(out, c"stroke", stroke)
+	if ((p.effects & 2) && p.kind != MM_TEXT && stroke >= 0): string_append(out, c" stroke=\"url(#mermaid-gradient)\"")
+	else: mm_svg_color(out, c"stroke", stroke)
 	mm_svg_number(out, c"stroke-width", mm_paint_width(p))
+	if (p.kind != MM_TEXT && p.kind != MM_LINE): mm_svg_dash(out, p)
+	if (p.style.mask & 32): mm_svg_fraction(out, c"opacity", p.style.opacity)
+	if ((p.style.mask & 2048) && p.kind != MM_TEXT && p.kind != MM_LINE): mm_svg_fraction(out, c"fill-opacity", p.style.fill_opacity)
+	if (p.effects & 1): string_append(out, c" filter=\"url(#mermaid-drop-shadow)\"")
+
+void mm_svg_defs(string_builder* out, mm_scene* scene):
+	if (scene.has_effects == 0): return
+	string_append(out, c"<defs><filter id=\"mermaid-drop-shadow\" x=\"-20%\" y=\"-20%\" width=\"140%\" height=\"140%\"><feDropShadow")
+	mm_svg_number(out, c"dx", scene.shadow_dx)
+	mm_svg_number(out, c"dy", scene.shadow_dy)
+	mm_svg_number(out, c"stdDeviation", scene.shadow_blur)
+	mm_svg_color(out, c"flood-color", scene.shadow_color)
+	mm_svg_fraction(out, c"flood-opacity", scene.shadow_alpha)
+	string_append(out, c"/></filter><linearGradient id=\"mermaid-gradient\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"0%\"><stop offset=\"0%\"")
+	mm_svg_color(out, c"stop-color", scene.gradient_start)
+	string_append(out, c"/><stop offset=\"100%\"")
+	mm_svg_color(out, c"stop-color", scene.gradient_stop)
+	string_append(out, c"/></linearGradient></defs>\n")
+
+# A tenth-of-a-pixel coordinate as an SVG number.
+void mm_svg_tenths(string_builder* out, int value):
+	if (value < 0):
+		string_append_char(out, '-')
+		value = 0 - value
+	string_append_int(out, value / 10)
+	if (value % 10):
+		string_append_char(out, '.')
+		string_append_char(out, '0' + value % 10)
+
+# Polylines ([count, x, y, ...] runs) as one path's d attribute.
+void mm_svg_polylines(string_builder* out, list[int] runs):
+	string_append(out, c" d=\"")
+	int at = 0
+	while (at < runs.length):
+		int count = runs[at]
+		for i in range(count):
+			if (i == 0): string_append_char(out, 'M')
+			else: string_append(out, c" L")
+			mm_svg_tenths(out, runs[at + 1 + i * 2])
+			string_append_char(out, ' ')
+			mm_svg_tenths(out, runs[at + 2 + i * 2])
+		string_append_char(out, ' ')
+		at = at + 1 + count * 2
+	string_append_char(out, '"')
+
+# Whether a primitive draws hand-drawn: shapes with a stroke (strokeless
+# label backgrounds stay plain).
+int mm_rough_drawn(mm_scene* scene, mm_primitive* p):
+	if (scene.hand_drawn == 0 || p.kind == MM_TEXT): return 0
+	return mm_paint_stroke(p) >= 0
+
+# Strokes and hachure of one hand-drawn primitive; index seeds it. Large
+# filled shapes are hatched, small ones keep a solid fill under the strokes.
+mm_rough* mm_rough_primitive(mm_scene* scene, mm_primitive* p, int index, int* solid):
+	mm_rough* r = mm_rough_new(mm_rough_seed(scene.hand_drawn_seed, index))
+	int x = p.x
+	int y = p.y
+	int x2 = p.x2
+	int y2 = p.y2
+	if (p.kind == MM_POLYGON && p.points != 0 && p.points.length >= 2):
+		x = p.points[0]
+		y = p.points[1]
+		x2 = x
+		y2 = y
+		for i in range(p.points.length / 2):
+			if (p.points[i * 2] < x): x = p.points[i * 2]
+			if (p.points[i * 2] > x2): x2 = p.points[i * 2]
+			if (p.points[i * 2 + 1] < y): y = p.points[i * 2 + 1]
+			if (p.points[i * 2 + 1] > y2): y2 = p.points[i * 2 + 1]
+	int fill = -1
+	if (p.kind != MM_LINE): fill = mm_paint_fill(p)
+	int hatch = fill >= 0 && x2 - x >= 12 && y2 - y >= 12
+	*solid = fill >= 0 && hatch == 0
+	mm_rough_shape(r, p.kind, p.x, p.y, p.x2, p.y2, mm_paint_radius(p), p.points, hatch)
+	return r
+
+void mm_svg_rough(string_builder* out, mm_scene* scene, mm_primitive* p, int index):
+	int solid = 0
+	mm_rough* r = mm_rough_primitive(scene, p, index, &solid)
+	string_append(out, c"<g")
+	if (p.style.mask & 32): mm_svg_fraction(out, c"opacity", p.style.opacity)
+	if (p.style.mask & 2048): mm_svg_fraction(out, c"fill-opacity", p.style.fill_opacity)
+	string_append(out, c">")
+	int fill = mm_paint_fill(p)
+	if (solid):
+		# Small filled shapes (arrowheads, dots) keep a solid fill.
+		if (p.kind == MM_POLYGON):
+			string_append(out, c"<polygon")
+			mm_svg_color(out, c"fill", fill)
+			string_append(out, c" stroke=\"none\" points=\"")
+			for i in range(p.points.length):
+				string_append_int(out, p.points[i])
+				if (i % 2 == 0): string_append_char(out, ',')
+				else: string_append_char(out, ' ')
+			string_append(out, c"\"/>")
+		else if (p.kind == MM_CIRCLE):
+			string_append(out, c"<circle")
+			mm_svg_color(out, c"fill", fill)
+			mm_svg_number(out, c"cx", (p.x + p.x2) / 2)
+			mm_svg_number(out, c"cy", (p.y + p.y2) / 2)
+			mm_svg_number(out, c"r", (p.x2 - p.x) / 2)
+			string_append(out, c"/>")
+		else:
+			string_append(out, c"<rect")
+			mm_svg_color(out, c"fill", fill)
+			mm_svg_number(out, c"x", p.x)
+			mm_svg_number(out, c"y", p.y)
+			mm_svg_number(out, c"width", p.x2 - p.x)
+			mm_svg_number(out, c"height", p.y2 - p.y)
+			string_append(out, c"/>")
+	if (r.fills.length > 0):
+		# Hachure: fillWeight 1.5 strokes in the fill colour.
+		string_append(out, c"<path fill=\"none\"")
+		mm_svg_color(out, c"stroke", fill)
+		string_append(out, c" stroke-width=\"1.5\" stroke-linecap=\"round\"")
+		mm_svg_polylines(out, r.fills)
+		string_append(out, c"/>")
+	string_append(out, c"<path fill=\"none\"")
+	int stroke = mm_paint_stroke(p)
+	if ((p.effects & 2) && stroke >= 0): string_append(out, c" stroke=\"url(#mermaid-gradient)\"")
+	else: mm_svg_color(out, c"stroke", stroke)
+	mm_svg_number(out, c"stroke-width", mm_paint_width(p))
+	string_append(out, c" stroke-linecap=\"round\" stroke-linejoin=\"round\"")
+	mm_svg_dash(out, p)
+	mm_svg_polylines(out, r.strokes)
+	string_append(out, c"/></g>\n")
+	mm_rough_free(r)
 
 char* mm_svg(mm_scene* scene):
 	if (scene == 0): return 0
@@ -182,21 +488,31 @@ char* mm_svg(mm_scene* scene):
 	string_append(out, c"</title><desc id=\"mermaid-description\">")
 	if (scene.accessibility_description != 0): mm_xml(out, scene.accessibility_description)
 	string_append(out, c"</desc>\n")
+	mm_svg_defs(out, scene)
 	if (scene.has_background):
 		string_append(out, c"<rect width=\"100%\" height=\"100%\"")
 		mm_svg_color(out, c"fill", scene.background)
 		string_append(out, c"/>\n")
 	string_append(out, c"<g>\n")
-	for mm_primitive* p in scene.items:
-		if (p.kind == MM_LINE):
+	for index in range(scene.items.length):
+		mm_primitive* p = scene.items[index]
+		if (mm_rough_drawn(scene, p)): mm_svg_rough(out, scene, p, index)
+		else if (p.kind == MM_LINE):
 			string_append(out, c"<line")
 			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x1", p.x)
 			mm_svg_number(out, c"y1", p.y)
 			mm_svg_number(out, c"x2", p.x2)
 			mm_svg_number(out, c"y2", p.y2)
-			if (p.dashed): string_append(out, c" stroke-dasharray=\"6 4\"")
-			string_append(out, c"/>\n")
+			mm_svg_dash(out, p)
+			# Animated flowchart links (dashed 4-6) march their dashes with SMIL, no script.
+			if (p.dashed >= 4 && p.dashed <= 6):
+				string_append(out, c"><animate attributeName=\"stroke-dashoffset\" from=\"20\" to=\"0\" dur=\"")
+				if (p.dashed == 5): string_append(out, c"0.5s")
+				else if (p.dashed == 6): string_append(out, c"2s")
+				else: string_append(out, c"1s")
+				string_append(out, c"\" repeatCount=\"indefinite\"/></line>\n")
+			else: string_append(out, c"/>\n")
 		else if (p.kind == MM_BOX):
 			string_append(out, c"<rect")
 			mm_svg_paint(out, p)
@@ -204,8 +520,8 @@ char* mm_svg(mm_scene* scene):
 			mm_svg_number(out, c"y", p.y)
 			mm_svg_number(out, c"width", p.x2 - p.x)
 			mm_svg_number(out, c"height", p.y2 - p.y)
-			if (p.dashed == 1): mm_svg_number(out, c"rx", 12)
-			if (p.dashed == 3): mm_svg_number(out, c"rx", (p.y2 - p.y) / 2)
+			int radius = mm_paint_radius(p)
+			if (radius > 0): mm_svg_number(out, c"rx", radius)
 			string_append(out, c"/>\n")
 		else if (p.kind == MM_CIRCLE):
 			string_append(out, c"<circle")
@@ -227,18 +543,40 @@ char* mm_svg(mm_scene* scene):
 			if (p.href != 0):
 				string_append(out, c"<a href=\"")
 				mm_xml(out, p.href)
-				string_append(out, c"\">")
-			string_append(out, c"<text font-family=\"Liberation Sans, Arial, Helvetica, sans-serif\"")
-			mm_svg_number(out, c"font-size", MM_TEXT_SIZE)
-			if (p.text_style & MM_TEXT_BOLD): string_append(out, c" font-weight=\"bold\"")
-			if (p.text_style & MM_TEXT_ITALIC): string_append(out, c" font-style=\"italic\"")
+				string_append_char(out, '"')
+				if (p.href_target != 0):
+					if (strcmp(p.href_target, c"_blank") == 0): string_append(out, c" rel=\"noopener noreferrer\"")
+					string_append(out, c" target=\"")
+					mm_xml(out, p.href_target)
+					string_append_char(out, '"')
+				string_append_char(out, '>')
+			else if (p.tooltip != 0): string_append(out, c"<g>")
+			if (p.tooltip != 0):
+				string_append(out, c"<title>")
+				mm_xml(out, p.tooltip)
+				string_append(out, c"</title>")
+			string_append(out, c"<text font-family=\"")
+			if (p.font != 0): mm_xml(out, p.font)
+			else if (scene.font_family != 0): mm_xml(out, scene.font_family)
+			else: string_append(out, c"Liberation Sans, Arial, Helvetica, sans-serif")
+			string_append_char(out, '"')
+			if (p.anchor != 0):
+				string_append(out, c" id=\"")
+				mm_xml(out, p.anchor)
+				string_append_char(out, '"')
+			int size = mm_paint_font_size(p)
+			mm_svg_number(out, c"font-size", size)
+			int flags = mm_text_flags(p)
+			if (flags & MM_TEXT_BOLD): string_append(out, c" font-weight=\"bold\"")
+			if (flags & MM_TEXT_ITALIC): string_append(out, c" font-style=\"italic\"")
 			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x", p.x)
-			mm_svg_number(out, c"y", p.y + MM_TEXT_ASCENT)
+			mm_svg_number(out, c"y", p.y + (MM_TEXT_ASCENT * size + MM_TEXT_SIZE - 1) / MM_TEXT_SIZE)
 			string_append_char(out, '>')
 			mm_xml(out, p.text)
 			string_append(out, c"</text>")
 			if (p.href != 0): string_append(out, c"</a>")
+			else if (p.tooltip != 0): string_append(out, c"</g>")
 			string_append_char(out, 10)
 	string_append(out, c"</g></svg>\n")
 	char* result = out.data

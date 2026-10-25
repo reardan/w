@@ -1,0 +1,26 @@
+swimlane-beta LR
+  subgraph ops [Operations]
+    intake([Receive request])
+    subgraph triage [Triage desk]
+      classify{Known issue?}
+      log[(Ticket store)]
+    end
+    reply>Reply sent]
+  end
+  subgraph eng [Engineering]
+    subgraph squad [Platform squad]
+      fix[[Patch service]]
+      deploy{{Deploy}}
+    end
+    verify@{ shape: docs, label: "Release notes" }
+  end
+  intake ==> classify
+  classify -->|Yes| reply
+  classify -- needs code --> fix
+  classify -.-> log
+  fix --> deploy --> verify
+  verify --o reply
+  deploy --x fix
+  classDef hot fill:#fee2e2,stroke:#dc2626;
+  class deploy hot
+  linkStyle 0 stroke:#2563eb

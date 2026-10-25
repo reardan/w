@@ -101,8 +101,8 @@ provide bidi paragraph layout or font coverage (see
 [shaping](text_shaping.md)). The default embedded faces cover Latin, Greek and
 Cyrillic. A browser host should load suitable licensed TrueType or CFF
 CJK/script faces with `ui_font_face_load_ttf` and register them through
-`ui_font_add_fallback`; no larger fallback font is bundled. Hinting remains
-outside the rasterizer.
+`ui_font_add_fallback`; no larger fallback font is bundled. Hinting is an
+opt-in strike option (`ui_font_strike_hinted`, see [shaping](text_shaping.md)).
 
 Native contracts follow the [Xlib internationalized text input specification](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.pdf),
 [WM_CHAR Unicode semantics](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-char),
