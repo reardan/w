@@ -1,6 +1,40 @@
 # Dedicated column and tree layouts; parent means ancestry, never a cluster box.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.icons
 import lib.fmath
+
+# Mindmap section colours: by branch (the root's child each node descends
+# from, as upstream's default) or by depth with `mindmap.colorBy: depth`.
+# Themes repaint them from cScale0..11 (series role). -1 leaves the root plain.
+int mm_mindmap_series(mm_document* d, int index, int by_depth):
+	int depth = 0
+	int branch = index
+	mm_node* n = d.nodes[index]
+	while (n.parent >= 0):
+		depth = depth + 1
+		mm_node* parent = d.nodes[n.parent]
+		if (parent.parent >= 0): branch = n.parent
+		n = parent
+	if (depth == 0): return -1
+	if (by_depth): return depth - 1
+	int order = 0
+	for i in range(branch):
+		mm_node* sibling = d.nodes[i]
+		mm_node* root_child = d.nodes[branch]
+		if (sibling.parent == root_child.parent): order = order + 1
+	return order
+
+void mm_mindmap_paint(mm_scene* s, int start, int series):
+	if (series < 0): return
+	list[int] colors = list[int]{0xdbeafe, 0xfee2e2, 0xdcfce7, 0xf3e8ff, 0xffedd5, 0xcffafe, 0xfce7f3, 0xecfccb, 0xe0e7ff, 0xccfbf1, 0xfef9c3, 0xede9fe}
+	for i in range(start, s.items.length):
+		mm_primitive* p = s.items[i]
+		if (p.kind == MM_TEXT || p.kind == MM_LINE): continue
+		p.style.mask = p.style.mask | 1
+		p.style.fill = colors[series % 12]
+		p.role = 5
+		p.series = series
+	__w_list_free(cast(__w_list*, colors))
 
 # Mindmap cloud (3) and bang (4) outlines are 48-point polygons: lobes bulge
 # outward for clouds and alternate as spikes for bangs. Hexagon is shape 5.
@@ -58,9 +92,7 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		for mm_member* m in n.members:
 			if (strlen(m.text) * 8 + 40 > b.w): b.w = strlen(m.text) * 8 + 40
 		if (n.shape == 2): b.h = b.w
-		if (n.annotation[0] != 0):
-			b.h = b.h + 24
-			if (strlen(n.annotation) * 8 + 64 > b.w): b.w = strlen(n.annotation) * 8 + 64
+		if (n.annotation[0] != 0): b.h = b.h + 24
 		# Clouds and bangs lose their corners, so reserve room for the label.
 		if (d.kind == MM_MINDMAP && (n.shape == 3 || n.shape == 4)):
 			b.w = b.w + 40
@@ -75,7 +107,8 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			mm_bounds* box = s.nodes[i]
 			box.x = x
 			box.y = 40
-			int y = 120
+			# Column metadata lines sit under the title, above the header rule.
+			int y = 120 + column.members.length * 24
 			for j in range(d.nodes.length):
 				mm_node* card = d.nodes[j]
 				if (card.parent != i): continue
@@ -116,13 +149,17 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			mm_bounds* a = s.nodes[n.parent]
 			mm_bounds* b = s.nodes[i]
 			mm_line(s, a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2, 0)
+	char* color_by = mm_setting(d, c"mindmap.colorBy")
+	int by_depth = color_by != 0 && strcmp(color_by, c"depth") == 0
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
 		int shape = MM_BOX
 		if (n.shape == 2): shape = MM_CIRCLE
+		int outline = s.items.length
 		if (d.kind == MM_MINDMAP && n.shape >= 3): mm_mindmap_outline(s, n, b)
 		else: mm_draw(s, shape, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
+		if (d.kind == MM_MINDMAP): mm_mindmap_paint(s, outline, mm_mindmap_series(d, i, by_depth))
 		int y = b.y + 20
 		int x = b.x + 20
 		# Mindmap outlines are centred shapes, so centre the label block in them.
@@ -131,14 +168,14 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 			if (n.annotation[0] != 0): content = content + 24
 			y = b.y + (b.h - content) / 2
 			x = b.x + (b.w - strlen(n.label) * 8) / 2
-		# Icon fonts are not bundled; the icon name is shown as a badge row.
+		# Icon fonts are not bundled: the icon is a native pictogram (icons.w)
+		# centred above the label, as upstream places the icon.
 		if (n.annotation[0] != 0):
-			int badge = x
-			if (d.kind == MM_MINDMAP): badge = b.x + (b.w - strlen(n.annotation) * 8 - 20) / 2
-			mm_draw(s, MM_CIRCLE, badge, y + 2, badge + 12, y + 14, 0, c"")
-			mm_text(s, badge + 20, y, n.annotation)
+			int badge = x + 10
+			if (d.kind == MM_MINDMAP): badge = b.x + b.w / 2
+			mm_icon_draw(s, n.annotation, badge, y + 8, 0x374151)
 			y = y + 24
-		if (d.kind == MM_KANBAN && n.parent < 0): mm_line(s, b.x, b.y + 60, b.x + b.w, b.y + 60, 0)
+		if (d.kind == MM_KANBAN && n.parent < 0): mm_line(s, b.x, b.y + 60 + n.members.length * 24, b.x + b.w, b.y + 60 + n.members.length * 24, 0)
 		mm_text(s, x, y, n.label)
 		y = y + 24
 		for mm_member* m in n.members:

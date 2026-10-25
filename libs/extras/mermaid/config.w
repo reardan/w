@@ -443,10 +443,62 @@ int mm_config_family_key(mm_document* d, mm_config_entry* e, char* key):
 	else: mm_error(d, e.offset, c"unsupported c4 setting")
 	return 1
 
+# Gantt, timeline, journey, mindmap, treeView and Wardley sections
+# (issue #820). Values are validated and kept as document settings under
+# the same dotted key ("gantt.displayMode"); renderers apply the ones they
+# support and keep native geometry for the pixel-tuning rest. Returns 1
+# when handled.
+int mm_config_outline_key(mm_document* d, mm_config_entry* e, char* key):
+	if (mm_in_config_words(key, c"|gantt|timeline|journey|mindmap|treeView|wardley|themeVariables.treeView|treeView.filenameIcons|treeView.extensionIcons|")):
+		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
+		return 1
+	int dot = index_of(key, c".")
+	if (dot < 0): return 0
+	char* family = str_copy_range(key, 0, dot)
+	char* name = key + dot + 1
+	int handled = 1
+	if (mm_in_config_words(family, c"|gantt|timeline|journey|mindmap|treeView|wardley|") == 0 && index_of(key, c"themeVariables.treeView.") != 0): handled = 0
+	else if (mm_config_scalar_entry(d, e) == 0): handled = 1
+	else if (index_of(key, c"themeVariables.treeView.") == 0):
+		char* variable = key + 24
+		if (mm_in_config_words(variable, c"|labelColor|lineColor|descriptionColor|") && mm_style_color(e.value) < 0): mm_error(d, e.offset, c"theme variables require #RGB, #RRGGBB or a supported color name")
+		else if (mm_in_config_words(variable, c"|labelColor|lineColor|descriptionColor|labelFontSize|descriptionFontSize|") == 0): mm_error(d, e.offset, c"unsupported treeView theme variable")
+		else: mm_setting_set(d, key, e.value)
+	else if (strcmp(key, c"gantt.displayMode") == 0):
+		if (e.value[0] != 0 && strcmp(e.value, c"compact") != 0): mm_error(d, e.offset, c"gantt displayMode must be compact or empty")
+		else: mm_setting_set(d, key, e.value)
+	else if (strcmp(key, c"gantt.weekday") == 0):
+		if (mm_in_config_words(e.value, c"|sunday|monday|tuesday|wednesday|thursday|friday|saturday|") == 0): mm_error(d, e.offset, c"gantt weekday must name a day of the week")
+		else: mm_setting_set(d, key, e.value)
+	else if (strcmp(key, c"gantt.axisFormat") == 0 || strcmp(key, c"gantt.tickInterval") == 0):
+		if (e.value[0] == 0): mm_error(d, e.offset, c"expected a gantt format setting")
+		else: mm_setting_set(d, key, e.value)
+	else if ((strcmp(family, c"gantt") == 0 && mm_in_config_words(name, c"|topAxis|useMaxWidth|")) || (strcmp(family, c"timeline") == 0 && mm_in_config_words(name, c"|disableMulticolor|useMaxWidth|")) || (strcmp(family, c"journey") == 0 && mm_in_config_words(name, c"|useMaxWidth|mirrorActors|")) || (strcmp(family, c"mindmap") == 0 && strcmp(name, c"useMaxWidth") == 0) || (strcmp(family, c"treeView") == 0 && mm_in_config_words(name, c"|showIcons|useMaxWidth|"))):
+		if (mm_config_bool(d, e)): mm_setting_set(d, key, c"true")
+		else: mm_setting_set(d, key, c"false")
+	else if ((strcmp(family, c"gantt") == 0 && mm_in_config_words(name, c"|titleTopMargin|barHeight|barGap|topPadding|rightPadding|leftPadding|gridLineStartPadding|fontSize|sectionFontSize|numberSectionStyles|useWidth|")) || (strcmp(family, c"timeline") == 0 && mm_in_config_words(name, c"|padding|diagramMarginX|diagramMarginY|leftMargin|width|height|boxMargin|boxTextMargin|noteMargin|messageMargin|")) || (strcmp(family, c"journey") == 0 && mm_in_config_words(name, c"|diagramMarginX|diagramMarginY|leftMargin|width|height|boxMargin|boxTextMargin|noteMargin|messageMargin|bottomMarginAdj|taskFontSize|")) || (strcmp(family, c"mindmap") == 0 && mm_in_config_words(name, c"|padding|maxNodeWidth|")) || (strcmp(family, c"treeView") == 0 && mm_in_config_words(name, c"|rowIndent|paddingX|paddingY|lineThickness|iconSize|")) || (strcmp(family, c"wardley") == 0 && mm_in_config_words(name, c"|width|height|padding|nodeRadius|")) || (strcmp(family, c"gantt") == 0 && strcmp(name, c"fontFamily") == 0)):
+		if (strcmp(name, c"fontFamily") != 0): mm_config_number(d, e)
+		mm_setting_set(d, key, e.value)
+	else if (strcmp(key, c"mindmap.colorBy") == 0):
+		if (mm_in_config_words(e.value, c"|depth|branch|") == 0): mm_error(d, e.offset, c"mindmap colorBy must be depth or branch")
+		else: mm_setting_set(d, key, e.value)
+	else if (strcmp(key, c"treeView.defaultIconPack") == 0 || index_of(key, c"treeView.filenameIcons.") == 0 || index_of(key, c"treeView.extensionIcons.") == 0):
+		if (e.value[0] == 0): mm_error(d, e.offset, c"expected a treeView icon name")
+		else: mm_setting_set(d, key, e.value)
+	else:
+		string_builder* message = string_from(c"unsupported ")
+		string_append(message, family)
+		string_append(message, c" setting")
+		mm_error(d, e.offset, message.data)
+		string_free(message)
+	free(family)
+	return handled
+
 # key is the path below "config.".
 void mm_config_key(mm_document* d, mm_config_entry* e, char* key, list[int] user, int* theme, int* dark):
 	char* value = e.value
 	if (mm_config_family_key(d, e, key)): return
+	if (mm_config_outline_key(d, e, key)): return
 	if (strcmp(key, c"packet") == 0 || strcmp(key, c"themeVariables") == 0 || strcmp(key, c"flowchart") == 0 || strcmp(key, c"kanban") == 0):
 		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
 	else if (strcmp(key, c"theme") == 0):
@@ -529,6 +581,10 @@ void mm_config_apply(mm_config_reader* r):
 		if (strcmp(e.path, c"title") == 0 && e.origin == 0):
 			free(d.title)
 			d.title = strclone(e.value)
+		else if (strcmp(e.path, c"displayMode") == 0 && e.origin == 0):
+			# Upstream also reads the Gantt display mode from top-level frontmatter.
+			if (e.value[0] != 0 && strcmp(e.value, c"compact") != 0): mm_error(d, e.offset, c"gantt displayMode must be compact or empty")
+			else if (mm_setting(d, c"gantt.displayMode") == 0): mm_setting_set(d, c"gantt.displayMode", e.value)
 		else if (strcmp(e.path, c"config") == 0):
 			present = 1
 			if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")

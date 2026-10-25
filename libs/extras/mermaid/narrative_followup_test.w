@@ -133,10 +133,10 @@ void test_gantt_date_formats_and_minute_units():
 	a = followup_task(d, 0)
 	assert_equal(mm_n_date(c"2024-01-08") * 1440 + 120, a.end)
 	mm_document_free(d)
-	followup_expect_error(c"gantt\ndateFormat DD/MMM/YYYY", c"unsupported Gantt dateFormat")
-	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD HH", c"unsupported Gantt dateFormat")
+	followup_expect_error(c"gantt\ndateFormat DD/MMM/YYYY ww", c"unsupported Gantt dateFormat")
+	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD YYYY", c"unsupported Gantt dateFormat")
 	followup_expect_error(c"gantt\nA: 2024-01-01, 1d\ndateFormat DD-MM-YYYY", c"Gantt dateFormat must precede tasks and dates")
-	followup_expect_error(c"gantt\nA: 2024-01-01, 3h", c"Gantt requires end date, until task or positive duration")
+	followup_expect_error(c"gantt\nA: 2024-01-01, 3x", c"Gantt requires end date, until task or positive duration")
 	followup_expect_error(c"gantt\ndateFormat DD-MM-YYYY\nA: a, 2024-01-01, 1d", c"Gantt requires a dateFormat start or after dependencies")
 	followup_expect_error(c"gantt\ndateFormat DD-MM-YYYY\nA: a, 05-01-2024, 2024-01-06", c"Gantt requires end date, until task or positive duration")
 	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD HH:mm\nA: a, 2024-01-01 24:00, 1h", c"Gantt requires a dateFormat start or after dependencies")
@@ -158,7 +158,7 @@ void test_gantt_axis_format_tokens():
 	assert_strings_equal(c"Fri 01:05 PM", label)
 	free(label)
 	mm_document_free(d)
-	followup_expect_error(c"gantt\naxisFormat %Q\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
+	followup_expect_error(c"gantt\naxisFormat %K\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
 	followup_expect_error(c"gantt\naxisFormat %\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
 
 void test_gantt_today_marker_is_fixed_only():

@@ -430,6 +430,7 @@ mm_document* mm_parse_raw(char* source, int length):
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (d.kind == MM_AGENT && mm_end(&p) == 0): mm_direction(&p)
+	if (d.kind == MM_TIMELINE && mm_end(&p) == 0): mm_n_timeline_header(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
 	if (d.kind == MM_TREEVIEW || d.kind == MM_ISHIKAWA):
 		mm_outline_body(&p)
@@ -518,6 +519,7 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	d.edge_curve = envelope.edge_curve
 	d.look = envelope.look
 	d.usecase_rotate = envelope.usecase_rotate
+	mm_settings_inherit(d, envelope)
 	# UpdateLayoutConfig statements in the diagram win over c4 configuration.
 	if (d.c4_shape_in_row == 0): d.c4_shape_in_row = envelope.c4_shape_in_row
 	if (d.c4_boundary_in_row == 0): d.c4_boundary_in_row = envelope.c4_boundary_in_row

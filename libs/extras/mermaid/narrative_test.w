@@ -67,12 +67,17 @@ void test_narrative_journey_scores_and_actors():
 	int circles = 0
 	int low_y = 0
 	int high_y = 0
+	int avatars = 0
 	for mm_primitive* item in scene.items:
-		if (item.kind == MM_CIRCLE):
+		# Score faces are 30-pixel circles; 14-pixel circles are actor avatars.
+		if (item.kind == MM_CIRCLE && item.x2 - item.x == 30):
 			if (circles == 0): low_y = item.y
 			if (circles == 1): high_y = item.y
 			circles = circles + 1
+		if (item.kind == MM_CIRCLE && item.x2 - item.x == 14): avatars = avatars + 1
 	assert_equal(3, circles)
+	# Me, Cat on "Coffee", Me on the other two tasks, plus a two-actor legend.
+	assert_equal(6, avatars)
 	asserts(c"high scores appear higher", high_y < low_y)
 	mm_scene_free(scene)
 	narrative_export(d, c"Morning")
@@ -140,7 +145,7 @@ void test_narrative_zenuml_nested_calls_and_returns():
 	mm_document_free(d)
 
 void test_narrative_unsupported_and_malformed_diagnostics():
-	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nlinks A: {\"Repo\": \"https://example.com\"}", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MMM/YYYY", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
+	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nlinks A: {\"Repo\": \"https://example.com\"}", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MMM/YYYY ww", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
 	for char* source in sources:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported construct diagnosed", d.error != 0)

@@ -126,8 +126,10 @@ struct mm_narrative_event:
 	int dashed
 	int arrow
 
-# Gantt calendar settings. Units are days, or minutes when the date format
-# has a time of day. Excluded and included day lists are sorted and unique.
+# Gantt calendar settings. Units are days (minutes = 0), minutes (1) when the
+# date format has a time of day or a task needs sub-day durations, or seconds
+# (2) when it has second or Unix-timestamp tokens. Moments are UTC wall-clock
+# values since 1970-01-01. Excluded and included day lists are sorted and unique.
 struct mm_gantt_settings:
 	char* date_format
 	char* axis_format
@@ -138,6 +140,19 @@ struct mm_gantt_settings:
 	list[int] excluded
 	list[int] included
 	int today
+	# A day-unit chart was promoted to minutes by a sub-day duration.
+	int promoted
+	# `weekday`: first day of week ticks, 0 = Sunday (upstream default).
+	int week_start
+	# Valid `tickInterval`: count and unit (1 ms ... 7 month); 0 = automatic.
+	int tick_count
+	int tick_unit
+	# `displayMode: compact` packs non-overlapping tasks of a section into rows.
+	int compact
+	# `inclusiveEndDates`: explicit end dates include their whole last day.
+	int inclusive
+	# `topAxis`: axis labels above the chart as well as below it.
+	int top_axis
 
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
@@ -270,6 +285,9 @@ struct mm_document:
 	list[int] arch_align
 	# Use case `colorScheme: rotate` (0 = role colours).
 	int usecase_rotate
+	# Owned family settings from configuration (e.g. "gantt.displayMode",
+	# "timeline.disableMulticolor") and family directives (e.g. Wardley size).
+	list[mm_property*] settings
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -285,6 +303,7 @@ mm_document* mm_document_new():
 	d.style_definitions = new list[mm_style_class*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
+	d.settings = new list[mm_property*]
 	return d
 
 void mm_error(mm_document* d, int offset, char* message):
@@ -325,6 +344,33 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	d.nodes.push(n)
 	return d.nodes.length - 1
 
+# Family setting lookup; null when unset.
+char* mm_setting(mm_document* d, char* key):
+	if (d.settings == 0): return 0
+	for mm_property* property in d.settings:
+		if (strcmp(property.key, key) == 0): return property.value
+	return 0
+
+# Sets (or replaces) a family setting; bounded like other document items.
+void mm_setting_set(mm_document* d, char* key, char* value):
+	if (d.settings == 0): d.settings = new list[mm_property*]
+	for mm_property* property in d.settings:
+		if (strcmp(property.key, key) == 0):
+			free(property.value)
+			property.value = strclone(value)
+			return
+	if (d.settings.length >= MM_MAX_ITEMS):
+		mm_error(d, d.source_start, c"setting limit exceeded")
+		return
+	d.settings.push(new mm_property(strclone(key), strclone(value)))
+
+# Copies settings of `from` (configuration) that `d` (the diagram's own
+# directives, which win) does not set.
+void mm_settings_inherit(mm_document* d, mm_document* from):
+	if (from.settings == 0): return
+	for mm_property* property in from.settings:
+		if (mm_setting(d, property.key) == 0): mm_setting_set(d, property.key, property.value)
+
 void mm_document_free(mm_document* d):
 	if (d == 0): return
 	if (d.comment_ranges != 0): __w_list_free(cast(__w_list*, d.comment_ranges))
@@ -358,6 +404,12 @@ void mm_document_free(mm_document* d):
 		free(n.label)
 		free(n)
 	if (d.arch_align != 0): __w_list_free(cast(__w_list*, d.arch_align))
+	if (d.settings != 0):
+		for mm_property* setting in d.settings:
+			free(setting.key)
+			free(setting.value)
+			free(setting)
+		__w_list_free(cast(__w_list*, d.settings))
 	for mm_edge* e in d.edges:
 		if (e.id != 0): free(e.id)
 		free(e.label)
