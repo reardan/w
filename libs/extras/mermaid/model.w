@@ -196,6 +196,11 @@ struct mm_edge:
 	char* right_label
 	int scope
 	mm_style style
+	# Optional owned explicit edge ID (use case `id@-->`); null when anonymous.
+	char* id
+	# Label displacement in pixels (C4 UpdateRelStyle $offsetX/$offsetY).
+	int label_dx
+	int label_dy
 
 # UML notes are annotations, not graph vertices.
 struct mm_note:
@@ -255,6 +260,14 @@ struct mm_document:
 	# 0 classic, 1 neo (accepted as a classic approximation).
 	int look
 	mm_gantt_settings* gantt
+	# C4 UpdateLayoutConfig: shapes and boundaries per row (0 = upstream default 4 / 2).
+	int c4_shape_in_row
+	int c4_boundary_in_row
+	# Architecture `align row|column` directives, flattened as
+	# [axis (0 row, 1 column), member count, node indices...]; null when none.
+	list[int] arch_align
+	# Use case `colorScheme: rotate` (0 = role colours).
+	int usecase_rotate
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -342,7 +355,9 @@ void mm_document_free(mm_document* d):
 		free(n.id)
 		free(n.label)
 		free(n)
+	if (d.arch_align != 0): __w_list_free(cast(__w_list*, d.arch_align))
 	for mm_edge* e in d.edges:
+		if (e.id != 0): free(e.id)
 		free(e.label)
 		free(e.left_label)
 		free(e.right_label)

@@ -14,6 +14,7 @@ import libs.extras.mermaid.narrative_render
 import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
+import libs.extras.mermaid.c4_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -536,6 +537,7 @@ mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error != 0): return 0
 	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
+	if (d.kind == MM_C4): return mm_c4_render(d)
 	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
 	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
 	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
