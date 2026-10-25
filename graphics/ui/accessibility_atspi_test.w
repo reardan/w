@@ -122,6 +122,10 @@ int atspi_test_pump(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tr
 				atspi_test_log(c, m.member)
 				atspi_test_log(c, c" ")
 				if (starts_with(m.signature, c"s")): atspi_test_log(c, dbus_read_string(&r, 0))
+				if (starts_with(m.signature, c"(")):
+					dbus_read_align(&r, 8)
+					dbus_read_string(&r, 0)
+					atspi_test_log(c, dbus_read_string(&r, 0))
 				atspi_test_log(c, c" ")
 				atspi_test_log(c, m.path)
 				atspi_test_log(c, c"\n")
@@ -377,12 +381,302 @@ void check_bridge(char* address):
 	dbus_close(c.conn)
 
 
+# A file table (header row, two data rows, the first selected), a tab
+# list and a list; with_extra swaps the second data row for a new one
+# and clears the first row's selection.
+ui_access_tree* tables_tree(atspi_test_app* app, int changed):
+	ui_access_tree* tree = ui_access_tree_new(64, 1024)
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 300.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	ui_access_add(tree, 10, 1, UI_ACCESS_TABLE, r)
+	ui_access_set_text(tree, 10, UI_ACCESS_NAME, c"Files", 5)
+	ui_access_add(tree, 11, 10, UI_ACCESS_ROW, r)
+	ui_access_add(tree, 12, 11, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 12, UI_ACCESS_NAME, c"Name", 4)
+	ui_access_add(tree, 13, 11, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 13, UI_ACCESS_NAME, c"Size", 4)
+	ui_access_node* row = ui_access_add(tree, 20, 10, UI_ACCESS_ROW, r)
+	row.actions = UI_ACCESS_ACTIVATE
+	if (changed == 0): row.states = UI_ACCESS_SELECTED
+	ui_access_add(tree, 21, 20, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 21, UI_ACCESS_NAME, c"a.txt", 5)
+	ui_access_add(tree, 22, 20, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 22, UI_ACCESS_NAME, c"3 KB", 4)
+	int second = 30
+	if changed: second = 60
+	row = ui_access_add(tree, second, 10, UI_ACCESS_ROW, r)
+	row.actions = UI_ACCESS_ACTIVATE
+	ui_access_add(tree, second + 1, second, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, second + 1, UI_ACCESS_NAME, c"b.txt", 5)
+	ui_access_add(tree, second + 2, second, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, second + 2, UI_ACCESS_NAME, c"9 KB", 4)
+	ui_access_add(tree, 40, 1, UI_ACCESS_TAB_LIST, r)
+	ui_access_node* tab = ui_access_add(tree, 41, 40, UI_ACCESS_TAB, r)
+	tab.states = UI_ACCESS_SELECTED
+	tab.actions = UI_ACCESS_ACTIVATE
+	ui_access_set_text(tree, 41, UI_ACCESS_NAME, c"One", 3)
+	tab = ui_access_add(tree, 42, 40, UI_ACCESS_TAB, r)
+	tab.actions = UI_ACCESS_ACTIVATE
+	ui_access_set_text(tree, 42, UI_ACCESS_NAME, c"Two", 3)
+	tree.action = atspi_test_action
+	tree.context = app
+	return tree
+
+
+int atspi_test_int_property(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int id, char* iface, char* prop):
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_string(out, iface)
+	dbus_put_string(out, prop)
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, id, c"org.freedesktop.DBus.Properties", c"Get", c"ss", &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"i", dbus_read_sig(&r))
+	int v = dbus_read_i32(&r)
+	dbus_message_free(&reply)
+	return v
+
+
+# iface.member(args) on id answering one i32.
+int atspi_test_i32_ii(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int id, char* iface, char* member, int x, int y, int two):
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_i32(out, x)
+	char* sig = c"i"
+	if two:
+		dbus_put_i32(out, y)
+		sig = c"ii"
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, id, iface, member, sig, &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	int v = dbus_read_i32(&r)
+	if (reply.signature[0] == 'b'):
+		dbus_reader_init(&r, reply.body, reply.body_length)
+		v = dbus_read_bool(&r)
+	dbus_message_free(&reply)
+	return v
+
+
+# iface.member(args) on id answering one (so); its object path, copied.
+char* atspi_test_ref_ii(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int id, char* iface, char* member, int x, int y, int two):
+	dbus_buf* out = dbus_body(c.conn)
+	char* sig = 0
+	if (x >= 0):
+		dbus_put_i32(out, x)
+		sig = c"i"
+	if two:
+		dbus_put_i32(out, y)
+		sig = c"ii"
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, id, iface, member, sig, &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	dbus_read_align(&r, 8)
+	dbus_read_string(&r, 0)
+	char* path = dbus_strdup(dbus_read_string(&r, 0))
+	assert_equal(0, r.failed)
+	dbus_message_free(&reply)
+	return path
+
+
+void check_tables(char* address):
+	atspi_test_client client
+	client.log_length = 0
+	client.log[0] = 0
+	client.embeds = 0
+	client.conn = dbus_open(address)
+	asserts(c"client connects", client.conn != 0)
+	atspi_test_client* c = &client
+	dbus_message reply
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_string(out, c"type='signal',interface='org.a11y.atspi.Event.Object'")
+	assert_equal(1, dbus_call_sync(c.conn, &reply, 2000, c"org.freedesktop.DBus", c"/org/freedesktop/DBus", c"org.freedesktop.DBus", c"AddMatch", c"s"))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_string(out, c"type='signal',interface='org.a11y.atspi.Cache'")
+	assert_equal(1, dbus_call_sync(c.conn, &reply, 2000, c"org.freedesktop.DBus", c"/org/freedesktop/DBus", c"org.freedesktop.DBus", c"AddMatch", c"s"))
+	dbus_message_free(&reply)
+
+	atspi_test_app app
+	app.calls = 0
+	ui_access_tree* tree = tables_tree(&app, 0)
+	# No registry owns its name on this bus: Embed fails, which the
+	# bridge tolerates.
+	ui_atspi_bridge* b = ui_access_atspi_open_at(address, c"Files")
+	asserts(c"bridge connects", b != 0)
+	assert_equal(1, ui_access_atspi_publish(b, tree))
+	char* table = c"org.a11y.atspi.Table"
+
+	# Header cells are column headers; data cells are table cells.
+	assert_equal(ATSPI_ROLE_TABLE_COLUMN_HEADER, atspi_test_u32(c, b, tree, 12, c"org.a11y.atspi.Accessible", c"GetRole"))
+	assert_equal(ATSPI_ROLE_TABLE_CELL, atspi_test_u32(c, b, tree, 21, c"org.a11y.atspi.Accessible", c"GetRole"))
+	assert_equal(2, atspi_test_int_property(c, b, tree, 10, table, c"NRows"))
+	assert_equal(2, atspi_test_int_property(c, b, tree, 10, table, c"NColumns"))
+	assert_equal(1, atspi_test_int_property(c, b, tree, 10, table, c"NSelectedRows"))
+	char* path = atspi_test_ref_ii(c, b, tree, 10, table, c"GetAccessibleAt", 1, 0, 1)
+	assert_strings_equal(c"/org/a11y/atspi/accessible/31", path)
+	free(path)
+	assert_equal(3, atspi_test_i32_ii(c, b, tree, 10, table, c"GetIndexAt", 1, 1, 1))
+	assert_equal(1, atspi_test_i32_ii(c, b, tree, 10, table, c"GetRowAtIndex", 3, 0, 0))
+	assert_equal(1, atspi_test_i32_ii(c, b, tree, 10, table, c"GetColumnAtIndex", 2, 0, 0) + 1)
+	assert_equal(0 - 1, atspi_test_i32_ii(c, b, tree, 10, table, c"GetRowAtIndex", 4, 0, 0))
+	path = atspi_test_ref_ii(c, b, tree, 10, table, c"GetColumnHeader", 1, 0, 0)
+	assert_strings_equal(c"/org/a11y/atspi/accessible/13", path)
+	free(path)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 10, table, c"GetColumnDescription", c"i", &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"Name", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 10, table, c"GetSelectedRows", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(4, dbus_read_u32(&r))
+	assert_equal(0, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	assert_equal(0, atspi_test_i32_ii(c, b, tree, 10, table, c"IsRowSelected", 1, 0, 0))
+
+	# A data cell knows its place and its column header.
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 32, c"org.a11y.atspi.TableCell", c"GetRowColumnSpan", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 32, c"org.a11y.atspi.TableCell", c"GetColumnHeaderCells", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	dbus_read_u32(&r)
+	dbus_read_align(&r, 8)
+	dbus_read_string(&r, 0)
+	assert_strings_equal(c"/org/a11y/atspi/accessible/13", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+	path = atspi_test_property_string(c, b, tree, 21, c"org.a11y.atspi.Accessible", c"Name")
+	assert_strings_equal(c"a.txt", path)
+	free(path)
+	# Unnamed rows are named from their cells.
+	path = atspi_test_property_string(c, b, tree, 20, c"org.a11y.atspi.Accessible", c"Name")
+	assert_strings_equal(c"a.txt 3 KB", path)
+	free(path)
+	path = atspi_test_property_string(c, b, tree, 11, c"org.a11y.atspi.Accessible", c"Name")
+	assert_strings_equal(c"Name Size", path)
+	free(path)
+	# Header cells are not TableCells.
+	dbus_body(c.conn)
+	assert_equal(0 - 1, atspi_test_call(c, b, tree, 12, c"org.a11y.atspi.TableCell", c"GetRowColumnSpan", 0, &reply))
+	dbus_message_free(&reply)
+
+	# Selecting a row or a tab activates it, as a click would.
+	asserts(c"add row selection", atspi_test_i32_ii(c, b, tree, 10, table, c"AddRowSelection", 1, 0, 0))
+	assert_equal(1, app.calls)
+	assert_equal(30, app.last_id)
+	assert_equal(UI_ACCESS_ACTIVATE, app.last_action)
+	char* selection = c"org.a11y.atspi.Selection"
+	assert_equal(1, atspi_test_int_property(c, b, tree, 40, selection, c"NSelectedChildren"))
+	path = atspi_test_ref_ii(c, b, tree, 40, selection, c"GetSelectedChild", 0, 0, 0)
+	assert_strings_equal(c"/org/a11y/atspi/accessible/41", path)
+	free(path)
+	assert_equal(0, atspi_test_i32_ii(c, b, tree, 40, selection, c"IsChildSelected", 1, 0, 0))
+	asserts(c"select tab", atspi_test_i32_ii(c, b, tree, 40, selection, c"SelectChild", 1, 0, 0))
+	assert_equal(42, app.last_id)
+	# Already selected: nothing to do.
+	asserts(c"select selected tab", atspi_test_i32_ii(c, b, tree, 40, selection, c"SelectChild", 0, 0, 0))
+	assert_equal(2, app.calls)
+	assert_equal(0, atspi_test_i32_ii(c, b, tree, 40, selection, c"DeselectChild", 0, 0, 0))
+	# The table selects over rows; its header row (child 0) never is.
+	assert_equal(0, atspi_test_i32_ii(c, b, tree, 10, selection, c"IsChildSelected", 0, 0, 0))
+	assert_equal(1, atspi_test_i32_ii(c, b, tree, 10, selection, c"IsChildSelected", 1, 0, 0))
+
+	# The cache preload lists the application and every node, parents
+	# first.
+	dbus_body(c.conn)
+	int serial = dbus_call(c.conn, b.bus.unique_name, c"/org/a11y/atspi/cache", c"org.a11y.atspi.Cache", c"GetItems", 0)
+	assert_equal(1, atspi_test_pump(c, b, tree, serial, &reply))
+	dbus_message_reader(&reply, &r)
+	int end = dbus_read_u32(&r)
+	dbus_read_align(&r, 8)
+	end = end + r.pos
+	int items = 0
+	while ((r.pos < end) && (r.failed == 0)):
+		dbus_read_align(&r, 8)
+		dbus_read_string(&r, 0)
+		char* self = dbus_read_string(&r, 0)
+		dbus_read_align(&r, 8)
+		dbus_read_string(&r, 0)
+		dbus_read_string(&r, 0)
+		dbus_read_align(&r, 8)
+		dbus_read_string(&r, 0)
+		char* parent = dbus_read_string(&r, 0)
+		int index = dbus_read_i32(&r)
+		int children = dbus_read_u32(&r)
+		dbus_skip(&r, c"as", 0)
+		char* name = dbus_read_string(&r, 0)
+		int role = dbus_read_u32(&r)
+		dbus_read_string(&r, 0)
+		dbus_skip(&r, c"au", 0)
+		if (items == 0):
+			assert_strings_equal(c"/org/a11y/atspi/accessible/root", self)
+			assert_strings_equal(c"Files", name)
+			assert_equal(ATSPI_ROLE_APPLICATION, role)
+			assert_equal(1, children)
+		if (strcmp(self, c"/org/a11y/atspi/accessible/13") == 0):
+			assert_strings_equal(c"/org/a11y/atspi/accessible/11", parent)
+			assert_equal(1, index)
+			assert_equal(ATSPI_ROLE_TABLE_COLUMN_HEADER, role)
+			assert_strings_equal(c"Size", name)
+		if (strcmp(self, c"/org/a11y/atspi/accessible/10") == 0): assert_equal(3, children)
+		items = items + 1
+	assert_equal(0, r.failed)
+	assert_equal(15, items)
+	dbus_message_free(&reply)
+
+	# Republishing adds and removes cache entries before the events
+	# that mention them.
+	ui_access_tree* next = tables_tree(&app, 1)
+	ui_access_atspi_publish(b, next)
+	ui_access_tree_free(tree)
+	tree = next
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
+	dbus_message_free(&reply)
+	char* log = &c.log[0]
+	int added = index_of(log, c"AddAccessible /org/a11y/atspi/accessible/60 ")
+	int announced = index_of(log, c"ChildrenChanged add /org/a11y/atspi/accessible/10")
+	asserts(c"row cached", added >= 0)
+	asserts(c"cell cached", contains(log, c"AddAccessible /org/a11y/atspi/accessible/61 "))
+	asserts(c"cached before announced", (announced > added))
+	asserts(c"old row uncached", contains(log, c"RemoveAccessible /org/a11y/atspi/accessible/30 "))
+	asserts(c"old row defunct", contains(log, c"StateChanged defunct /org/a11y/atspi/accessible/30"))
+	asserts(c"selection cleared", contains(log, c"StateChanged selected /org/a11y/atspi/accessible/20"))
+	int changed = index_of(log, c"SelectionChanged  /org/a11y/atspi/accessible/10\n")
+	asserts(c"table selection changed", changed > index_of(log, c"StateChanged selected /org/a11y/atspi/accessible/20"))
+	asserts(c"tab selection unchanged", !contains(log, c"SelectionChanged  /org/a11y/atspi/accessible/40\n"))
+	assert_equal(0, atspi_test_int_property(c, b, tree, 10, table, c"NSelectedRows"))
+
+	ui_access_atspi_close(b)
+	ui_access_tree_free(tree)
+	dbus_close(c.conn)
+
+
 void test_atspi_bridge_on_a_private_bus():
 	dbus_test_bus bus
 	if (!dbus_test_bus_start(&bus)):
 		test_skip(c"SKIP: dbus-daemon not available")
 		return
 	check_bridge(bus.address)
+	dbus_test_bus_stop(&bus)
+
+
+void test_atspi_tables_selection_and_cache():
+	dbus_test_bus bus
+	if (!dbus_test_bus_start(&bus)):
+		test_skip(c"SKIP: dbus-daemon not available")
+		return
+	check_tables(bus.address)
 	dbus_test_bus_stop(&bus)
 
 

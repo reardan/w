@@ -33,6 +33,29 @@ import code_generator.asm_body
 # program's results can be compared with and without its asm.
 int asm_bodies_disabled
 
+# Retained-forest consumers (tools/wllvm.w) see no body for a function its
+# asm block replaced, so a retaining compile keeps each such block's
+# assembled bytes: the symbol, a copy of the bytes and their count.
+list[int] asm_retained_symbols
+list[int] asm_retained_code
+list[int] asm_retained_sizes
+int asm_retained_ready
+
+
+void asm_retain_block(int symbol, int start):
+	if (ast_retain_mode == 0): return
+	if (asm_retained_ready == 0):
+		asm_retained_ready = 1
+		asm_retained_symbols = new list[int]
+		asm_retained_code = new list[int]
+		asm_retained_sizes = new list[int]
+	int n = codepos - start
+	char* bytes = cast(char*, malloc(n + 1))
+	for i in range(n): bytes[i] = code[start + i]
+	asm_retained_symbols.push(symbol)
+	asm_retained_code.push(cast(int, bytes))
+	asm_retained_sizes.push(n)
+
 
 # 1 when ISA name `name` is the compile target's, 0 for another known
 # ISA; an unknown name is an error.
@@ -184,8 +207,10 @@ int asm_function_body(int current_symbol, char* name):
 		tokenizer_snapshot_restore(&last, c":")
 		return 0
 	be_function_define(current_symbol, name)
+	int block_start = codepos
 	int uses_portable = asm_body_emit(asm_isa_arch())
 	if (uses_portable == 0):
+		asm_retain_block(current_symbol, block_start)
 		asm_skip_body(body_level)
 		return 1
 	asm_entry_symbol = current_symbol

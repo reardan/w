@@ -8,7 +8,8 @@ companion. The existing GL window content view becomes the parent of real
 chrome and document content without coupling the bridge to HTML or layout. The opt-in
 `graphics.ui.accessibility_web` adapter exposes snapshots through browser ARIA, and
 `graphics.ui.accessibility_atspi` publishes them to Linux AT-SPI 2 (Orca) over a
-pure-W D-Bus client. The immediate-mode widgets produce snapshots automatically
+pure-W D-Bus client, and `graphics.ui.accessibility_uia` to Windows UI
+Automation (Narrator, NVDA, JAWS) as COM providers written in W. The immediate-mode widgets produce snapshots automatically
 and route Tab/Shift-Tab, Space/Return and assistive actions themselves.
 
 ## macOS setup and lifecycle
@@ -213,8 +214,9 @@ format). It needs no libatspi, ATK, GLib or libdbus.
    "no screen reader" and carry on. `ui_access_atspi_open_at(address, name)`
    takes an explicit bus address.
 2. `ui_access_atspi_publish(b, tree)` copies the snapshot and announces what
-   changed since the last publication: children added and removed, defunct
-   nodes, checked/expanded/selected/enabled/focused states, names,
+   changed since the last publication: cache additions and removals,
+   children added and removed, defunct nodes, every changed state (focus
+   last), selection changes on lists, tab lists and tables, names,
    descriptions, progress values and text changes.
 3. Once per frame call `ui_access_atspi_dispatch(b, tree)` with the snapshot the
    application dispatches against. It answers every pending query from the
@@ -234,18 +236,182 @@ has no switch role. Actions are queued (64 at most) and revalidated against the
 application's tree, as in the other bridges; publishing drops queued actions
 for the old snapshot.
 
+Tables implement Table and their data cells TableCell. The snapshot has no
+header flag, so the bridge treats a TABLE's first ROW as its column header
+row when that row has no actions and is not selected while a later row has
+actions or is selected; its cells publish as table column headers and answer
+`GetColumnHeader`, `GetColumnDescription` and `GetColumnHeaderCells`. Row
+indices count data rows only, every span is 1 and a cell's index is
+`row * columns + column`. A row without a name of its own is named from its
+cells' names (as ARIA rows are), since Orca announces a focused row by name.
+Lists, tab lists and tables implement Selection: `SelectChild` and
+`AddRowSelection` queue `ACTIVATE` on the child, as a click would (and
+return true without a call when it is already selected); deselection,
+`SelectAll` and `ClearSelection` return false, since a single-selection
+host owns that policy.
+
+`Cache.GetItems` returns the full preload, `a((so)(so)(so)iiassusau)`: the
+application root and then every node in tree order with its parent, index,
+child count, interfaces, name, role, description and states. Each
+publication emits `Cache.AddAccessible` for new objects (parents first,
+before the `ChildrenChanged` that announces them) and `RemoveAccessible`
+for gone ones, as the ATK bridge does, so a caching libatspi stays coherent.
+
 `graphics_ui_accessibility_atspi_test` runs the bridge against a private
 `dbus-daemon` with a client that plays both the registry and a screen reader:
 registration, tree walking, roles, states, geometry, text offsets, actions,
-edits and the events a republication emits (it skips when `dbus-daemon` is
-not installed). The bridge was also qualified against the real at-spi2-core
-2.52 registry with a libatspi (pyatspi) client: the application appears on the
-desktop, the tree, names, states, interfaces, text and progress value read
-correctly, `do_action`, `set_text_contents` and `grab_focus` reach the
-application callback, and checked-state and text-changed events arrive. Orca
-itself was not run. Not yet provided: the libatspi cache preload (GetItems
-answers an empty cache, so clients query objects on demand), text attributes
-and selection, table relations, and a peer-to-peer application bus.
+edits, tables, selection, the cache preload and the events a republication
+emits, in order (it skips when `dbus-daemon` is not installed). The bridge
+was also qualified against the real at-spi2-core 2.52 registry with a
+libatspi (pyatspi) client: the application appears on the desktop, the tree,
+names, states, interfaces, text and progress value read correctly,
+`do_action`, `set_text_contents` and `grab_focus` reach the application
+callback, and checked-state and text-changed events arrive. Table row and
+column counts, `get_accessible_at`, column headers and descriptions,
+`TableCell` positions and header cells, `Selection` and `add_row_selection`
+read and act correctly; after a republish that adds a row the cached child
+count is right (no double insertion), and libatspi logs no cache errors.
+
+Orca 46.1 was run headless (Xvfb, a private session bus, at-spi-bus-launcher,
+speech-dispatcher's dummy module, `orca --debug-file`) against a window with
+a table and a tab list while a libatspi client moved focus and selection.
+Its speech log: "Files frame." on window activation, "Starred page tab." on
+the tab list's selection change, and "Downloads. table with 3 rows 2 columns.
+b.png 9 KB." when the selected, focused row changed. Keyboard navigation
+inside Orca (its own table commands, flat review) and braille were not
+exercised. Not yet provided: text attributes and text selection, row
+headers, multi-selection policy, and a peer-to-peer application bus.
+
+## Windows UI Automation
+
+`graphics.ui.accessibility_uia` (win64 only) publishes snapshots as server-side
+UI Automation providers. The COM objects are written in W: each interface is a
+two-word `{vtable, element}` object whose vtable holds `win_callback` thunks,
+so there is no C helper, ATL or type library. It links `uiautomationcore`,
+`oleaut32`, `ole32` and `user32`, all part of Windows.
+
+1. `ui_uia_bridge* b = ui_access_uia_open(win.hwnd)` initialises COM on the
+   calling thread as a single-threaded apartment. Pass 0 for a tree hosted by
+   no window (tests and embedding), and give its screen position with
+   `ui_access_uia_set_origin(b, x, y)`.
+2. Set `gfx_win32_getobject = ui_access_uia_wm_getobject` (the optional
+   `WM_GETOBJECT` hook in `graphics/window_win32.w`; nothing changes while it is
+   unset). It answers `UiaRootObjectId` with `UiaReturnRawElementProvider` and
+   leaves every other object id, MSAA's included, to `DefWindowProcW`.
+   `ui_access_uia_getobject(b, hwnd, wparam, lparam)` is the same for an
+   explicit bridge.
+3. `ui_access_uia_publish(b, tree)` copies the snapshot and, when
+   `UiaClientsAreListening`, raises what changed for elements a client has
+   already seen: Name, Value, ToggleState, IsSelected, ExpandCollapseState and
+   IsEnabled property changes, `StructureChanged` (ChildrenInvalidated) when a
+   node's children differ, and `AutomationFocusChanged` for a new focus.
+4. Once per frame, after pumping messages, call
+   `ui_access_uia_dispatch(b, tree)`. It applies queued actions through
+   `ui_access_dispatch`. Accepted focus requests also move `tree.focused_id`.
+   `ui_access_uia_close(b)` releases the window's providers.
+
+UI Automation calls the providers on the thread that opened the bridge while it
+pumps messages (`ProviderOptions_UseComThreading`). Queries are answered from
+the published copy. Invoke, Toggle, SetValue, Select, Expand/Collapse and
+SetFocus are queued (64 at most), as in the other bridges, and publishing drops
+the queue. Each node id keeps one COM object across publications, so client
+identity is stable. Once a node is gone, its object answers
+`UIA_E_ELEMENTNOTAVAILABLE` from every method and is disconnected
+(`UiaDisconnectProvider`). It is freed with its last reference.
+
+What is mapped:
+
+- Every node implements IUnknown (identity: the Simple interface),
+  IRawElementProviderSimple and IRawElementProviderFragment. The root adds
+  IRawElementProviderFragmentRoot (hit testing with
+  ElementProviderFromPoint, and GetFocus) and is hosted by the window
+  (`UiaHostProviderFromHwnd`).
+- Roles map to control types:
+  - document → Document (the root → Pane)
+  - group → Group
+  - text, heading and cell → Text (headings report HeadingLevel)
+  - link → Hyperlink
+  - button → Button
+  - switch → Button with Toggle, localized type "toggle switch"
+  - checkbox → CheckBox
+  - textbox → Edit
+  - image → Image
+  - list → List, list item → ListItem
+  - table → Table, row → DataItem
+  - radio → RadioButton
+  - combobox → ComboBox
+  - tab list → Tab, tab → TabItem
+  - progress → ProgressBar
+  - dialog → Window with IsDialog
+- Patterns:
+  - Invoke: activatable nodes with no other pattern.
+  - Toggle: checkboxes and switches.
+  - Value: textboxes; comboboxes, read-only unless they accept SET_VALUE.
+  - SelectionItem: tabs, list items, rows and radio buttons, single
+    selection. Select activates.
+  - ExpandCollapse: comboboxes, and activatable nodes with the expanded
+    state.
+  - RangeValue: progress, read-only 0..100, from the value's leading number.
+- Properties: Name, HelpText and FullDescription, AutomationId (the node id),
+  FrameworkId `W`, IsEnabled, IsKeyboardFocusable, HasKeyboardFocus,
+  IsOffscreen (hidden), IsDialog, HeadingLevel, plus the patterns' own state
+  properties.
+- Runtime ids are `[UiaAppendRuntimeId, id]` under a window. An unhosted tree
+  uses `[process id, id]`, because UIA cannot append to a window that does not
+  exist.
+
+`graphics_ui_accessibility_uia_test` (win64, run under wine by the CI win64 leg,
+never skipped) drives the bridge in-process with wine 9's `uiautomationcore`
+as the client:
+
+- **Through wine's client API:**
+  - `UiaNodeFromProvider`.
+  - `UiaGetPropertyValue`: control type, name, framework, enabled, focus,
+    focusable, help text.
+  - `UiaGetRuntimeId`.
+  - `UiaNavigate`, with a true condition and a cache request, to the first
+    child.
+  - `UiaAddEvent`, which receives the focus-changed event a republication
+    raises.
+- **Through the provider vtables, where wine cannot help:**
+  - Navigation in every direction, and QueryInterface identity.
+  - Pattern discovery by role, and every pattern read.
+  - Screen bounds, and ElementProviderFromPoint with real double arguments.
+  - GetFocus and FragmentRoot.
+  - The actions, which arrive at the application callback with UTF-16 →
+    UTF-8 values.
+  - Retained providers of removed nodes failing with
+    `UIA_E_ELEMENTNOTAVAILABLE`.
+  - `WM_GETOBJECT` declining non-UIA object ids.
+
+Wine could not exercise the following:
+
+- Its flat pattern functions (`InvokePattern_Invoke`, `TogglePattern_Toggle`,
+  `ValuePattern_SetValue`, ...) are stubs, so patterns are driven through the
+  vtables instead.
+- Property-changed event registration is unimplemented, and
+  `UiaRaiseAutomationPropertyChangedEvent` and
+  `UiaRaiseStructureChangedEvent` are stubs. Its FIXME trace shows the bridge
+  raising them with the right payload (for example Name `"A"` → `"B"`), but
+  delivery is untested.
+- Wine maps a provider's failure HRESULT to the reserved not-supported value,
+  rather than propagating `UIA_E_ELEMENTNOTAVAILABLE` to the client.
+- CI's wine has no display driver. So `WM_GETOBJECT` →
+  `UiaReturnRawElementProvider`, the hosted root (`UiaHostProviderFromHwnd`,
+  the window-based runtime id, `ClientToScreen` bounds) and cross-process
+  clients are only built, not run.
+
+Narrator, NVDA, JAWS, Accessibility Insights and Inspect on real Windows have
+not been run against the bridge. That is the qualification still owed.
+
+Not yet provided:
+
+- The Text pattern (caret, selection, text ranges).
+- Selection, Grid and Table container patterns.
+- LiveSetting and notification events.
+- MSAA (`IAccessible`) for legacy clients. `WM_GETOBJECT` for OBJID_CLIENT
+  falls through to the default proxy.
+- Embedded fragment roots.
 
 ## Focus and contrast
 
@@ -266,10 +432,11 @@ Disabled controls, arbitrary application backgrounds, and the illustrative ocean
 theme are outside this default-theme assertion. These checks do not substitute
 for testing a rendered application's complete contrast and focus appearance.
 
-Windows UI Automation is the remaining platform bridge of #465. The web ARIA
-mirror and the AT-SPI bridge are initial adapters, with screen-reader
-qualification and richer semantics (text ranges, table relations, incremental
-updates) still open. A semantic snapshot or a cross-compiled Cocoa binary is not
+Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
+and UI Automation bridges are initial adapters, with screen-reader
+qualification on real Windows, VoiceOver and NVDA, and richer semantics (text
+ranges and selection, UIA table/grid and text patterns, incremental updates)
+still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
 
 The native implementation follows Apple's

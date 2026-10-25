@@ -66,11 +66,13 @@ from its old DOM elements. See [accessibility](accessibility.md) for publication
 ownership, host setup and the limits of the initial role/state mapping.
 
 The opt-in `graphics.ui.accessibility_atspi` bridge publishes snapshots to
-Linux AT-SPI 2 over a pure-W D-Bus client. Immediate-mode widgets route
+Linux AT-SPI 2 over a pure-W D-Bus client, and `graphics.ui.accessibility_uia`
+to Windows UI Automation as COM providers written in W. Immediate-mode widgets route
 Tab/Shift-Tab, draw a focus ring after keyboard navigation and populate
 snapshots automatically through `ui_access_capture`; page content outside the
 widgets still builds its own semantic tree and routes focus through
-application callbacks. Windows UI Automation remains an open part of #465.
+application callbacks. Screen-reader qualification of the Windows bridge
+(Narrator, NVDA) is still open in #465.
 
 ## Current backend qualification
 
