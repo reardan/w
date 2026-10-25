@@ -5,9 +5,11 @@ source-edit API, deterministic layout, SVG exporter, CLI, and native desktop
 editor with live preview and flowchart/ER/class/state canvas editing. It has no Mermaid JavaScript, Node,
 browser, network, or external layout dependency. The desktop uses the existing
 `graphics.ui` and native OpenGL stack. The library and CLI run on x86 and x64;
-the desktop has Linux X11 workflow tests, Windows cross-compilation and Wine
-smoke coverage, and macOS ARM64 cross-compilation. Native Windows/macOS desktop
-qualification remains outstanding; see the platform table below.
+the desktop has Linux X11 workflow tests, screen-reader qualification against
+real AT-SPI and headless Orca, Windows cross-compilation with Wine smoke,
+save and UI Automation coverage, and macOS ARM64 cross-compilation. Native
+Windows/macOS desktop qualification remains outstanding; the checklist for
+real hardware is [mermaid_desktop_qualification.md](mermaid_desktop_qualification.md).
 
 The family-coverage milestone is implemented: every authoring family in the
 pinned Mermaid **12.2.0** registry has a bounded native core, including all five
@@ -112,13 +114,70 @@ kind, cardinality and labels in source.
 | Escape | Cancel a drag, placement, connection or close prompt |
 | Ctrl+0 / Ctrl+plus / Ctrl+minus | Fit / zoom in / zoom out |
 | Ctrl+Q | Close with the unsaved-change prompt |
+| Ctrl+K, after a disk change | Keep mine: the next save replaces the changed (or recreates the deleted) file |
+| Ctrl+Shift+R, after a disk change | Reload from disk, discarding the editor's changes |
 
 Canvas navigation and Delete are scoped to canvas focus, so editing text does
 not delete diagram objects. Command chords are also accepted where the native
 backend reports them. Controls for unsupported operations are disabled.
 The interaction choices follow [W3C's non-drag alternative guidance](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements)
 and [GNOME's guidance on reversible actions](https://developer.gnome.org/hig/principles).
-This does not claim full accessibility conformance or screen-reader integration.
+
+### Screen readers
+
+The canvas is exposed through the toolkit's semantic snapshots
+(`graphics/mermaid_access.w`, [accessibility.md](accessibility.md)) next to the
+widgets' own semantics. The canvas is a list named "Diagram canvas" (plus the
+diagram's title), described by its family, node/group/edge counts, any
+`accDescr` text and the keyboard model. Each node, group and edge is an item:
+
+| Item | Role | Name | Description | States / actions |
+| --- | --- | --- | --- | --- |
+| Node | list item | its label (its id when unlabeled) | `node B in Shop, 1 outgoing, 1 incoming, movable` | focusable, selected; focus and select (activate) select it |
+| Group | group | its label | `group S containing 3 items` | focusable; readable, not selectable (as with Tab) |
+| Edge | list item | `Alpha to Beta: pays` | `edge from Alpha to Beta, label pays, dashed` | focusable, selected; focus and select select it |
+
+Bounds are window coordinates of the node boxes (an edge spans its endpoint
+centers) and follow zoom and pan. While the canvas has keyboard focus, the
+selected item is the focused accessible object, so Tab/Shift+Tab, arrows and
+Delete produce focus, selection, state and children-changed events that a
+screen reader announces. Assistive focus or selection (Orca, AT-SPI
+`GrabFocus`/`SelectChild`, UIA `SetFocus`/`SelectionItem.Select`) selects the
+item on the next frame and moves keyboard focus to the canvas. The status line
+is a text object. Families whose scene does not line up with document nodes
+(pie, sequence, Gantt, ...) expose the canvas summary only. At most 2,048
+items are listed; the summary says when more exist.
+
+The editor publishes through `graphics/__arch__/*/access_platform.w`: AT-SPI 2
+on Linux (only when an accessibility bus is running; otherwise nothing is
+built per frame), UI Automation on Windows, and NSAccessibility on macOS when
+built with the opt-in companion (see the qualification document; the default
+Mach-O has no bridge, because the companion dylib must ship beside it).
+
+`mermaid_canvas_access_test` (in `tests`) checks the snapshot: roles, names,
+descriptions, bounds under zoom/pan, selected/focused state, assistive
+requests reaching the selection, and the canvas-only case.
+`mermaid_canvas_uia_test` (in `tests_win64`, under wine) reads the canvas
+through wine's UI Automation client, selects an edge through SelectionItem
+and receives the focus-changed event. Two opt-in targets run the real editor
+headless under Xvfb with at-spi2-core:
+
+```sh
+apt-get install xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0   # + orca speech-dispatcher
+./wbuild mermaid_editor_atspi_test   # libatspi client: tree, extents, hit test, GrabFocus,
+                                     # SelectChild, Tab/Shift+Tab/Delete/Ctrl+Z events
+./wbuild mermaid_editor_orca_test    # the same with Orca speaking through the dummy module
+```
+
+Both fail rather than skip when a dependency is missing. Qualified here
+(Ubuntu 24.04, at-spi2-core 2.52, Orca 46.1): Orca announces the window frame,
+"Diagram canvas. List with 5 items." on entering the canvas, then each node or
+edge by name with its description ("Beta. node B, 1 outgoing, 1 incoming,
+movable.") as GrabFocus, SelectChild, Tab and Shift+Tab move focus. Orca
+suppresses an edge's description when it repeats the name. Not exercised:
+braille, Orca's flat review and structural navigation commands, and
+Narrator, NVDA and VoiceOver (native runs pending). This is not a claim of
+full accessibility conformance.
 
 Manual positions use ordinary comments such as `%% @w-position "A" 100 120`
 inside the selected diagram. Coordinates are nonnegative layout pixels bounded
@@ -129,14 +188,54 @@ Lossless save/reopen retains positions; canonical output deliberately discards
 comments, including these position hints.
 
 The editor asks to save/discard/cancel on close with unsaved changes. Opening
-another file requires saving changes first. External content changes are detected
-and saving refuses to overwrite a changed, deleted, or unreadable disk file.
-**Reload** refreshes the disk version, with a discard confirmation for local
-changes. The check is optimistic, not an atomic compare-and-swap against a writer
-racing the final save. The core file layer uses `lib.fs` atomic durable replacement;
-Save As uses exclusive creation. Save failure preserves editor dirty state.
-The filesystem module's post-publication directory-sync failure semantics apply.
-Errors clear the preview while leaving the original text editable and saveable.
+another file requires saving changes first. Save failure preserves editor dirty
+state. Errors clear the preview while leaving the original text editable and
+saveable.
+
+### Disk changes and concurrent writers
+
+The editor keeps the exact bytes it last read or wrote as its baseline and never
+overwrites anything else. It polls the file four times a second by a
+size/mtime/ctime/inode fingerprint and compares bytes whenever the fingerprint
+moves and every two seconds regardless (same-second, same-size in-place
+rewrites; Windows has no fingerprint, so it always compares bytes). A change
+shows **Changed on disk: Reload from disk / Keep mine** (or **Deleted on disk**)
+and the status line says what each does; Ctrl+Shift+R and Ctrl+K do the same
+from the keyboard. Until one is chosen, Save refuses with a conflict message
+and the editor stays dirty. **Keep mine** adopts the current disk version (or
+its absence) as the baseline, so the next save replaces exactly that version;
+**Reload from disk** replaces the editor's text and history. The older
+**Reload** button keeps its discard confirmation.
+
+Saving is a compare-and-swap (`libs/extras/mermaid/save_guard.w`;
+`mm_editor_save_checked` returns `MM_SAVE_OK`, `MM_SAVE_CONFLICT` or
+`MM_SAVE_FAILED`):
+
+1. Compare the disk bytes with the baseline; any difference is a conflict.
+2. Stage the new bytes in a fresh same-directory temp file (exclusive create,
+   fsync, close), keeping the old file's permission bits.
+3. Claim the current file by renaming it to a same-directory claim name, and
+   compare the claimed bytes with the baseline again. A writer that replaced
+   the file after step 1 is caught here; its file is linked back unchanged.
+4. Place the temp file with a no-replace `link(2)` (Windows: `MoveFile`, which
+   never replaces). A writer that created the path after the claim makes this
+   fail: its file stays, the claim (the baseline) is dropped, conflict.
+5. Re-check the claimed copy before deleting it. A program that still held the
+   old file open and wrote into it after step 3 leaves different bytes there;
+   they are kept as `FILE.claim.<pid>.<n>` and the save reports a conflict
+   naming that recovery file. Then fsync the directory (not on Windows).
+
+So no writer that completes before the claim, or creates the path after it, is
+lost or silently overwritten. Remaining limits: readers can see the path absent
+for the instant between claim and placement; a filesystem without hard links
+falls back to an exclusive copy (still no-replace, not atomic for readers); on
+Windows, temp names are unique per process rather than created with `O_EXCL`,
+and another program's open without delete sharing makes the claim fail
+(reported as a save failure). A symlink at the path is replaced by a regular
+file, as before. Save As shares the exclusive writer and refuses existing
+destinations. `save_guard_test` (x86, x64 and a win64 twin under wine) injects
+a writer at each stage (`mm_save_race_hook`) and checks that nothing is
+overwritten and no temp or claim file is left behind.
 
 `--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg
 and canonical operations (default 0). Read/write/edit preserve the complete source;
@@ -158,12 +257,13 @@ bin/ppm_to_png bin/mermaid.ppm bin/mermaid.png
 
 | Platform | Checked here | Still needed |
 | --- | --- | --- |
-| Linux x64 / X11 | Native editor workflow with real pointer/key events under Xvfb; screenshot/export and save/reopen | Physical display, input-method and assistive-technology qualification |
-| Windows x64 / WGL | PE cross-compile and Wine/Xvfb startup/render/screenshot smoke | Native Windows input, clipboard, DPI and filesystem qualification |
-| macOS ARM64 / Cocoa | Mach-O cross-compile | Native Mac execution, input, clipboard, Retina and filesystem qualification |
+| Linux x64 / X11 | Real pointer/key workflows under Xvfb (flowchart pointer editing; keyboard-only edit, undo and redo chains in ER, class and state; external change, Keep mine, reload, deletion); AT-SPI and headless Orca screen-reader runs; screenshot/export and save/reopen | Physical display, input-method, braille and HiDPI checks |
+| Windows x64 / WGL | PE cross-compile; Wine/Xvfb startup/render/screenshot smoke; compare-and-swap saves under wine; canvas semantics through wine's UI Automation client | Native run pending: input, clipboard, DPI scaling, NTFS/OneDrive saves, Narrator/NVDA |
+| macOS ARM64 / Cocoa | Mach-O cross-compile, with and without the NSAccessibility companion | Native run pending: input, clipboard, Retina scaling, APFS/iCloud saves, VoiceOver |
 
-`./wbuild mermaid_editor_platforms` cross-compiles both desktop binaries and is
-part of the full suite. `./wbuild mermaid_editor_ui_test` runs the Linux workflow
+`./wbuild mermaid_editor_platforms` cross-compiles the desktop binaries
+(including `bin/wmermaid_editor_darwin_voiceover`) and is part of the full
+suite. `./wbuild mermaid_editor_ui_test` runs the Linux workflows
 and requires Xvfb plus the X11/XTest shared libraries. It fails if the display or
 editor cannot start; it does not silently count a skipped GUI run as a pass.
 The normal suite also includes display-independent canvas, edit-command and
@@ -353,7 +453,9 @@ mm_document_free(doc)
   `mm_save(doc, path, io_result*)` returns an `IO_*` status. `mm_diagnostic` returns
   an owned location/message string.
 - `editor`: UI-independent source history, diagram selection, structured flowchart
-  additions, hit testing, dirty state, conflict checking, reload, save and gesture state.
+  additions, hit testing, dirty state, disk polling (`mm_editor_poll`), Keep mine,
+  reload, compare-and-swap save (`mm_editor_save_checked`) and gesture state.
+- `save_guard`: disk fingerprints and comparison, and the compare-and-swap save.
 - `edit_commands`: transactional label/delete commands for flowchart, ER, class
   and state diagrams, `mm_editor_edit_reason`, ER/class/state additions
   (`mm_editor_add_graph_node`) and connections (`mm_editor_connect`).
@@ -361,6 +463,8 @@ mm_document_free(doc)
 - `canvas`: display-independent selection, movement, navigation and connection state.
 - `graphics.mermaid`: `mm_ui_render` draws a scene into a clipped viewport with
   zoom and pan using an existing `ui_renderer`.
+- `graphics.mermaid_access`: `mm_access_canvas` adds the canvas semantics to a
+  snapshot; `mm_access_apply` applies assistive focus/select requests.
 
 The shared source limit is 1 MiB. Graph documents permit at most 1,024 nodes and
 1,024 edges; graph attributes/members have 1,024-per-node and 4,096-document
@@ -393,8 +497,11 @@ Remaining compatibility and editing work:
    and into namespaces, composite states and notes; add group movement, multi-selection, resize and richer edge/attribute inspectors.
    Use editor commands to keep source/history synchronized; mutating the AST
    directly still does not update the lossless writer.
-5. Complete native Windows/macOS desktop qualification and add broader accessibility
-   interactions and atomic concurrent-write conflict handling.
+5. Run the native Windows/macOS qualification
+   ([checklist](mermaid_desktop_qualification.md)): Narrator/NVDA/VoiceOver,
+   input, DPI/Retina and filesystem behavior. Accessible editing of labels on
+   the canvas itself, multi-selection and spoken announcements of edit results
+   (live regions) are not provided yet.
 6. Expand the pinned upstream conformance corpus, malformed-input fuzzing and
    cross-family integration tests before claiming syntax or rendering parity.
 
