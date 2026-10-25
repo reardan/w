@@ -205,6 +205,9 @@ int llvm_class_of(retained_type* t):
 		return llvm_class_struct
 	char* n = t.name
 	if (strcmp(n, c"void") == 0): return llvm_class_void
+	# A C bit-field reads and writes as a word (see "C bit-fields").
+	if (starts_with(n, c"__ci_bit_field_") && (t.origin >= 0) && ci_is_bit_field_access(t.origin)):
+		if (ci_bit_field_unit_size(t.origin) > 0): return llvm_class_word
 	list[char*] words = list[char*]{c"int", c"uint", c"char", c"byte", c"bool", c"constant", c"function", c"pointer", c"int8", c"int16", c"int32", c"int64", c"uint8", c"uint16", c"uint32", c"uint64"}
 	int found = 0
 	for w in words:
@@ -362,7 +365,70 @@ char* llvm_offset(char* address, char* offset):
 	return result
 
 
+# ---- C bit-fields --------------------------------------------------------
+# c_import gives each bit-field member its own access type, whose side table
+# (libs/extras/c_import/importer.w) holds the storage unit's size, the
+# field's bit offset in it, its width and signedness; a member access names
+# the unit's address. Reads and writes reproduce grammar/promote.w's
+# bit_field_promote and bit_field_assign_store on the zero-extended unit.
+
+void llvm_store_width(int width, char* value, char* address);
+
+
+# The type-table index of a bit-field access type, or -1.
+int llvm_bit_field(int type):
+	if (type < 0): return -1
+	retained_type* t = llvm_type(type)
+	if ((t.pointer_level != 0) || (t.origin < 0) || (starts_with(t.name, c"__ci_bit_field_") == 0)): return -1
+	if (ci_is_bit_field_access(t.origin) == 0): return -1
+	return t.origin
+
+
+char* llvm_load_unit(int size, char* address):
+	char* t = llvm_int_type(size)
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = load ")
+	llvm_put(t)
+	llvm_put(c", ptr ")
+	llvm_put(address)
+	llvm_put(c", align 1\x0a")
+	if (size == 8): return result
+	return llvm_convert_op(c"zext", t, result, c"i64")
+
+
+# The field's value as a word: sign-extended, or shifted down and masked.
+char* llvm_bit_field_read(int field, char* address):
+	int width = ci_bit_field_width(field)
+	int shift = ci_bit_field_bit_offset(field)
+	char* unit = llvm_load_unit(ci_bit_field_unit_size(field), address)
+	if (ci_bit_field_is_signed(field)):
+		if (64 - shift - width > 0): unit = llvm_instruction(c"shl", unit, llvm_number(64 - shift - width))
+		if (64 - width > 0): unit = llvm_instruction(c"ashr", unit, llvm_number(64 - width))
+		return unit
+	if (shift > 0): unit = llvm_instruction(c"lshr", unit, llvm_number(shift))
+	if (width < 64): unit = llvm_instruction(c"and", unit, llvm_number((1 << width) - 1))
+	return unit
+
+
+# Read-modify-write of the field's bits in its unit.
+void llvm_bit_field_write(int field, char* value, char* address):
+	int width = ci_bit_field_width(field)
+	int shift = ci_bit_field_bit_offset(field)
+	int size = ci_bit_field_unit_size(field)
+	if (width >= 64):
+		llvm_store_width(8, value, address)
+		return
+	int mask = ((1 << width) - 1) << shift
+	char* bits = llvm_instruction(c"and", llvm_instruction(c"shl", value, llvm_number(shift)), llvm_number(mask))
+	char* rest = llvm_instruction(c"and", llvm_load_unit(size, address), llvm_number(~mask))
+	llvm_store_width(size, llvm_instruction(c"or", rest, bits), address)
+
+
 char* llvm_load(int type, char* address):
+	int field = llvm_bit_field(type)
+	if (field >= 0): return llvm_bit_field_read(field, address)
 	int width = llvm_width(type)
 	char* t = llvm_int_type(width)
 	char* result = llvm_temp()
@@ -552,34 +618,33 @@ char* llvm_float_operand(char* value, int got, int want):
 	return llvm_convert_op(c"fptrunc", c"double", x, c"float")
 
 
+char* llvm_float_select(char* condition, char* yes, char* no);
+
+
 # Convert a word between float kinds (0: signed integer word), as coerce()
-# does. Float to integer truncates with cvttss2si/cvttsd2si, whose
-# out-of-range result is the integer indefinite 0x8000000000000000, so the
-# x86 intrinsics (not fptosi, which is poison there) carry the conversion.
+# does. Float to integer truncates toward zero; fptosi is poison out of
+# range, so the saturating llvm.fptosi.sat carries the conversion. That is
+# AArch64's fcvtzs exactly (NaN gives 0). x86's cvttss2si/cvttsd2si instead
+# return the integer indefinite 0x8000000000000000 for NaN and for every
+# value outside the i64 range, which differs from saturation only at or
+# above 2^63 and for NaN: fcmp uge catches both.
 char* llvm_float_coerce(char* value, int got, int want):
 	if (got == want): return value
 	if (want != 0): return llvm_float_to_word(llvm_float_operand(value, got, want), want)
 	llvm_uses_float_conversion = 1
 	char* x = llvm_float_from_word(value, got)
-	char* vector = llvm_temp()
-	llvm_put(c"  ")
-	llvm_put(vector)
-	if (got == 2):
-		llvm_put(c" = insertelement <2 x double> undef, double ")
-		llvm_put(x)
-		llvm_put(c", i32 0\x0a")
-	else:
-		llvm_put(c" = insertelement <4 x float> undef, float ")
-		llvm_put(x)
-		llvm_put(c", i32 0\x0a")
+	char* type = llvm_float_type(got)
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
-	if (got == 2): llvm_put(c" = call i64 @llvm.x86.sse2.cvttsd2si64(<2 x double> ")
-	else: llvm_put(c" = call i64 @llvm.x86.sse.cvttss2si64(<4 x float> ")
-	llvm_put(vector)
+	if (got == 2): llvm_put(c" = call i64 @llvm.fptosi.sat.i64.f64(double ")
+	else: llvm_put(c" = call i64 @llvm.fptosi.sat.i64.f32(float ")
+	llvm_put(x)
 	llvm_put(c")\x0a")
-	return result
+	if (llvm_arm64): return result
+	# 0x43e0000000000000 is 2^63 (LLVM spells float constants as doubles).
+	char* high = llvm_op(c"fcmp uge", type, x, c"0x43E0000000000000")
+	return llvm_float_select(high, c"-9223372036854775808", result)
 
 
 char* llvm_float_select(char* condition, char* yes, char* no):
@@ -596,32 +661,49 @@ char* llvm_float_select(char* condition, char* yes, char* no):
 	return result
 
 
-# The word of an SSE arithmetic result. LLVM leaves a NaN result's sign and
-# payload unspecified (and constant folding picks 0x7ff8...), while SSE
-# returns the first NaN operand quieted, else the second, else the default
-# NaN 0xfff8.../0xffc00000 for an invalid operation. Spell that rule out so
-# folded and run-time results both match the native backend bit for bit.
+# The word of a hardware arithmetic result. LLVM leaves a NaN result's sign
+# and payload unspecified (and constant folding picks 0x7ff8...), so spell
+# out the native rule; folded and run-time results then both match the
+# native backend bit for bit. SSE returns the first NaN operand quieted,
+# else the second, else the default NaN 0xfff8.../0xffc00000 for an
+# invalid operation. AArch64 (FPCR.DN clear, as Linux runs it) prefers a
+# signaling NaN, the first operand's before the second's, then a quiet
+# NaN in the same order, quieting the one it returns, and its default NaN
+# is positive: 0x7ff8.../0x7fc00000.
 char* llvm_float_nan_result(char* x, char* y, char* result, int kind):
 	char* type = llvm_float_type(kind)
 	char* quiet = c"4194304"
 	char* default_nan = c"4290772992"
+	if (llvm_arm64): default_nan = c"2143289344"
 	if (kind == 2):
 		quiet = c"2251799813685248"
 		default_nan = c"-2251799813685248"
+		if (llvm_arm64): default_nan = c"9221120237041090560"
 	char* word = llvm_float_to_word(result, kind)
 	char* x_nan = llvm_op(c"fcmp uno", type, x, x)
 	char* y_nan = llvm_op(c"fcmp uno", type, y, y)
 	char* r_nan = llvm_op(c"fcmp uno", type, result, result)
-	char* x_quiet = llvm_instruction(c"or", llvm_float_to_word(x, kind), quiet)
-	char* y_quiet = llvm_instruction(c"or", llvm_float_to_word(y, kind), quiet)
+	char* x_bits = llvm_float_to_word(x, kind)
+	char* y_bits = llvm_float_to_word(y, kind)
+	char* x_quiet = llvm_instruction(c"or", x_bits, quiet)
+	char* y_quiet = llvm_instruction(c"or", y_bits, quiet)
 	word = llvm_float_select(r_nan, default_nan, word)
 	word = llvm_float_select(y_nan, y_quiet, word)
-	return llvm_float_select(x_nan, x_quiet, word)
+	word = llvm_float_select(x_nan, x_quiet, word)
+	if (llvm_arm64 == 0): return word
+	# A NaN whose quiet bit is clear is signaling.
+	char* y_signaling = llvm_op(c"and", c"i1", y_nan, llvm_op(c"icmp eq", c"i64", llvm_instruction(c"and", y_bits, quiet), c"0"))
+	char* x_signaling = llvm_op(c"and", c"i1", x_nan, llvm_op(c"icmp eq", c"i64", llvm_instruction(c"and", x_bits, quiet), c"0"))
+	word = llvm_float_select(y_signaling, y_quiet, word)
+	return llvm_float_select(x_signaling, x_quiet, word)
 
 
 # A binary operator with a float operand (grammar/binary_op.w): both sides
-# at the wider float kind. Float == is ucomis + sete, true when unordered,
-# and != false then; the ordered comparisons are false on NaN.
+# at the wider float kind. On x86 float == is ucomis + sete, true when
+# unordered, and != false then; AArch64's fcmp + cset eq/ne gives the IEEE
+# answers (== false, != true). The ordered comparisons are false on NaN on
+# both: < and <= swap their operands into seta/setae, which AArch64 reads
+# as gt/ge.
 # Returns the result word and sets *kind to the result's float kind (0 for
 # a comparison's bool).
 char* llvm_float_binary(int id, int op, char* a, int a_type, char* b, int b_type, int* result_kind):
@@ -635,6 +717,8 @@ char* llvm_float_binary(int id, int op, char* a, int a_type, char* b, int b_type
 	else if (op == '-'): instruction = c"fsub"
 	else if (op == '*'): instruction = c"fmul"
 	else if (op == '/'): instruction = c"fdiv"
+	else if ((op == 0x94) && llvm_arm64): instruction = c"fcmp oeq"
+	else if ((op == 0x95) && llvm_arm64): instruction = c"fcmp une"
 	else if (op == 0x94): instruction = c"fcmp ueq"
 	else if (op == 0x95): instruction = c"fcmp one"
 	else if (op == 0x9c): instruction = c"fcmp olt"
@@ -734,6 +818,10 @@ char* llvm_convert(int id, char* value, int from, int to):
 
 # Store value (already an i64 word, or a struct's address) into a place.
 void llvm_store(int id, int type, char* value, char* address):
+	int field = llvm_bit_field(type)
+	if (field >= 0):
+		llvm_bit_field_write(field, value, address)
+		return
 	int c = llvm_class(type)
 	if (c == llvm_class_struct):
 		llvm_memory_call(c"llvm.memcpy.p0.p0.i64", address, llvm_pointer(value), llvm_type(type).size)
@@ -1120,6 +1208,52 @@ char* llvm_import_call(int id, int import, int binding, list[char*] values, list
 	string_free(arguments)
 	if (result == 0): return c"0"
 	return llvm_c_result(result, b.return_type, return_type)
+
+
+# A function import used as a value (a callback, a function-typed global)
+# is a W function: as natively, where the symbol names the import's ABI
+# shim, it takes and returns i64 words, and this per-binding thunk makes
+# the C ABI call. A variadic import's thunk passes the fixed parameters
+# only, as the native shim does.
+map[int, int] llvm_import_thunks
+string_builder* llvm_thunk_code
+
+
+char* llvm_import_thunk(int id, int binding, int import):
+	char* name = llvm_name(c"@wllvm.cthunk.", binding)
+	if (binding in llvm_import_thunks): return name
+	llvm_import_thunks[binding] = 1
+	retained_binding* b = retained_bindings[binding]
+	int fixed = b.parameters.length
+	if (sym_variadic_fixed_args(b.origin) >= 0): fixed = sym_variadic_fixed_args(b.origin)
+	string_builder* saved_out = llvm_out
+	int saved_register = llvm_register
+	llvm_out = string_new()
+	llvm_register = 0
+	list[char*] values = new list[char*]
+	list[int] types = new list[int]
+	llvm_put(c"define internal i64 ")
+	llvm_put(name)
+	llvm_put(c"(")
+	for i in range(fixed):
+		if (i > 0): llvm_put(c", ")
+		char* parameter = llvm_name(c"%a", i)
+		llvm_put(c"i64 ")
+		llvm_put(parameter)
+		values.push(parameter)
+		types.push(b.parameters[i])
+	llvm_put(c") {\x0aentry:\x0a")
+	char* result = llvm_import_call(id, import, binding, values, types)
+	llvm_put(c"  ret i64 ")
+	llvm_put(result)
+	llvm_put(c"\x0a}\x0a\x0a")
+	string_append(llvm_thunk_code, llvm_out.data)
+	string_free(llvm_out)
+	llvm_out = saved_out
+	llvm_register = saved_register
+	values.free()
+	types.free()
+	return name
 
 
 # The address of an imported object binding names, or 0 when it is not
@@ -1536,6 +1670,8 @@ char* llvm_value_inner(int group, int operand):
 			if (llvm_c_constant(node.binding, &value)): return llvm_number(value)
 			int linkage = retained_bindings[node.binding].linkage
 			if (linkage in llvm_functions): return llvm_constant_address(llvm_function_symbol(linkage))
+			int import = llvm_import_of(node.binding)
+			if ((import >= 0) && (load_int(table + retained_bindings[node.binding].origin + 10) == 2)): return llvm_constant_address(llvm_import_thunk(id, node.binding, import))
 			llvm_error_at(id, c"reference to", node.binding_name)
 			return c"0"
 	if (llvm_place(&node)):
@@ -2987,6 +3123,10 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 	if ((callee.linkage in llvm_functions) == 0):
 		llvm_error_at(id, c"generator without a W body", callee.name)
 		return c"0"
+	# The entry thunk and gen_switch follow the x86-64 stack layout.
+	if (llvm_arm64):
+		llvm_error_at(id, c"AArch64 generator", callee.name)
+		return c"0"
 	list[char*] values = new list[char*]
 	int arg = node.left
 	while ((arg >= 0) && (llvm_failed == 0)):
@@ -3016,6 +3156,9 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 
 
 char* llvm_generator_switch(int id, list[char*] values):
+	if (llvm_arm64):
+		llvm_error(id, c"AArch64 generator switch")
+		return c"0"
 	llvm_uses_gen_switch = 1
 	char* result = llvm_temp()
 	llvm_put(c"  ")
@@ -3581,6 +3724,8 @@ void llvm_free_tables():
 	llvm_next.free()
 	llvm_tests.free()
 	string_free(llvm_imports)
+	string_free(llvm_thunk_code)
+	llvm_import_thunks.free()
 	llvm_import_cache.free()
 	llvm_imports_declared.free()
 	llvm_generator_thunks.free()
@@ -3604,6 +3749,8 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_imports_declared = new map[char*, int]
 	llvm_dynamic = 0
 	llvm_link_libraries = new list[char*]
+	llvm_import_thunks = new map[int, int]
+	llvm_thunk_code = string_new()
 	llvm_uses_gen_switch = 0
 	llvm_generator_thunks = new map[int, int]
 	llvm_data = string_new()
@@ -3728,7 +3875,7 @@ int llvm_emit(char* filename, char* output_path):
 		if (llvm_uses_bits):
 			string_append(module, c"declare i32 @llvm.fshl.i32(i32, i32, i32)\x0adeclare i32 @llvm.fshr.i32(i32, i32, i32)\x0a")
 			string_append(module, c"declare i32 @llvm.ctpop.i32(i32)\x0adeclare i32 @llvm.ctlz.i32(i32, i1)\x0adeclare i32 @llvm.cttz.i32(i32, i1)\x0a")
-		if (llvm_uses_float_conversion): string_append(module, c"declare i64 @llvm.x86.sse.cvttss2si64(<4 x float>)\x0adeclare i64 @llvm.x86.sse2.cvttsd2si64(<2 x double>)\x0a")
+		if (llvm_uses_float_conversion): string_append(module, c"declare i64 @llvm.fptosi.sat.i64.f32(float)\x0adeclare i64 @llvm.fptosi.sat.i64.f64(double)\x0a")
 		if (llvm_uses_memory): string_append(module, c"declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\x0adeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\x0a")
 		if (llvm_dynamic):
 			# C imports: the module links dynamically, keeping W's _start.
@@ -3742,6 +3889,7 @@ int llvm_emit(char* filename, char* output_path):
 		string_append(module, llvm_data.data)
 		string_append(module, c"\x0a")
 		string_append(module, llvm_code.data)
+		string_append(module, llvm_thunk_code.data)
 		success = file_write_text(output_path, module.data)
 		string_free(module)
 		if (success == 0):

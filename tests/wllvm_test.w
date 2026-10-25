@@ -94,6 +94,7 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"declare float @\"sqrtf\"(float)")
 	assert_contains(a, c"fpext float ")
 	assert_contains(a, c"@\"stdout\" = external global [8 x i8]")
+	assert_contains(a, c"define internal i64 @wllvm.cthunk.")
 	int puts = index_of(a, c"declare i64 @\"puts\"(ptr)")
 	assert1(puts >= 0)
 	assert_equal(-1, index_of(a + puts + 1, c"declare i64 @\"puts\""))
@@ -114,7 +115,7 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"fcmp ueq double")
 	assert_contains(a, c"sitofp i64 ")
 	assert_contains(a, c"fpext float ")
-	assert_contains(a, c"call i64 @llvm.x86.sse2.cvttsd2si64(")
+	assert_contains(a, c"call i64 @llvm.fptosi.sat.i64.f64(")
 	assert_contains(a, c"c\"specs [\\00\"")
 	unlink(first)
 	free(a)
@@ -278,7 +279,7 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
 	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
-	wllvm_test_differential(clang, c"tests/wllvm_extern_fixture.w", 47)
+	wllvm_test_differential(clang, c"tests/wllvm_extern_fixture.w", 54)
 	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
 	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
 	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)
@@ -377,7 +378,7 @@ void test_wllvm_arm64_target():
 	if ((clang == 0) || (lld == 0) || (qemu == 0)):
 		println(c"wllvm: clang, ld.lld or qemu-aarch64 unavailable; arm64 run skipped")
 		return
-	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w"}
+	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w"}
 	for fixture in fixtures:
 		char* native = wllvm_test_path(c".arm64")
 		char* reference = wllvm_test_path(c".arm64ref")

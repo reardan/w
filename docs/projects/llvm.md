@@ -78,9 +78,21 @@ for `--emit-llvm` output.
 An imported object is the library's own storage rather than a COPY of it
 sized by its W type, so its W type must match the C object: `extern int
 optind` (8 bytes) reads past libc's 4-byte `int` under wllvm, while the
-native COPY space zero-fills the rest. Bit-field records, function values
-of imports (passing `puts` itself as a callback) and AArch64 dynamic links
-(which need an AArch64 sysroot) are not covered.
+native COPY space zero-fills the rest. AArch64 dynamic links (which need
+an AArch64 sysroot) are not covered.
+
+An import used as a value (`call_text(puts, s)`, a function-typed
+argument or global) is the address of a per-binding W-ABI thunk,
+`@wllvm.cthunk.<binding>`, which takes and returns words and makes the C
+call, as the native symbol names the import's ABI shim; a variadic
+import's thunk passes the fixed parameters only, like that shim.
+
+C bit-fields: c_import gives each bit-field member an access type whose
+side table holds the storage unit's size and the field's bit offset,
+width and signedness. A member access names the unit, a read loads it
+zero-extended and sign-extends (shift left, arithmetic shift right) or
+shifts and masks, and a write is the read-modify-write of
+`grammar/promote.w`'s `bit_field_assign_store`.
 
 This is not a switch on `wv2` and does not replace a production backend.
 
@@ -227,14 +239,25 @@ in the low 32 bits) and is bitcast around each LLVM `float`/`double`
 operation, so it uses the same internal ABI as every other word. The
 native semantics are spelled out where LLVM's differ: float `==` is true
 and `!=` false on NaN operands (`ucomisd` + `sete`), the ordered
-comparisons are false; float-to-integer conversion uses the
-`cvttss2si`/`cvttsd2si` intrinsics, whose out-of-range result is
-`0x8000000000000000` (LLVM's `fptosi` is poison there), and a float cast to
-a narrow integer keeps that whole word as natively; integer-to-float takes
-the whole signed word. LLVM leaves a NaN result's sign and payload open
-and folds `0.0 / 0.0` to `0x7ff8...`, so each arithmetic result selects
-the SSE answer explicitly: the first NaN operand quieted, else the second,
-else the default NaN `0xfff8...` (`0xffc00000` for `float32`).
+comparisons are false; float-to-integer conversion is the saturating
+`llvm.fptosi.sat` (LLVM's `fptosi` is poison out of range), and on x86 a
+NaN or a value at or above 2^63 selects `cvttss2si`/`cvttsd2si`'s integer
+indefinite `0x8000000000000000` instead; a float cast to a narrow integer
+keeps that whole word as natively; integer-to-float takes the whole signed
+word. LLVM leaves a NaN result's sign and payload open and folds `0.0 /
+0.0` to `0x7ff8...`, so each arithmetic result selects the SSE answer
+explicitly: the first NaN operand quieted, else the second, else the
+default NaN `0xfff8...` (`0xffc00000` for `float32`).
+
+On AArch64 the same IR follows `bin/wv2 arm64`'s instructions: `fcvtzs`
+saturates (NaN gives 0), which is `llvm.fptosi.sat` exactly; `fcmp` with
+`cset eq`/`ne` makes `==` false and `!=` true on NaN (the ordered
+comparisons stay false, since `<` and `<=` swap into `gt`/`ge`); and with
+FPCR.DN clear a signaling NaN operand wins over a quiet one, the first
+operand before the second, and the default NaN is positive (`0x7ff8...`,
+`0x7fc00000`). `tests/wllvm_float_fixture.w` runs under qemu against the
+native arm64 build. Generators are rejected on AArch64: their entry thunk
+and `gen_switch` follow the x86-64 stack layout.
 
 Not yet supported, and rejected with a diagnostic: the storage-only
 `float16`/`bfloat16`, `var`, records passed or returned by value

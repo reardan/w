@@ -1,7 +1,7 @@
 # wllvm differential fixture: extern functions and objects without a W
 # body, called through the C ABI and linked dynamically against libc and
 # libm. tests/wllvm_test.w builds it with bin/wv2 x64 and with bin/wllvm
-# and compares the runs; the exit status is 41.
+# and compares the runs; the exit status is 54.
 import lib.lib
 
 c_lib "libc.so.6"
@@ -26,6 +26,19 @@ extern float32 fmaxf(float32 a, float32 b)
 extern int say_hello(char* s) = "puts"
 # Statically initialized libc data, read in place.
 extern void* stdout
+
+type text_fn = fn(char*) -> int
+type int_fn = fn(int) -> int
+extern int labs(int x)
+
+
+# Imports passed as W function values.
+int call_text(text_fn f, char* s):
+	return f(s)
+
+
+int call_int(int_fn f, int x):
+	return f(x)
 
 
 int main(int argc, int argv):
@@ -60,6 +73,8 @@ int main(int argc, int argv):
 	total = total + cast(int, fmaxf(root32, 1.0) * 2.0)
 	# c_import constants
 	total = total + ENOENT
+	if (call_text(puts, c"callback") >= 0): total = total + 1
+	total = total + call_int(labs, 0 - 6)
 	printf(c"printf %d %s %.3f\x0a", total, c"done", root)
 	fflush(0)
 	return total
