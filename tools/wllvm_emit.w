@@ -159,6 +159,23 @@ int llvm_named(retained_type* t, char* name):
 	return (t.pointer_level == 0) && (strcmp(t.name, name) == 0)
 
 
+# Float kinds as compiler/type_table.w's type_float_kind spells them: 1 for
+# float32 (float, float32, their value type), 2 for float64, 3 for the
+# storage-only float16/bfloat16 (not lowered), 0 for anything else.
+int llvm_float_kind_of(retained_type* t):
+	if (t.pointer_level > 0): return 0
+	char* n = t.name
+	if ((strcmp(n, c"float32") == 0) || (strcmp(n, c"float") == 0) || (strcmp(n, c"float32 value") == 0)): return 1
+	if ((strcmp(n, c"float64") == 0) || (strcmp(n, c"float64 value") == 0)): return 2
+	if ((strcmp(n, c"float16") == 0) || (strcmp(n, c"bfloat16") == 0)): return 3
+	return 0
+
+
+int llvm_float_kind(int type):
+	if (type < 0): return 0
+	return llvm_float_kind_of(llvm_type(type))
+
+
 int llvm_class(int type);
 
 
@@ -172,6 +189,8 @@ int llvm_class_of(retained_type* t):
 	if ((t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return llvm_class_word
 	# list (12), map (10) and set (11) handles (see "containers" below)
 	if ((t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return llvm_class_word
+	int float_kind = llvm_float_kind_of(t)
+	if ((float_kind == 1) || (float_kind == 2)): return llvm_class_word
 	if (t.fields.length > 0):
 		for i in range(t.fields.length):
 			int field = llvm_class(t.fields[i].type)
@@ -463,6 +482,157 @@ char* llvm_constant_address(char* symbol):
 	return result
 
 
+# --- floats ------------------------------------------------------------------
+# A float value travels in its i64 word as the bit pattern, a float32 in the
+# low 32 bits, as the native backend keeps one in rax between SSE operations
+# (grammar/binary_op.w, grammar/promote.w). Operations bitcast around LLVM
+# float and double arithmetic.
+
+int llvm_uses_float_conversion
+
+
+char* llvm_float_type(int kind):
+	if (kind == 2): return c"double"
+	return c"float"
+
+
+char* llvm_float_from_word(char* value, int kind):
+	if (kind == 2): return llvm_convert_op(c"bitcast", c"i64", value, c"double")
+	char* low = llvm_convert_op(c"trunc", c"i64", value, c"i32")
+	return llvm_convert_op(c"bitcast", c"i32", low, c"float")
+
+
+char* llvm_float_to_word(char* value, int kind):
+	if (kind == 2): return llvm_convert_op(c"bitcast", c"double", value, c"i64")
+	char* bits = llvm_convert_op(c"bitcast", c"float", value, c"i32")
+	return llvm_convert_op(c"zext", c"i32", bits, c"i64")
+
+
+# A word of float kind got (0 for a signed integer word) as an LLVM float of
+# kind want: cvtsi2ss/cvtsi2sd take the whole signed word, cvtss2sd and
+# cvtsd2ss round to nearest like fpext and fptrunc.
+char* llvm_float_operand(char* value, int got, int want):
+	char* type = llvm_float_type(want)
+	if (got == 0): return llvm_convert_op(c"sitofp", c"i64", value, type)
+	char* x = llvm_float_from_word(value, got)
+	if (got == want): return x
+	if (want == 2): return llvm_convert_op(c"fpext", c"float", x, c"double")
+	return llvm_convert_op(c"fptrunc", c"double", x, c"float")
+
+
+# Convert a word between float kinds (0: signed integer word), as coerce()
+# does. Float to integer truncates with cvttss2si/cvttsd2si, whose
+# out-of-range result is the integer indefinite 0x8000000000000000, so the
+# x86 intrinsics (not fptosi, which is poison there) carry the conversion.
+char* llvm_float_coerce(char* value, int got, int want):
+	if (got == want): return value
+	if (want != 0): return llvm_float_to_word(llvm_float_operand(value, got, want), want)
+	llvm_uses_float_conversion = 1
+	char* x = llvm_float_from_word(value, got)
+	char* vector = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(vector)
+	if (got == 2):
+		llvm_put(c" = insertelement <2 x double> undef, double ")
+		llvm_put(x)
+		llvm_put(c", i32 0\x0a")
+	else:
+		llvm_put(c" = insertelement <4 x float> undef, float ")
+		llvm_put(x)
+		llvm_put(c", i32 0\x0a")
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	if (got == 2): llvm_put(c" = call i64 @llvm.x86.sse2.cvttsd2si64(<2 x double> ")
+	else: llvm_put(c" = call i64 @llvm.x86.sse.cvttss2si64(<4 x float> ")
+	llvm_put(vector)
+	llvm_put(c")\x0a")
+	return result
+
+
+char* llvm_float_select(char* condition, char* yes, char* no):
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = select i1 ")
+	llvm_put(condition)
+	llvm_put(c", i64 ")
+	llvm_put(yes)
+	llvm_put(c", i64 ")
+	llvm_put(no)
+	llvm_put(c"\x0a")
+	return result
+
+
+# The word of an SSE arithmetic result. LLVM leaves a NaN result's sign and
+# payload unspecified (and constant folding picks 0x7ff8...), while SSE
+# returns the first NaN operand quieted, else the second, else the default
+# NaN 0xfff8.../0xffc00000 for an invalid operation. Spell that rule out so
+# folded and run-time results both match the native backend bit for bit.
+char* llvm_float_nan_result(char* x, char* y, char* result, int kind):
+	char* type = llvm_float_type(kind)
+	char* quiet = c"4194304"
+	char* default_nan = c"4290772992"
+	if (kind == 2):
+		quiet = c"2251799813685248"
+		default_nan = c"-2251799813685248"
+	char* word = llvm_float_to_word(result, kind)
+	char* x_nan = llvm_op(c"fcmp uno", type, x, x)
+	char* y_nan = llvm_op(c"fcmp uno", type, y, y)
+	char* r_nan = llvm_op(c"fcmp uno", type, result, result)
+	char* x_quiet = llvm_instruction(c"or", llvm_float_to_word(x, kind), quiet)
+	char* y_quiet = llvm_instruction(c"or", llvm_float_to_word(y, kind), quiet)
+	word = llvm_float_select(r_nan, default_nan, word)
+	word = llvm_float_select(y_nan, y_quiet, word)
+	return llvm_float_select(x_nan, x_quiet, word)
+
+
+# A binary operator with a float operand (grammar/binary_op.w): both sides
+# at the wider float kind. Float == is ucomis + sete, true when unordered,
+# and != false then; the ordered comparisons are false on NaN.
+# Returns the result word and sets *kind to the result's float kind (0 for
+# a comparison's bool).
+char* llvm_float_binary(int id, int op, char* a, int a_type, char* b, int b_type, int* result_kind):
+	int left = llvm_float_kind(a_type)
+	int right = llvm_float_kind(b_type)
+	int kind = left
+	if (right > kind): kind = right
+	*result_kind = 0
+	char* instruction = 0
+	if (op == '+'): instruction = c"fadd"
+	else if (op == '-'): instruction = c"fsub"
+	else if (op == '*'): instruction = c"fmul"
+	else if (op == '/'): instruction = c"fdiv"
+	else if (op == 0x94): instruction = c"fcmp ueq"
+	else if (op == 0x95): instruction = c"fcmp one"
+	else if (op == 0x9c): instruction = c"fcmp olt"
+	else if (op == 0x9d): instruction = c"fcmp oge"
+	else if (op == 0x9e): instruction = c"fcmp ole"
+	else if (op == 0x9f): instruction = c"fcmp ogt"
+	if (instruction == 0):
+		llvm_error(id, c"float operator")
+		return c"0"
+	char* type = llvm_float_type(kind)
+	char* x = llvm_float_operand(a, left, kind)
+	char* y = llvm_float_operand(b, right, kind)
+	char* result = llvm_op(instruction, type, x, y)
+	if ((op >= 0x94) && (op <= 0x9f)): return llvm_extend(result)
+	*result_kind = kind
+	return llvm_float_nan_result(x, y, result, kind)
+
+
+# A float literal's retained bits: the high half and the low 32 bits.
+char* llvm_float_literal(retained_node* node):
+	int low = node.literal_value & ((1 << 32) - 1)
+	return llvm_number((node.literal_high << 32) | low)
+
+
+# Unary minus flips the sign bit (xor eax / btc rax in grammar/unary_expression.w).
+char* llvm_float_negate(char* value, int kind):
+	if (kind == 2): return llvm_instruction(c"xor", value, c"-9223372036854775808")
+	return llvm_instruction(c"xor", value, c"2147483648")
+
+
 # --- expressions -------------------------------------------------------------
 
 int llvm_node_id(int group, int operand):
@@ -487,6 +657,12 @@ void llvm_container_for(int id);
 # through the runtime's str_from_cstr, exactly as the native coercion.
 char* llvm_convert(int id, char* value, int from, int to):
 	if (llvm_is_bool(to)): return llvm_extend(llvm_bool(value))
+	int want_float = llvm_float_kind(to)
+	int got_float = llvm_float_kind(from)
+	if ((want_float != got_float) && (to >= 0) && (from >= 0) && ((llvm_type(to).pointer_level == 0) || (want_float != 0))): return llvm_float_coerce(value, got_float, want_float)
+	# A string literal or f-string value decays to its data pointer where a
+	# char* is wanted (type_decays_to_pointer).
+	if (llvm_is_char_pointer(to) && (from >= 0) && llvm_named(retained_types[from], c"string value")): return llvm_load(-1, llvm_pointer(value))
 	if (llvm_is_string(to) && llvm_is_char_pointer(from)):
 		if ((c"str_from_cstr" in llvm_function_names) == 0):
 			llvm_error(id, c"string conversion without str_from_cstr")
@@ -670,6 +846,66 @@ int llvm_generic_callee(retained_node* node):
 	if (node.payload_text == 0): return -1
 	if (node.payload_text in llvm_function_names): return llvm_function_names[node.payload_text]
 	return -1
+# --- test registry -------------------------------------------------------------
+# lib/testing.w calls __w_test_main, which the native driver synthesizes
+# (compiler/test_registry.w): one __w_run_tests(name, fn) call per defined
+# zero-argument test_* function, in definition order. wllvm builds the same
+# function from the retained forest.
+
+list[int] llvm_tests
+int llvm_tests_wanted
+
+
+char* llvm_test_main_call(int id):
+	if ((c"__w_run_tests" in llvm_function_names) == 0):
+		llvm_error(id, c"test registry without __w_run_tests")
+		return c"0"
+	if (llvm_tests_wanted == 0):
+		llvm_tests_wanted = 1
+		llvm_function_symbol(llvm_function_names[c"__w_run_tests"])
+		map[int, int] seen = new map[int, int]
+		int count = retained_node_count()
+		for node_id in range(count):
+			if (retained_node_kind(node_id) != retained_function): continue
+			retained_node function
+			retained_node_load(node_id, &function)
+			if ((function.binding < 0) || (starts_with(function.name, c"test_") == 0)): continue
+			int linkage = retained_bindings[function.binding].linkage
+			if ((linkage in llvm_functions) && (retained_bindings[function.binding].parameters.length == 0) && ((linkage in seen) == 0)):
+				seen[linkage] = 1
+				llvm_tests.push(linkage)
+				llvm_function_symbol(linkage)
+		seen.free()
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = call i64 @__wllvm_test_main()\x0a")
+	return result
+
+
+void llvm_emit_test_main():
+	if (llvm_tests_wanted == 0): return
+	string_append(llvm_code, c"define internal i64 @__wllvm_test_main() {\x0aentry:\x0a")
+	int run = llvm_function_names[c"__w_run_tests"]
+	int complete = run in llvm_queued
+	for i in range(llvm_tests.length):
+		if ((llvm_tests[i] in llvm_queued) == 0): complete = 0
+	if (complete == 0):
+		llvm_uses_trap = 1
+		string_append(llvm_code, c"  call void @llvm.trap()\x0a  unreachable\x0a}\x0a\x0a")
+		return
+	for i in range(llvm_tests.length):
+		retained_node definition
+		retained_node_load(llvm_functions[llvm_tests[i]], &definition)
+		char* name = llvm_string_constant(definition.name, strlen(definition.name))
+		string_append(llvm_code, c"  call i64 ")
+		string_append(llvm_code, llvm_name(c"@w", run))
+		string_append(llvm_code, c"(i64 ")
+		string_append(llvm_code, llvm_constant_address(name))
+		string_append(llvm_code, c", i64 ")
+		string_append(llvm_code, llvm_constant_address(llvm_name(c"@w", llvm_tests[i])))
+		string_append(llvm_code, c")\x0a")
+	string_append(llvm_code, c"  ret i64 0\x0a}\x0a\x0a")
 
 
 char* llvm_call(int group, int id, retained_node* node):
@@ -721,6 +957,10 @@ char* llvm_call(int group, int id, retained_node* node):
 				types.free()
 				operands.free()
 				return result
+			if ((strcmp(callee_name, c"__w_test_main") == 0) && (values.length == 0)):
+				values.free()
+				types.free()
+				return llvm_test_main_call(id)
 			llvm_error_at(id, c"call to a function without a W body", callee_name)
 			values.free()
 			types.free()
@@ -789,6 +1029,125 @@ char* llvm_prelude_helper(int index):
 	return 0
 
 
+# A conditional's branch at the conditional's float kind.
+char* llvm_float_branch(int group, int operand, int type):
+	retained_node branch
+	retained_node_load(llvm_node_id(group, operand), &branch)
+	char* value = llvm_value(group, operand)
+	int got = llvm_float_kind(branch.semantic_type)
+	int want = llvm_float_kind(type)
+	if ((got != want) && (got <= 2) && (want <= 2)): return llvm_float_coerce(value, got, want)
+	return value
+
+
+# Integer builtins (limb, bit and atomic intrinsics) truncate a float
+# argument to an integer word, as their coerce() to int does.
+char* llvm_float_integer_argument(int group, int operand):
+	retained_node argument
+	retained_node_load(llvm_node_id(group, operand), &argument)
+	char* value = llvm_value(group, operand)
+	int got = llvm_float_kind(argument.semantic_type)
+	if ((got == 1) || (got == 2)): return llvm_float_coerce(value, got, 0)
+	return value
+
+
+# --- f-strings -----------------------------------------------------------------
+# f"..." lowers to the __w_template_* helpers exactly as
+# grammar/template_string.w does: a builder, one append per chunk and value,
+# then __w_template_finish. The retained 'E' node chains its raw chunks
+# ('t', bytes already decoded) and values through next_arg; a chunk's right
+# names the ast_template_format spec of the value after it.
+
+const int llvm_template_format = 131
+
+
+# The runtime kind of a value under a spec (template_format_class): 0-5
+# int-like renderings, 6 char*, 7 string, 8 float32, 9 float64; -1 when
+# the value cannot be interpolated here.
+int llvm_template_kind(int type, int spec_type):
+	int float_kind = llvm_float_kind(type)
+	if (float_kind == 1): return 8
+	if (float_kind == 2): return 9
+	if (llvm_is_string(type)): return 7
+	if (llvm_is_char_pointer(type)): return 6
+	if ((type < 0) || (llvm_class(type) != llvm_class_word) || (llvm_type(type).pointer_level > 0) || (llvm_type(type).kind == 2)): return -1
+	if (spec_type == 'x'): return 1
+	if (spec_type == 'X'): return 2
+	if (spec_type == 'o'): return 3
+	if (spec_type == 'b'): return 4
+	if (spec_type == 'c'): return 5
+	return 0
+
+
+char* llvm_template(int group, int id, retained_node* node):
+	list[char*] none = new list[char*]
+	char* builder = llvm_helper_call(id, c"__w_template_new", none)
+	none.free()
+	int part = node.left
+	while ((part >= 0) && (llvm_failed == 0)):
+		retained_node chunk
+		retained_node_load(llvm_node_id(group, part), &chunk)
+		if (chunk.op != 't'):
+			llvm_error(id, c"template string shape")
+			return c"0"
+		if (chunk.literal_length > 0):
+			char* data = llvm_constant_address(llvm_string_constant(chunk.literal_text, chunk.literal_length))
+			list[char*] bytes = list[char*]{builder, data, llvm_number(chunk.literal_length)}
+			llvm_helper_call(id, c"__w_template_bytes", bytes)
+			bytes.free()
+		if (chunk.next_arg < 0): part = -1
+		else:
+			retained_node value
+			retained_node_load(llvm_node_id(group, chunk.next_arg), &value)
+			int present = 0
+			int fill = ' '
+			int align = 0
+			int width = 0
+			int precision = -1
+			int spec_type = 0
+			if (chunk.right >= 0):
+				retained_node spec
+				retained_node_load(llvm_node_id(group, chunk.right), &spec)
+				# An empty '{value:}' spec is typed void and means no spec.
+				if ((spec.op == llvm_template_format) && (spec.semantic_type >= 0) && (strcmp(retained_types[spec.semantic_type].name, c"void") != 0)):
+					present = 1
+					width = spec.left
+					precision = spec.right
+					fill = spec.value
+					align = spec.high
+					spec_type = spec.symbol
+			int kind = llvm_template_kind(value.semantic_type, spec_type)
+			if (kind < 0):
+				if (value.semantic_type >= 0): llvm_error_at(id, c"template string value type", retained_types[value.semantic_type].name)
+				else: llvm_error(id, c"template string value type")
+				return c"0"
+			char* word = llvm_value(group, chunk.next_arg)
+			list[char*] arguments = list[char*]{builder, word}
+			char* helper = c"__w_template_fmt"
+			if ((present == 0) && (kind < 8)):
+				helper = c"__w_template_int"
+				if (kind == 6): helper = c"__w_template_cstr"
+				if (kind == 7): helper = c"__w_template_str"
+			else:
+				if (kind == 8): helper = c"__w_template_float"
+				else if (kind == 9): helper = c"__w_template_float64"
+				else: arguments.push(llvm_number(kind))
+				# numbers align right by default, text left (Python's rule)
+				if (align == 0):
+					align = '>'
+					if ((kind == 6) || (kind == 7)): align = '<'
+				arguments.push(llvm_number(width))
+				arguments.push(llvm_number(precision))
+				arguments.push(llvm_number((fill << 8) | align))
+			llvm_helper_call(id, helper, arguments)
+			arguments.free()
+			part = value.next_arg
+	list[char*] finish = list[char*]{builder}
+	char* result = llvm_helper_call(id, c"__w_template_finish", finish)
+	finish.free()
+	return result
+
+
 char* llvm_value_inner(int group, int operand);
 
 
@@ -815,6 +1174,8 @@ char* llvm_value_inner(int group, int operand):
 		else: llvm_error(id, c"expression type")
 		return c"0"
 	if ((op == 0) || (op == 'c') || (op == 'h')): return llvm_number(node.literal_value)
+	if (op == 'f'): return llvm_float_literal(&node)
+	if (op == 'E'): return llvm_template(group, id, &node)
 	if (op == 's'): return llvm_constant_address(llvm_string_constant(node.literal_text, node.literal_length))
 	if (op == 'S'): return llvm_constant_address(llvm_string_descriptor(node.literal_text, node.literal_length))
 	if (op == 'v'):
@@ -851,7 +1212,7 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] arguments = new list[char*]
 		int arg = node.left
 		while ((arg >= 0) && (llvm_failed == 0)):
-			arguments.push(llvm_value(group, arg))
+			arguments.push(llvm_float_integer_argument(group, arg))
 			retained_node argument
 			retained_node_load(llvm_node_id(group, arg), &argument)
 			arg = argument.next_arg
@@ -927,7 +1288,7 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] arguments = new list[char*]
 		int arg = node.left
 		while ((arg >= 0) && (llvm_failed == 0)):
-			arguments.push(llvm_value(group, arg))
+			arguments.push(llvm_float_integer_argument(group, arg))
 			retained_node argument
 			retained_node_load(llvm_node_id(group, arg), &argument)
 			arg = argument.next_arg
@@ -1058,12 +1419,18 @@ char* llvm_value_inner(int group, int operand):
 			return c"0"
 		char* address = llvm_address(group, node.left)
 		char* value = c"0"
+		int from = right.semantic_type
 		if (node.value != 0):
 			char* before = llvm_load(left.semantic_type, address)
 			value = llvm_value(group, node.right)
-			value = llvm_binary(id, node.value, llvm_unsigned_word(left.semantic_type) || llvm_unsigned_word(right.semantic_type), before, value)
+			if (llvm_float_kind(left.semantic_type) || llvm_float_kind(right.semantic_type)):
+				int kind = 0
+				value = llvm_float_binary(id, node.value, before, left.semantic_type, value, right.semantic_type, &kind)
+				value = llvm_float_coerce(value, kind, llvm_float_kind(left.semantic_type))
+				from = left.semantic_type
+			else: value = llvm_binary(id, node.value, llvm_unsigned_word(left.semantic_type) || llvm_unsigned_word(right.semantic_type), before, value)
 		else: value = llvm_value(group, node.right)
-		value = llvm_convert(id, value, right.semantic_type, left.semantic_type)
+		value = llvm_convert(id, value, from, left.semantic_type)
 		llvm_store(id, left.semantic_type, value, address)
 		return value
 	if (op == 'U'):
@@ -1074,7 +1441,12 @@ char* llvm_value_inner(int group, int operand):
 			return c"0"
 		char* address = llvm_address(group, node.left)
 		char* before = llvm_load(left.semantic_type, address)
-		char* value = llvm_binary(id, node.value, 0, before, c"1")
+		char* value = c"0"
+		int float_kind = llvm_float_kind(left.semantic_type)
+		if (float_kind):
+			int kind = 0
+			value = llvm_float_binary(id, node.value, before, left.semantic_type, llvm_float_coerce(c"1", 0, float_kind), left.semantic_type, &kind)
+		else: value = llvm_binary(id, node.value, 0, before, c"1")
 		llvm_store(id, left.semantic_type, value, address)
 		return value
 	if ((op == 'a') || (op == 'o')):
@@ -1117,11 +1489,11 @@ char* llvm_value_inner(int group, int operand):
 		int end = llvm_label_new()
 		llvm_cond_branch(llvm_bool(llvm_value(group, node.left)), yes, no)
 		llvm_label(yes)
-		char* a = llvm_value(group, node.right)
+		char* a = llvm_float_branch(group, node.right, type)
 		int a_block = llvm_block
 		llvm_branch(end)
 		llvm_label(no)
-		char* b = llvm_value(group, node.high)
+		char* b = llvm_float_branch(group, node.high, type)
 		int b_block = llvm_block
 		llvm_branch(end)
 		llvm_label(end)
@@ -1144,6 +1516,13 @@ char* llvm_value_inner(int group, int operand):
 			llvm_error(id, c"cast target")
 			return c"0"
 		if (llvm_is_bool(type)): return llvm_extend(llvm_bool(value))
+		retained_node source
+		retained_node_load(llvm_node_id(group, node.left), &source)
+		# Float casts are coerce()'s conversions; a float cast to a narrow
+		# integer keeps cvtt's whole word, as natively.
+		if (llvm_float_kind(type) || llvm_float_kind(source.semantic_type)):
+			if (llvm_type(type).pointer_level > 0): return value
+			return llvm_float_coerce(value, llvm_float_kind(source.semantic_type), llvm_float_kind(type))
 		int width = llvm_width(type)
 		retained_type* target = llvm_type(type)
 		if ((width == 8) || (target.pointer_level > 0) || (strcmp(target.name, c"constant") == 0)): return value
@@ -1152,6 +1531,7 @@ char* llvm_value_inner(int group, int operand):
 		return llvm_convert_op(c"sext", llvm_int_type(width), narrow, c"i64")
 	if ((op == 'n') || (op == 'p') || (op == '~') || (op == '!') || (op == 'b')):
 		char* value = llvm_value(group, node.left)
+		if ((op == 'n') && llvm_float_kind(type)): return llvm_float_negate(value, llvm_float_kind(type))
 		if (op == 'n'): return llvm_instruction(c"sub", c"0", value)
 		if (op == '~'): return llvm_instruction(c"xor", value, c"-1")
 		if (op == '!'): return llvm_extend(llvm_instruction(c"icmp eq", value, c"0"))
@@ -1172,6 +1552,9 @@ char* llvm_value_inner(int group, int operand):
 			operands.free()
 			if (op == 0x94): return llvm_extend(llvm_instruction(c"icmp ne", equal, c"0"))
 			return llvm_extend(llvm_instruction(c"icmp eq", equal, c"0"))
+		if (llvm_float_kind(left.semantic_type) || llvm_float_kind(right.semantic_type)):
+			int kind = 0
+			return llvm_float_binary(id, op, a, left.semantic_type, b, right.semantic_type, &kind)
 		return llvm_binary(id, op, is_unsigned, a, b)
 	if ((op > 32) && (op < 127)):
 		char* spelling = cast(char*, malloc(2))
@@ -2486,6 +2869,7 @@ void llvm_free_tables():
 	llvm_owned_next.free()
 	llvm_first.free()
 	llvm_next.free()
+	llvm_tests.free()
 
 
 # Called only after a successful x64 production compile with semantic
@@ -2497,6 +2881,9 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_uses_memory = 0
 	llvm_uses_trap = 0
 	llvm_uses_bits = 0
+	llvm_uses_float_conversion = 0
+	llvm_tests = new list[int]
+	llvm_tests_wanted = 0
 	llvm_stubs = 0
 	llvm_data = string_new()
 	llvm_code = string_new()
@@ -2561,6 +2948,8 @@ int llvm_emit(char* filename, char* output_path):
 			if ((node.name in llvm_function_names) == 0): llvm_function_names[node.name] = linkage
 			if (strcmp(node.name, c"_main") == 0): start_node = id
 			if ((node.source == input) && (strcmp(node.name, c"main") == 0)): main_node = id
+	# A lib/testing.w program's main is the library's.
+	if ((main_node < 0) && (c"__w_run_tests" in llvm_function_names) && (c"main" in llvm_function_names)): main_node = llvm_functions[llvm_function_names[c"main"]]
 	if (main_node < 0):
 		llvm_error(retained_sources[input].root, c"program without a main function")
 		llvm_free_tables()
@@ -2599,6 +2988,7 @@ int llvm_emit(char* filename, char* output_path):
 		emitted = emitted + 1
 	int success = 0
 	if (llvm_failed == 0):
+		llvm_emit_test_main()
 		llvm_emit_entry(entry_binding.linkage, entry_binding.parameters.length)
 		if (llvm_uses_memory): llvm_emit_memory_runtime()
 		string_builder* module = string_new()
@@ -2608,6 +2998,7 @@ int llvm_emit(char* filename, char* output_path):
 		if (llvm_uses_bits):
 			string_append(module, c"declare i32 @llvm.fshl.i32(i32, i32, i32)\x0adeclare i32 @llvm.fshr.i32(i32, i32, i32)\x0a")
 			string_append(module, c"declare i32 @llvm.ctpop.i32(i32)\x0adeclare i32 @llvm.ctlz.i32(i32, i1)\x0adeclare i32 @llvm.cttz.i32(i32, i1)\x0a")
+		if (llvm_uses_float_conversion): string_append(module, c"declare i64 @llvm.x86.sse.cvttss2si64(<4 x float>)\x0adeclare i64 @llvm.x86.sse2.cvttsd2si64(<2 x double>)\x0a")
 		if (llvm_uses_memory): string_append(module, c"declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\x0adeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\x0a")
 		string_append(module, c"\x0a")
 		string_append(module, llvm_data.data)

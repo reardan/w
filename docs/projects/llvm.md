@@ -92,6 +92,9 @@ point, and the output file is left untouched.
   checked pointers (`own`, `optown`, `ref`, `refmut`, `optref`,
   `optrefmut`) with checked slices (`ref T[]`) and borrowed records as
   locals and fields.
+  enums, `float32` (`float`) and `float64`, pointers of any level,
+  function values and aliases of them, `string` handles, records (structs whose fields are all of these), fixed
+  arrays `T[N]` and slice handles.
 - Locals with or without initializers (storage is zeroed at the
   declaration, as are fixed-array headers), parameters, globals with
   constant, C string, `&global` or function initializers, and `const`
@@ -119,6 +122,19 @@ point, and the output file is left untouched.
   (then the function's owner parameters). A drop runs the audited
   destructor for `lib/safe_buffer.w` and `lib/safe_thread.w` records,
   else drops owned fields in reverse order and frees the allocation.
+- Floats: literals, arithmetic, comparisons, unary minus, compound
+  assignment and `++`/`--`, implicit and `cast` conversions between
+  integers, `float32` and `float64`, and mixed integer/float operands, all
+  with the native backend's SSE semantics (see below).
+- f-strings, with every value type the native lowering accepts except
+  `var` (integers, `char`, `bool`, enums, `char*`, `string`, `float32`,
+  `float64`) and the `{value:spec}` format mini-language, through the same
+  `__w_template_*` runtime calls; a string literal or f-string passed
+  where a `char*` is wanted decays to its data pointer.
+- `lib/testing.w` programs: wllvm builds `__w_test_main` from the retained
+  forest the way the native driver synthesizes it (compiler/test_registry.w).
+  Their crash handler reaches the `stack_trace_collect` trap stub when it
+  installs, so run them with `W_CRASH_TRACE=0`.
 - Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
   to three arguments, `break`, `continue`, `pass`, `return`, `unsafe:`
   blocks, inferred declarations (`name := value`) and expression
@@ -149,6 +165,26 @@ Not yet supported, and rejected with a diagnostic: floats, records
 passed or returned by value (including checked slices and borrowed records
 crossing a call), arrays inside records, f-strings, `switch`, `defer`,
 `goto`, generators, GPU code, C imports and other `extern` functions
+A float value travels in its 64-bit word as its bit pattern (a `float32`
+in the low 32 bits) and is bitcast around each LLVM `float`/`double`
+operation, so it uses the same internal ABI as every other word. The
+native semantics are spelled out where LLVM's differ: float `==` is true
+and `!=` false on NaN operands (`ucomisd` + `sete`), the ordered
+comparisons are false; float-to-integer conversion uses the
+`cvttss2si`/`cvttsd2si` intrinsics, whose out-of-range result is
+`0x8000000000000000` (LLVM's `fptosi` is poison there), and a float cast to
+a narrow integer keeps that whole word as natively; integer-to-float takes
+the whole signed word. LLVM leaves a NaN result's sign and payload open
+and folds `0.0 / 0.0` to `0x7ff8...`, so each arithmetic result selects
+the SSE answer explicitly: the first NaN operand quieted, else the second,
+else the default NaN `0xfff8...` (`0xffc00000` for `float32`).
+
+Not yet supported, and rejected with a diagnostic: the storage-only
+`float16`/`bfloat16`, `var`, containers (`list`, `map`, `set`, cursor
+`for` loops), records passed or returned by value, arrays inside records,
+generics, `switch`, `defer`,
+`goto`, generators, checked pointers (`own`, `ref`, ... and their
+slices), GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
 `thread_create`, ...). A container trap (out-of-range index, missing
 key) prints its message and then reaches the `print_stack_trace` trap
@@ -203,6 +239,10 @@ rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w` and
 `tests/wllvm_container_fixture.w` with
 W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
+`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
+`tests/wllvm_float_fixture.w` (floats, NaN and conversion edge cases,
+f-strings) and `tests/wllvm_registry_fixture.w` (the synthesized test
+registry) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, and checks that a library trap stub
 leaves the rest of the program working. Without Clang it reports the
