@@ -54,9 +54,9 @@ until a 500 ms pause or editing boundary. **Previous/Next diagram**
 select a Mermaid fence while keeping the complete Markdown source editable.
 The dynamic path field supports paths beyond the former 127-byte limit.
 
-Graphical editing covers flowcharts, ER, class (`classDiagram`), state
+Graphical editing covers flowcharts, agentflow, ER, class (`classDiagram`), state
 (`stateDiagram`, `stateDiagram-v2`), requirement, use case, architecture,
-block, C4, swimlane, mindmap and treeView diagrams. Clicking a node or group
+block, C4, swimlane, mindmap, treeView and kanban diagrams. Clicking a node or group
 selects it and populates the inspector. **Apply** changes its displayed label
 (or, with a connection selected, the connection label); **Delete** removes the
 node and its incident connections, or a group with its members. Clicking a
@@ -110,10 +110,36 @@ would still declare the node there (an edge written inside a subgraph).
 | Requirement | requirements and elements | none | refused (labels are identifiers) | its block and relations | `requirement ID {}`, `A - traces -> B` | relation keyword; properties add/remove/set |
 | Use case | actors, use cases, boundaries | `systemBoundary` move, rename, delete, into/out, add in | in place | its statements | `ID(label)`, `A --> B` | label (`-- "label" -->`); kind `-->`, `---`, `..>` |
 | Architecture | services, junctions, groups | group move, rename, delete, ungroup, into/out (` in group`), add in | in place | its statements | `service ID(server)[label]`, `A:R --> L:B` | none (edit sides in source) |
-| Block | structural (no positions) | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
-| C4 | structural (no positions) | boundary rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
-| Swimlane | structural (no positions) | lane rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
-| Mindmap / treeView | structural (outline) | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+| Agentflow | nodes and `flow` containers | `flow` move, rename, delete, ungroup, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; kind `-->`, `---`, `-.->`, `-.-`, `==>`, `--x` |
+| Block | cell order (a move swaps source items); resize sets the column span `ID:N` | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| C4 | cards and boundaries | boundary move, rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
+| Swimlane | steps and lanes | lane move, rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| Mindmap / treeView | sibling order; a drop on another node moves the branch under it | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+| Kanban | card order in a column; cards move between columns (drop, Left/Right, **Previous**/**Next**) | n/a | in place (metadata kept) | the card or column with its cards | **Add child** (a card), **Add sibling** | **Up** / **Down** reorder |
+
+C4 and swimlane geometry is stored like a flowchart's: the family's own
+layout runs first, then the saved `@w-position` and `@w-size` records
+apply (a boundary or lane carries its members and grows to keep them).
+Block, mindmap, treeView and kanban layouts are their source order, as in
+upstream Mermaid, so a move never stores coordinates: dragging shows the
+item following the pointer and the drop reorders the source. A block
+dropped on another cell of its composite takes that cell's place (adjacent
+items swap one validated splice at a time; a composite `block:id ... end`
+moves as whole lines), arrows move it one cell (Up/Down by a row of the
+composite's `columns`), and the resize handle or Alt+Left/Right sets its
+column span (`ID:N`, which must fit the columns). Outline nodes move among
+their siblings with the arrows or a drop on a sibling; a drop on another
+node moves the branch under it as its last child, re-indented under that
+node. A kanban card dropped on a column becomes its last card, dropped on a
+card lands before it, and Left/Right move it to the neighbouring column.
+
+GitGraph, event modeling and the other families stay source-edited on
+purpose: a gitGraph is a command script whose commits, branches and lanes
+come from executing it in order, so moving or deleting a commit would
+rewrite history semantics rather than a diagram element; event-modeling
+columns are its numbered time frames and its lanes are typed by entity
+kind, so a position is the model itself; data charts, sequence-like and
+grammar families have no node-aligned scene.
 
 Drag a node or group to reposition it; edges follow live. Release commits one
 undo step, while Escape restores the starting position. Small pointer jitter
@@ -147,7 +173,13 @@ connectors (ER: cardinalities), each replacing only the operator, and
 requirement selected, the compartment row adds a member, attribute
 (`type name [keys]`) or property line inside the body block and removes the
 last one; `mm_editor_member_set`/`mm_editor_attribute_set` rewrite a line in
-place. Outline families use **Add child**, **Add sibling**, **Up** and
+place. The **Line** row (Ctrl+P, then Ctrl+P again for the next line, or
+**<** / **>**) shows one existing line (an ER attribute as
+`type name [keys] ["comment"]`) and edits it in place as you type
+(`mm_editor_line_set`): each keystroke that leaves a valid line is a
+validated splice, a typing run within 500 ms is one undo step
+(`mm_editor_coalesce`; a saved state stays a stop), and an invalid
+intermediate text is not applied. Outline families use **Add child**, **Add sibling**, **Up** and
 **Down** with the label field's text.
 **SVG** writes `CURRENT_FILE.svg` using the saved manual positions too.
 
@@ -158,12 +190,13 @@ place. Outline families use **Add child**, **Add sibling**, **Up** and
 | Ctrl+D / Ctrl+E / Ctrl+L / Ctrl+R | Focus canvas / source / path / label |
 | Ctrl+Enter, with label focus | Apply the selected node's label |
 | Ctrl+N | Start adding a new node/entity |
+| Ctrl+P | Edit the selected class member, property or attribute line; again: the next line |
 | Tab / Shift+Tab, with canvas focus | Select next / previous node or group |
 | Space, with canvas focus | Toggle the focused item in the selection; Tab then keeps the selection |
 | Ctrl+A, with canvas focus | Select every node and group |
 | Shift/Ctrl+click, Shift+drag on the background | Toggle a node / rubber-band select |
 | Arrows / Shift+arrows, with canvas focus | Move the selection 1 / 10 pixels |
-| Alt+arrows / Alt+Shift+arrows, with canvas focus | Resize the selected node or group 1 / 10 pixels |
+| Alt+arrows / Alt+Shift+arrows, with canvas focus | Resize the selected node or group 1 / 10 pixels (a block: Alt+Left/Right change its column span) |
 | Delete, with canvas focus | Delete the selection or the selected connection |
 | Ctrl+G, with canvas focus | Ungroup the selected group |
 | Escape | Cancel a drag, placement, connection or close prompt |
