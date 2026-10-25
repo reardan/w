@@ -143,7 +143,8 @@ working in this repo.
 - There is **no separate linter binary**. The compiler's own type/style warnings are
   always on and asserted by the `warning_test` target; `w check --lint` adds opt-in
   lint rules for the named files and `w check --fix` rewrites their whitespace
-  issues in place (docs/projects/lint.md, asserted by `lint_test`). Compile-diagnostic fixtures carry their
+  issues in place (docs/projects/lint.md, asserted by `lint_test`). `bin/wfmt -w file.w`
+  (`./wbuild wfmt`) is the rewriting formatter (docs/projects/wfmt.md, `wfmt_test`). Compile-diagnostic fixtures carry their
   expected messages as `# expect_stderr:`-style directive lines in their own header
   comments, run by `bin/wfixture` (`tools/wfixture.w`); see the header of that tool
   for the directive syntax.

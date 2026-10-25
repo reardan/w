@@ -68,6 +68,15 @@ int pg_lexer_matcher_number(char* input, int index):
 	if (input[index] == '.'):
 		index = index + 1
 		while (pg_lexer_is_alnum(input[index])): index = index + 1
+	# The alnum runs above already took a decimal exponent's 'e'; take
+	# its sign and digits too, so '1.5e-05' is one token as it is for
+	# the compiler (a hex literal's 'e' is a digit: 0x1e-5 subtracts)
+	int hex = (input[start] == '0') && ((input[start + 1] == 'x') || (input[start + 1] == 'X'))
+	int after_e = (input[index - 1] == 'e') || (input[index - 1] == 'E')
+	int exp_sign = (input[index] == '+') || (input[index] == '-')
+	if ((hex == 0) && after_e && exp_sign && pg_lexer_is_digit(input[index + 1])):
+		index = index + 1
+		while (pg_lexer_is_digit(input[index])): index = index + 1
 	if ((input[index] == 'e') || (input[index] == 'E')):
 		index = index + 1
 		if ((input[index] == '+') || (input[index] == '-')): index = index + 1
