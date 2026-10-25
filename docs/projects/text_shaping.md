@@ -199,11 +199,10 @@ The algorithm follows FreeType's Latin autohinter:
   x-height overshoot lands on a whole pixel. A fraction of 0.375 px or
   more rounds up, and a smaller one rounds down. The adjustment is
   skipped when it would move any point of the face by two pixels or
-  more. Zones snap to whole
-  pixels, and a zone is active only while its overshoot is under 3/4
-  pixel. Below 1/2 pixel the overshoot is suppressed, and from 1/2 to
-  3/4 it becomes half a pixel. These comparisons use FreeType's 26.6
-  rounding.
+  more. Zones snap to whole pixels, and a zone is active only while its
+  overshoot is under 3/4 pixel. Below 1/2 pixel the overshoot is
+  suppressed, and from 1/2 to 3/4 it becomes half a pixel. These
+  comparisons use FreeType's 26.6 rounding.
 - **Edges and stems**: runs of near-horizontal outline segments become
   edges. An edge is round when it passes through an off-curve point.
   Edges merge when they are within 1/4 pixel. Bottom and top edges pair
