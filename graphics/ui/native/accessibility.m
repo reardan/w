@@ -53,7 +53,10 @@ static BOOL enqueue(WAccessNode *node, NSInteger action, NSString *value) {
 - (BOOL)isAccessibilityExpanded { return (self.states & 8) != 0; }
 - (NSInteger)accessibilityHeadingLevel { return self.heading; }
 - (id)accessibilityValue {
-    if (self.roleCode == 7) return @((self.states & 2) != 0);
+    // Checkbox, radio and switch report their checked state as 0/1.
+    if (self.roleCode == 7 || self.roleCode == 15 || self.roleCode == 16) return @((self.states & 2) != 0);
+    // A tab is an AppKit radio button whose value is its selection.
+    if (self.roleCode == 19) return @((self.states & 4) != 0);
     return self.nodeValue ?: @"";
 }
 - (void)setAccessibilityValue:(id)value {
@@ -93,6 +96,13 @@ static NSString *role(NSInteger code) {
     case 12: return NSAccessibilityTableRole;
     case 13: return NSAccessibilityRowRole;
     case 14: return NSAccessibilityCellRole;
+    case 15: return NSAccessibilityRadioButtonRole;
+    case 16: return NSAccessibilityCheckBoxRole; // AppKit has no switch role
+    case 17: return NSAccessibilityPopUpButtonRole;
+    case 18: return NSAccessibilityTabGroupRole;
+    case 19: return NSAccessibilityRadioButtonRole; // AppKit tabs are radio buttons
+    case 20: return NSAccessibilityProgressIndicatorRole;
+    case 21: return NSAccessibilityGroupRole; // dialog subrole set in w_access_add
     default: return NSAccessibilityUnknownRole;
     }
 }
@@ -140,6 +150,7 @@ intptr_t w_access_add(void *handle, intptr_t nodeID, intptr_t parentID, intptr_t
     n.states = states | (parent.states & (1 | 32));
     n.actions = actions;
     n.accessibilityRole = role(roleCode);
+    if (roleCode == 21) n.accessibilitySubrole = NSAccessibilityDialogSubrole;
     n.accessibilityIdentifier = [NSString stringWithFormat:@"w-%ld", (long)nodeID];
     n.accessibilityParent = (id)parent ?: b.view;
     n.accessibilityChildren = @[];

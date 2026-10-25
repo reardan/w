@@ -8,6 +8,7 @@ tree operates on have to come first.
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
+import graphics.ui.accessibility
 
 
 struct ui_input:
@@ -61,6 +62,15 @@ const int ui_layout_max_depth = 8
 const int ui_popup_max_depth = 4
 
 
+# Keyboard focus stops one frame can register (Tab/Shift-Tab order).
+const int ui_focus_max_stops = 256
+
+
+# The semantic root node ui_begin adds to a capture tree; widget nodes
+# use their widget ids, which stay far below it.
+const int ui_access_root_id = 1073741824
+
+
 struct ui_context:
 	ui_renderer* rndr
 	ui_theme* theme
@@ -102,6 +112,7 @@ struct ui_context:
 	# here, so popups can nest.
 	int32[4] scope_saved
 	int32[4] layer_saved
+	int32[4] access_saved  # semantic parent outside each open bracket
 	int32 bracket_depth
 	# Per-frame editable control declaration for soft-keyboard hosts.
 	int32 text_input_id
@@ -110,3 +121,25 @@ struct ui_context:
 	ui_rect text_input_rect
 	ui_rect text_input_clip
 	int32 pointer_mode     # 1 while a widget owns a drag
+	# Keyboard focus order: the tab stops registered this frame in issue
+	# order. ui_begin routes the frame's Tab/Shift-Tab against the
+	# previous frame's list, before widgets run, so the new focus paints
+	# on the same frame.
+	int32[256] focus_order
+	int32 focus_count
+	int32 focus_visible    # Tab moved focus: draw the focus ring
+	int32 focus_tab_widget # focused stop that consumes plain Tab itself
+	int32 focus_before_modal # restored when the modal that took focus closes
+	# Optional semantic capture (graphics.ui.accessibility): when set,
+	# widgets add their roles, names and states under access_parent.
+	ui_access_tree* access
+	int32 access_parent
+	int32 access_next_aux  # ids for nodes without a widget id (labels)
+	char* access_label     # pending name for the next unnamed field
+	# Requests from an assistive bridge, applied by the named widget on
+	# the next frame and cleared by ui_end.
+	int32[16] access_activations
+	int32 access_activation_count
+	int32 access_value_id
+	int32 access_value_length
+	char[1024] access_value

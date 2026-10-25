@@ -93,4 +93,7 @@ int ui_email(ui_context* ctx, float32 w, ui_textbox_state* st):
 		float32 h = cast(float32, ctx.theme.widget_height)
 		float32 x = lo.last_right - w
 		ui_render_rect(ctx.rndr, ui_rect_new(x + 4.0, lo.last_top + h - 2.0, w - 8.0, 2.0), ctx.theme.error)
+		# The textbox is the newest semantic node; say why it is red.
+		if ((ctx.access != 0) && (ctx.access.allocations != 0)):
+			ui_access_set_text(ctx.access, ctx.access.allocations.id, UI_ACCESS_DESCRIPTION, c"Invalid email address", 21)
 	return submitted

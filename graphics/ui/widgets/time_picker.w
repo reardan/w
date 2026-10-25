@@ -162,13 +162,20 @@ void ui_spinner_button_draw(ui_context* ctx, int id, ui_rect r, char* mark):
 
 
 # One spinner at x in row over value in 0..modulo-1, ids base_id and
-# base_id + 1. Returns the new value.
-int ui_spinner_at(ui_context* ctx, int base_id, ui_rect row, float32 x, int value, int modulo, int step):
+# base_id + 1; its two buttons are focus stops named down/up (e.g.
+# "Hour down"). Returns the new value.
+int ui_spinner_at(ui_context* ctx, int base_id, ui_rect row, float32 x, int value, int modulo, int step, char* down, char* up):
 	ui_rect minus = ui_spinner_minus_rect(ctx, row, x)
 	ui_rect plus = ui_spinner_plus_rect(ctx, row, x)
 	int v = value
-	if (ui_click_behavior(ctx, base_id, minus)): v = ui_spin_step(v, modulo, step, -1)
-	if (ui_click_behavior(ctx, base_id + 1, plus)): v = ui_spin_step(v, modulo, step, 1)
+	ui_access_node* dn = ui_access_widget(ctx, base_id, UI_ACCESS_BUTTON, minus, down)
+	if (dn != 0): dn.actions = UI_ACCESS_ACTIVATE
+	ui_focus_stop(ctx, base_id, minus, 0)
+	if (ui_activate_behavior(ctx, base_id, minus)): v = ui_spin_step(v, modulo, step, -1)
+	ui_access_node* un = ui_access_widget(ctx, base_id + 1, UI_ACCESS_BUTTON, plus, up)
+	if (un != 0): un.actions = UI_ACCESS_ACTIVATE
+	ui_focus_stop(ctx, base_id + 1, plus, 0)
+	if (ui_activate_behavior(ctx, base_id + 1, plus)): v = ui_spin_step(v, modulo, step, 1)
 	ui_spinner_button_draw(ctx, base_id, minus, c"-")
 	ui_spinner_button_draw(ctx, base_id + 1, plus, c"+")
 	char[3] text
@@ -194,8 +201,20 @@ int ui_time_row(ui_context* ctx, int base_id, char* label, int32* minutes, int m
 	int scale = ctx.theme.text_scale
 	ui_rect row = ui_layout_next(ctx, ui_time_popover_w(ctx) - cast(float32, ctx.theme.pad) * 2.0, cast(float32, ctx.theme.widget_height))
 	int m = ui_time_wrap(minutes[0])
-	int h = ui_spinner_at(ctx, base_id, row, ui_time_hour_x(ctx, row), m / 60, 24, 1)
-	int mm = ui_spinner_at(ctx, base_id + 2, row, ui_time_minute_x(ctx, row), m % 60, 60, minute_step)
+	# A group named by the label, valued "HH:MM", around the spinners.
+	int group = ui_access_aux_id(ctx)
+	int saved = ctx.access_parent
+	if (ui_access_widget(ctx, group, UI_ACCESS_GROUP, row, label) != 0): ctx.access_parent = group
+	int h = ui_spinner_at(ctx, base_id, row, ui_time_hour_x(ctx, row), m / 60, 24, 1, c"Hour down", c"Hour up")
+	int mm = ui_spinner_at(ctx, base_id + 2, row, ui_time_minute_x(ctx, row), m % 60, 60, minute_step, c"Minute down", c"Minute up")
+	ctx.access_parent = saved
+	char[6] hhmm
+	hhmm[0] = '0' + h / 10
+	hhmm[1] = '0' + h % 10
+	hhmm[2] = ':'
+	hhmm[3] = '0' + mm / 10
+	hhmm[4] = '0' + mm % 10
+	ui_access_set_value(ctx, ui_access_find(ctx.access, group), &hhmm[0], 5)
 	float32 ty = row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, row.x, ty, label, scale, ctx.theme.text_muted)
 	ui_draw_text_centered(ctx.rndr, ui_rect_new(ui_time_minute_x(ctx, row) - ui_time_colon_w(), row.y, ui_time_colon_w(), row.h), c":", scale, ui_text_color(ctx))
@@ -217,6 +236,7 @@ int ui_time_range_picker(ui_context* ctx, float32 w, ui_time_range_state* st, in
 
 	char[20] text
 	ui_time_range_format(start[0], end[0], &text[0])
+	ui_access_set_value(ctx, ui_access_find(ctx.access, id), &text[0], strlen(&text[0]))
 	ui_picker_field_draw(ctx, id, r, &text[0], 0)
 
 	int changed = 0

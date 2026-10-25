@@ -90,7 +90,8 @@ void ui_textbox_mark_edited(ui_textbox_state* st):
 # focused textbox consumes the frame's CHAR/NAV queues — printable
 # characters insert at the caret as UTF-8, backspace deletes and
 # left/right step over whole characters, home/end move, escape drops
-# focus. Returns 1 on the frame return is typed
+# focus. Tab reaches it in focus order, and an accessibility bridge can
+# replace its text. Returns 1 on the frame return is typed
 # (the submit edge). No horizontal scroll in stage 2: glyphs past the
 # field's width are not drawn.
 int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
@@ -99,6 +100,13 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	int scale = ctx.theme.text_scale
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	ui_click_behavior(ctx, id, r)
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TEXTBOX, r, 0)
+	if (node != 0): node.actions = UI_ACCESS_SET_VALUE
+	ui_focus_stop(ctx, id, r, 0)
+	char* requested = ui_access_value_request(ctx, id)
+	if (requested != 0):
+		ui_textbox_set(st, requested)
+		ui_textbox_mark_edited(st)
 
 	float32 text_x = r.x + cast(float32, ctx.theme.pad)
 	# Focus follows the press: inside claims it, any other press drops
@@ -165,4 +173,5 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
 	ui_text_preedit(ctx, id, r, text_x + cast(float32, ui_text_prefix_width(&st.text[0], st.caret, scale)), ty)
 	ui_text_input_declare(ctx, id, r, 0)
+	ui_access_set_value(ctx, node, &st.text[0], st.length)
 	return submitted

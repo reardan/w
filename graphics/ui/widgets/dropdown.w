@@ -2,6 +2,8 @@
 graphics.ui.widgets.dropdown: the collapsed-list selector, the widget
 set's one popup (docs/projects/ui_widgets.md §3).
 */
+import lib.lib
+import graphics.event
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.font
@@ -27,14 +29,43 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 	float32 row_h = cast(float32, ctx.theme.widget_height)
 	ui_rect r = ui_layout_next(ctx, w, row_h)
 	int changed = 0
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_COMBOBOX, r, 0)
+	if (node != 0): node.actions = UI_ACCESS_ACTIVATE
 
 	if (open[0] == 0):
-		if (ui_click_behavior(ctx, id, r)):
+		ui_focus_stop(ctx, id, r, 0)
+		if (ui_activate_behavior(ctx, id, r)):
 			open[0] = 1
 			ui_popup_open(ctx, id)
 	else:
 		ui_popup_open(ctx, id)
 		ctx.hot = id
+		# Opened from the keyboard (or clicked, which focuses it): the
+		# arrows move the selection, Return/Space/Escape close the list.
+		if ((ctx.focus == id) && (ctx.disabled == 0)):
+			int k = 0
+			while (k < ctx.nav_count):
+				int nav = ctx.navs[k]
+				int pick = selected[0]
+				if ((nav == GFX_NAV_DOWN) && (pick + 1 < item_count)): pick = pick + 1
+				else if ((nav == GFX_NAV_UP) && (pick > 0)): pick = pick - 1
+				else if (nav == GFX_NAV_HOME): pick = 0
+				else if (nav == GFX_NAV_END): pick = item_count - 1
+				if ((pick != selected[0]) && (pick >= 0)):
+					selected[0] = pick
+					changed = 1
+				k = k + 1
+			k = 0
+			while (k < ctx.char_count):
+				int ch = ctx.chars[k]
+				if ((ch == 13) || (ch == 32) || (ch == 27)):
+					ctx.chars[k] = 0
+					open[0] = 0
+				k = k + 1
+			if (open[0] == 0): ui_popup_dismiss(ctx, id)
+		if (ui_access_take_activation(ctx, id)):
+			open[0] = 0
+			ui_popup_dismiss(ctx, id)
 		ui_rect list = ui_rect_new(r.x, r.y + r.h, r.w, row_h * cast(float32, item_count))
 		if (ctx.input.mouse_pressed):
 			if (ui_rect_contains(list, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
@@ -47,6 +78,14 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 			ui_popup_dismiss(ctx, id)
 			ctx.input.mouse_pressed = 0
 
+	if (node != 0):
+		if (open[0]): node.states = node.states | UI_ACCESS_EXPANDED
+		if ((selected[0] >= 0) && (selected[0] < item_count)): ui_access_set_value(ctx, node, items[selected[0]], strlen(items[selected[0]]))
+		if (open[0]):
+			# A focus stop is skipped while its own popup is open; keep
+			# the header reachable for the bridge's close request.
+			node.states = node.states | UI_ACCESS_FOCUSABLE
+			node.actions = node.actions | UI_ACCESS_FOCUS
 	# Header: a rounded tonal field with the selection and a chevron.
 	ui_draw_rrect(ctx.rndr, r, cast(float32, ctx.theme.radius), ui_widget_fill(ctx, id))
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
@@ -62,12 +101,22 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 		ui_popup_begin(ctx, id, list_rect, UI_LAYER_POPUP)
 		ui_draw_shadow(ctx.rndr, list_rect, ctx.theme.shadow)
 		ui_draw_rrect(ctx.rndr, list_rect, cast(float32, ctx.theme.radius), ctx.theme.surface)
+		# The open list's options, nested under the combobox.
+		int saved_parent = ctx.access_parent
+		if (node != 0):
+			ctx.access_parent = id
+			ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_LIST, list_rect, c"")
+			ctx.access_parent = ui_access_root_id + ctx.access_next_aux
 		for i in range(item_count):
 			ui_rect row = ui_rect_new(list_rect.x, list_rect.y + row_h * cast(float32, i), list_rect.w, row_h)
+			if (node != 0):
+				ui_access_node* option = ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_LIST_ITEM, row, items[i])
+				if ((option != 0) && (i == selected[0])): option.states = option.states | UI_ACCESS_SELECTED
 			if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
 				ui_draw_rrect(ctx.rndr, ui_rect_inset(row, 2.0), cast(float32, ctx.theme.radius_small), ctx.theme.widget_hot)
 			if (i == selected[0]):
 				ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
 			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad + 4), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
+		ctx.access_parent = saved_parent
 		ui_popup_end(ctx)
 	return changed

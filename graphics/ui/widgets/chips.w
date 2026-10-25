@@ -30,6 +30,8 @@ when the press and release arrive in different frames. Every chip takes
 two ids whether or not it is removable, so turning a chip into an input
 chip, or wrapping it onto another row, shifts no widget issued after it.
 */
+import lib.lib
+import graphics.event
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.font
@@ -135,12 +137,40 @@ int ui_chip_walk(ui_context* ctx, ui_chips_state* st, char* label, int32* select
 	ui_rect chip = ui_chip_place(ctx, st, ui_chip_width(ctx, label, selectable, removable))
 	ui_rect cross = ui_rect_new(chip.x + chip.w - pad - mark, chip.y + (chip.h - mark) * 0.5, mark, mark)
 
+	# Semantics: a filter chip is a checkbox, a plain tag a button, and
+	# the cross a separate "Remove" button beside it. The chip is a
+	# focus stop; Space toggles it and Delete/Backspace removes it.
+	int role = UI_ACCESS_BUTTON
+	if (selectable): role = UI_ACCESS_CHECKBOX
+	ui_access_node* node = ui_access_widget(ctx, id, role, chip, label)
+	if (node != 0):
+		if (selectable):
+			node.actions = UI_ACCESS_TOGGLE
+			if (selected[0]): node.states = node.states | UI_ACCESS_CHECKED
+	if (removable):
+		ui_access_node* rm = ui_access_widget(ctx, remove_id, UI_ACCESS_BUTTON, cross, c"Remove")
+		if (rm != 0):
+			rm.actions = UI_ACCESS_ACTIVATE
+			ui_access_set_text(ctx.access, remove_id, UI_ACCESS_DESCRIPTION, label, strlen(label))
+	int focused = ui_focus_stop(ctx, id, chip, 0)
+
 	# The cross first: it consumes the click, so removing never toggles.
 	int result = 0
 	if (removable):
-		if (ui_click_behavior(ctx, remove_id, cross)): result = 2
+		if (ui_activate_behavior(ctx, remove_id, cross)): result = 2
+		if (focused && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
+			for k in range(ctx.nav_count):
+				if (ctx.navs[k] == GFX_NAV_DELETE): result = 2
+			for k in range(ctx.char_count):
+				if (ctx.chars[k] == 8):
+					ctx.chars[k] = 0
+					result = 2
 	if (result == 0):
 		int clicked = ui_click_behavior(ctx, id, chip)
+		if (selectable && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
+			if (ui_access_take_activation(ctx, id)):
+				clicked = 1
+			if (focused && ui_focus_take_activation(ctx)): clicked = 1
 		if (removable):
 			# The cross lies inside the chip, so the body just re-claimed
 			# a press (and the hover) that belonged to the cross. Hand

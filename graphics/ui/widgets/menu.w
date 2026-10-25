@@ -606,6 +606,14 @@ int ui_menu_pointer_over(ui_context* ctx, ui_menu_state* st, int level, ui_rect 
 	return 1
 
 
+# A semantic node named by label without its '&' mnemonic marker.
+ui_access_node* ui_menu_access(ui_context* ctx, int id, int role, ui_rect r, char* label):
+	if (ctx.access == 0): return 0
+	char[96] name
+	ui_menu_strip(label, &name[0], 96)
+	return ui_access_widget(ctx, id, role, r, &name[0])
+
+
 # Every item kind shares this: geometry, measuring, hover, click,
 # keyboard activation, typeahead, shortcut, and drawing. Returns 1
 # when the item is chosen (for a submenu: when it opens).
@@ -648,6 +656,23 @@ int ui_menu_entry(ui_context* ctx, ui_menu_state* st, char* label, int kind, int
 
 	int chosen = 0
 	int live = st.open && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)
+	# Plain items and submenus are buttons, toggles checkboxes and radio
+	# items radios; the shortcut is the description, the keyboard
+	# highlight the selected state.
+	int role = UI_ACCESS_BUTTON
+	if (kind == UI_MENU_CHECK): role = UI_ACCESS_CHECKBOX
+	if (kind == UI_MENU_RADIO): role = UI_ACCESS_RADIO
+	ui_access_node* node = ui_menu_access(ctx, id, role, row, label)
+	if (node != 0):
+		if (enabled == 0): node.states = node.states | UI_ACCESS_DISABLED
+		node.actions = UI_ACCESS_ACTIVATE
+		if ((kind == UI_MENU_CHECK) && (value[0] != 0)): node.states = node.states | UI_ACCESS_CHECKED
+		if ((kind == UI_MENU_RADIO) && (value[0] == option)): node.states = node.states | UI_ACCESS_CHECKED
+		if ((kind == UI_MENU_SUB) && (st.sub[level] == index)): node.states = node.states | UI_ACCESS_EXPANDED
+		if (st.hl[level] == index): node.states = node.states | UI_ACCESS_SELECTED
+		if (has_key): ui_access_set_text(ctx.access, id, UI_ACCESS_DESCRIPTION, &st.keytext[0], strlen(&st.keytext[0]))
+	if (live && enabled && ui_access_take_activation(ctx, id)):
+		chosen = 1
 	if (live):
 		float32 mx = cast(float32, ctx.input.mouse_x)
 		float32 my = cast(float32, ctx.input.mouse_y)

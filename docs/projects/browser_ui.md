@@ -65,11 +65,12 @@ against the W snapshot. Replacing or closing a publication invalidates actions
 from its old DOM elements. See [accessibility](accessibility.md) for publication,
 ownership, host setup and the limits of the initial role/state mapping.
 
-Immediate-mode widgets do not automatically populate snapshots or install
-widget-wide Tab/Shift-Tab routing. Linux AT-SPI and Windows UI
-Automation remain open parts of #465. Build the semantic tree from visible
-controls and page content, route focus through application callbacks, and draw
-a visible focus indicator when integrating the bridge.
+The opt-in `graphics.ui.accessibility_atspi` bridge publishes snapshots to
+Linux AT-SPI 2 over a pure-W D-Bus client. Immediate-mode widgets route
+Tab/Shift-Tab, draw a focus ring after keyboard navigation and populate
+snapshots automatically through `ui_access_capture`; page content outside the
+widgets still builds its own semantic tree and routes focus through
+application callbacks. Windows UI Automation remains an open part of #465.
 
 ## Current backend qualification
 
