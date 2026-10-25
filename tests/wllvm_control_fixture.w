@@ -115,6 +115,13 @@ pair make_pair(int x):
 	return p
 
 
+# Fields of a pointer result offset the call's value.
+pair* pair_cell(int x):
+	pair* p = new pair
+	p.b = x
+	return p
+
+
 int pair_sum(pair p):
 	# a by-value parameter is the callee's own copy
 	p.a = p.a + 100
@@ -171,6 +178,7 @@ int main():
 	println(pair_sum(q) * 10 + q.a)
 	q = make_pair(10)
 	println(make_pair(20).b + q.b)
+	println(pair_cell(17).b)
 	pair literal = pair(a: 4, b: 5)
 	pair positional = pair(6, 7)
 	println(literal.a * 1000 + literal.b * 100 + positional.a * 10 + positional.b)

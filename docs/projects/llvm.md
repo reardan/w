@@ -180,7 +180,8 @@ point, and the output file is left untouched.
 - Records by value: record parameters (the caller passes the address of
   its own copy), record results (written to a caller buffer passed as a
   hidden first argument), assignment from calls, fields of a call's result
-  and `T(field: value, ...)` literals.
+  (a record or a pointer: `json_object_get(v, c"x").type`) and
+  `T(field: value, ...)` literals.
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and
@@ -281,6 +282,16 @@ point, and the output file is left untouched.
   `debugger` statement (`llvm.debugtrap`, the native `int3`), and
   `raw_asm(c"...")` (its bytes as an inline-assembly `.byte` directive
   clobbering the caller-saved registers).
+- The json and protobuf codecs (`to_json`/`from_json`,
+  `to_proto`/`from_proto`/`proto_descriptor`): the retained node keeps the
+  compiler type index, so wllvm walks the same type table as
+  `json_codec_descriptor` and `protobuf_descriptor` and writes the same
+  descriptor words as private `i64` array constants (one global per
+  value, map, field-array and message descriptor, pointers as `ptrtoint`
+  constant expressions; struct and message descriptors shared per
+  canonical type, so self-referencing messages resolve), then calls
+  `__w_json_encode`/`__w_json_decode` or `pb_to_bytes`/`pb_from_bytes`/
+  `pb_from_data`.
 - GPU host code: `launch k[grid, block](args)` calls
   `__w_gpu_launch_raw` and `gpu for` calls `__w_gpu_launch` with the
   native argument cells (last argument first) and kernel names. The
@@ -385,9 +396,9 @@ through function values (the native backend does not support them
 either), checked slices, borrowed records and records holding checked
 pointers passed or returned by value (the safe-mode call ABI), arrays of
 records holding fixed arrays (the native backend leaves their element
-headers zeroed), `\u` escapes in `raw_asm`, the json/protobuf codec
-builtins (their compile-time descriptor blobs), and the
-`get_context`/`store_context` stubs. A container trap (out-of-range
+headers zeroed), an array field of a call's record result (natively its
+header's data word is read as a descriptor), `\u` escapes in `raw_asm`, and the `get_context`/`store_context`
+stubs. A container trap (out-of-range
 index, missing key) prints its message and then the stack trace.
 
 Generators are stackful coroutines (`lib/generator.w`) and lower with the
@@ -473,6 +484,7 @@ rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_generator_fixture.w`, `tests/wllvm_forms_fixture.w`
 (methods, `new T[n]`, `?`, `var`, variadics, a generic iterable,
 `raw_asm`, an alias statement and GPU-free launch stand-ins),
+`tests/wllvm_codec_fixture.w` (json and protobuf round trips),
 `tests/wllvm_generic_fixture.w` (generics and checked owners),
 `tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
 variadic, float and narrow-integer signatures, an alias, an imported
@@ -506,9 +518,6 @@ import graph.
    parameters in the global address space (`addrspace(1)`) and mark the
    entries with `ptx_kernel`, then embed `llc`'s PTX where the native PTX
    text goes today. The host side would not change.
-2. The json/protobuf codec builtins: their descriptor blobs
-   (`grammar/json_builtin.w`) can be rebuilt from the retained record
-   types (field names, offsets, kinds and sizes).
-3. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
+2. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
    and code signing) and win64 would need their own entry and system-call
    layers.
