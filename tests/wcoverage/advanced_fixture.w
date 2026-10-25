@@ -19,7 +19,7 @@ generator int values():
 	yield 4
 
 int main():
-	a:=deferred(1)
+	a := deferred(1)
 	char b = identity[char]('x')
 	for int x in values():
 		trace = trace + x

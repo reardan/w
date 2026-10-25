@@ -43,13 +43,13 @@ This file is compiled by the committed seed: seed-known syntax only.
 import code_generator.wasm
 import code_generator.image
 
-int sym_declare_global(char *s, int type, int symtype); /* symbol_table */
+int sym_declare_global(char* s, int type, int symtype); /* symbol_table */
 void sym_define_global_at(int current_symbol, int v);   /* symbol_table */
 int sym_address(char* name);                            /* symbol_table */
 int sym_decl_visibility(int t);                         /* symbol_table */
 int sym_value_at(int t);                                /* symbol_table */
-void error(char *s);                                    /* tokenizer */
-void diag_part(char *s);                                /* tokenizer */
+void error(char* s);                                    /* tokenizer */
+void diag_part(char* s);                                /* tokenizer */
 
 # Import function indices: the fixed wasi_snapshot_preview1 set occupies
 # 0..9, user extern imports follow at 10.., and defined functions start at

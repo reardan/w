@@ -38,7 +38,7 @@ import lib.fmath
 
 struct nn_linear:
 	tensor weight   # (in_dim, out_dim); y = x @ weight (torch.md Stage 5's
-	                # ag_matmul convention -- no transpose at the call site)
+					# ag_matmul convention -- no transpose at the call site)
 	tensor bias     # (out_dim); broadcast-added via ag_add_row
 
 

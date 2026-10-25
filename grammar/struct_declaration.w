@@ -48,7 +48,7 @@ int struct_declaration():
 		get_token()
 		# print_string("token_colon: ", token)
 		expect(c":")
-		while(tab_level > start_tab_level):
+		while (tab_level > start_tab_level):
 			if (verbosity >= 1):
 				print2(c"type_token: ")
 				print2(token)
@@ -83,4 +83,3 @@ int struct_declaration():
 		return 1
 
 	return 0
-

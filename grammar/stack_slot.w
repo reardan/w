@@ -385,4 +385,3 @@ void rt_call_end(int s):
 		load_slot(s + 1)
 		call_eax()
 	pop_to(s)
-

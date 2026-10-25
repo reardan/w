@@ -94,13 +94,6 @@ void optional_field_case(char* source, char* diagnostic, int relaxed = 0, int se
 	free(full)
 
 
-
-
-
-
-
-
-
 void test_optional_field_0():
 	optional_field_case(c"struct Maybe:\n\toptref[data] int* value\n\tint tag\nint main():\n\tref[a] Maybe record = Maybe(0, 3)\n\toptref int* value = record.value\n\tif (value): return 1\n\treturn record.tag - 3\n", 0)
 	optional_field_case(c"struct Maybe:\n\toptref[data] int* value\n\tint tag\nint main():\n\tint x = 7\n\tref[a] Maybe record = Maybe(&x, 3)\n\toptref int* value = record.value\n\tif (value): return *value - 7\n\treturn 1\n", 0)

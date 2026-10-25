@@ -22,7 +22,6 @@ char* global_char
 	return 0*/
 
 
-
 /*int range(int end):
 	int i = 0
 	if (i <= end):
@@ -47,7 +46,7 @@ int main1():
 
 int main_write():
 	# create file
-	char *filename = c"/home/w/git/cc500/test_output.txt"
+	char* filename = c"/home/w/git/cc500/test_output.txt"
 	# 511 == 0777
 	int file = open_or_create(filename, 2, 511)
 	print(c"file_handle: ")
@@ -61,7 +60,7 @@ int main_write():
 	print(c"\x0a")
 
 	# write to file
-	char *s = c"hi thar, derpity derp da derp da derp\x0a"
+	char* s = c"hi thar, derpity derp da derp da derp\x0a"
 	write_string(file, s)
 
 	# close file
@@ -159,13 +158,13 @@ int main1():
 /*
 int main1():
 	int a
-	
+
 	a = '9'
 	while(a >= '0'):
 		put_char(a)
 		a = a - 1
 	put_char(10)
-	
+
 	a = '0'
 	while(a <= '9'):
 		put_char(a)

@@ -72,7 +72,6 @@ void js_test_lower_reject():
 	pg_parse_result_free(parsed)
 
 
-
 void js_test_new_spans_and_limits():
 	char* source = c"while (ok) value++;"
 	pg_parse_result* parsed = js_parse_script(source, c"spans.js")

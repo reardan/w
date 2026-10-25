@@ -606,4 +606,3 @@ void debug_info_emit_at(int text_start, int text_end):
 		emit_target_word(text_end + code_offset) /* DW_AT_high_pc */
 	emit_uleb(0) /* end of children */
 	save_int(code + unit_start, codepos - unit_start - 4)
-

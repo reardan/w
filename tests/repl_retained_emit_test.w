@@ -359,7 +359,6 @@ void test_repl_retained_recovery():
 	retained_recovery(c"int total(int n):\n\tint sum = 0\n\tfor i in range(n):\n\t\tsum = sum + i\n\tdefer sum = 0\n\treturn sum\n\ntotal(5)\nint total(int n):\n\tint sum = 0\n\twhile (sum < n):\n\t\tsum = sum + 1\n\treturn sum + missing\n\ntotal(5)\nint* hole = 0\nint k = 0\nwhile (k < 3):\n\tk = k + 1\n\tif (k == 2): hole[0] = k\n\nk\nfor j in range(3): k = k + j\nk\nswitch k:\n\tcase 3: k = 30\n\tdefault: k = 40\n\nk\nint total(int n): return n * 100\ntotal(5)\n:quit\n")
 
 
-
 # P1.4: --streaming is the opt-out from the default AST front end, and the
 # in-process compilers reject it next to an AST-only flag with the driver's
 # own error (repl_ast_options), before any session starts.

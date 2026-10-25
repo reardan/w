@@ -188,8 +188,6 @@ void test_android_build_verify_aliases():
 	json_free(m.root)
 
 
-
-
 void test_android_native_targets_require_device():
 	manifest* m = manifest_parse(c"{\"targets\":[{\"name\":\"native\",\"steps\":[{\"cmd\":[\"bin/wv2_android\",\"arm64_android\",\"w.w\"]}]},{\"name\":\"tests_android\",\"deps\":[\"native\"]},{\"name\":\"cross\",\"steps\":[{\"cmd\":[\"bin/wv2\",\"arm64_android\",\"w.w\"]}]}]}", c"Android device gate", 1)
 	assert1(m != 0)

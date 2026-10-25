@@ -138,9 +138,6 @@ int incremental_ident_part(int c):
 	return incremental_ident_start(c) || ((c >= '0') && (c <= '9'))
 
 
-
-
-
 int incremental_contains(list[char*] names, char* name):
 	for char* known in names:
 		if (strcmp(known, name) == 0): return 1

@@ -16,7 +16,6 @@ void elf_header(int cpu_class):
 	emit_zeros(7) /* padding */
 
 
-
 # --- GNU build-id note (issue #378) ---
 # Every ELF image carries an NT_GNU_BUILD_ID note right after the program
 # headers, described by its own PT_NOTE program header. Sitting in the

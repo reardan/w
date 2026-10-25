@@ -9,7 +9,7 @@ int optional_view_exercise():
 	int value = 3
 	int[3] text
 	text[1] = 8
-	own[a,b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 7))
+	own[a, b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 7))
 	OptionalViewGet* get = optional_view_data
 	optrefmut MutableViewOuter* view = 0
 	for i in range(100):
@@ -35,7 +35,7 @@ int optional_view_absent():
 int optional_view_deferred():
 	int value = 7
 	int[2] text
-	own[a,b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
+	own[a, b] MutableViewOuter* owner = new MutableViewOuter(new MutableViewLeaf(new int, &value, text, 3))
 	optrefmut MutableViewOuter* view = owner
 	defer (optional_view_increment(view))
 	return 0

@@ -36,7 +36,7 @@ the x86.w helpers branch on, so x86/x64 output stays byte-identical.
 import code_generator.code_emitter
 
 
-void error(char *s);       /* from diagnostics.w */
+void error(char* s);       /* from diagnostics.w */
 void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
 void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack) */
 void regalloc_prologue_emit();  /* from x86.w (register promotion pushes) */
@@ -46,7 +46,7 @@ int arm64_add_local_offset(int v);
 void be_cmp_note_record(int start, int cc);   /* x86.w */
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
-int sym_declare_global(char *s, int type, int symtype);
+int sym_declare_global(char* s, int type, int symtype);
 void dwarf_function_define(int symbol, char* name);     /* dwarf.w */
 void dwarf_function_open(int start);
 void dwarf_function_close();

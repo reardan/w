@@ -20,4 +20,3 @@ import lib.lib
 # the target's compile step succeeds.
 int main():
 	return 0
-

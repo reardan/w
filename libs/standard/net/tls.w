@@ -326,7 +326,7 @@ struct tls_config:
 	int test_client_hello_len   # verbatim, for the RFC 8448 replay test
 	char* alpn                  # ALPN ProtocolNameList body (length-prefixed
 	int alpn_len                # names, no outer length), or 0 = no ALPN;
-	                            # set via tls_config_set_alpn
+								# set via tls_config_set_alpn
 
 
 tls_config* tls_config_new():

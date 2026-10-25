@@ -13,11 +13,11 @@ struct NestedReplacementView:
 
 
 struct NestedReplacementMiddle:
-	own[y,x] NestedReplacementView* child
+	own[y, x] NestedReplacementView* child
 
 
 struct NestedReplacementOuter:
-	own[b,a] NestedReplacementMiddle* middle
+	own[b, a] NestedReplacementMiddle* middle
 
 
 struct NestedReplacementBuffers:

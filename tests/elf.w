@@ -4,7 +4,6 @@ import compiler.tokenizer
 import codegen
 
 
-
 void print_elf_header():
 	println(c"printing elf header")
 
@@ -23,8 +22,8 @@ void print_elf_header():
 	print(itoa(class))
 	print(c"] ")
 	if (class == 0): println(c"none")
-	else if(class == 1): println(c"32 bit")
-	else if(class == 2): println(c"64 bit")
+	else if (class == 1): println(c"32 bit")
+	else if (class == 2): println(c"64 bit")
 	else: println(c"class not recognized")
 
 	# Data encoding
@@ -33,8 +32,8 @@ void print_elf_header():
 	print(itoa(encoding))
 	print(c"] ")
 	if (encoding == 0): println(c"none")
-	else if(encoding == 1): println(c"least significant")
-	else if(encoding == 2): println(c"most significant")
+	else if (encoding == 1): println(c"least significant")
+	else if (encoding == 2): println(c"most significant")
 	else: println(c"encoding not recognized")
 
 	# Get Program Header offset
@@ -74,7 +73,7 @@ void print_elf_header():
 			symbol_table_addr = section_addr
 			print_hex(c"symbol table section: ", symbol_table_addr)
 			symbol_count = section_info
-		
+
 		section_index = section_index + 1
 
 	# Process Symbol Table Entries
@@ -94,8 +93,6 @@ void print_elf_header():
 		print_hex(c"symbol_info: ", symbol_info)
 
 
-
 int main():
 	print_elf_header()
 	return 0
-

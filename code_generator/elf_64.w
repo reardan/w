@@ -3,7 +3,7 @@ import code_generator.elf_all
 import code_generator.x64_asm
 
 
-int sym_address(char *s);  /* from symbol_table.w */
+int sym_address(char* s);  /* from symbol_table.w */
 void elf_emit_dynamic();   /* from elf_dynamic.w */
 
 

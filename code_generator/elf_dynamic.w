@@ -25,7 +25,7 @@ import code_generator.dynamic_registry
 import lib.lib
 
 
-int sym_address(char *s);  /* from symbol_table.w */
+int sym_address(char* s);  /* from symbol_table.w */
 
 
 void emit_dyn_align(int a):

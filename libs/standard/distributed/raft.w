@@ -1661,8 +1661,6 @@ int raft_take_snapshot_file(raft* r, snapshot_file* source):
 	return raft_compact_snapshot(r)
 
 
-
-
 # ---- pending inbound snapshot ------------------------------------------------------
 
 # 1 while a received (or wal-recovered) snapshot awaits installation

@@ -274,4 +274,3 @@ void test_source_stays_lossless():
 	d = mm_parse(ticks, strlen(ticks))
 	asserts(c"backtick-only labels parse on one line", d.error == 0 && strcmp(d.nodes[0].label, c"`a") == 0)
 	mm_document_free(d)
-

@@ -108,7 +108,6 @@ int callbacks(int f, char_cb* g):
 	return f(1000)
 
 
-
 int compare_structs(point a, point b):
 	int r = 0
 	if (a != b): r = 1

@@ -108,9 +108,9 @@ struct ag_node:
 	tensor* b      # second input (add/mul/matmul/add_row); 0 when the op has none
 	float scalar   # saved scalar for add_scalar/mul_scalar; unused otherwise
 	tensor* saved  # extra forward-cached tensor (currently: ag_op_softmax_ce's
-	               # per-row probabilities); tape-owned like `out`; 0 when unused
+				   # per-row probabilities); tape-owned like `out`; 0 when unused
 	ndi* labels    # integer labels for ag_op_softmax_ce; caller-owned, the
-	               # tape never frees it; 0 when unused
+				   # tape never frees it; 0 when unused
 
 
 struct ag_tape:

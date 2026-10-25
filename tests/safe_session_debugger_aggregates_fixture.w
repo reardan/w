@@ -37,7 +37,7 @@ int holder_sum(ref Holder h):
 	return item.value + h.tag
 
 
-int pair_sum(ref[a,b] Pair p):
+int pair_sum(ref[a, b] Pair p):
 	ref box* first = p.first
 	ref box* second = p.second
 	return first.value + second.value
@@ -68,7 +68,7 @@ int main():
 	q.value = 20
 	ref[x] box* r = q
 	ref[y] Holder h = Holder(p, 3)
-	ref[s,t] Pair pair = Pair(p, q)
+	ref[s, t] Pair pair = Pair(p, q)
 	own[z] Stored* stored = store(q)
 	own box* other = new box
 	other.value = 1

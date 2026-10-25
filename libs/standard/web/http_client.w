@@ -265,7 +265,6 @@ const int http_body_chunked = 2
 const int http_body_close = 3
 
 
-
 int http_checked_error(int status, int fallback):
 	if (status == IO_TIMED_OUT): return http_error_timeout
 	if (status == IO_CANCELLED): return http_error_cancelled
@@ -1411,7 +1410,6 @@ http_response* http_get(char* target):
 	http_response* resp = http_request(req)
 	http_req_free(req)
 	return resp
-
 
 
 http_client* http_client_new():
