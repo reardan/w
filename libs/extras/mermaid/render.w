@@ -14,6 +14,7 @@ import libs.extras.mermaid.narrative_render
 import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
+import libs.extras.mermaid.c4_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -90,6 +91,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 			for mm_member* m in n.members:
 				width = mm_text_width(m.text, 0) + 32
 				if (width > b.w): b.w = width
+		if (d.kind == MM_USECASE): mm_uc_measure(d, n, b)
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
 			b.h = 32
@@ -131,7 +133,9 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 		for mm_edge* e in edges:
 			if (e.from_node == index && done[e.to_node] == 0):
 				mm_bounds* to = nodes[e.to_node]
-				if (to.rank <= from.rank): to.rank = from.rank + 1
+				int step = 1
+				if (e.min_length > 1): step = e.min_length
+				if (to.rank < from.rank + step): to.rank = from.rank + step
 				incoming[e.to_node] = incoming[e.to_node] - 1
 	__w_list_free(cast(__w_list*, incoming))
 	__w_list_free(cast(__w_list*, done))
@@ -215,6 +219,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		mm_edge* mapped = new mm_edge()
 		# Borrowed for label-aware rank gaps; only the struct is freed below.
 		mapped.label = e.label
+		mapped.min_length = e.min_length
 		for i in range(indices.length):
 			if (indices[i] == a): mapped.from_node = i
 			if (indices[i] == b): mapped.to_node = i
@@ -260,6 +265,18 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 		mm_line(s, cx - 5, cy, cx + 5, cy, 0)
 		mm_line(s, cx, cy - 5, cx, cy + 5, 0)
 		return
+	if (kind == 8):
+		# Use-case circle association end.
+		int ox = x + dx * 7
+		int oy = y + dy * 7
+		mm_draw(s, MM_CIRCLE, ox - 6, oy - 6, ox + 6, oy + 6, 0, c"")
+		return
+	if (kind == 9):
+		int qx = x + dx * 8
+		int qy = y + dy * 8
+		mm_line(s, qx - 6, qy - 6, qx + 6, qy + 6, 0)
+		mm_line(s, qx - 6, qy + 6, qx + 6, qy - 6, 0)
+		return
 	if (kind == MM_ARROW):
 		mm_line(s, x, y, x + dx * 12 + px * 6, y + dy * 12 + py * 6, 0)
 		mm_line(s, x, y, x + dx * 12 - px * 6, y + dy * 12 - py * 6, 0)
@@ -282,7 +299,7 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 
 void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	if (d.kind == MM_ARCHITECTURE):
-		mm_arch_edge(s, e)
+		mm_arch_edge(d, s, e)
 		return
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
@@ -354,7 +371,10 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
-	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, e.dashed, e.from_node == e.to_node)
+	int dashed = e.dashed
+	# Animated use-case edges (e.arrow) draw as dashes in static output.
+	if (d.kind == MM_USECASE && e.arrow): dashed = 1
+	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, dashed, e.from_node == e.to_node)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -391,6 +411,9 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_node* n = d.nodes[i]
 		if (n.group == 0 || n.parent != scope): continue
 		mm_bounds* b = s.nodes[i]
+		if (d.kind == MM_USECASE && mm_uc_boundary_draw(d, s, n, b)):
+			mm_render_groups(d, s, i)
+			continue
 		int style_start = s.items.length
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
 		# Concurrent state regions are unlabeled dashed partitions of their composite.
@@ -455,14 +478,10 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 			mm_label(s, b.x + b.w / 2, b.y + 44, n.label, mm_label_wrap(d, n), 1)
 			mm_style_node(d, s, n, style_start)
 			continue
-		if (n.shape == 10):
-			mm_actor_draw(s, b)
-			mm_label(s, b.x + 12, b.y + 90, n.label, mm_label_wrap(d, n), 0)
-			mm_style_node(d, s, n, style_start)
-			continue
+		if (d.kind == MM_USECASE && mm_uc_node_draw(d, s, n, b)): continue
 		if (n.shape == 12 || n.shape == 13):
 			mm_arch_icon(s, n, b)
-			if (n.shape == 12): mm_label(s, b.x + 12, b.y + 86, n.label, mm_label_wrap(d, n), 0)
+			if (n.shape == 12): mm_label(s, b.x + b.w / 2, b.y + 86, n.label, mm_label_wrap(d, n), 1)
 			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 21 || n.shape == 22):
@@ -536,6 +555,7 @@ mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error != 0): return 0
 	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
+	if (d.kind == MM_C4): return mm_c4_render(d)
 	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
 	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
 	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
@@ -550,7 +570,10 @@ mm_scene* mm_render_diagram(mm_document* d):
 	s.nodes = new list[mm_bounds*]
 	s.width = 240
 	s.height = 160
-	mm_layout(d, s)
+	if (d.kind == MM_ARCHITECTURE):
+		mm_measure(d, s)
+		mm_arch_layout(d, s)
+	else: mm_layout(d, s)
 	mm_positions_apply(d, s)
 	mm_render_graph(d, s)
 	return s

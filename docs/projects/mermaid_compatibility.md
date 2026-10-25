@@ -59,16 +59,17 @@ Details and exact restrictions: [Graph and workflow families](mermaid_graph_fami
 | Wardley — `wardley-beta` | Anchors/components, normalized coordinates, forward dependencies, custom evolution stages, `evolve` arrows, notes, pipelines, label offsets, build/buy/outsource and inertia decorators | Flows (`+>`, `limited by`), market/ecosystem/submap, annotations, accelerators and `evolve` renaming | [wardley.mmd](../../examples/mermaid/wardley.mmd) |
 | GitGraph — `gitGraph` | Branch heads, commits/types/tags, checkout/switch, merges, cherry-picks with validated merge parents, branch order, LR/TB/BT layouts | Branch configuration and upstream geometry | [history.mmd](../../examples/mermaid/history.mmd) |
 | Block — `block`, `block-beta` | Grid columns/spans, spaces, nested composites, the full block shape set, block arrows, labelled solid links and `style`/`classDef`/`class`/`linkStyle` | Dotted and thick links | [blocks.mmd](../../examples/mermaid/blocks.mmd) |
-| Architecture — `architecture-beta` | Services/groups/junctions, built-in icons, all source/target port pairs and arrowheads | Icon packs, group-edge modifiers, alignment directives and port-direction placement constraints | [architecture.mmd](../../examples/mermaid/architecture.mmd) |
-| Use case — `usecase-beta` | Actors, oval/rectangular cases, one-level boundaries, associations, include/extend and generalization validation | Metadata/stereotypes, JSON nodes, notes and rich labels | [usecase.mmd](../../examples/mermaid/usecase.mmd) |
-| C4 — `C4Context`, `C4Container`, `C4Component`, `C4Dynamic`, `C4Deployment` | Typed cards and technology/descriptions, nested boundaries/deployment nodes, relations and numbered dynamic interactions | Named configuration arguments, directional relation macros, custom styling and upstream geometry | [c4.mmd](../../examples/mermaid/c4.mmd) |
+| Architecture — `architecture-beta` | Services/groups/junctions, built-in icons and `pack:name` icons with a native glyph/unknown-icon fallback (never fetched), all port pairs and arrowheads, `{group}` edge endpoints, `align row`/`align column`, port-pair grid placement with elbow routing | fcose force-directed geometry, edge labels and bundled icon packs | [architecture.mmd](../../examples/mermaid/architecture.mmd) |
+| Use case — `usecase-beta` | Actors (normal/hollow/awesome/icon, business), oval/rectangular cases, quoted declarations, one-level rect/package boundaries, `@{}` metadata, `<<stereotypes>>`, notes, JSON tables, Markdown/entity labels, all association operators with lengths, labels and edge IDs, include/extend/generalization validation, classes/styles on nodes and edges | ELK layout, numbered boundary palettes and animated SVG edges | [usecase.mmd](../../examples/mermaid/usecase.mmd) |
+| C4 — `C4Context`, `C4Container`, `C4Component`, `C4Dynamic`, `C4Deployment` | Typed cards, positional and `$name=` arguments, nested boundaries/deployment nodes, `Rel`/`BiRel`/`Rel_Back`/`RelIndex` and directional `Rel_U/D/L/R` macros, `UpdateElementStyle`/`UpdateRelStyle`/`UpdateLayoutConfig`, upstream row layout, palette and shapes | Sprites, tags/legends (`AddElementTag`/`AddRelTag`), `Lay_*` and link rendering | [c4.mmd](../../examples/mermaid/c4.mmd) |
 | Swimlane — `swimlane-beta` | Responsibility lanes, five directions, basic flow shapes, labelled chains, handoffs and cycles | Nested lanes, additional shapes, styles and complex routing | [swimlanes.mmd](../../examples/mermaid/swimlanes.mmd) |
 | Event modeling — `eventmodeling` | Timeframes/resetframes, five entity types, namespace lanes, inferred/explicit inputs and simple inline data | External data blocks, typed/nested payloads and richer annotations | [eventmodeling.mmd](../../examples/mermaid/eventmodeling.mmd) |
 
 C4 is one family with all five headers implemented. Context/container/component
 cards retain their type annotations; deployment adds nested deployment nodes;
-dynamic relations are numbered in source order. The shared native card layout
-is not an implementation of upstream C4 styling macros.
+dynamic relations are numbered in source order. A dedicated C4 renderer follows
+the upstream statement-order row layout and fixed palette, and implements the
+`UpdateElementStyle`/`UpdateRelStyle`/`UpdateLayoutConfig` macros.
 
 ## Ordered narratives and schedules
 

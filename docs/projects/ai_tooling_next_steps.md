@@ -1517,3 +1517,13 @@ when stderr is not a terminal.
   Observed once in a worktree under parallel load. Direction: key the
   cache check on content hashes only (never an mtime/size shortcut), or
   print which input digests a cached target was matched against.
+
+## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
+
+`./wbuild wmermaid` (a `# wbuild: binary=wmermaid` target in
+`tools/wmermaid.w`) stays cached after an edit to any module it imports,
+for example `libs/extras/mermaid/scene.w`, so the CLI silently runs stale
+code; `<name>_test` targets in the same tree do rebuild on the same edit.
+Only `--no-cache` (or compiling with `bin/wv2` by hand) refreshes it.
+Direction: give source-owned `binary=`/`target=` compile steps the same
+`bin/wv2 deps` closure inputs that conventional test targets get.
