@@ -97,6 +97,10 @@ struct mm_data_chart:
 	int ticks
 	int polygon
 	int legend
+	# `style` rules of treemap, Venn, radar and packet charts: target holds
+	# the selector text, a is 1 for a quoted label, b the source offset and
+	# style the properties.
+	list[mm_data_item*] rules
 
 const int MM_REQUIREMENT = 60
 const int MM_MINDMAP = 61
@@ -390,6 +394,14 @@ void mm_document_free(mm_document* d):
 			__w_list_free(cast(__w_list*, item.values))
 			free(item)
 		__w_list_free(cast(__w_list*, d.data.items))
+		for mm_data_item* rule in d.data.rules:
+			free(rule.id)
+			free(rule.label)
+			free(rule.target)
+			__w_list_free(cast(__w_list*, rule.point_labels))
+			__w_list_free(cast(__w_list*, rule.values))
+			free(rule)
+		__w_list_free(cast(__w_list*, d.data.rules))
 		free(d.data.title)
 		free(d.data.x_label)
 		free(d.data.x_end)

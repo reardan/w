@@ -276,18 +276,24 @@ mm_scene* mm_git_render(mm_document* d):
 		if (n.group == 0): continue
 		mm_bounds* b = s.nodes[i]
 		mm_text(s, b.x, b.y - 8, n.label)
+		# Branch lines and commits take git0..git7 by lane under a theme.
+		int line_start = s.items.length
 		if (vertical):
 			if (reverse): mm_line(s, b.x, 40, b.x, time + 40 - label_width, 1)
 			else: mm_line(s, b.x, label_width, b.x, time, 1)
 		else: mm_line(s, label_width, b.y, time, b.y, 1)
+		mm_style_role(s, line_start, MM_ROLE_GIT, mm_git_lane(d, n))
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]
 		mm_bounds* b = s.nodes[e.to_node]
 		mm_line(s, a.x, a.y, b.x, b.y, 0)
+		mm_node* target = d.nodes[e.to_node]
+		mm_style_role(s, s.items.length - 1, MM_ROLE_GIT, mm_git_lane(d, d.nodes[target.parent]))
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group): continue
 		mm_bounds* b = s.nodes[i]
+		int commit_start = s.items.length
 		if (n.shape == 2): mm_draw(s, MM_BOX, b.x - 12, b.y - 12, b.x + 12, b.y + 12, 0, c"")
 		else: mm_draw(s, MM_CIRCLE, b.x - 9, b.y - 9, b.x + 9, b.y + 9, n.shape == 3, c"")
 		if (n.shape == 4):
@@ -298,6 +304,7 @@ mm_scene* mm_git_render(mm_document* d):
 			mm_line(s, b.x - 6, b.y - 6, b.x + 6, b.y + 6, 0)
 			mm_line(s, b.x + 6, b.y - 6, b.x - 6, b.y + 6, 0)
 		if (n.shape == 3): mm_draw(s, MM_CIRCLE, b.x - 4, b.y - 4, b.x + 4, b.y + 4, 0, c"")
+		mm_style_role(s, commit_start, MM_ROLE_GIT, mm_git_lane(d, d.nodes[n.parent]))
 		mm_text(s, b.x - 12, b.y + 20, n.label)
 		if (n.annotation[0] != 0): mm_text(s, b.x - 12, b.y - 36, n.annotation)
 	return s

@@ -1,6 +1,30 @@
 # Lifelines, chronological event columns, scored journeys and a calendar axis.
 import libs.extras.mermaid.narrative
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.style_render
+import libs.extras.mermaid.text
+
+# A label at (x,y): plain text, or the shared rich layout (Markdown strings,
+# `<br>`) when it has markup. Returns the height drawn.
+int mm_n_text(mm_scene* s, int x, int y, char* label):
+	if (mm_text_rich(label)): return mm_label(s, x, y, label, 0, 0)
+	mm_text(s, x, y, label)
+	return 18
+
+# Rendered width and height of a label in px.
+int mm_n_text_width(char* label):
+	if (mm_text_rich(label) == 0): return strlen(label) * 8
+	mm_text_block* b = mm_text_layout(label, 0)
+	int width = b.width
+	mm_text_block_free(b)
+	return width
+
+int mm_n_text_height(char* label):
+	if (mm_text_rich(label) == 0): return 18
+	mm_text_block* b = mm_text_layout(label, 0)
+	int height = b.height
+	mm_text_block_free(b)
+	return height
 
 void mm_n_arrow(mm_scene* s, int x, int y, int direction, int kind):
 	if (kind == 0): return
@@ -84,6 +108,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				end_y = 170 + event.end * 70
 				dies = 1
 		int shift = bounds.y - 65
+		int actor_start = s.items.length
 		if (node.shape == 1):
 			mm_draw(s, MM_CIRCLE, x - 9, 58 + shift, x + 9, 76 + shift, 0, c"")
 			mm_line(s, x, 76 + shift, x, 98 + shift, 0)
@@ -102,7 +127,10 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				string_free(stereotype)
 				mm_text(s, x - strlen(node.label) * 4, 90 + shift, node.label)
 			else: mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
+		mm_style_role(s, actor_start, MM_ROLE_ACTOR, i)
+		int line_start = s.items.length
 		mm_line(s, x, 140 + shift, x, end_y, 1)
+		mm_style_role(s, line_start, MM_ROLE_ACTOR_LINE, i)
 		if (dies):
 			mm_line(s, x - 9, end_y - 9, x + 9, end_y + 9, 0)
 			mm_line(s, x - 9, end_y + 9, x + 9, end_y - 9, 0)
@@ -138,6 +166,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		if (event.to_node >= 0):
 			mm_bounds* bounds = s.nodes[event.to_node]
 			to = bounds.x + bounds.w / 2
+		int event_start = s.items.length
 		if (event.kind == MM_N_MESSAGE):
 			int direction = 1
 			if (to < x): direction = -1
@@ -153,20 +182,32 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			int shown = -1
 			if (event.start): shown = event.value
 			char* label = mm_n_label(event, shown)
-			if (x == to): mm_text(s, x + 8, y - 23, label)
+			# Rich labels (Markdown strings, <br>) keep their numbering as a prefix run.
+			int rich = shown < 0 && mm_text_rich(event.label)
+			int lift = 0
+			if (rich): lift = mm_n_text_height(event.label) - 18
+			if (x == to):
+				if (rich): mm_n_text(s, x + 8, y - 23 - lift, event.label)
+				else: mm_text(s, x + 8, y - 23, label)
 			else:
-				int label_x = (x + to) / 2 - strlen(label) * 4
+				int label_width = strlen(label) * 8
+				if (rich): label_width = mm_n_text_width(event.label)
+				int label_x = (x + to) / 2 - label_width / 2
 				if (label_x < 10): label_x = 10
-				mm_text(s, label_x, y - 23, label)
+				if (rich): mm_n_text(s, label_x, y - 23 - lift, event.label)
+				else: mm_text(s, label_x, y - 23, label)
 			free(label)
+			mm_style_role(s, event_start, MM_ROLE_SIGNAL, 0)
 		else if (event.kind == MM_N_NOTE):
-			int w = strlen(event.label) * 8 + 24
+			int w = mm_n_text_width(event.label) + 24
+			int extra = mm_n_text_height(event.label) - 18
 			int nx = (x + to) / 2 - w / 2
 			if (event.value < 0): nx = x - w - 15
 			if (event.value > 0): nx = x + 15
 			if (nx < 10): nx = 10
-			mm_draw(s, MM_BOX, nx, y - 20, nx + w, y + 20, 0, c"")
-			mm_text(s, nx + 12, y - 8, event.label)
+			mm_draw(s, MM_BOX, nx, y - 20 - extra / 2, nx + w, y + 20 + extra - extra / 2, 0, c"")
+			mm_n_text(s, nx + 12, y - 8 - extra / 2, event.label)
+			mm_style_role(s, event_start, MM_ROLE_NOTE, 0)
 		else if (event.kind == MM_N_BLOCK && strcmp(event.detail, c"rect") != 0): mm_text(s, 45, y - 17, event.label)
 		else if (event.kind == MM_N_BRANCH):
 			mm_line(s, 35, y - 20, right + 10, y - 20, 1)
@@ -179,7 +220,7 @@ void mm_n_journey_scene(mm_document* d, mm_scene* s):
 	char* section = c""
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
-		int w = strlen(event.label) * 8 + 40
+		int w = mm_n_text_width(event.label) + 40
 		int actors_width = strlen(event.detail) * 8 + 30
 		if (actors_width > w): w = actors_width
 		if (w < 180): w = 180
@@ -187,7 +228,7 @@ void mm_n_journey_scene(mm_document* d, mm_scene* s):
 			mm_text(s, x, 60, event.section)
 			section = event.section
 		mm_draw(s, MM_BOX, x, 100, x + w - 20, 150, 1, c"")
-		mm_text(s, x + 10, 117, event.label)
+		mm_n_text(s, x + 10, 117 - (mm_n_text_height(event.label) - 18) / 2, event.label)
 		mm_text(s, x + 10, 365, event.detail)
 		int cx = x + (w - 20) / 2
 		int y = 345 - event.value * 34
@@ -246,6 +287,11 @@ void mm_n_lines_free(list[char*] lines):
 void mm_n_lines_draw(mm_scene* s, int x, int y, list[char*] lines):
 	for i in range(lines.length): mm_text(s, x, y + i * 18, lines[i])
 
+# Timeline labels: `<br>` lines as before, Markdown strings via the rich layout.
+void mm_n_timeline_text(mm_scene* s, int x, int y, char* label, list[char*] lines):
+	if (mm_text_is_markdown(label)): mm_label(s, x, y, label, 0, 0)
+	else: mm_n_lines_draw(s, x, y, lines)
+
 void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 	# Every period header shares the tallest header's height, so the axis stays straight.
 	int header_lines = 1
@@ -277,7 +323,7 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 			mm_text(s, x, 60, period.section)
 			section = period.section
 		mm_draw(s, MM_BOX, x, 100, x + width, 145 + extra, 1, c"")
-		mm_n_lines_draw(s, x + 15, 115, period_lines)
+		mm_n_timeline_text(s, x + 15, 115, period.label, period_lines)
 		mm_n_lines_free(period_lines)
 		int cx = x + width / 2
 		mm_line(s, x - 15, axis, x + width + 35, axis, 0)
@@ -291,7 +337,7 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 			int height = 45 + (lines.length - 1) * 18
 			mm_line(s, cx, y - 40, cx, y, 0)
 			mm_draw(s, MM_BOX, x, y, x + width, y + height, 0, c"")
-			mm_n_lines_draw(s, x + 15, y + 15, lines)
+			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines)
 			mm_n_lines_free(lines)
 			y = y + height + 35
 		x = x + width + 50
@@ -416,6 +462,7 @@ void mm_n_gantt_shading(mm_gantt_settings* g, mm_n_axis* axis, mm_scene* s, int 
 		if (b > latest): b = latest
 		mm_draw(s, MM_BOX, mm_n_axis_x(axis, a), 100, mm_n_axis_x(axis, b), height, 0, c"")
 		mm_n_paint(s, 0xe2e8f0, 0xe2e8f0)
+		mm_style_role(s, s.items.length - 1, MM_ROLE_EXCLUDE, 0)
 		day = run
 
 void mm_n_gantt_scene(mm_document* d, mm_scene* s):
@@ -465,6 +512,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 	while (value <= latest):
 		int x = mm_n_axis_x(axis, value)
 		mm_line(s, x, 95, x, height, 1)
+		mm_style_role(s, s.items.length - 1, MM_ROLE_GRID, 0)
 		char* date = mm_n_axis_label(g, value)
 		mm_text(s, x, 70, date)
 		free(date)
@@ -480,6 +528,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		mm_text(s, 30, y + 9, task.label)
 		int x = mm_n_axis_x(axis, task.start)
 		int w = mm_n_axis_x(axis, task.end) - x
+		int task_start = s.items.length
 		if ((task.value & 8) != 0):
 			x = x + w / 2
 			mm_line(s, x, y + 3, x + 12, y + 15, 0)
@@ -492,12 +541,18 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 			if ((task.value & 4) != 0 && w > 5): mm_draw(s, MM_BOX, x + 2, y + 3, x + w - 2, y + 27, 0, c"")
 			if ((task.value & 1) != 0): mm_line(s, x, y + 15, x + w, y + 15, 0)
 			if ((task.value & 2) != 0): mm_text(s, x + w + 8, y + 7, c"active")
+		int role = MM_ROLE_TASK
+		if ((task.value & 2) != 0): role = MM_ROLE_TASK_ACTIVE
+		if ((task.value & 1) != 0): role = MM_ROLE_TASK_DONE
+		if ((task.value & 4) != 0): role = MM_ROLE_TASK_CRIT
+		mm_style_role(s, task_start, role, i)
 		s.nodes.push(new mm_bounds(x, y, w, 30, 0))
 	mm_line(s, left, 100, left + width, 100, 0)
 	if (g.today >= earliest && g.today <= latest):
 		int x = mm_n_axis_x(axis, g.today)
 		mm_line(s, x, 95, x, height, 0)
 		mm_n_paint(s, -1, 0xdc2626)
+		mm_style_role(s, s.items.length - 1, MM_ROLE_TODAY, 0)
 	free(axis)
 
 mm_scene* mm_narrative_render(mm_document* d):

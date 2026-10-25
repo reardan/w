@@ -526,15 +526,18 @@ void test_data_venn_sizes_and_text_nodes():
 	int text_count = 0
 	for mm_primitive* p in scene.items:
 		if (p.kind == MM_TEXT && index_of(p.text, c"note") >= 0): text_count = text_count + 1
-		if (p.kind != MM_LINE): continue
-		if (lines < 32):
-			if (p.x < first_left): first_left = p.x
-			if (p.x > first_right): first_right = p.x
-		else:
-			if (p.x < second_left): second_left = p.x
-			if (p.x > second_right): second_right = p.x
+		# Sets are filled disc polygons sampled from their circles.
+		if (p.kind != MM_POLYGON): continue
+		for k in range(0, p.points.length, 2):
+			int x = p.points[k]
+			if (lines == 0):
+				if (x < first_left): first_left = x
+				if (x > first_right): first_right = x
+			else:
+				if (x < second_left): second_left = x
+				if (x > second_right): second_right = x
 		lines = lines + 1
-	assert_equal(64, lines)
+	assert_equal(2, lines)
 	assert_equal(3, text_count)
 	assert_equal(340, first_right - first_left)
 	assert_equal(170, second_right - second_left)

@@ -285,6 +285,25 @@ void mm_style_property(mm_document* d, mm_style* style, char* key, char* value, 
 	if (mask == MM_STYLE_FAMILY): style.family = parsed
 	if (mask == MM_STYLE_RADIUS): style.radius = parsed
 
+# C4 UpdateElementStyle / UpdateRelStyle arguments ($bgColor="red" ...) as
+# the shared CSS subset: returns 1 when name is a styling argument (its value
+# is then checked like the matching CSS property), 0 for other arguments.
+int mm_style_c4_property(mm_document* d, mm_style* style, char* name, char* value, int offset):
+	list[char*] names = list[char*]{c"$bgColor", c"$fontColor", c"$borderColor", c"$lineColor", c"$textColor", c"$borderThickness", c"$borderStyle"}
+	list[char*] keys = list[char*]{c"fill", c"color", c"stroke", c"stroke", c"color", c"stroke-width", c"stroke-dasharray"}
+	int found = -1
+	for i in range(names.length):
+		if (strcmp(name, names[i]) == 0): found = i
+	if (found == 6):
+		# Upstream's c4 border styles: dashed and dotted map to dash arrays.
+		if (strcmp(value, c"dashed") == 0): mm_style_property(d, style, keys[found], c"6 4", offset)
+		else if (strcmp(value, c"dotted") == 0): mm_style_property(d, style, keys[found], c"2 2", offset)
+		else if (strcmp(value, c"solid") != 0): mm_error(d, offset, c"C4 $borderStyle must be solid, dashed or dotted")
+	else if (found >= 0): mm_style_property(d, style, keys[found], value, offset)
+	__w_list_free(cast(__w_list*, names))
+	__w_list_free(cast(__w_list*, keys))
+	return found >= 0
+
 mm_style mm_style_parse(mm_parser* p):
 	mm_style style
 	mm_style_clear(&style)

@@ -13,6 +13,7 @@ mm_data_chart* mm_data_new(mm_document* d):
 	c.y_label = strclone(c"")
 	c.y_end = strclone(c"")
 	c.items = new list[mm_data_item*]
+	c.rules = new list[mm_data_item*]
 	c.ticks = 5
 	c.legend = 1
 	d.data = c
@@ -152,6 +153,95 @@ void mm_data_packet(mm_parser* p):
 	if (mm_peek(p) != '"'): mm_error(p.doc, p.pos, c"packet label must be quoted")
 	free(item.label)
 	item.label = mm_data_text(p, 10)
+	mm_space(p)
+	# `:::class` names a classDef; it is resolved into item.style on validation.
+	if (mm_match(p, c":::")):
+		free(item.target)
+		item.target = mm_identifier(p)
+
+# Families whose items take `style` rules.
+int mm_data_styled_family(int kind):
+	return kind == MM_TREEMAP || kind == MM_VENN || kind == MM_RADAR || kind == MM_PACKET
+
+# `style <targets> <properties>`: a quoted label, or comma-separated names.
+int mm_data_style_rule(mm_parser* p):
+	if (mm_style_keyword(p, c"style") == 0): return 0
+	mm_data_chart* c = p.doc.data
+	if (c.rules.length >= 256):
+		mm_error(p.doc, p.pos, c"data chart style rule limit exceeded (256)")
+		return 1
+	mm_data_item* rule = new mm_data_item()
+	rule.id = strclone(c"")
+	rule.label = strclone(c"")
+	rule.values = new list[int]
+	rule.point_labels = new list[char*]
+	rule.parent = -1
+	c.rules.push(rule)
+	rule.b = p.pos
+	if (mm_peek(p) == '"'):
+		rule.target = mm_quoted(p)
+		rule.a = 1
+	else:
+		int start = p.pos
+		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
+		rule.target = str_copy_range(p.doc.source, start, p.pos)
+	if (rule.target[0] == 0): mm_error(p.doc, p.pos, c"invalid style target")
+	mm_space(p)
+	rule.style = mm_style_parse(p)
+	return 1
+
+# 1 when item is the target name: an ID for Venn and radar, a label (or a
+# packet field's first bit) for treemap and packet charts.
+int mm_data_style_match(mm_document* d, mm_data_item* item, char* name, int quoted):
+	if (d.kind == MM_VENN): return quoted == 0 && (item.kind == 6 || item.kind == 10) && strcmp(item.id, name) == 0
+	if (d.kind == MM_RADAR): return quoted == 0 && item.kind == 4 && strcmp(item.id, name) == 0
+	if (strcmp(item.label, name) == 0): return 1
+	if (d.kind == MM_PACKET && quoted == 0 && name[0] >= '0' && name[0] <= '9'):
+		char* bit = itoa(item.a)
+		int same = strcmp(bit, name) == 0
+		free(bit)
+		return same
+	return 0
+
+# Direct style rules apply after classes, so they win.
+void mm_data_style_resolve(mm_parser* p):
+	mm_data_chart* c = p.doc.data
+	for mm_data_item* rule in c.rules:
+		list[char*] names = new list[char*]
+		if (rule.a): names.push(strclone(rule.target))
+		else:
+			int start = 0
+			for i in range(strlen(rule.target) + 1):
+				if (rule.target[i] == 0 || rule.target[i] == ','):
+					names.push(mm_style_trim(rule.target, start, i))
+					start = i + 1
+		int matched = 0
+		if (p.doc.kind == MM_VENN && names.length > 1):
+			# `style A,B` styles the union of exactly those sets.
+			for mm_data_item* item in c.items:
+				if (item.kind != 7 || item.values.length != names.length): continue
+				int same = 1
+				for int index in item.values:
+					mm_data_item* member = c.items[index]
+					int found = 0
+					for char* name in names:
+						if (strcmp(member.id, name) == 0): found = 1
+					if (found == 0): same = 0
+				if (same):
+					mm_style_merge(&item.style, &rule.style)
+					matched = 1
+		else:
+			for char* name in names:
+				int one = 0
+				for mm_data_item* item in c.items:
+					if (mm_data_style_match(p.doc, item, name, rule.a)):
+						mm_style_merge(&item.style, &rule.style)
+						one = 1
+				if (one == 0): matched = -1
+				else if (matched == 0): matched = 1
+		for char* name in names: free(name)
+		__w_list_free(cast(__w_list*, names))
+		if (matched != 1): mm_error(p.doc, rule.b, c"style target matches no item")
 
 # An axis delimiter is the complete arrow; ordinary hyphens belong to labels.
 char* mm_data_axis_start(mm_parser* p):
@@ -577,6 +667,12 @@ void mm_data_validate(mm_parser* p):
 		for mm_data_item* item in c.items:
 			for int value in item.values:
 				if (value < c.low || value > c.high): mm_error(p.doc, p.pos, c"series value outside axis range")
+	if (p.doc.kind == MM_PACKET):
+		for mm_data_item* item in c.items:
+			if (item.target[0] == 0): continue
+			mm_style_class* definition = mm_style_find(p.doc, item.target)
+			if (definition == 0): mm_error(p.doc, p.pos, c"assigned style class has no classDef")
+			else: mm_style_merge(&item.style, &definition.style)
 	if (p.doc.kind == MM_TREEMAP):
 		for i in range(c.items.length):
 			mm_data_item* item = c.items[i]
@@ -584,6 +680,10 @@ void mm_data_validate(mm_parser* p):
 				mm_style_class* definition = mm_style_find(p.doc, item.target)
 				if (definition == 0): mm_error(p.doc, p.pos, c"assigned style class has no classDef")
 				else: mm_style_merge(&item.style, &definition.style)
+	if (mm_data_styled_family(p.doc.kind) && p.doc.error == 0): mm_data_style_resolve(p)
+	if (p.doc.kind == MM_TREEMAP):
+		for i in range(c.items.length):
+			mm_data_item* item = c.items[i]
 			if (item.kind != 5): continue
 			int children = 0
 			for mm_data_item* child in c.items:
@@ -614,12 +714,13 @@ void mm_data_body(mm_parser* p):
 		else if (p.doc.kind != MM_SANKEY && mm_match(p, c"title ")):
 			free(p.doc.data.title)
 			p.doc.data.title = mm_data_text(p, 10)
+		else if (mm_data_styled_family(p.doc.kind) && mm_data_style_rule(p)): mm_space(p)
 		else if (p.doc.kind == MM_PIE): mm_data_pie(p)
 		else if (p.doc.kind == MM_QUADRANT): mm_data_quadrant(p)
 		else if (p.doc.kind == MM_XY): mm_data_xy(p)
 		else if (p.doc.kind == MM_SANKEY): mm_data_sankey(p)
 		else if (p.doc.kind == MM_RADAR): mm_data_radar(p)
-		else if (p.doc.kind == MM_TREEMAP && mm_match(p, c"classDef ")):
+		else if ((p.doc.kind == MM_TREEMAP || p.doc.kind == MM_PACKET) && mm_match(p, c"classDef ")):
 			p.pos = p.pos - 9
 			mm_style_statement(p)
 		else if (p.doc.kind == MM_TREEMAP): mm_data_tree(p)

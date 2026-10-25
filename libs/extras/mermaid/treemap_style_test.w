@@ -45,8 +45,8 @@ void test_treemap_class_definitions_style_cells():
 		mm_document_free(prefix)
 
 void test_treemap_class_diagnostics():
-	list[char*] bad = list[char*]{c"treemap-beta\n\"A\": 1:::missing\n", c"treemap-beta\n\"A\": 1:::\n", c"treemap-beta\n\"A\": 1\nclassDef x colour:red\n", c"treemap-beta\n\"A\": 1\nstyle A fill:red\n"}
-	list[char*] messages = list[char*]{c"assigned style class has no classDef", c"expected entity or node identifier", c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry", c"treemap labels must be quoted"}
+	list[char*] bad = list[char*]{c"treemap-beta\n\"A\": 1:::missing\n", c"treemap-beta\n\"A\": 1:::\n", c"treemap-beta\n\"A\": 1\nclassDef x colour:red\n", c"treemap-beta\n\"A\": 1\nstyle B fill:red\n"}
+	list[char*] messages = list[char*]{c"assigned style class has no classDef", c"expected entity or node identifier", c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry", c"style target matches no item"}
 	for i in range(bad.length):
 		mm_document* d = mm_parse(bad[i], strlen(bad[i]))
 		assert_strings_equal(messages[i], d.error)

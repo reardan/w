@@ -244,6 +244,14 @@ void mm_text_draw(mm_scene* s, mm_text_block* b, int x, int y, int centered):
 		if (centered): left = x - b.line_widths[r.line] / 2
 		mm_text_styled(s, left + r.x, y + r.line * b.pitch, r.text, r.style)
 
+# 1 when a label needs the rich layout: a Markdown string or a `<br>` tag.
+int mm_text_rich(char* label):
+	if (mm_text_is_markdown(label)): return 1
+	int length = strlen(label)
+	for i in range(length):
+		if (mm_text_break_tag(label, i, length)): return 1
+	return 0
+
 # Lay out, draw and free in one step; returns the block height drawn.
 int mm_label(mm_scene* s, int x, int y, char* label, int max_width, int centered):
 	mm_text_block* b = mm_text_layout(label, max_width)

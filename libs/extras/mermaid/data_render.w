@@ -55,6 +55,24 @@ void mm_data_series_paint(mm_scene* s, int start, int series):
 		p.role = MM_ROLE_SERIES
 		p.series = series
 
+# Document styles (classDef, ':::', style rules) on primitives from start on;
+# theme role paint leaves the fields they set alone.
+void mm_data_style_apply(mm_scene* s, int start, mm_style* style):
+	if (style.mask == 0): return
+	for i in range(start, s.items.length):
+		mm_primitive* p = s.items[i]
+		p.node_style = 1
+		p.user_mask = p.user_mask | style.mask
+		mm_style_merge(&p.style, style)
+
+# A sampled outline around (cx,cy) of radius r as a fillable polygon.
+mm_primitive* mm_data_disc(mm_scene* s, int cx, int cy, int r):
+	mm_primitive* p = mm_data_polygon(s)
+	for k in range(48):
+		float angle = cast(float, k) * 6.2831853 / 48.0
+		mm_data_vertex(s, p, cx + cast(int, fcos(angle) * cast(float, r)), cy + cast(int, fsin(angle) * cast(float, r)))
+	return p
+
 void mm_data_pie_render(mm_document* d, mm_scene* s):
 	float sum = 0.0
 	for mm_data_item* item in d.data.items: sum = sum + cast(float, item.a)
@@ -254,6 +272,14 @@ void mm_data_radar_render(mm_document* d, mm_scene* s):
 	for mm_data_item* item in c.items:
 		if (item.kind != 4): continue
 		int series_start = s.items.length
+		# A styled fill draws the curve as an area (upstream curveOpacity 0.5).
+		mm_primitive* area = 0
+		if (item.style.mask & MM_STYLE_FILL):
+			area = mm_data_polygon(s)
+			for i in range(count):
+				float angle = cast(float, i) * 6.2831853 / cast(float, count) - 1.5707963
+				int radius = mm_data_scale(item.values[i], c.low, c.high, 200)
+				mm_data_vertex(s, area, 300 + cast(int, fcos(angle) * cast(float, radius)), 300 + cast(int, fsin(angle) * cast(float, radius)))
 		for i in range(count):
 			int j = (i + 1) % count
 			float a = cast(float, i) * 6.2831853 / cast(float, count) - 1.5707963
@@ -268,6 +294,10 @@ void mm_data_radar_render(mm_document* d, mm_scene* s):
 			mm_line(s, 580, 100 + series * 28, 620, 100 + series * 28, series % 2)
 			mm_text(s, 630, 92 + series * 28, item.label)
 		mm_data_series_paint(s, series_start, series)
+		mm_data_style_apply(s, series_start, &item.style)
+		if (area != 0 && (item.style.mask & MM_STYLE_FILL_OPACITY) == 0):
+			area.style.mask = area.style.mask | MM_STYLE_FILL_OPACITY
+			area.style.fill_opacity = 50
 		series = series + 1
 	mm_data_value_text(s, 310, 300, c.low)
 	mm_data_value_text(s, 310, 100, c.high)
@@ -289,6 +319,18 @@ float mm_data_tree_worst(float sum, float smallest, float largest, float side):
 	float other = sum * sum / (square * smallest)
 	if (other > worst): worst = other
 	return worst
+
+# Source-order index of the top-level section holding item index.
+int mm_data_tree_branch(mm_data_chart* c, int index):
+	mm_data_item* item = c.items[index]
+	while (item.parent >= 0):
+		index = item.parent
+		item = c.items[index]
+	int branch = 0
+	for i in range(index):
+		mm_data_item* other = c.items[i]
+		if (other.parent < 0): branch = branch + 1
+	return branch
 
 void mm_data_tree_render_level(mm_data_chart* c, mm_scene* s, int parent, int x, int y, int width, int height, int depth):
 	list[int] children = new list[int]
@@ -351,13 +393,20 @@ void mm_data_tree_render_level(mm_data_chart* c, mm_scene* s, int parent, int x,
 				hh = strip
 			int style_start = s.items.length
 			mm_draw(s, MM_BOX, xx, yy, xx + ww, yy + hh, 0, c"")
+			# Per-depth palette: each top-level section takes a series color,
+			# lightened as cells nest (cScale under a theme).
+			mm_primitive* box = s.items[style_start]
+			box.role = MM_ROLE_TINT
+			box.series = mm_data_tree_branch(c, index)
+			box.tint = 20 + depth * 10
+			if (box.tint > 45): box.tint = 45
+			box.style.mask = box.style.mask | MM_STYLE_FILL | MM_STYLE_STROKE
+			box.style.stroke = mm_data_series_color(box.series)
+			box.style.fill = mm_theme_adjust(box.style.stroke, 0, 0, box.tint + 15)
 			# Labels in tiny cells go to a legend rather than crossing boundaries.
 			if (ww > strlen(item.label) * 8 + 12 && hh > 26): mm_text(s, xx + 6, yy + 6, item.label)
-			# classDef styles resolved at validation; they outrank the theme.
-			for k in range(style_start, s.items.length):
-				mm_primitive* cell = s.items[k]
-				if (item.style.mask != 0): cell.node_style = 1
-				mm_style_merge(&cell.style, &item.style)
+			# classDef and style rules resolved at validation outrank the theme.
+			mm_data_style_apply(s, style_start, &item.style)
 			if (item.kind == 5):
 				if (ww > 20 && hh > 40): mm_data_tree_render_level(c, s, index, xx + 4, yy + 26, ww - 8, hh - 30, depth + 1)
 			used = used + weight
@@ -397,10 +446,15 @@ void mm_data_packet_render(mm_document* d, mm_scene* s):
 				right = 60 + word_width - first % bits * 24
 				left_bit = last
 				right_bit = first
+			int style_start = s.items.length
 			mm_draw(s, MM_BOX, x, y, right, y + 60, 0, c"")
+			mm_data_style_apply(s, style_start, &item.style)
 			mm_data_value_text(s, x + 2, y - 20, left_bit * 1000)
 			if (last != first): mm_data_value_text(s, right - 24, y - 20, right_bit * 1000)
-			if (strlen(item.label) * 8 < right - x - 4): mm_text(s, x + (right - x - strlen(item.label) * 8) / 2, y + 22, item.label)
+			if (strlen(item.label) * 8 < right - x - 4):
+				int label_start = s.items.length
+				mm_text(s, x + (right - x - strlen(item.label) * 8) / 2, y + 22, item.label)
+				mm_data_style_apply(s, label_start, &item.style)
 			else:
 				# Bit-width geometry remains proportional; narrow field labels use a key.
 				mm_data_value_text(s, x + 2, y + 22, (item.a + 1) * 1000)
@@ -441,8 +495,34 @@ int mm_data_venn_distance(int first, int second, float area):
 void mm_data_venn_texts(mm_document* d, mm_scene* s, int parent, int x, int y):
 	for mm_data_item* item in d.data.items:
 		if (item.kind != 10 || item.parent != parent): continue
+		int start = s.items.length
 		mm_text(s, x - strlen(item.label) * 4, y, item.label)
+		mm_data_style_apply(s, start, &item.style)
 		y = y + 20
+
+# Exit distance along unit ray (ux,uy) from (px,py) inside circle (cx,cy,r).
+float mm_data_venn_exit(float px, float py, float ux, float uy, float cx, float cy, float r):
+	float dx = px - cx
+	float dy = py - cy
+	float b = ux * dx + uy * dy
+	float q = b * b - (dx * dx + dy * dy - r * r)
+	if (q < 0.0): return 0.0
+	return 0.0 - b + fsqrt(q)
+
+# The region shared by every member set, sampled from a point inside it.
+void mm_data_venn_region(mm_scene* s, mm_data_item* item, list[int] xs, list[int] ys, list[int] radii, int x, int y):
+	mm_primitive* region = mm_data_polygon(s)
+	for k in range(64):
+		float angle = cast(float, k) * 6.2831853 / 64.0
+		float ux = fcos(angle)
+		float uy = fsin(angle)
+		float best = 100000.0
+		for int i in item.values:
+			float exit = mm_data_venn_exit(cast(float, x), cast(float, y), ux, uy, cast(float, xs[i]), cast(float, ys[i]), cast(float, radii[i]))
+			if (exit < best): best = exit
+		mm_data_vertex(s, region, x + cast(int, ux * best), y + cast(int, uy * best))
+	region.role = MM_ROLE_VENN
+	region.series = 8
 
 void mm_data_venn_render(mm_document* d, mm_scene* s):
 	list[int] ids = new list[int]
@@ -525,10 +605,19 @@ void mm_data_venn_render(mm_document* d, mm_scene* s):
 		int x = xs[ids[i]]
 		int y = ys[ids[i]]
 		int radius = radii[ids[i]]
-		mm_ellipse(s, x, y, radius, radius)
+		# Sets are translucent filled discs (venn1..venn8 under a theme).
+		int start = s.items.length
+		mm_primitive* disc = mm_data_disc(s, x, y, radius)
+		disc.role = MM_ROLE_VENN
+		disc.series = i
+		disc.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE | MM_STYLE_FILL_OPACITY
+		disc.style.stroke = mm_data_series_color(i)
+		disc.style.fill = disc.style.stroke
+		disc.style.fill_opacity = 10
 		int ty = y - radius + 55
 		if (count == 3 && pairs == 3 && i == 2): ty = y + 110
 		mm_text(s, x - strlen(item.label) * 4, ty, item.label)
+		mm_data_style_apply(s, start, &item.style)
 		mm_data_venn_texts(d, s, ids[i], x, ty + 22)
 	for item_index in range(d.data.items.length):
 		mm_data_item* item = d.data.items[item_index]
@@ -549,7 +638,10 @@ void mm_data_venn_render(mm_document* d, mm_scene* s):
 			if (xs[ids[1]] - radii[ids[1]] > left): left = xs[ids[1]] - radii[ids[1]]
 			if (xs[ids[1]] + radii[ids[1]] < right): right = xs[ids[1]] + radii[ids[1]]
 			x = (left + right) / 2
+		int start = s.items.length
+		if (item.style.mask & MM_STYLE_FILL): mm_data_venn_region(s, item, xs, ys, radii, x, y)
 		mm_text(s, x - strlen(item.label) * 4, y - 8, item.label)
+		mm_data_style_apply(s, start, &item.style)
 		mm_data_venn_texts(d, s, item_index, x, y + 14)
 	__w_list_free(cast(__w_list*, ids))
 	__w_list_free(cast(__w_list*, connected))

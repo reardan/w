@@ -17,6 +17,31 @@ import libs.extras.mermaid.uml_render
 
 # A comment holding a Markdown string or a <br> renders through the shared
 # label layout; plain comments stay in the attribute's single text run.
+# Requirement text is Markdown upstream: a member with emphasis markers or
+# `<br>` gets the rich layout (an owned label), plain members return 0.
+char* mm_member_markup(int markdown, mm_member* m):
+	int emphasis = markdown && mm_text_is_markdown(m.text) == 0 && (index_of(m.text, c"*") >= 0 || index_of(m.text, c"_") >= 0)
+	if (emphasis == 0):
+		if (mm_text_rich(m.text)): return strclone(m.text)
+		return 0
+	string_builder* text = string_from(c"`")
+	string_append(text, m.text)
+	string_append_char(text, '`')
+	char* result = text.data
+	free(text)
+	return result
+
+# Extra row height and the width of a member's rich label (0 when plain).
+int mm_member_extra(int markdown, mm_member* m, int* width):
+	char* label = mm_member_markup(markdown, m)
+	if (label == 0): return 0
+	mm_text_block* t = mm_text_layout(label, 0)
+	int extra = (mm_text_lines(t) - 1) * t.pitch
+	width[0] = t.width
+	mm_text_block_free(t)
+	free(label)
+	return extra
+
 int mm_attribute_rich(mm_attribute* a):
 	if (mm_text_is_markdown(a.comment)): return 1
 	for i in range(strlen(a.comment)):
@@ -138,6 +163,9 @@ void mm_measure(mm_document* d, mm_scene* s):
 			if (width > b.w): b.w = width
 			for mm_member* m in n.members:
 				width = mm_text_width(m.text, 0) + 32
+				int rich_width = 0
+				b.h = b.h + mm_member_extra(d.kind == MM_REQUIREMENT, m, &rich_width)
+				if (rich_width != 0): width = rich_width + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
@@ -465,7 +493,7 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
-void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
+void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra, int markdown):
 	int y = b.y + 40 + extra
 	if (n.annotation[0] != 0):
 		string_builder* text = string_from(c"<<")
@@ -479,7 +507,13 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 		int count = 0
 		for mm_member* m in n.members:
 			if (m.method == method):
-				mm_text(s, b.x + 12, y + 5, m.text)
+				char* rich = mm_member_markup(markdown, m)
+				if (rich != 0):
+					mm_label(s, b.x + 12, y + 5, rich, 0, 0)
+					free(rich)
+					int rich_width = 0
+					y = y + mm_member_extra(markdown, m, &rich_width)
+				else: mm_text(s, b.x + 12, y + 5, m.text)
 				y = y + 26
 				count = count + 1
 		if (count == 0): y = y + 18
@@ -567,7 +601,7 @@ void mm_render_node(mm_document* d, mm_scene* s, int i):
 	if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 	if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
 	mm_text_block_free(title)
-	if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra)
+	if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra, d.kind == MM_REQUIREMENT)
 	if (d.kind == MM_ER):
 		int y = b.y + 40 + extra
 		for j in range(n.attributes.length):
