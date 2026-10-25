@@ -62,6 +62,9 @@ map[int, int] llvm_locals
 # Bindings owned by each function node, as a linked list over bindings.
 map[int, int] llvm_owned_first
 list[int] llvm_owned_next
+# Target: 0 x86-64 Linux (default), 1 AArch64 Linux. Set by the driver
+# before llvm_emit; the front end ran for the same architecture.
+int llvm_arm64
 
 
 void llvm_put(char* text):
@@ -695,7 +698,11 @@ char* llvm_call(int group, int id, retained_node* node):
 				char* result = llvm_temp()
 				llvm_put(c"  ")
 				llvm_put(result)
-				if (values.length == 4): llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}\"(")
+				# The number, then up to six arguments: rax/rdi.. on x86-64,
+				# x8/x0.. with svc #0 on AArch64 (lib/arm64/syscalls.w).
+				if (llvm_arm64 && (values.length == 4)): llvm_put(c" = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},{x1},{x2},~{memory}\"(")
+				else if (llvm_arm64): llvm_put(c" = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},{x1},{x2},{x3},{x4},{x5},~{memory}\"(")
+				else if (values.length == 4): llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}\"(")
 				else: llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}\"(")
 				for i in range(values.length):
 					if (i > 0): llvm_put(c", ")
@@ -1803,18 +1810,26 @@ void llvm_emit_global(int linkage):
 	string_free(text)
 
 
-# Freestanding x86-64 Linux entry: no C runtime. _start passes the initial
+# Freestanding Linux entry: no C runtime. _start passes the initial
 # stack's argc and argv to the W entry, then exits with its result.
 void llvm_emit_entry(int entry, int arguments):
 	string_append(llvm_code, c"module asm \".globl _start\"\x0amodule asm \"_start:\"\x0a")
-	string_append(llvm_code, c"module asm \"  xorl %ebp, %ebp\"\x0amodule asm \"  movq (%rsp), %rdi\"\x0a")
-	string_append(llvm_code, c"module asm \"  leaq 8(%rsp), %rsi\"\x0amodule asm \"  andq $-16, %rsp\"\x0a")
-	string_append(llvm_code, c"module asm \"  callq __wllvm_start\"\x0amodule asm \"  ud2\"\x0a\x0a")
+	if (llvm_arm64):
+		# The kernel enters with sp 16-byte aligned and argc at [sp].
+		string_append(llvm_code, c"module asm \"  mov x29, #0\"\x0amodule asm \"  mov x30, #0\"\x0a")
+		string_append(llvm_code, c"module asm \"  ldr x0, [sp]\"\x0amodule asm \"  add x1, sp, #8\"\x0a")
+		string_append(llvm_code, c"module asm \"  bl __wllvm_start\"\x0amodule asm \"  brk #0\"\x0a\x0a")
+	else:
+		string_append(llvm_code, c"module asm \"  xorl %ebp, %ebp\"\x0amodule asm \"  movq (%rsp), %rdi\"\x0a")
+		string_append(llvm_code, c"module asm \"  leaq 8(%rsp), %rsi\"\x0amodule asm \"  andq $-16, %rsp\"\x0a")
+		string_append(llvm_code, c"module asm \"  callq __wllvm_start\"\x0amodule asm \"  ud2\"\x0a\x0a")
 	string_append(llvm_code, c"define void @__wllvm_start(i64 %argc, i64 %argv) noreturn nounwind {\x0aentry:\x0a  %result = call i64 ")
 	string_append(llvm_code, llvm_name(c"@w", entry))
 	if (arguments == 2): string_append(llvm_code, c"(i64 %argc, i64 %argv)\x0a")
 	else: string_append(llvm_code, c"()\x0a")
-	string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},~{rcx},~{r11},~{memory}\"(i64 231, i64 %result)\x0a")
+	# exit_group: 94 on AArch64, 231 on x86-64
+	if (llvm_arm64): string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},~{memory}\"(i64 94, i64 %result)\x0a")
+	else: string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},~{rcx},~{r11},~{memory}\"(i64 231, i64 %result)\x0a")
 	string_append(llvm_code, c"  unreachable\x0a}\x0a\x0a")
 
 
@@ -1960,8 +1975,12 @@ int llvm_emit(char* filename, char* output_path):
 		llvm_emit_entry(entry_binding.linkage, entry_binding.parameters.length)
 		if (llvm_uses_memory): llvm_emit_memory_runtime()
 		string_builder* module = string_new()
-		string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding x86-64 Linux\x0a")
-		string_append(module, c"target triple = \"x86_64-unknown-linux-gnu\"\x0a\x0a")
+		if (llvm_arm64):
+			string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding AArch64 Linux\x0a")
+			string_append(module, c"target triple = \"aarch64-unknown-linux-gnu\"\x0a\x0a")
+		else:
+			string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding x86-64 Linux\x0a")
+			string_append(module, c"target triple = \"x86_64-unknown-linux-gnu\"\x0a\x0a")
 		if (llvm_uses_trap): string_append(module, c"declare void @llvm.trap() cold noreturn nounwind\x0a")
 		if (llvm_uses_bits):
 			string_append(module, c"declare i32 @llvm.fshl.i32(i32, i32, i32)\x0adeclare i32 @llvm.fshr.i32(i32, i32, i32)\x0a")

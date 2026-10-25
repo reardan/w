@@ -10,6 +10,7 @@ import lib.file
 import lib.utf8
 import lib.stat
 import lib.path
+import lib.str
 
 
 int wllvm_test_serial
@@ -297,3 +298,46 @@ void test_wllvm_library_trap_stub():
 	free(input)
 	free(native)
 	free(clang)
+
+
+# AArch64 Linux: the arch selector runs the front end for arm64 (its
+# lib/__arch__/arm64 syscall numbers) and emits svc #0 syscalls. With
+# clang, ld.lld and qemu-aarch64 the fixtures must match bin/wv2 arm64's
+# build.
+void test_wllvm_arm64_target():
+	char* ir = wllvm_test_path(c".ll")
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_memory_fixture.w", c"-o", ir}))
+	char* text = file_read_text(ir)
+	assert1(text != 0)
+	assert_contains(text, c"target triple = \"aarch64-unknown-linux-gnu\"")
+	assert_contains(text, c"asm sideeffect \"svc #0\"")
+	assert_contains(text, c"module asm \"  bl __wllvm_start\"")
+	assert_equal(-1, index_of(text, c"\"syscall\""))
+	free(text)
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"--target", c"arm64", c"tests/wllvm_scalar_fixture.w", c"-o", ir}))
+	unlink(ir)
+	free(ir)
+	char* clang = process_which(c"clang")
+	char* lld = process_which(c"ld.lld")
+	char* qemu = process_which(c"qemu-aarch64-static")
+	if (qemu == 0): qemu = process_which(c"qemu-aarch64")
+	if ((clang == 0) || (lld == 0) || (qemu == 0)):
+		println(c"wllvm: clang, ld.lld or qemu-aarch64 unavailable; arm64 run skipped")
+		return
+	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w"}
+	for fixture in fixtures:
+		char* native = wllvm_test_path(c".arm64")
+		char* reference = wllvm_test_path(c".arm64ref")
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wv2", c"arm64", fixture, c"-o", reference}))
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"--cc", clang, fixture, c"-o", native}))
+		process_result* baseline = wllvm_test_run(list[char*]{qemu, reference})
+		process_result* result = wllvm_test_run(list[char*]{qemu, native})
+		assert_equal(baseline.status, result.status)
+		assert_strings_equal(baseline.stdout_text, result.stdout_text)
+		process_result_free(baseline)
+		process_result_free(result)
+		unlink(native)
+		unlink(reference)
+		free(native)
+		free(reference)
+	fixtures.free()

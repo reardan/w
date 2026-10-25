@@ -3,7 +3,7 @@
 `bin/wllvm` is an opt-in LLVM backend over the production compiler's
 retained AST. A visitor walks the semantic forest the normal front end
 already builds and emits LLVM IR text; for an executable it hands that IR
-to clang, which produces a freestanding x86-64 Linux binary. The production
+to clang, which produces a freestanding x86-64 or AArch64 Linux binary. The production
 parser and semantic analyzer remain the source of truth: the tool adds no
 second W parser or type checker and does not use the parser-generator
 grammar. The original proposal and dependency tradeoffs are recorded in
@@ -17,7 +17,17 @@ bin/wllvm program.w -o bin/program          # executable, clang -O2
 bin/wllvm -O3 program.w -o bin/program      # any of -O0 -O1 -O2 -O3 -Os
 bin/wllvm program.w -o bin/program.ll       # IR text only (or --emit-llvm)
 clang -O2 -static -nostdlib bin/program.ll -o bin/program
+bin/wllvm arm64 program.w -o bin/program    # AArch64 Linux (or --target arm64)
 ```
+
+`arm64` runs the front end for AArch64, so the standard library resolves
+its `lib/__arch__/arm64` modules (the generic-table syscall numbers of
+`lib/arm64/syscalls.w`). The module targets `aarch64-unknown-linux-gnu`;
+`syscall`/`syscall7` become `svc #0` with the number in `x8` and arguments
+in `x0`-`x5`, `_start` passes `[sp]` and `sp + 8` as argc and argv, and the
+exit is `exit_group` (94). Clang links it with `--target=aarch64-linux-gnu
+-fuse-ld=lld`, so ld.lld must be installed; run the result on AArch64
+Linux or under `qemu-aarch64`.
 
 Clang is needed only to turn IR into an executable: `--cc PATH`, else
 `$WLLVM_CC`, else `clang` on `PATH`. Emitting `.ll`, bootstrapping W and the
@@ -28,8 +38,8 @@ and was developed against Clang 18.
 The executable keeps W's no-C-runtime model. The module defines `_start`
 (module-level assembly) and calls the program's real entry, `lib.lib`'s
 `_main`, when the program imports it, else `main`; it exits with
-`exit_group`. W's `syscall`/`syscall7` stubs become x86-64 inline
-`syscall` instructions, so the standard library's own I/O and `malloc`
+`exit_group`. W's `syscall`/`syscall7` stubs become inline `syscall`
+(x86-64) or `svc #0` (AArch64) instructions, so the standard library's own I/O and `malloc`
 (mmap-based) lower like any other W code. The module also defines
 `memset`, `memcpy` and `memmove`, which LLVM may call for large copies,
 as loops marked `"no-builtins"`. Nothing links against libc.
@@ -197,5 +207,6 @@ import graph.
    slot sizes, key kinds, aggregate variants) from retained types.
 2. Records by value (copy-in parameters, caller-provided result buffers),
    floats, f-strings and `switch`.
-3. Other targets: arm64 Linux needs only a different `_start` and syscall
-   constraint string.
+3. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
+   and code signing) and win64 would need their own entry and system-call
+   layers.

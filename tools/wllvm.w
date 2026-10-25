@@ -4,8 +4,8 @@ Opt-in LLVM backend over the production compiler's retained forest (#337).
 The front end still emits native code to the null device while binding the
 trees: this is not an independent semantic-analysis pass. The tool writes
 LLVM IR text, and for any output not named *.ll hands it to clang to build
-a freestanding x86-64 Linux executable (no C library). LLVM is needed only
-for that last step.
+a freestanding x86-64 (default) or AArch64 (--target arm64) Linux
+executable (no C library). LLVM is needed only for that last step.
 */
 import compiler.compiler
 import tools.wllvm_emit
@@ -22,17 +22,19 @@ int wllvm_error(char* message):
 
 
 void wllvm_usage():
-	println(c"usage: wllvm input.w -o output [-O0|-O1|-O2|-O3|-Os] [--emit-llvm] [--cc clang]")
+	println(c"usage: wllvm [x64|arm64] input.w -o output [-O0|-O1|-O2|-O3|-Os] [--emit-llvm] [--cc clang] [--target x64|arm64]")
 	println(c"Compile a W program through LLVM: production retained AST, x64 semantics.")
 	println(c"An output named *.ll (or --emit-llvm) is LLVM IR text and needs no LLVM.")
-	println(c"Any other output is a freestanding x86-64 Linux executable built by clang")
-	println(c"(--cc, else $WLLVM_CC, else clang on PATH) at -O2 unless another level is given.")
+	println(c"Any other output is a freestanding x86-64 (or, with arm64, AArch64) Linux")
+	println(c"executable built by clang (--cc, else $WLLVM_CC, else clang on PATH) at -O2")
+	println(c"unless another level is given; AArch64 links with ld.lld.")
 	println(c"Subset: integer, bool, char, pointer, enum, string-handle and record types;")
 	println(c"locals, globals, fixed arrays, calls (direct, indirect, syscall), if, while,")
 	println(c"for-range, break, continue and return, across every module the entry reaches.")
 	println(c"Floats, containers, generics, records by value and other constructs fail.")
 	println(c"The front end currently also emits native code to the null device.")
 	println(c"To build IR by hand: clang -O2 -static -nostdlib output.ll -o program")
+	println(c"  (AArch64: add --target=aarch64-linux-gnu -fuse-ld=lld)")
 
 
 char* wllvm_absolute(char* path):
@@ -64,6 +66,9 @@ int wllvm_same_file(char* input, char* output):
 # Build output from ir with clang; clang's diagnostics pass through.
 int wllvm_link(char* path, char* level, char* ir, char* output):
 	list[char*] args = list[char*]{path, level, c"-static", c"-nostdlib", c"-Wno-override-module", c"-o", output, ir}
+	if (llvm_arm64):
+		args.push(c"--target=aarch64-linux-gnu")
+		args.push(c"-fuse-ld=lld")
 	char** vector = strv_new(args.length)
 	for i in range(args.length): strv_set(vector, i, args[i])
 	process_result* result = process_run(path, vector, 0, 0, 600000)
@@ -86,6 +91,7 @@ int main(int argc, int argv):
 	char* cc = env_get(c"WLLVM_CC")
 	if ((cc == 0) || (cc[0] == 0)): cc = c"clang"
 	int emit_llvm = 0
+	char* arch = c"x64"
 	for i in range(1, argc):
 		char** arg = argv + i * __word_size__
 		if ((strcmp(*arg, c"--help") == 0) || (strcmp(*arg, c"-h") == 0)):
@@ -104,6 +110,14 @@ int main(int argc, int argv):
 			arg = argv + i * __word_size__
 			cc = *arg
 		else if (strcmp(*arg, c"--emit-llvm") == 0): emit_llvm = 1
+		else if (strcmp(*arg, c"--target") == 0):
+			i = i + 1
+			if (i >= argc): return wllvm_error(c"--target requires x64 or arm64")
+			arg = argv + i * __word_size__
+			if ((strcmp(*arg, c"x64") != 0) && (strcmp(*arg, c"arm64") != 0)): return wllvm_error(c"--target requires x64 or arm64")
+			arch = *arg
+		# The arch selector W's other tools take before the input.
+		else if ((input == 0) && ((strcmp(*arg, c"x64") == 0) || (strcmp(*arg, c"arm64") == 0))): arch = *arg
 		else if ((strcmp(*arg, c"-O0") == 0) || (strcmp(*arg, c"-O1") == 0) || (strcmp(*arg, c"-O2") == 0) || (strcmp(*arg, c"-O3") == 0) || (strcmp(*arg, c"-Os") == 0)): level = *arg
 		else if (starts_with(*arg, c"-")): return wllvm_error(c"unsupported option (run --help)")
 		else:
@@ -132,7 +146,8 @@ int main(int argc, int argv):
 	# output is opened until both semantic analysis and subset validation pass.
 	char* args = cast(char*, malloc(5 * __word_size__))
 	save_ptr(args, cast(int, compiler_argv0))
-	save_ptr(args + __word_size__, cast(int, c"x64"))
+	llvm_arm64 = strcmp(arch, c"arm64") == 0
+	save_ptr(args + __word_size__, cast(int, arch))
 	save_ptr(args + 2 * __word_size__, cast(int, c"--quiet"))
 	save_ptr(args + 3 * __word_size__, cast(int, c"--ast-required"))
 	save_ptr(args + 4 * __word_size__, cast(int, input))
