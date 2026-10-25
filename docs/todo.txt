@@ -648,12 +648,17 @@ current state:
 			graphics.ui.shape / graphics.ui.bidi: portable engines with
 				optional HarfBuzz/FriBidi; shaped-run grapheme carets
 			graphics.ui.itemize: paragraph bidi/script/face runs,
-				paragraph carets, drawing and a space-break fit helper
+				shaping context (joining across faces), paragraph
+				carets, drawing; line layout at UAX #14 breaks
+				(lib.linebreak, LineBreakTest-conformant) with
+				per-line bidi reordering and reshaping, carets and
+				hit-testing across lines
 			IME: X11 XIM, Win64 IMM, web composition, opt-in Cocoa
 				NSTextInputClient bridge (graphics.ime_cocoa)
 		missing:
 			hinting; color glyphs; Sinhala, Myanmar/Khmer/USE
-				shapers; UAX #14 line breaking;
+				shapers; dictionary word breaking for Thai/Lao/
+				Khmer/Myanmar (cluster-break fallback only);
 				a bundled fallback face (by decision:
 				hosts load Noto faces); Mac qualification of the
 				Cocoa IME bridge with real input methods
