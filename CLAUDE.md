@@ -98,7 +98,10 @@ errors — self-host stages build with `--strict`, so any warning fails
 the always-on lint, asserted by `./wbuild warning_test`. `./bin/wv2 check --lint
 file.w` adds opt-in rules (unused locals, unreachable code, shadowing, ...) for
 the named files, and `check --fix` rewrites their whitespace issues in place
-(docs/projects/lint.md, `./wbuild lint_test`).
+(docs/projects/lint.md, `./wbuild lint_test`). `bin/wfmt` (`./wbuild wfmt`)
+is the rewriting formatter: `-w` rewrites files in the canonical spacing,
+`--check` lists unformatted ones (docs/projects/wfmt.md; the tree is not
+formatted with it yet, so don't reformat files you aren't otherwise changing).
 
 **Find declarations**: `./bin/wv2 symbols --json file.w` instead of grepping.
 

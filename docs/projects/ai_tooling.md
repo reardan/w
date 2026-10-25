@@ -1391,10 +1391,10 @@ before merge.
   `imports_for`/`callers`/`callees`/`changed_file_test_targets`. See
   `docs/projects/semantic_index.md` for the exact contract and known
   gaps (textual reference finding, indentation-approximated call spans).
-- **`wfmt` (writing mode)**: the two style warnings (spaces indentation,
-  missing trailing newline) already surface through `check`; a rewriting
-  formatter needs a lossless token stream the single-pass tokenizer does
-  not keep.
+- **`wfmt` (writing mode)**: since built (issue #716) — `bin/wfmt`
+  (`tools/wfmt.w`) formats on top of the ParserGenerator W grammar's
+  lossless token stream instead of the single-pass tokenizer. See
+  `docs/projects/wfmt.md`.
 - **`w reduce`, `w inspect`**: since built in #717; see
   [the reducer](reduce.md) and [the ELF inspector](inspect.md).
 - **Tree-sitter grammar**: valuable for editors but external to this
