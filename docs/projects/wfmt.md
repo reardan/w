@@ -143,12 +143,36 @@ same way: every tracked `.w` file in a copy of the repository formatted
 refused by the token check), and all 454 `tests/*_test.w` programs that
 compile in a copy compiled to identical binaries before and after.
 
-## Follow-ups
+## The tree is formatted
 
-- Formatting the tree itself (`bin/wfmt -w $(git ls-files '*.w')`) is a
-  separate, mechanical PR, after which a `wfmt --check` CI gate can keep
-  it formatted. Whitespace fixtures (trailing-whitespace, space-indent,
-  CRLF, missing-newline tests) need `# wfmt: off` or an exclusion list
-  first.
-- A thin editor wrapper (`textDocument/formatting` over `wfmt -`) belongs
-  with the LSP/MCP integrations in w-private `wtools/`.
+Every tracked `.w` file is in wfmt's style, and `./wbuild wfmt_check`
+(in `tests`, so CI runs it) fails when one is not:
+
+```sh
+./bin/wfmt -w $(git ls-files '*.w')   # or: --files-from=<list>
+./wbuild wfmt_check                   # what CI runs
+```
+
+`tools/wfmt_exclude.txt` lists the files the gate skips (`wfmt -w`
+honours it with `--exclude-from=tools/wfmt_exclude.txt`):
+
+- the 50 runtime sources `--safe` audits: `compiler/safe_runtime.w` pins
+  each one's sha256, so reformatting one needs a re-audit and a new
+  digest, not a formatter run;
+- diagnostic fixtures whose expected output depends on their own
+  whitespace (`tests/warning_fixture.w` asserts the space-indentation
+  warning);
+- committed generated parsers (regenerated, not reformatted);
+- the five fixtures that end inside an unterminated literal.
+
+A new fixture whose whitespace is the test goes on the list, or wraps the
+lines in `# wfmt: off` / `# wfmt: on`.
+
+The formatting commit was checked the same way as the formatter: the
+whole `tests` suite on the formatted tree (the only failures were
+targets that need the 32-bit dynamic loader, absent in that container),
+the self-host fixpoint, and `profile_check`, whose defhashes ignore
+whitespace, so the committed profiles match exactly as before.
+
+The editor wrapper is in w-private: `wlsp`'s `textDocument/formatting`
+runs `bin/wfmt -` (reardan/w-private#181).
