@@ -279,10 +279,12 @@ void test_graphical_uml_groups_and_nested_bodies_edit_and_interfaces_are_refused
 	asserts(c"composite parses", e.document.error == 0)
 	assert_strings_equal(c"", mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, mm_find_node(e.document, c"Comp")))
 	assert_strings_equal(c"", mm_editor_edit_reason(e, MM_EDIT_LABEL, mm_find_node(e.document, c"Inner")))
-	# A is named by a statement that alone keeps B: refused, nothing recorded.
-	assert_equal(0, mm_editor_delete_node(e, mm_find_node(e.document, c"A")))
+	# A is named by the statement that alone declares B: B keeps a bare
+	# declaration in its place.
+	assert_equal(1, mm_editor_delete_node(e, mm_find_node(e.document, c"A")))
+	assert_strings_equal(c"stateDiagram-v2\nB\nstate Comp {\n[*] --> Inner\n}\n", e.document.source)
+	assert_equal(1, mm_editor_undo(e, 0))
 	assert_strings_equal(source, e.document.source)
-	assert_equal(0, e.position)
 	# Nested rename keeps the state inside its composite.
 	assert_equal(1, mm_editor_set_label(e, mm_find_node(e.document, c"Inner"), c"Checking"))
 	int inner = mm_find_node(e.document, c"Inner")

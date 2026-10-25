@@ -253,3 +253,13 @@ void test_usecase_boundary_swimlane_c4_and_architecture_groups():
 	assert_equal(1, mm_editor_move_node(e, api, 300, 200))
 	assert_equal(300, e.scene.nodes[eg_find(e, c"api")].x)
 	mm_editor_free(e)
+
+void test_deleting_a_group_keeps_survivors_declared_by_its_edges():
+	char* source = c"flowchart LR\nsubgraph G[Group]\n  A[Alpha]\nend\nA --> B[Beta]\nB --> C\n"
+	mm_editor* e = mm_editor_new(c"unused.mmd", source)
+	assert_equal(1, mm_editor_delete_node(e, eg_find(e, c"G")))
+	assert_strings_equal(c"flowchart LR\nB[Beta]\nB --> C\n", e.document.source)
+	assert_strings_equal(c"Beta", e.document.nodes[eg_find(e, c"B")].label)
+	assert_equal(1, mm_editor_undo(e, 0))
+	assert_strings_equal(source, e.document.source)
+	mm_editor_free(e)

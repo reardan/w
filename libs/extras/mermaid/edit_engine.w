@@ -655,14 +655,51 @@ int mm_ee_item_end(mm_document* d, int at, int end, char* id):
 	while (pos < end && (d.source[pos] == 32 || d.source[pos] == 9)): pos = pos + 1
 	return pos
 
+# A relation row that also declares survivors keeps their items, one per
+# line at the row's indentation (pass 2: labeled items only; pass 3: every
+# surviving mention, for nodes this row alone declares).
+# 1 when a statement other than unit `skip` that names no removed node
+# mentions id (so a bare re-declaration would be redundant).
+int mm_ee_mentioned_elsewhere(mm_ee_scan* scan, int skip, mm_expect* x, char* id):
+	mm_document* d = scan.d
+	for u in range(scan.units.length):
+		mm_ee_unit* unit = scan.units[u]
+		if (u == skip || unit.header || mm_ee_mentions(d, unit, id) == 0): continue
+		int doomed = 0
+		for i in range(d.nodes.length):
+			if (x.removed[i] && mm_position_identity(d.nodes[i].id) && mm_ee_mentions(d, unit, d.nodes[i].id)): doomed = 1
+		if (doomed == 0): return 1
+	return 0
+
+char* mm_ee_survivors(mm_ee_scan* scan, int u, mm_expect* x, int bare):
+	mm_document* d = scan.d
+	mm_ee_unit* unit = scan.units[u]
+	string_builder* out = string_new()
+	for i in range(d.nodes.length):
+		if (x.removed[i] || mm_position_identity(d.nodes[i].id) == 0): continue
+		if (d.nodes[i].group): continue
+		int at = mm_ee_token(d, unit.code, unit.code_end, d.nodes[i].id, unit.code)
+		if (at < 0): continue
+		int end = mm_ee_item_end(d, at, unit.code_end, d.nodes[i].id)
+		while (end > at && (d.source[end - 1] == 32 || d.source[end - 1] == 9)): end = end - 1
+		if (end <= at + strlen(d.nodes[i].id) && (bare == 0 || mm_ee_mentioned_elsewhere(scan, u, x, d.nodes[i].id))): continue
+		if (out.length > 0):
+			string_append_char(out, 10)
+			string_append_bytes(out, d.source + unit.start, unit.code - unit.start)
+		string_append_bytes(out, d.source + at, end - at)
+	char* result = out.data
+	free(out)
+	return result
+
 # Remove every statement naming a removed node (a removed group's block
 # whole), plus their geometry records, as one candidate; then, for rows that
-# also declare surviving items, only the removed items' spans.
+# also declare surviving items, only the removed items' spans; then relation
+# rows reduced to their surviving declarations.
 int mm_ee_delete_expect(mm_editor* e, mm_expect* x):
 	mm_document* d = e.document
 	mm_ee_scan* scan = mm_ee_scan_new(d)
 	int ok = 0
-	for pass in range(2):
+	for pass in range(4):
 		if (ok): break
 		list[mm_ee_splice*] edits = mm_ee_splices()
 		list[int] taken = new list[int]
@@ -692,16 +729,37 @@ int mm_ee_delete_expect(mm_editor* e, mm_expect* x):
 				continue
 			# Pass 1: rows that only declare items lose just the removed items.
 			int relation = 0
-			if (pass == 1 && unit.opener == 0):
+			if (pass >= 2 && unit.opener == 0 && survivor):
+				list[int] spans = mm_ee_operator_spans(d, unit.code, unit.code_end)
+				int row = spans.length > 0
+				__w_list_free(cast(__w_list*, spans))
+				if (row):
+					char* kept = mm_ee_survivors(scan, u, x, pass == 3)
+					taken[u] = 1
+					if (kept[0] != 0): mm_ee_add(edits, unit.code, unit.code_end, kept)
+					else: mm_ee_add(edits, unit.start, unit.end, c"")
+					free(kept)
+					continue
+			if (pass >= 1 && unit.opener == 0):
 				list[int] spans = mm_ee_operator_spans(d, unit.code, unit.code_end)
 				relation = spans.length > 0
 				__w_list_free(cast(__w_list*, spans))
-			if (pass == 1 && relation == 0 && unit.opener == 0 && (survivor || unit.code_end > unit.code)):
+			if (pass >= 1 && relation == 0 && unit.opener == 0 && (survivor || unit.code_end > unit.code)):
+				# Items only: when they are the whole row, the row goes instead.
+				int covered = 0
+				int first = edits.length
 				for i in range(d.nodes.length):
 					if (x.removed[i] == 0 || mm_position_identity(d.nodes[i].id) == 0): continue
 					int at = mm_ee_token(d, unit.code, unit.code_end, d.nodes[i].id, unit.code)
-					if (at >= 0): mm_ee_add(edits, at, mm_ee_item_end(d, at, unit.code_end, d.nodes[i].id), c"")
-				continue
+					if (at < 0): continue
+					int item_end = mm_ee_item_end(d, at, unit.code_end, d.nodes[i].id)
+					covered = covered + item_end - at
+					mm_ee_add(edits, at, item_end, c"")
+				if (survivor || covered < unit.code_end - unit.code): continue
+				while (edits.length > first):
+					mm_ee_splice* dropped = edits.pop()
+					free(dropped.text)
+					free(dropped)
 			taken[u] = 1
 			mm_ee_add(edits, unit.start, unit.end, c"")
 		mm_ee_drop_records(d, x, edits)
