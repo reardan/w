@@ -686,8 +686,268 @@ void mm_sn_gantt(mm_serializer* out, mm_document* d):
 
 # ---- ZenUML ----
 
+struct mm_sz_open:
+	int call
+	int receiver
+	int sender
+	int reply
+
+struct mm_sz_writer:
+	mm_serializer* out
+	mm_document* d
+	int created
+	int external
+	list[mm_sz_open*] stack
+	int depth
+	# Participants a statement created that still need their declaration.
+	list[int] after
+
+void mm_sz_indent(mm_sz_writer* w):
+	for i in range(w.depth): mm_out(w.out, c"  ")
+
+void mm_sz_declare(mm_sz_writer* w, int index):
+	mm_serializer* out = w.out
+	mm_node* n = w.d.nodes[index]
+	if (index == w.external || mm_serialize_is_id(n.id) == 0): out.failed = 1
+	mm_sz_indent(w)
+	if (n.annotation[0] != 0):
+		if (mm_serialize_is_id(n.annotation) == 0 || isdigit(n.annotation[0])): out.failed = 1
+		mm_out_char(out, '@')
+		mm_out(out, n.annotation)
+		mm_out_char(out, 32)
+	else if (n.shape == 1): mm_out(out, c"@Actor ")
+	else if (n.shape != 0): out.failed = 1
+	mm_out(out, n.id)
+	if (strcmp(n.label, n.id) != 0):
+		char* label = n.label
+		if (label[0] == 0 || (label[0] & 255) <= 32 || (label[strlen(label) - 1] & 255) <= 32): out.failed = 1
+		if (n.annotation[0] == 0 && n.shape == 0 && (index_of(label, c".") >= 0 || index_of(label, c"->") >= 0)): out.failed = 1
+		if (index_of(label, c"{") >= 0 || index_of(label, c"}") >= 0 || index_of(label, c";") >= 0): out.failed = 1
+		mm_out(out, c" as ")
+		mm_out_plain(out, label, 0)
+	mm_out_line(out)
+
+# Creates node index if this statement is its first mention; implicit
+# marks an External sender the statement resolves itself.
+void mm_sz_need(mm_sz_writer* w, int index, int implicit):
+	if (index < 0 || index >= w.d.nodes.length):
+		w.out.failed = 1
+		return
+	if (index < w.created): return
+	if (index != w.created):
+		w.out.failed = 1
+		return
+	w.created = w.created + 1
+	if (index == w.external):
+		if (implicit == 0): w.out.failed = 1
+		return
+	mm_node* n = w.d.nodes[index]
+	if (strcmp(n.label, n.id) != 0 || n.shape != 0 || n.annotation[0] != 0): w.after.push(index)
+
+# Declarations of the participants the last statement created.
+void mm_sz_flush(mm_sz_writer* w):
+	for int index in w.after: mm_sz_declare(w, index)
+	while (w.after.length > 0): w.after.pop()
+
+# The participant that sends an unqualified call: the innermost executing
+# receiver, else External.
+int mm_sz_sender(mm_sz_writer* w):
+	int sender = -1
+	for mm_sz_open* open in w.stack:
+		if (open.call && open.receiver >= 0): sender = open.receiver
+	if (sender < 0): sender = w.external
+	return sender
+
+void mm_sz_comment(mm_sz_writer* w, mm_narrative_event* e):
+	char* text = e.detail
+	if (text[0] == 0): return
+	int start = 0
+	int length = strlen(text)
+	for i in range(length + 1):
+		if (i < length && text[i] != 10): continue
+		char* line = str_copy_range(text, start, i)
+		if (line[0] == 0 || (line[0] & 255) <= 32 || (line[strlen(line) - 1] & 255) <= 32 || index_of(line, c";") >= 0): w.out.failed = 1
+		mm_sz_indent(w)
+		mm_out(w.out, c"// ")
+		mm_out_plain(w.out, line, 0)
+		mm_out_line(w.out)
+		free(line)
+		start = i + 1
+
+int mm_sz_reply_at(mm_document* d, int index, int from, int to):
+	if (index < 0 || index >= d.narrative.length): return 0
+	mm_narrative_event* e = d.narrative[index]
+	return e.kind == MM_N_MESSAGE && e.dashed == 1 && e.arrow == 1 && e.from_node == from && e.to_node == to && e.central == 0
+
+void mm_sz_text(mm_serializer* out, char* text):
+	if (index_of(text, c";") >= 0 || index_of(text, c"\n") >= 0): out.failed = 1
+	mm_out_plain(out, text, 0)
+
 void mm_sn_zenuml(mm_serializer* out, mm_document* d):
-	out.failed = 1
+	mm_out(out, c"zenuml\n")
+	mm_serialize_accessibility(out, d)
+	mm_sz_writer w
+	w.out = out
+	w.d = d
+	w.created = 0
+	w.external = mm_find_node(d, c"__external")
+	w.stack = new list[mm_sz_open*]
+	w.after = new list[int]
+	w.depth = 0
+	if (w.external >= 0 && strcmp(d.nodes[w.external].label, c"External") != 0): out.failed = 1
+	int prelude = d.nodes.length
+	if (w.external >= 0): prelude = w.external
+	while (w.created < prelude && out.failed == 0):
+		mm_sz_declare(&w, w.created)
+		w.created = w.created + 1
+	int i = 0
+	while (i < d.narrative.length && out.failed == 0):
+		mm_narrative_event* e = d.narrative[i]
+		mm_sz_open* top = 0
+		if (w.stack.length > 0): top = w.stack[w.stack.length - 1]
+		if (top != 0 && top.call && top.reply && mm_sz_reply_at(d, i, top.receiver, top.sender)):
+			# The assigned reply of a closing call, then its deactivation.
+			mm_sz_comment(&w, e)
+			top.reply = 0
+			i = i + 1
+			continue
+		if (top != 0 && top.call && e.kind == MM_N_DEACTIVATE && e.from_node == top.receiver):
+			w.depth = w.depth - 1
+			mm_sz_indent(&w)
+			mm_out(out, c"}\n")
+			free(w.stack.pop())
+			i = i + 1
+			continue
+		int k = e.kind
+		if (k == MM_N_END):
+			if (top == 0 || top.call):
+				out.failed = 1
+				break
+			w.depth = w.depth - 1
+			mm_sz_indent(&w)
+			mm_out(out, c"}\n")
+			free(w.stack.pop())
+			i = i + 1
+			continue
+		if (k == MM_N_BLOCK):
+			int known = mm_n_prefix(e.label, c"if(") || mm_n_prefix(e.label, c"if (") || mm_n_prefix(e.label, c"while(") || mm_n_prefix(e.label, c"while (") || mm_n_prefix(e.label, c"for(") || mm_n_prefix(e.label, c"for (") || mm_n_prefix(e.label, c"loop ") || strcmp(e.label, c"opt") == 0 || strcmp(e.label, c"par") == 0 || strcmp(e.label, c"try") == 0
+			if (known == 0 || w.stack.length >= 32): out.failed = 1
+			mm_sz_comment(&w, e)
+			mm_sz_indent(&w)
+			mm_sz_text(out, e.label)
+			mm_out(out, c" {\n")
+			w.stack.push(new mm_sz_open(0, -1, -1, 0))
+			w.depth = w.depth + 1
+			i = i + 1
+			continue
+		if (k == MM_N_BRANCH):
+			if (top == 0 || top.call || (mm_n_prefix(e.label, c"else") == 0 && mm_n_prefix(e.label, c"catch") == 0 && mm_n_prefix(e.label, c"finally") == 0)):
+				out.failed = 1
+				break
+			mm_sz_indent(&w)
+			mm_out(out, c"} ")
+			mm_sz_text(out, e.label)
+			mm_out(out, c" {\n")
+			i = i + 1
+			continue
+		int created = k == MM_N_CREATE
+		if (created):
+			if (e.end != i + 1 || i + 1 >= d.narrative.length):
+				out.failed = 1
+				break
+			i = i + 1
+			e = d.narrative[i]
+			if (e.to_node != d.narrative[i - 1].from_node):
+				out.failed = 1
+				break
+		if (e.kind != MM_N_MESSAGE || e.central != 0 || (e.start != 0 && e.start != 1)):
+			out.failed = 1
+			break
+		int nested = e.end >= 0
+		int is_new = created || (e.dashed == 1 && e.arrow == 1 && nested && mm_n_prefix(e.label, c"new "))
+		if (e.arrow == 3 && e.dashed == 0 && created == 0 && nested == 0):
+			mm_sz_need(&w, e.from_node, 0)
+			mm_sz_need(&w, e.to_node, 0)
+			mm_sz_comment(&w, e)
+			mm_sz_indent(&w)
+			mm_out(out, d.nodes[e.from_node].id)
+			mm_out(out, c"->")
+			mm_out(out, d.nodes[e.to_node].id)
+			mm_out(out, c": ")
+			mm_sz_text(out, e.label)
+			mm_out_line(out)
+			mm_sz_flush(&w)
+			i = i + 1
+			continue
+		if (e.arrow == 1 && e.dashed == 1 && is_new == 0 && nested == 0):
+			mm_sz_need(&w, e.from_node, 0)
+			mm_sz_need(&w, e.to_node, 0)
+			mm_sz_comment(&w, e)
+			mm_sz_indent(&w)
+			mm_out(out, c"@return\n")
+			mm_sz_indent(&w)
+			mm_out(out, d.nodes[e.from_node].id)
+			mm_out(out, c"->")
+			mm_out(out, d.nodes[e.to_node].id)
+			mm_out(out, c": ")
+			mm_sz_text(out, e.label)
+			mm_out_line(out)
+			mm_sz_flush(&w)
+			i = i + 1
+			continue
+		if (e.arrow != 1 || (is_new == 0 && e.dashed != 0) || (is_new && e.dashed != 1)):
+			out.failed = 1
+			break
+		int sender = mm_sz_sender(&w)
+		int explicit = e.from_node != sender
+		if (is_new && explicit): out.failed = 1
+		# Creation order: an explicit sender, else the implicit one, then the receiver.
+		if (explicit): mm_sz_need(&w, e.from_node, 0)
+		else: mm_sz_need(&w, e.from_node, 1)
+		mm_sz_need(&w, e.to_node, 0)
+		int reply = 0
+		if (nested):
+			if (i + 1 >= d.narrative.length || d.narrative[i + 1].kind != MM_N_ACTIVATE || d.narrative[i + 1].from_node != e.to_node):
+				out.failed = 1
+				break
+			reply = is_new == 0 && mm_sz_reply_at(d, e.end, e.to_node, e.from_node)
+			if (reply == 0 && (e.end >= d.narrative.length || d.narrative[e.end].kind != MM_N_DEACTIVATE)): out.failed = 1
+		mm_sz_comment(&w, e)
+		mm_sz_indent(&w)
+		if (reply):
+			char* name = d.narrative[e.end].label
+			if (mm_serialize_is_id(name) == 0): out.failed = 1
+			mm_out(out, name)
+			mm_out(out, c" = ")
+		if (is_new):
+			char* rest = e.label + 4
+			char* name = d.nodes[e.to_node].id
+			if (mm_n_prefix(rest, name) == 0 || (rest[strlen(name)] != 0 && rest[strlen(name)] != '(') || mm_n_method(rest) == 0): out.failed = 1
+			mm_sz_text(out, e.label)
+		else:
+			if (explicit):
+				mm_out(out, d.nodes[e.from_node].id)
+				mm_out(out, c"->")
+			mm_out(out, d.nodes[e.to_node].id)
+			mm_out_char(out, '.')
+			if (mm_n_method(e.label) == 0 || index_of(e.label, c"->") >= 0): out.failed = 1
+			mm_sz_text(out, e.label)
+		if (nested):
+			mm_out(out, c" {")
+			w.stack.push(new mm_sz_open(1, e.to_node, e.from_node, reply))
+			w.depth = w.depth + 1
+			i = i + 1
+		mm_out_line(out)
+		mm_sz_flush(&w)
+		i = i + 1
+	if (w.stack.length != 0): out.failed = 1
+	while (w.created < d.nodes.length && out.failed == 0):
+		if (w.created == w.external): out.failed = 1
+		mm_sz_declare(&w, w.created)
+		w.created = w.created + 1
+	for mm_sz_open* open in w.stack: free(open)
+	__w_list_free(cast(__w_list*, w.stack))
+	__w_list_free(cast(__w_list*, w.after))
 
 void mm_serialize_narrative_body(mm_serializer* out, mm_document* d, int variant):
 	if (d.edges.length != 0 || d.notes.length != 0 || d.data != 0 || d.railroad != 0 || d.style_definitions.length != 0 || strcmp(d.direction, c"TB") != 0): out.failed = 1
