@@ -481,10 +481,12 @@ void ttf_hint_map_remove(ttf_hint_map* m, float32 u):
 # Fix edge e at pos (and, when given, its partner at partner_pos) if the
 # map allows it.
 void ttf_hint_place(ttf_hint_map* m, ttf_hint_edge* e, float32 pos, ttf_hint_edge* partner, float32 partner_pos):
+	int before = m.count
 	if (!ttf_hint_map_add(m, e.y, pos)): return
 	if (partner != 0):
 		if (!ttf_hint_map_add(m, partner.y, partner_pos)):
-			ttf_hint_map_remove(m, e.y)
+			# Undo e's anchor unless another edge had already set it.
+			if (m.count > before): ttf_hint_map_remove(m, e.y)
 			return
 		partner.done = 1
 	e.done = 1
