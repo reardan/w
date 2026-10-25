@@ -3,7 +3,8 @@
 # unlock, replacement, absent try-lock), mutexes and atomics contended
 # across fork-join trees and spawned threads reach exact final counts,
 # release/acquire publication, and each mutex payload is destroyed exactly
-# once. main returns the number of allocations leaked by the measured round.
+# once, including generic record payloads with owned children. main
+# returns the number of allocations leaked by the measured round.
 import lib.memory_debug
 import lib.safe_thread
 
@@ -15,20 +16,20 @@ own int* boxed(int value):
 
 
 # 1 when nobody holds the mutex: the probe guard is dropped on return.
-int unlocked(ref WSafeMutex* mutex):
-	optown[t] WSafeGuard* probe = safe_mutex_try_lock(mutex)
+int unlocked(ref WSafeMutex[int]* mutex):
+	optown[t] WSafeGuard[int]* probe = safe_mutex_try_lock(mutex)
 	if (!probe): return 0
 	return 1
 
 
-int read_locked(ref WSafeMutex* mutex):
-	own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+int read_locked(ref WSafeMutex[int]* mutex):
+	own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 	refmut int* value = safe_guard_value(guard)
 	return *value
 
 
-int add_then_return(ref WSafeMutex* mutex, int stop):
-	own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+int add_then_return(ref WSafeMutex[int]* mutex, int stop):
+	own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 	refmut int* value = safe_guard_value(guard)
 	*value = *value + 1
 	if (stop): return 7
@@ -36,10 +37,10 @@ int add_then_return(ref WSafeMutex* mutex, int stop):
 	return 0
 
 
-int add_in_loop(ref WSafeMutex* mutex):
+int add_in_loop(ref WSafeMutex[int]* mutex):
 	int counted = 0
 	for i in range(10):
-		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+		own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 		refmut int* value = safe_guard_value(guard)
 		*value = *value + 1
 		if (i == 2): continue
@@ -47,13 +48,13 @@ int add_in_loop(ref WSafeMutex* mutex):
 		counted = counted + 1
 	int extra = 0
 	while (extra < 3):
-		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+		own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 		extra = extra + 1
 	return counted
 
 
-int replace_guard(ref WSafeMutex* first, ref WSafeMutex* second):
-	optown[a] WSafeGuard* guard = safe_mutex_lock(first)
+int replace_guard(ref WSafeMutex[int]* first, ref WSafeMutex[int]* second):
+	optown[a] WSafeGuard[int]* guard = safe_mutex_lock(first)
 	if (unlocked(first)): return 1
 	guard = safe_mutex_lock(second)
 	if (unlocked(first) == 0): return 2
@@ -64,17 +65,17 @@ int replace_guard(ref WSafeMutex* first, ref WSafeMutex* second):
 
 
 struct Holder:
-	own[h] WSafeGuard* guard
+	own[h] WSafeGuard[int]* guard
 	int tag
 
 
-own[a] Holder* hold(ref[a] WSafeMutex* mutex, int tag):
+own[a] Holder* hold(ref[a] WSafeMutex[int]* mutex, int tag):
 	return new Holder(safe_mutex_lock(mutex), tag)
 
 
 int exit_paths():
-	own WSafeMutex* mutex = safe_mutex_new(boxed(0))
-	own WSafeMutex* other = safe_mutex_new(boxed(0))
+	own WSafeMutex[int]* mutex = safe_mutex_new(boxed(0))
+	own WSafeMutex[int]* other = safe_mutex_new(boxed(0))
 	if (unlocked(mutex) == 0): return 1
 	if (add_then_return(mutex, 1) != 7): return 2
 	if (unlocked(mutex) == 0): return 3
@@ -84,7 +85,7 @@ int exit_paths():
 	if (unlocked(mutex) == 0): return 7
 	if (replace_guard(mutex, other) != 0): return 8
 	if (unlocked(mutex) == 0): return 9
-	own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+	own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 	if (unlocked(mutex)): return 10
 	safe_guard_unlock(guard)
 	if (unlocked(mutex) == 0): return 11
@@ -98,12 +99,12 @@ int exit_paths():
 	return 0
 
 
-type Contend = fn[](ref WSafeMutex*) -> int
+type Contend = fn[](ref WSafeMutex[int]*) -> int
 
 
-int add_locked(ref WSafeMutex* mutex):
+int add_locked(ref WSafeMutex[int]* mutex):
 	for i in range(2000):
-		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+		own[a] WSafeGuard[int]* guard = safe_mutex_lock(mutex)
 		refmut int* value = safe_guard_value(guard)
 		*value = *value + 1
 	return 1
@@ -111,17 +112,17 @@ int add_locked(ref WSafeMutex* mutex):
 
 # Each level shares the same mutex with two more threads: level n runs
 # 2^n contenders and returns that count.
-int level1(ref WSafeMutex* mutex):
+int level1(ref WSafeMutex[int]* mutex):
 	Contend* entry = add_locked
 	return safe_thread_fork_join(entry, mutex, mutex)
 
 
-int level2(ref WSafeMutex* mutex):
+int level2(ref WSafeMutex[int]* mutex):
 	Contend* entry = level1
 	return safe_thread_fork_join(entry, mutex, mutex)
 
 
-int level3(ref WSafeMutex* mutex):
+int level3(ref WSafeMutex[int]* mutex):
 	Contend* entry = level2
 	return safe_thread_fork_join(entry, mutex, mutex)
 
@@ -174,7 +175,7 @@ int exchange(ref Channel* channel):
 
 
 struct Job:
-	own WSafeMutex* mutex
+	own WSafeMutex[int]* mutex
 	own WSafeAtomic* counter
 
 
@@ -184,7 +185,7 @@ type Worker = fn[](own Job*) -> int
 # A spawned thread owns the job; it runs its own contended tree on both
 # the mutex and the atomic, then destroys them on its way out.
 int run_job(own Job* job):
-	ref WSafeMutex* mutex = job.mutex
+	ref WSafeMutex[int]* mutex = job.mutex
 	ref WSafeAtomic* counter = job.counter
 	if (level2(mutex) != 4): return -1
 	if (atomic_level2(counter) != 4): return -2
@@ -192,8 +193,8 @@ int run_job(own Job* job):
 
 
 int contention():
-	own WSafeMutex* mutex = safe_mutex_new(boxed(0))
-	ref WSafeMutex* shared = mutex
+	own WSafeMutex[int]* mutex = safe_mutex_new(boxed(0))
+	ref WSafeMutex[int]* shared = mutex
 	if (level3(shared) != 8): return 1
 	if (read_locked(shared) != 16000): return 2
 	if (unlocked(shared) == 0): return 3
@@ -222,11 +223,106 @@ int contention():
 	return 0
 
 
+# Generic payloads: a record with owned children behind each mutex.
+struct Entry:
+	int count
+	own int* note
+
+
+struct Ledger:
+	int total
+	own int* last
+	own Entry* entry
+
+
+type LedgerWork = fn[](ref WSafeMutex[Ledger]*) -> int
+
+
+int post_locked(ref WSafeMutex[Ledger]* mutex):
+	for i in range(1000):
+		own[a] WSafeGuard[Ledger]* guard = safe_mutex_lock(mutex)
+		refmut Ledger* ledger = safe_guard_value(guard)
+		ledger.total = ledger.total + 1
+		refmut Entry* entry = ledger.entry
+		entry.count = entry.count + 2
+	return 1
+
+
+int ledger_level1(ref WSafeMutex[Ledger]* mutex):
+	LedgerWork* entry = post_locked
+	return safe_thread_fork_join(entry, mutex, mutex)
+
+
+int ledger_level2(ref WSafeMutex[Ledger]* mutex):
+	LedgerWork* entry = ledger_level1
+	return safe_thread_fork_join(entry, mutex, mutex)
+
+
+# total + count, read under the lock.
+int ledger_read(ref WSafeMutex[Ledger]* mutex):
+	own[a] WSafeGuard[Ledger]* guard = safe_mutex_lock(mutex)
+	refmut Ledger* ledger = safe_guard_value(guard)
+	int total = ledger.total
+	refmut Entry* entry = ledger.entry
+	return total + entry.count
+
+
+int ledger_unlocked(ref WSafeMutex[Ledger]* mutex):
+	optown[t] WSafeGuard[Ledger]* probe = safe_mutex_try_lock(mutex)
+	if (!probe): return 0
+	return 1
+
+
+own WSafeMutex[Ledger]* ledger_new(int start):
+	return safe_mutex_new(new Ledger(start, boxed(start), new Entry(0, boxed(1))))
+
+
+type LedgerOwner = fn[](own WSafeMutex[Ledger]*) -> int
+
+
+# A spawned thread owns a ledger mutex, contends on it and destroys it.
+int run_ledger(own WSafeMutex[Ledger]* mutex):
+	ref WSafeMutex[Ledger]* shared = mutex
+	if (ledger_level2(shared) != 4): return -1
+	return ledger_read(shared)
+
+
+int generic_payloads():
+	own WSafeMutex[Ledger]* mutex = ledger_new(0)
+	ref WSafeMutex[Ledger]* shared = mutex
+	if (ledger_level2(shared) != 4): return 1
+	# 4 x 1000 total increments, 4 x 1000 x 2 count increments.
+	if (ledger_read(shared) != 12000): return 2
+	if (ledger_unlocked(shared) == 0): return 3
+	if (1):
+		own[a] WSafeGuard[Ledger]* held = safe_mutex_lock(shared)
+		if (ledger_unlocked(shared)): return 4
+	if (ledger_unlocked(shared) == 0): return 5
+	# A mutex of mutexes: each level locks independently.
+	own WSafeMutex[WSafeMutex[Ledger]]* outer = safe_mutex_new(ledger_new(3))
+	ref WSafeMutex[WSafeMutex[Ledger]]* nest = outer
+	if (1):
+		own[b] WSafeGuard[WSafeMutex[Ledger]]* guard = safe_mutex_lock(nest)
+		refmut WSafeMutex[Ledger]* inner = safe_guard_value(guard)
+		if (ledger_level1(inner) != 2): return 6
+		if (ledger_read(inner) != 3 + 6000): return 7
+	LedgerOwner* worker = run_ledger
+	optown WSafeThread* thread = safe_thread_spawn(worker, ledger_new(5))
+	if (ledger_level1(shared) != 2): return 8
+	if (!thread): return 9
+	own WSafeThread* started = thread
+	if (safe_thread_join(started) != 5 + 12000): return 10
+	if (ledger_read(shared) != 18000): return 11
+	return 0
+
+
 int exercise():
 	int status = exit_paths()
 	if (status != 0): return status
 	status = contention()
 	if (status != 0): return 20 + status
+	status = generic_payloads()
+	if (status != 0): return 40 + status
 	return 0
 
 

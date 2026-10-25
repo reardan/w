@@ -52,6 +52,16 @@ int type_safe_used
 map[char*, int] type_name_index
 int type_index_indexed
 
+# Same-name chains over the indexed records, for type_lookup_pointer:
+# type_name_next[i] is the next newer record whose name equals record i's
+# (-1 at the chain's tail), and type_name_last[h], read only at a chain
+# head h (the type_name_index entry), is that chain's current tail. Both
+# are filled and invalidated together with type_name_index, so a chain
+# lists every record carrying the name in index order -- the order the
+# linear name-compare scan they replace visited them in.
+list[int] type_name_next
+list[int] type_name_last
+
 
 # Float type indices, set by push_basic_types(). The two "value"
 # pseudo-types follow the constant(3)/function(4) convention: eax already
@@ -311,26 +321,40 @@ int type_push(char* name):
 	return type_push_size(name, 4)
 
 
-int type_lookup(char* name):
-	if (type_name_index == 0): type_name_index = new map[char*, int]
-	if ((type_index_indexed < 0) || (type_index_indexed > type_records.length)):
+# Brings type_name_index and the same-name chains up to date with
+# type_records (see type_name_index above).
+void type_name_index_sync():
+	if ((type_name_index == 0) || (type_index_indexed < 0) || (type_index_indexed > type_records.length)):
 		# Records were discarded (type_table_truncate) or the whole list
 		# replaced (push_basic_types re-run). Indices below the new
 		# length keep their meaning, but entries above it are stale and
 		# there is no cheap way to tell which, so start over.
 		type_name_index = new map[char*, int]
+		type_name_next = new list[int]
+		type_name_last = new list[int]
 		type_index_indexed = 0
 	while (type_index_indexed < type_records.length):
+		int i = type_index_indexed
 		# load_ptr, not *type: the name pointer occupies one pointer slot; a
 		# wider load would drag in the neighboring num_fields field
-		char* pushed = cast(char*, type_record(type_index_indexed).name)
+		char* pushed = cast(char*, type_record(i).name)
+		type_name_next.push(-1)
+		type_name_last.push(i)
 		# First writer wins, so the map answers with the oldest record
 		# carrying the name -- what the linear scan this replaced did by
-		# returning on its first hit.
-		if ((pushed in type_name_index) == 0): type_name_index[pushed] = type_index_indexed
-		type_index_indexed = type_index_indexed + 1
-	if (name in type_name_index): return type_name_index[name]
-	return -1
+		# returning on its first hit. Later records join the chain's tail.
+		int head = type_name_index.get(pushed, -1)
+		if (head >= 0):
+			type_name_next[type_name_last[head]] = i
+			type_name_last[head] = i
+		else: type_name_index[pushed] = i
+		type_index_indexed = i + 1
+
+
+int type_lookup(char* name):
+	type_name_index_sync()
+	# One probe: every stored index is >= 0
+	return type_name_index.get(name, -1)
 
 
 int type_value(int type_index):
@@ -1191,20 +1215,21 @@ int type_get_pointer_level(int type_index):
 	return t.pointer_level
 
 
+# The first (oldest) record named name at pointer_level, or -1. Walks
+# only the records carrying that name, via the same-name chain, instead
+# of comparing every record's name (#714: the linear scan cost 432M Ir of
+# an x86 self-compile and grew with every checked type). The level is
+# read from the live record: type_reset_for_redefinition rewrites it in
+# place.
 int type_lookup_pointer(char* name, int pointer_level):
-	int i = 0
+	type_name_index_sync()
 	int trace = verbosity >= 1
-	while (i < type_records.length):
-		type_rec* t = type_record(i)
+	int i = type_name_index.get(name, -1)
+	while (i >= 0):
+		type_rec* t = cast(type_rec*, type_records[i])
 		if (trace): print_hex(c"type_lookup_pointer t: ", cast(int, t))
-		# Pointer level first, and as a nested test rather than one '&'
-		# chain: '&' does not short-circuit, so the original ran a strcmp
-		# against every record in the table on every call. The level is a
-		# word compare and rejects almost all of them.
-		if (pointer_level == t.pointer_level):
-			if (strcmp(name, t.name) == 0):
-				return i
-		i = i + 1
+		if (pointer_level == t.pointer_level): return i
+		i = type_name_next[i]
 	return -1
 
 

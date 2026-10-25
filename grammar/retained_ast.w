@@ -8,6 +8,21 @@ int retained_file_key(int index):
 	return index
 
 
+# retained_intern(debug_file_name(index)), memoized per registered index
+# in retained_interned_files (compiler/retained_semantic.w). An index not
+# registered yet names the empty string for now, so it is not memoized.
+char* retained_intern_file(int index):
+	char* path = debug_file_name(index)
+	if ((index < 0) || (index >= debug_file_count)): return retained_intern(path)
+	if (retained_interned_files == 0): retained_interned_files = new list[char*]
+	while (retained_interned_files.length <= index): retained_interned_files.push(0)
+	char* interned = retained_interned_files[index]
+	if (interned == 0):
+		interned = retained_intern(path)
+		retained_interned_files[index] = interned
+	return interned
+
+
 # Newest source version recorded for a debug file index, or -1.
 int retained_file_source(int index):
 	retained_init()
@@ -79,7 +94,7 @@ int retained_type_note(int index):
 		type.lifetime_order = cast(int*, retained_arena_alloc(bytes))
 		for i in range(type_contract_slots(&original.fn_param_types[0], original.fn_return_type, original.fn_param_count)): type.lifetime_order[i] = original.fn_lifetime_order[i]
 	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
-	type.file = retained_intern(debug_file_name(original.decl_file_index))
+	type.file = retained_intern_file(original.decl_file_index)
 	type.file_index = retained_file_key(original.decl_file_index)
 	type.source = retained_file_source(original.decl_file_index)
 	type.line = original.decl_line
@@ -196,7 +211,6 @@ int retained_binding_note(int sym, int owner):
 	char* name = table + sym_index_name_start(low)
 	int scope = table[sym + 1]
 	int file_index = load_int(table + sym + 66)
-	char* path = debug_file_name(file_index)
 	int line = load_int(table + sym + 70)
 	int column = load_int(table + sym + 74)
 	int source = retained_file_source(file_index)
@@ -246,7 +260,7 @@ int retained_binding_note(int sym, int owner):
 	retained_binding* binding = new retained_binding
 	binding.key = key
 	binding.name = retained_intern(name)
-	binding.file = retained_intern(path)
+	binding.file = retained_intern_file(file_index)
 	binding.line = line
 	binding.column = column
 	binding.key_line = line

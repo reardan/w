@@ -45,7 +45,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
 	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
-	if (ends_with(path, c"/lib/safe_thread.w")): return c"aece9bfefb701d7fcc9e68d888a0140309d58db2adb028c9bd2973ec65bd6fa4"
+	if (ends_with(path, c"/lib/safe_thread.w")): return c"b86b9eafe4883aac85b154ff43f1482f6738d0632a900add088f57b186e66744"
 	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"
 	if (ends_with(path, c"/lib/signal.w")): return c"0b8751e18c25050a798d5e1e0db3e46d02f2af9ac59afbde2da0bb5e4f8b6f93"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"

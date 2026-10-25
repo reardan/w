@@ -809,6 +809,52 @@ void generic_register_struct():
 	defhash_note(name, c"generic_struct", decl_file_index(), line + 1, column + 1, offset, token_start_offset)
 
 
+# Instantiated generic struct records and their type arguments, for
+# inference against a 'Name[T]*' parameter shape. Speculative parses can
+# roll a record back, so a lookup re-derives the mangled name from the
+# saved arguments before trusting an entry.
+list[int] generic_struct_instance_types
+list[int] generic_struct_instance_defs
+list[int] generic_struct_instance_args
+
+
+void generic_struct_instance_note(int def, int args, int arg_count, int type):
+	if (cast(int, generic_struct_instance_types) == 0):
+		generic_struct_instance_types = new list[int]
+		generic_struct_instance_defs = new list[int]
+		generic_struct_instance_args = new list[int]
+	int saved = cast(int, malloc(generic_max_params * __word_size__))
+	for i in range(arg_count): save_ptr(saved + i * __word_size__, load_ptr(args + i * __word_size__))
+	generic_struct_instance_types.push(type)
+	generic_struct_instance_defs.push(def)
+	generic_struct_instance_args.push(saved)
+
+
+# The type arguments of the current instance record 'type' of generic
+# struct def, stored into out (capacity generic_max_params). Returns the
+# argument count, or -1 when type is not such an instance.
+int generic_struct_instance_lookup(int type, int def, int* out):
+	if ((cast(int, generic_struct_instance_types) == 0) || (type < 0) || (type >= type_count())): return -1
+	int count = generic_def_param_count(def)
+	int i = generic_struct_instance_types.length
+	while (i > 0):
+		i = i - 1
+		if ((generic_struct_instance_types[i] != type) || (generic_struct_instance_defs[i] != def)): continue
+		int args = generic_struct_instance_args[i]
+		int valid = 1
+		for j in range(count):
+			int arg = load_ptr(args + j * __word_size__)
+			if ((arg < 0) || (arg >= type_count())): valid = 0
+		if (valid == 0): continue
+		char* mangled = generic_mangle(generic_def_name(def), args, count)
+		int same = strcmp(mangled, type_get_name(type)) == 0
+		free(mangled)
+		if (same == 0): continue
+		for j in range(count): out[j] = load_ptr(args + j * __word_size__)
+		return count
+	return -1
+
+
 # Instantiate a generic struct: re-parse its field list with the type
 # parameters bound, filling a fresh type-table record under the mangled
 # name. Struct parsing emits no code, so this is safe mid-parse. No
@@ -828,6 +874,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 			field = field.next
 		free(generic_subst_swap(old_subst))
 		generic_tree_types = generic_tree_types + 1
+		generic_struct_instance_note(def, args, arg_count, tree_index)
 		return tree_index
 	char* save = generic_reparse_save()
 	generic_reparse_start(def)
@@ -847,6 +894,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 	retained_source_reparse_close(file)
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
+	generic_struct_instance_note(def, args, arg_count, type_index)
 	return type_index
 
 
@@ -1212,7 +1260,21 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 # bind that parameter before the instantiated signature can check them.
 # -3 means unsupported syntax or a concrete derived type not yet registered.
 int generic_infer_ast_shape(int def, generic_type_ast* node, int* data):
-	if ((node == 0) || (node.application == 1)): return -3
+	if (node == 0): return -3
+	# A struct application over a type parameter is opaque here; the
+	# retained call binds 'Name[T]*' from the argument's instance record.
+	if (node.application == 1):
+		int mentions = 0
+		generic_type_ast* argument = node.first
+		while (argument != 0):
+			int argument_data = 0
+			int argument_kind = generic_infer_ast_shape(def, argument, &argument_data)
+			if (argument_kind == -3): return -3
+			if (argument_kind != -1): mentions = 1
+			argument = argument.next
+		if (mentions == 0): return -3
+		*data = 0
+		return -2
 	int type = -1
 	if (node.first != 0):
 		int first = 0
@@ -1413,6 +1475,50 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		error_type(c"' vs '", stripped, c"'")
 
 
+# Bind the bare type parameters of a 'Name[T, U]*' parameter shape from
+# the argument's generic struct instance record into bound (one word per
+# type parameter, -1 when unbound). Composite arguments of the application
+# stay opaque; the specialized signature checks them. Returns 0 when the
+# argument is not an instance of Name or a binding disagrees with an
+# earlier argument.
+int generic_infer_bind_application(int def, generic_type_ast* node, int got, char* bound):
+	int shape_def = generic_def_lookup(node.name, 1)
+	if (shape_def < 0): return 0
+	int inferred = got
+	for level in range(node.stars):
+		if (type_safe_kind(inferred)): inferred = type_safe_target(inferred)
+		if (type_get_pointer_level(inferred) == 0): return 0
+		inferred = type_lookup_previous_pointer(inferred)
+		if (inferred < 0): return 0
+	if (type_safe_kind(inferred)): return 0
+	int[8] arguments
+	int count = generic_struct_instance_lookup(type_unqualified(inferred), shape_def, &arguments[0])
+	if (count < 0): return 0
+	generic_type_ast* argument = node.first
+	int i = 0
+	while ((argument != 0) && (i < count)):
+		if ((argument.application == 0) && (argument.first == 0) && (argument.stars == 0) && (argument.safety == 0)):
+			for k in range(generic_def_param_count(def)):
+				if (strcmp(argument.name, generic_def_param_name(def, k)) == 0):
+					int existing = load_ptr(bound + k * __word_size__)
+					if ((existing >= 0) && (existing != arguments[i])): return 0
+					save_ptr(bound + k * __word_size__, arguments[i])
+		argument = argument.next
+		i = i + 1
+	return 1
+
+
+# The captured header's parameter at index, or 0.
+generic_type_ast* generic_signature_parameter(int def, int index):
+	generic_signature_ast* signature = generic_defs[def].signature_ast
+	if (signature == 0): return 0
+	generic_type_ast* parameter = signature.parameters
+	while ((parameter != 0) && (index > 0)):
+		parameter = parameter.next
+		index = index - 1
+	return parameter
+
+
 # A concrete (non-generic) parameter shape: the same check and coercion
 # an ordinary call argument gets (check_call_argument's message).
 void generic_infer_check_concrete(int def, int param_type, int arg_index, int arg_type):
@@ -1464,7 +1570,11 @@ int generic_call_infer_expr(int def):
 				generic_infer_bind(def, bound, shape_kind, shape_data, arg_type, passed)
 			else if (shape_kind == -1):
 				generic_infer_check_concrete(def, shape_data, passed, arg_type)
-			else: needs_check = 1
+			else:
+				needs_check = 1
+				generic_type_ast* application = generic_signature_parameter(def, passed)
+				if ((shape_kind == -2) && (application != 0) && (application.application == 1)):
+					generic_infer_bind_application(def, application, arg_type, bound)
 			if (passed < generic_infer_max_args):
 				save_ptr(arg_records + passed * 2 * __word_size__, arg_type)
 				save_ptr(arg_records + __word_size__ + passed * 2 * __word_size__, needs_check)

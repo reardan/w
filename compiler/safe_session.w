@@ -648,11 +648,18 @@ void safe_session_explain(char* failed_file, int failed_line):
 
 # Debugger stops (debugger/eval.w): the locals of one analyzed function
 # that are definitely initialized -- and, for references, still live -- at
-# a source line, by name and declaration line.
+# a source line, by name and declaration line. An outer frame (call mode)
+# is suspended inside a call its statement makes: a local is usable only
+# when it is held both before and after that statement, and a local the
+# statement lends exclusively is reported as lent instead.
 int safe_session_probe_function = -1
 int safe_session_probe_line
+int safe_session_probe_call
 list[char*] safe_session_probe_names
 list[int] safe_session_probe_lines
+list[int] safe_session_probe_states   # 1 usable, 2 lent exclusively to the call
+# Roots (a checker set) that the re-run call statement lends exclusively.
+int safe_session_lent = -1
 
 
 int safe_session_node_line(int id):
@@ -661,36 +668,81 @@ int safe_session_node_line(int id):
 	return n.line
 
 
+# safe_call_argument_hook while a call statement is re-run: collect the
+# roots and reborrow parents of every exclusive argument.
+void safe_session_call_argument(int want, int root, int via, safe_borrowed* argument):
+	int kind = safe_borrow_kind(want)
+	if (kind == 3):
+		safe_session_lent = safe_set_union(safe_session_lent, safe_set_union(root, via))
+	else if ((kind == 1) && safe_owned_borrowed(want)):
+		safe_session_lent = safe_set_union(safe_session_lent, safe_exclusive_roots(want, argument))
+
+
+# 1 when every root a borrow local i was taken from is held in state.
+int safe_session_roots_held(int i, char* state):
+	for root in range(safe_locals.length):
+		if (safe_set_has(safe_origin[i], root) && ((state[root] & 7) != 2)): return 0
+	return 1
+
+
 # The flow states at the first statement at or after the probed line (or
-# where the function's outer block ends) decide which locals are usable.
+# where the function's outer block ends) decide which locals are usable; in
+# call mode, the states before and after the last statement starting at or
+# before the call's line.
 void safe_session_probe_capture(int function):
 	int best = -1
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
 		if ((f.reached == 0) || (f.action == 3) || (f.node == function)): continue
 		int line = safe_session_node_line(f.node)
-		if ((line >= safe_session_probe_line) && ((best < 0) || (line < best))): best = line
-	list[safe_flow*] chosen = new list[safe_flow*]
+		if (safe_session_probe_call):
+			if ((line <= safe_session_probe_line) && (line > best)): best = line
+		else if ((line >= safe_session_probe_line) && ((best < 0) || (line < best))): best = line
+	list[int] chosen = new list[int]
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
 		if ((f.reached == 0) || (f.node == function)): continue
 		if (best >= 0):
-			if ((f.action != 3) && (safe_session_node_line(f.node) == best)): chosen.push(f)
-		else if ((f.action == 3) && (retained_record_at(f.node).parent == function)): chosen.push(f)
+			if ((f.action != 3) && (safe_session_node_line(f.node) == best)): chosen.push(i)
+		else if ((f.action == 3) && (safe_session_probe_call == 0) && (retained_record_at(f.node).parent == function)): chosen.push(i)
+	# Call mode: re-run each chosen statement (already validated, so it
+	# reports nothing) for its out-state and the roots it lends exclusively.
+	list[char*] after = new list[char*]
+	safe_session_lent = -1
+	if (safe_session_probe_call):
+		safe_call_argument_hook = cast(int, safe_session_call_argument)
+		for k in range(chosen.length):
+			char* state = safe_zero(safe_locals.length, 1)
+			for j in range(safe_locals.length): state[j] = safe_graph[chosen[k]].state[j]
+			safe_transfer(chosen[k], state)
+			after.push(state)
+		safe_call_argument_hook = 0
 	for i in range(safe_real_locals):
 		if (chosen.length == 0): break
 		# A borrow is only known to be valid while the program still uses
-		# it: past its last use its root may already be moved or dropped.
+		# it: past its last use its root may already be moved or dropped. A
+		# known-absent optional borrow holds no loan.
 		int borrow = safe_local_kind(i) >= 2
-		int alive = 1
+		int optional = safe_optional(retained_bindings[safe_locals[i]].type)
+		int status = 1
 		for k in range(chosen.length):
-			if ((chosen[k].state[i] & 7) != 2): alive = 0
-			if (borrow && (chosen[k].live[i] == 0)): alive = 0
-		if (alive):
+			safe_flow* f = safe_graph[chosen[k]]
+			if ((f.state[i] & 7) != 2): status = 0
+			if (borrow && (f.live[i] == 0) && ((optional == 0) || ((f.state[i] & 48) != 16))): status = 0
+			if (safe_session_probe_call):
+				if ((after[k][i] & 7) != 2): status = 0
+				if (borrow && ((safe_session_roots_held(i, f.state) == 0) || (safe_session_roots_held(i, after[k]) == 0))): status = 0
+		if (status && safe_session_probe_call):
+			if (safe_set_overlap(safe_session_lent, i) || (borrow && safe_set_overlap(safe_session_lent, safe_origin[i]))): status = 2
+		if (status):
 			retained_binding* local = retained_bindings[safe_locals[i]]
 			safe_session_probe_names.push(local.name)
 			safe_session_probe_lines.push(local.line)
+			safe_session_probe_states.push(status)
+	for k in range(after.length): free(after[k])
+	after.free()
 	chosen.free()
+	safe_session_lent = -1
 
 
 # The retained function named name, in a source whose path matches path,
@@ -713,30 +765,36 @@ int safe_session_find_function(char* name, char* path, int line):
 
 
 # Analyze the program again and record which locals of function are usable
-# at line. Errors unwind like any compile error of the evaluated entry.
-void safe_session_probe(int function, int line):
+# at line; call is 1 for an outer frame suspended inside a call on that
+# line. Errors unwind like any compile error of the evaluated entry.
+void safe_session_probe(int function, int line, int call):
 	safe_session_init()
 	if (safe_session_probe_names == 0):
 		safe_session_probe_names = new list[char*]
 		safe_session_probe_lines = new list[int]
+		safe_session_probe_states = new list[int]
 	safe_session_probe_names.clear()
 	safe_session_probe_lines.clear()
+	safe_session_probe_states.clear()
 	if (function < 0): return
 	safe_session_probe_function = function
 	safe_session_probe_line = line
+	safe_session_probe_call = call
 	safe_session_invalidate()
 	safe_session_token = token
 	safe_check_finish()
 	safe_session_token = 0
 	safe_session_probe_function = -1
+	safe_session_probe_call = 0
 
 
-# 1 when the probe found local name (declared at line; any line when
-# negative) usable at the stop.
-int safe_session_probe_alive(char* name, int line):
+# What the probe found for local name (declared at line; any line when
+# negative): 1 usable at the stop, 2 lent exclusively to the call an outer
+# frame is suspended in, 0 neither.
+int safe_session_probe_state(char* name, int line):
 	if (safe_session_probe_names == 0): return 0
 	for i in range(safe_session_probe_names.length):
-		if ((strcmp(safe_session_probe_names[i], name) == 0) && ((line < 0) || (safe_session_probe_lines[i] == line))): return 1
+		if ((strcmp(safe_session_probe_names[i], name) == 0) && ((line < 0) || (safe_session_probe_lines[i] == line))): return safe_session_probe_states[i]
 	return 0
 
 
