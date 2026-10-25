@@ -261,9 +261,10 @@ int mm_ee_append_at(mm_document* d):
 
 char* mm_ee_line(mm_document* d, char* statement):
 	string_builder* text = string_new()
-	if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): string_append_char(text, 10)
+	if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): mm_append_newline(text, d)
 	string_append(text, statement)
-	string_append_char(text, 10)
+	mm_strip_newline(text)
+	mm_append_newline(text, d)
 	char* result = text.data
 	free(text)
 	return result
@@ -686,7 +687,7 @@ char* mm_ee_survivors(mm_ee_scan* scan, int u, mm_expect* x, int bare):
 		while (end > at && (d.source[end - 1] == 32 || d.source[end - 1] == 9)): end = end - 1
 		if (end <= at + strlen(d.nodes[i].id) && (bare == 0 || mm_ee_mentioned_elsewhere(scan, u, x, d.nodes[i].id))): continue
 		if (out.length > 0):
-			string_append_char(out, 10)
+			mm_append_newline(out, d)
 			string_append_bytes(out, d.source + unit.start, unit.code - unit.start)
 		string_append_bytes(out, d.source + at, end - at)
 	char* result = out.data
@@ -861,7 +862,7 @@ int mm_ee_insert_in_group(mm_editor* e, int group, char* statement, mm_expect* x
 				line = string_from(inner_indent)
 				free(inner_indent)
 		string_append(line, statement)
-		string_append_char(line, 10)
+		mm_append_newline(line, d)
 		ok = mm_ee_attempt_splice(e, u.closer, u.closer, line.data, x)
 		string_free(line)
 		free(indent)
@@ -1048,12 +1049,12 @@ int mm_ee_reparent(mm_editor* e, int index, int group):
 					if (source_block >= 0 && mm_ee_unit_within(scan, u, source_block) == 0): continue
 					if (source_block < 0 && unit.parent >= 0): continue
 					string_append_bytes(moved, d.source + unit.code, unit.code_end - unit.code)
-					string_append_char(moved, 10)
+					mm_append_newline(moved, d)
 					mm_ee_add(edits, unit.start, unit.end, c"")
 			else:
 				char* mention = mm_ee_mention_statement(d, index)
 				string_append(moved, mention)
-				string_append_char(moved, 10)
+				mm_append_newline(moved, d)
 				free(mention)
 			if (moved.length > 0):
 				string_builder* text = string_new()
@@ -1069,7 +1070,12 @@ int mm_ee_reparent(mm_editor* e, int index, int group):
 					free(indent)
 					indent = strclone(deeper.data)
 					string_free(deeper)
-				else if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): string_append_char(text, 10)
+					# Prefer the indentation of a statement already inside the block.
+					for mm_ee_unit* inner in scan.units:
+						if (inner.parent == target):
+							free(indent)
+							indent = mm_ee_indent(d, inner.code)
+				else if (d.source_end > d.source_start && d.source[d.source_end - 1] != 10): mm_append_newline(text, d)
 				int line = 0
 				for i in range(moved.length):
 					if (line == 0): string_append(text, indent)
@@ -1349,7 +1355,7 @@ int mm_ee_compartment_insert(mm_editor* e, int index, char* line, char* fallback
 				text = string_from(inner_indent)
 				free(inner_indent)
 		string_append(text, line)
-		string_append_char(text, 10)
+		mm_append_newline(text, d)
 		ok = mm_ee_attempt_splice(e, unit.closer, unit.closer, text.data, x)
 		string_free(text)
 		free(indent)

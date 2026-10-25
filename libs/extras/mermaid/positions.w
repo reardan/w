@@ -76,9 +76,10 @@ int mm_slot_movable(mm_document* d, int index):
 	if (d.kind == MM_MINDMAP): return n.parent >= 0
 	return 1
 
-# Block leaves resize by column span.
+# Named block leaves and composites resize by column span (`id:N`,
+# `block:id:N`).
 int mm_slot_resizable(mm_document* d, int index):
-	return d.kind == MM_BLOCK && mm_slot_movable(d, index) && d.nodes[index].group == 0
+	return d.kind == MM_BLOCK && mm_slot_movable(d, index)
 
 int mm_position_space(int c):
 	return c == 32 || c == 9 || c == 13

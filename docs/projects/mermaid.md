@@ -111,11 +111,11 @@ would still declare the node there (an edge written inside a subgraph).
 | Use case | actors, use cases, boundaries | `systemBoundary` move, rename, delete, into/out, add in | in place | its statements | `ID(label)`, `A --> B` | label (`-- "label" -->`); kind `-->`, `---`, `..>` |
 | Architecture | services, junctions, groups | group move, rename, delete, ungroup, into/out (` in group`), add in | in place | its statements | `service ID(server)[label]`, `A:R --> L:B` | none (edit sides in source) |
 | Agentflow | nodes and `flow` containers | `flow` move, rename, delete, ungroup, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; kind `-->`, `---`, `-.->`, `-.-`, `==>`, `--x` |
-| Block | cell order (a move swaps source items); resize sets the column span `ID:N` | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| Block | cell order (a move swaps source items; a selection moves as a run); resize sets the column span `ID:N` or `block:ID:N` | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
 | C4 | cards and boundaries | boundary move, rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
 | Swimlane | steps and lanes | lane move, rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
-| Mindmap / treeView | sibling order; a drop on another node moves the branch under it | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
-| Kanban | card order in a column; cards move between columns (drop, Left/Right, **Previous**/**Next**) | n/a | in place (metadata kept) | the card or column with its cards | **Add child** (a card), **Add sibling** | **Up** / **Down** reorder |
+| Mindmap / treeView | sibling order; a drop on another node moves the branch under it; a selection moves together | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+| Kanban | card order in a column; cards move between columns (drop, Left/Right, **Previous**/**Next**); a selection moves together | n/a | in place (metadata kept) | the card or column with its cards | **Add child** (a card), **Add sibling** | **Up** / **Down** reorder |
 
 C4 and swimlane geometry is stored like a flowchart's: the family's own
 layout runs first, then the saved `@w-position` and `@w-size` records
@@ -127,11 +127,30 @@ dropped on another cell of its composite takes that cell's place (adjacent
 items swap one validated splice at a time; a composite `block:id ... end`
 moves as whole lines), arrows move it one cell (Up/Down by a row of the
 composite's `columns`), and the resize handle or Alt+Left/Right sets its
-column span (`ID:N`, which must fit the columns). Outline nodes move among
+column span (`ID:N`, or `block:ID:N` for a named composite, which must fit
+the parent's columns; 1 drops the suffix). Outline nodes move among
 their siblings with the arrows or a drop on a sibling; a drop on another
 node moves the branch under it as its last child, re-indented under that
 node. A kanban card dropped on a column becomes its last card, dropped on a
 card lands before it, and Left/Right move it to the neighbouring column.
+
+A multi-selection in these families moves as one validated transaction (one
+undo step; any refused step rolls the whole move back), and the moved items
+keep their source order. An item inside another selected item (a card of a
+selected column, a branch under a selected branch, a composite's member)
+rides along with it. Selected siblings dropped on a sibling move as one
+contiguous run that takes the target's place: after the target when it
+follows the dragged item, before it otherwise (block cells of one
+composite, outline siblings, cards of one column, kanban columns). Outline
+items dropped on a node of another branch become that node's last children;
+kanban cards dropped on another column become its last cards, and dropped on
+a card of another column land before that card. Arrow keys shift every
+selected sibling by one slot (a block row with Up/Down), keeping the gaps
+between them, and are refused at the edge; Left/Right move the selected cards
+of one column to the neighbouring column. Block cells of different
+composites, a kanban column selected with cards of another column, and a drop
+on a selected item (or inside one) are refused. The selection follows the
+moved items.
 
 GitGraph, event modeling and the other families stay source-edited on
 purpose: a gitGraph is a command script whose commits, branches and lanes
@@ -603,6 +622,12 @@ mm_document_free(doc)
   `mm_editor_er_cardinality`, `mm_editor_attribute_*`, `mm_editor_member_*`).
 - `edit_engine`: the generic validated splice engine those commands fall back to.
 - `edit_outline`: mindmap/treeView rename, delete, add child/sibling and reorder.
+- `edit_slots`: source-order moves (block cells, outline siblings and branches,
+  kanban cards: `mm_editor_slot_step`, `mm_editor_slot_move`,
+  `mm_editor_slot_column`), their multi-selection forms
+  (`mm_editor_slot_move_set`, `mm_editor_slot_step_set`,
+  `mm_editor_slot_column_set`; moved indices in `mm_slot_moved_set`) and block
+  column spans (`mm_editor_block_span`).
 - `positions`: bounded source position and size hints (`@w-position`, `@w-size`)
   applied after layout, outermost group first, before rendering connections.
 - `canvas`: display-independent selection (single, multi-selection, rubber band),

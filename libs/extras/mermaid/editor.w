@@ -72,6 +72,24 @@ mm_editor* mm_editor_open(char* path):
 	free(source)
 	return e
 
+# 1 when the selected diagram's lines end with CR LF (its first line break
+# decides), so lines the editor inserts match the document's endings.
+int mm_crlf(mm_document* d):
+	for i in range(d.source_start, d.source_end):
+		if (d.source[i] == 10): return i > d.source_start && d.source[i - 1] == 13
+	return 0
+
+# Append one line ending in the document's style.
+void mm_append_newline(string_builder* s, mm_document* d):
+	if (mm_crlf(d)): string_append_char(s, 13)
+	string_append_char(s, 10)
+
+# Drop one trailing line ending (LF or CR LF).
+void mm_strip_newline(string_builder* s):
+	if (s.length > 0 && s.data[s.length - 1] == 10): s.length = s.length - 1
+	if (s.length > 0 && s.data[s.length - 1] == 13): s.length = s.length - 1
+	s.data[s.length] = 0
+
 int mm_editor_dirty(mm_editor* e):
 	return strcmp(e.document.source, e.saved_source) != 0
 
@@ -93,6 +111,15 @@ int mm_editor_change(mm_editor* e, char* source):
 	while (e.history.length > e.position + 1):
 		free(e.history[e.history.length - 1])
 		e.history.pop()
+	# Inside a transaction only the state at its begin and the latest one
+	# are kept, so a long command (a multi-selection reorder of many
+	# validated steps) can neither push the begin state out of the bounded
+	# history nor exhaust it.
+	if (e.transaction >= 0 && e.position == e.transaction + 1):
+		free(e.history[e.position])
+		e.history[e.position] = copy
+		mm_editor_load(e, copy)
+		return 1
 	# At most 32 MiB source snapshots. A dropped oldest state is freed.
 	if (e.history.length >= 32):
 		free(e.history[0])
@@ -247,9 +274,13 @@ int mm_editor_append(mm_editor* e, char* statement):
 	if (e.document.error != 0 || statement == 0): return 0
 	string_builder* source = string_new()
 	string_append_bytes(source, e.document.source, e.document.source_end)
-	if (source.length > 0 && source.data[source.length - 1] != 10): string_append_char(source, 10)
-	string_append(source, statement)
-	string_append_char(source, 10)
+	if (source.length > 0 && source.data[source.length - 1] != 10): mm_append_newline(source, e.document)
+	# Serialized statements carry their own LF; the document's ending replaces it.
+	string_builder* line = string_from(statement)
+	mm_strip_newline(line)
+	string_append(source, line.data)
+	string_free(line)
+	mm_append_newline(source, e.document)
 	string_append_bytes(source, e.document.source + e.document.source_end, e.document.length - e.document.source_end)
 	mm_document* next = mm_parse_selected(source.data, source.length, e.selected)
 	int ok = next.error == 0
