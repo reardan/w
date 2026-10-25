@@ -260,3 +260,13 @@ These are within run-to-run noise at this path difference.
 decision, as discussed above. A refresh no longer depends much on the
 checkout path, but run-to-run hash-seed noise of up to about 0.6% means a
 refresh should take the median of several runs.
+
+## Baseline refreshed (2026-10-25)
+
+`tests/bench/baseline.txt` was refreshed after the follow-up above, at the
+project owner's request, accepting the remaining #648 retention cost. It was
+measured from the short checkout path `/home/claude/w`: `self` x86
+10,904,885 → 16,657,210 kIr and x64 6,112,144 → 9,276,943 kIr. Every
+application row was copied in the same commit; their kIr is equal or lower.
+Further retention work should now show up as a `self` improvement against
+this baseline.

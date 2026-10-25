@@ -3,10 +3,12 @@
 # 'repl' entries see the checked locals the checker proves usable there as
 # read-only shared views: owners and references as 'ref T*', optional ones
 # as 'optref T*' (presence check still required), inline slices as
-# 'ref T[]', in the innermost frame and in outer frames suspended in a
-# call. Moved owners (including those moved into the call in progress),
+# 'ref T[]', borrowed records whose fields are shared as 'ref[..] R' and
+# owners carrying borrowed groups as 'ref R*' (labels dropped), in the
+# innermost frame and in outer frames suspended in a call. Moved owners (including those moved into the call in progress),
 # borrows past their last use, locals lent exclusively to the call in
-# progress, labeled aggregates, writes through views, moves out of a view
+# progress, borrowed records with exclusive fields, writes through views,
+# moves out of a view
 # and raw 'set' writes are rejected explicitly. The 32-bit test drives a
 # 32-bit wdbg and the x64 twin a 64-bit one.
 import lib.testing
@@ -121,6 +123,8 @@ void test_checked_views_of_frames_optionals_and_slices():
 	out.push(c"= 40")
 	out.push(c"= 5")
 	out.push(c"= 1030")
+	# h is a lifetime-labeled borrowed record, viewed as 'ref[a] Holder'.
+	out.push(c"= 5")
 	out.push(c"bump(w)")
 	out.push(c"= 20")
 	out.push(c"= 52")
@@ -134,12 +138,45 @@ void test_checked_views_of_frames_optionals_and_slices():
 	list[char*] err = new list[char*]
 	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
 	err.push(c"optional reference requires a presence check")
-	err.push(c"only checked owners, references, optional references and slices without lifetime labels can be viewed at a debugger stop")
 	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
 	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
 	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
 	err.push(c"optional reference requires a presence check")
 	err.push(c"write through a shared reference")
+	safe_dbg_expect_order(r.stderr_text, err)
+	out.free()
+	err.free()
+	process_result_free(r)
+
+
+# Borrowed records, owners carrying borrowed groups and labeled locals
+# (tests/safe_session_debugger_aggregates_fixture.w): viewable while live,
+# hidden past their last use, and exclusive records never.
+void test_checked_views_of_aggregates():
+	string_builder* in = string_new()
+	string_append(in, c"p h.tag + holder_sum(h)\np pair_sum(pair)\np stored_sum(stored)\np r.value\np e.amount\nrepl\nh.tag = 9\n:end\nset h 0\nc\n")
+	# Past the last uses of h, pair and stored, after p was mutated.
+	string_append(in, c"p h.tag\np stored_sum(stored)\np pair_sum(pair)\nc\n")
+	# A record parameter of the innermost frame.
+	string_append(in, c"p h.tag + holder_sum(h)\nc\n")
+	process_result* r = safe_dbg_run_fixture(c"tests/safe_session_debugger_aggregates_fixture.w", in.data)
+	string_free(in)
+	assert_equal(0, r.status)
+	list[char*] out = new list[char*]
+	out.push(c"= 16")
+	out.push(c"= 30")
+	out.push(c"= 120")
+	out.push(c"= 20")
+	out.push(c"set: checked variables cannot be written by the debugger")
+	out.push(c"= 32")
+	out.push(c"debuggee main returned 0")
+	safe_dbg_expect_order(r.stdout_text, out)
+	list[char*] err = new list[char*]
+	err.push(c"borrowed records with exclusive fields cannot be viewed read-only at a debugger stop")
+	err.push(c"write through a shared reference")
+	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
+	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
+	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
 	safe_dbg_expect_order(r.stderr_text, err)
 	out.free()
 	err.free()

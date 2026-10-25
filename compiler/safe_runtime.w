@@ -45,8 +45,8 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
 	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
-	if (ends_with(path, c"/lib/safe_thread.w")): return c"b86b9eafe4883aac85b154ff43f1482f6738d0632a900add088f57b186e66744"
-	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"
+	if (ends_with(path, c"/lib/safe_thread.w")): return c"a064d476124a979d8d340b57a08dc64b7c62179c17466078baa7f5cfbcc591fa"
+	if (ends_with(path, c"/lib/thread.w")): return c"15a7911fab851ab513845f60445385845a8a67ec095ed215e245d6a72b222fd8"
 	# The handler thunk also passes SysV registers (wllvm); its page and
 	# allocation are unchanged.
 	if (ends_with(path, c"/lib/signal.w")): return c"62ee27c31dbac1e17f4390b2824ca74e0279d9b039af6be8b005b67b2e148d57"

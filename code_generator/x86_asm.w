@@ -127,19 +127,33 @@ void define_asm_functions():
 	# The mapping has no guard page of its own: lib/thread.w's
 	# thread_entry mprotects one above the thread_local block and the
 	# signal stack at the bottom (issue #526).
+	# Failure returns -errno with nothing left mapped: an mmap error
+	# (an unsigned value above -4096) returns before the entry slot is
+	# written through it, and a failed clone munmaps the fresh stack.
 	sym_define_declare_global_function(c"thread_create")
-	x86_asm(c"call .+0x24")   # stack_create, emitted immediately after this stub
+	int stack_call = codepos
+	emit(5, c"\xe8....") # patched once the stub is emitted
+	x86_asm(c"cmp eax,-0x1000")
+	int mmap_failed = asm_text_jump8_begin(ASM_ARCH_X86, c"ja .+2")   # mmap error: return it
 	x86_asm(c"lea ecx,[eax+0x3ffff0]; mov edx,[esp+4]; mov [ecx],edx")
 	x86_asm(c"mov ebx,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
 	x86_asm(c"mov eax,0x78; int 0x80; test eax,eax")
-	x86_asm(c"jne .+4")   # parent: keep ebp
+	x86_asm(c"jne .+5")   # parent: keep ebp, skip the child's ret
 	x86_asm(c"xor ebp,ebp")   # child: the frame-pointer chain ends here
+	x86_asm(c"ret")
+	int started = asm_text_jump8_begin(ASM_ARCH_X86, c"jg .+2")   # parent, tid > 0
+	# clone failed: int 0x80 preserved ecx (the stack top, base + 0x3ffff0)
+	x86_asm(c"push eax; lea ebx,[ecx-0x3ffff0]; mov ecx,0x400000")
+	x86_asm(c"mov eax,0x5b; int 0x80; pop eax")   # munmap, then return -errno
+	asm_text_jump8_end(mmap_failed)
+	asm_text_jump8_end(started)
 	x86_asm(c"ret")
 
 	# stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	# The offset argument travels in ebp, the caller's frame pointer:
 	# saved and restored around the syscall, like esi/edi (the flags and
 	# fd arguments), which may hold the caller's promoted locals.
+	save_int32(code + stack_call + 1, codepos - stack_call - 5)
 	sym_define_declare_global_function(c"stack_create")
 	x86_asm(c"push ebp")   # the offset argument borrows W's frame pointer
 	x86_asm(c"push esi; push edi")
