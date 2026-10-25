@@ -217,14 +217,17 @@ int main(int argc, int argv):
 	retained_query_mode = 1
 	# Use the production analysis path and preserve its diagnostics. No LLVM
 	# output is opened until both semantic analysis and subset validation pass.
-	char* args = cast(char*, malloc(5 * __word_size__))
+	# Functions with asm blocks compile their portable W bodies (--no-asm),
+	# which grammar/asm_function.w requires to be equivalent.
+	char* args = cast(char*, malloc(6 * __word_size__))
 	save_ptr(args, cast(int, compiler_argv0))
 	llvm_arm64 = strcmp(arch, c"arm64") == 0
 	save_ptr(args + __word_size__, cast(int, arch))
 	save_ptr(args + 2 * __word_size__, cast(int, c"--quiet"))
 	save_ptr(args + 3 * __word_size__, cast(int, c"--ast-required"))
-	save_ptr(args + 4 * __word_size__, cast(int, input))
-	int status = link_impl(5, cast(int, args), 1, 1)
+	save_ptr(args + 4 * __word_size__, cast(int, c"--no-asm"))
+	save_ptr(args + 5 * __word_size__, cast(int, input))
+	int status = link_impl(6, cast(int, args), 1, 1)
 	free(args)
 	if (status == 0):
 		if (llvm_emit(input, ir) == 0): status = 1

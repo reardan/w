@@ -304,6 +304,12 @@ point, and the output file is left untouched.
   canonical type, so self-referencing messages resolve), then calls
   `__w_json_encode`/`__w_json_decode` or `pb_to_bytes`/`pb_from_bytes`/
   `pb_from_data`.
+- Operator overloads (`a + b` on a record value calls the resolved
+  `op$+$T$U` function, a record result through a caller buffer), ndarray
+  comma indexing (`m[i, j]` reads through `T_at<n>`, writes and `op=`
+  through `T_set<n>`, every operand evaluated once), and functions with
+  `asm` blocks, which wllvm compiles from their portable W bodies
+  (`--no-asm`; `grammar/asm_function.w` requires the two to agree).
 - GPU host code: `launch k[grid, block](args)` calls
   `__w_gpu_launch_raw` and `gpu for` calls `__w_gpu_launch` with the
   native argument cells (last argument first) and kernel names. The
@@ -496,6 +502,8 @@ rejected input. When `clang` is on `PATH`, it also builds
 (methods, `new T[n]`, `?`, `var`, variadics, a generic iterable,
 `raw_asm`, an alias statement and GPU-free launch stand-ins),
 `tests/wllvm_codec_fixture.w` (json and protobuf round trips),
+`tests/wllvm_operator_fixture.w` (operator overloads, ndarray indexing,
+asm functions' portable bodies),
 `tests/wllvm_generic_fixture.w` (generics and checked owners),
 `tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
 variadic, float and narrow-integer signatures, an alias, an imported
