@@ -1466,8 +1466,9 @@ supply both type arguments (`safe_thread_spawn[Worker, Job](run_job, job)`).
   `entry` exactly once, and `entry`'s parameter cleanup destroys it on the
   child.
 - **Failure** returns an absent handle. This happens when 64 checked threads
-  are already live (spawned but not joined) or when `clone` fails. The
-  payload never reached a thread; the runtime destroys it before returning.
+  are already live (spawned but not joined) or when the thread's stack
+  `mmap` or its `clone` fails. The payload never reached a thread; the
+  runtime destroys it before returning (`tests/thread_spawn_failure_test.w`).
   The handle must be tested before it can be joined.
 - **Join** (`safe_thread_join(own WSafeThread*)`) consumes the handle, waits for
   the child to finish and returns `entry`'s result.
@@ -1525,8 +1526,8 @@ the caller in order and the result is the same.
 
 ## Synchronization: guarded mutexes and atomics
 
-`lib.safe_thread` also provides the only checked shared mutation: a mutex
-whose payload is reachable only while a guard is held, and an atomic integer
+`lib.safe_thread` also provides the only checked shared mutation: a generic
+mutex whose payload is reachable only while a guard is held, and an atomic integer
 whose every operation names its memory ordering. Both use the same Linux
 x86/x64 runtime as spawn/join. The memory-ordering argument is in
 [the contracts document](safe_mode_contracts.md#synchronization-and-memory-ordering).
@@ -1536,33 +1537,47 @@ x86/x64 runtime as spawn/join. The memory-ordering argument is in
 ```w
 import lib.safe_thread
 
-type Count = fn[](ref WSafeMutex*) -> int
+struct Account:
+	int balance
+	own int* history
 
-int count(ref WSafeMutex* mutex):
+type Deposit = fn[](ref WSafeMutex[Account]*) -> int
+
+int deposit(ref WSafeMutex[Account]* mutex):
 	for i in range(1000):
-		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
-		refmut int* value = safe_guard_value(guard)
-		*value = *value + 1
+		own[a] WSafeGuard[Account]* guard = safe_mutex_lock(mutex)
+		refmut Account* account = safe_guard_value(guard)
+		account.balance = account.balance + 1
 	return 0
 
 int main():
-	own int* start = new int
-	own WSafeMutex* mutex = safe_mutex_new(start)
-	ref WSafeMutex* shared = mutex
-	Count* entry = count
+	own WSafeMutex[Account]* mutex = safe_mutex_new(new Account(0, new int))
+	ref WSafeMutex[Account]* shared = mutex
+	Deposit* entry = deposit
 	safe_thread_fork_join(entry, shared, shared)
-	own[a] WSafeGuard* guard = safe_mutex_lock(shared)
-	refmut int* value = safe_guard_value(guard)
-	return *value - 2000
+	own[a] WSafeGuard[Account]* guard = safe_mutex_lock(shared)
+	refmut Account* account = safe_guard_value(guard)
+	return account.balance - 2000
 ```
 
 | Call | Contract |
 | --- | --- |
-| `safe_mutex_new(own int* value) -> own WSafeMutex*` | Consumes the payload. Dropping the mutex destroys the payload once, then the mutex. |
-| `safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` | Blocks until the mutex is free. |
-| `safe_mutex_try_lock(ref[a] WSafeMutex*) -> optown[a] WSafeGuard*` | Returns an absent guard when the mutex is held. |
-| `safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` | The payload view; it borrows the guard. |
-| `safe_guard_unlock(own[a] WSafeGuard*)` | Consumes the guard and releases the mutex early. |
+| `safe_mutex_new(own T* value) -> own WSafeMutex[T]*` | Consumes the payload. Dropping the mutex destroys the payload once, with its owned fields, then the mutex. |
+| `safe_mutex_lock(ref[a] WSafeMutex[T]*) -> own[a] WSafeGuard[T]*` | Blocks until the mutex is free. |
+| `safe_mutex_try_lock(ref[a] WSafeMutex[T]*) -> optown[a] WSafeGuard[T]*` | Returns an absent guard when the mutex is held. |
+| `safe_guard_value(refmut[a] WSafeGuard[T]*) -> refmut[a] T*` | The payload view; it borrows the guard. |
+| `safe_guard_unlock(own[a] WSafeGuard[T]*)` | Consumes the guard and releases the mutex early. |
+
+`T` is inferred from the payload or from the mutex and guard arguments
+(`safe_mutex_lock(m)`); explicit arguments (`safe_mutex_lock[int](m)`) are
+equivalent. Inference matches a `Name[T]*` parameter against the argument's
+generic struct instance, for any generic function
+([generics](generics.md#type-argument-inference)). `T` is any type a
+lifetime-free `own T*` admits: a sized scalar or an owned record graph
+with no borrowed fields. A payload with a borrowed lifetime, a raw pointer or
+a lock guard is rejected (`unsupported type or reference-bearing aggregate`,
+or the guard-lifetime error). A payload may itself be a mutex
+(`WSafeMutex[WSafeMutex[int]]`); each level has its own guard.
 
 The lifetimes do the work:
 
@@ -1576,8 +1591,11 @@ The lifetimes do the work:
   The checker counts each drop as a use of the guard's borrow. A guard
   released on only some paths still pins the mutex until its scope ends. A
   guard cannot leave the block in which its mutex is declared
-  (`lock guard outlives the mutex it borrows`).
-- **The view borrows the guard.** A `refmut int*` from `safe_guard_value`
+  (`lock guard outlives the mutex it borrows`). Locals are dropped in
+  reverse declaration order, so a guard (or an owner holding one) declared
+  *before* its mutex in the same block is rejected the same way, at the
+  block's end and at every `return`.
+- **The view borrows the guard.** A `refmut T*` from `safe_guard_value`
   ends before the guard can be unlocked, moved or dropped. Using it after
   `safe_guard_unlock` or after the guard's block is a use of a moved value.
   A shared `ref WSafeGuard*` cannot open the view, and two live views of
@@ -1587,6 +1605,8 @@ The lifetimes do the work:
   happens on the thread that locked.
 - **The mutex is opaque.** There is no field access, partial move or
   checked allocation outside `safe_mutex_new`, and no plain construction.
+  The untyped storage record behind every `WSafeMutex[T]` has no checked
+  shape either.
 
 ### Atomics
 
@@ -1613,7 +1633,8 @@ goes through one of these calls, with a `WMemoryOrder` argument:
 
 Orders are spelled `memory_order_relaxed`, `memory_order_acquire`,
 `memory_order_release`, `memory_order_acq_rel` and `memory_order_seq_cst`,
-with C++11 meanings. The argument must be one of those constants, so every
+with C++ meanings; the failure order of a compare-exchange follows C++17,
+which admits a failure order stronger than the success order. The argument must be one of those constants, so every
 call's ordering is known when it is compiled. A runtime `WMemoryOrder`
 value or a cast integer is rejected, as is an order that the operation
 cannot have. The compare-exchange succeeded exactly when its result equals
@@ -1623,28 +1644,66 @@ cannot have. The compare-exchange succeeded exactly when its result equals
 
 | Type | Transferable | Shareable |
 | --- | --- | --- |
-| `own WSafeMutex*` | if its payload is | if its payload is transferable |
-| `own[a] WSafeGuard*` | no | no |
+| `own WSafeMutex[T]*` | if `T` is | if `T` is transferable |
+| `own[a] WSafeGuard[T]*` | no | no |
 | `own WSafeAtomic*` | yes | yes |
 
 A mutex is shareable even though its payload is only transferable: the lock
-lends the payload to one thread at a time. Pass `ref WSafeMutex*` or
+lends the payload to one thread at a time. Pass `ref WSafeMutex[T]*` or
 `ref WSafeAtomic*` (or a record holding them) to fork-join for concurrent
 use. Move the owner into a spawn payload to hand it over. Detached threads
 cannot share one mutex or atomic: there is no shared ownership.
 
 ### Limits and costs
 
-- The payload is a single `int` (an `own int*`). Generic `WSafeMutex[T]`
-  waits for checked generic records (#696). The thread rule above is
-  structural, so it already describes such payloads.
-- Locking the same mutex twice on one thread, or locking two mutexes in
-  opposite orders on two threads, deadlocks. Deadlock is not memory
-  unsafety, and the checker does not prevent it.
-- A guard adds no allocation: its owner is the mutex's address. Lock and
-  unlock are one `lock` instruction each when uncontended. Waiting uses
-  futexes. Each atomic call is a function call around one instruction. A
-  `seq_cst` store adds a fence.
+- `WSafeMutex[T]` and `WSafeGuard[T]` are ordinary generic records of the
+  pinned file, recognized by the checker per instance. Checked code still
+  has no `new Generic[T]` form, so mutexes come only from `safe_mutex_new`.
+  A payload with borrowed lifetimes (`own[a] T*`) is not supported: the
+  mutex type has no lifetime parameter to carry them.
+- Locking the same mutex twice on one thread, locking two mutexes in
+  opposite orders on two threads, holding a guard across a fork-join that
+  locks the same mutex, or replacing a guard with a new lock of the same
+  mutex (`g = safe_mutex_lock(m)`, whose right side runs first) deadlocks.
+  Deadlock is not memory unsafety, and the checker does not prevent it.
+- A guard adds no allocation: its owner is the mutex's address. Every
+  `WSafeMutex[T]` has one layout (a lock word and one owner word) and one
+  set of audited operations per instance, so `T` costs nothing at run time.
+  Waiting uses futexes. Each atomic call is a function call around one
+  instruction. A `seq_cst` store adds a fence.
+- Measured costs (Linux x86_64 container shared with other builds; Valgrind
+  callgrind instruction counts per iteration over 100,000 iterations,
+  including the loop's 4 instructions, and best-of-5 wall time over 10
+  million uncontended iterations; x86 / x64):
+
+  | Operation | Instructions | ns |
+  | --- | --- | --- |
+  | lock, view, increment, guard drop (`int` payload) | 95 / 97 | 13.5 / 14.0 |
+  | the same with a record payload | 95 / 97 | 13.2 / 13.6 |
+  | raw `mutex_lock` + `mutex_unlock` (`lib/thread.w`) | 45 / 48 | 14.2 / 13.2 |
+  | `try_lock` and drop | 60 / 59 | 12.2 / 12.2 |
+  | `load` acquire | 31 / 31 | 1.5 / 1.4 |
+  | `store` release | 32 / 32 | 1.5 / 1.5 |
+  | `store` seq_cst | 37 / 37 | 7.4 / 7.7 |
+  | `fetch_add` | 30 / 29 | 6.1 / 6.4 |
+  | `compare_exchange` | 51 / 51 | 6.1 / 6.1 |
+
+  The checked guard path executes about 50 more instructions than the raw
+  mutex (calls, the guard's optional-owner bookkeeping and drop dispatch),
+  but uncontended time is dominated by the two locked instructions and is
+  the same. Compiling with the mutex API adds about 1-8 ms over an empty
+  program that imports it (110 ms); `--safe` adds 10-30 ms for the runtime
+  fixture (161 ms to 189 ms).
+- Memory checking: `tests/safe_sync_runtime_fixture.w` and
+  `tests/safe_thread_runtime_fixture.w` run clean under
+  `W_DEBUG_ALLOC=1` (zero leaked allocations in the measured round) and
+  under Memcheck with `W_DEBUG_ALLOC=valgrind` on both widths (0 errors;
+  220 and 1,126 allocations, all freed; Memcheck only sees the main
+  heap's pooled blocks, not the per-thread heaps). Helgrind and DRD run on
+  these static binaries but report every futex handshake (4,168 and
+  551,905 errors): the runtime uses raw futexes and `clone`, with no
+  pthread calls or happens-before annotations, so those tools see no
+  synchronization at all and their reports are not evidence either way.
 - New diagnostics (family `W0413`): `lock guard outlives the mutex it
   borrows`, `a lock guard owner must name its mutex lifetime`,
   `... is a lock guard bound to its locking thread`,
@@ -1654,8 +1713,10 @@ cannot share one mutex or atomic: there is no shared ownership.
   `compare-exchange failure ordering cannot be release or acq_rel`.
 
 `tests/safe_sync_test.w` checks the accepted and rejected contracts on x86
-and x64. `tests/safe_sync_runtime_test.w` covers lock release on every exit
-path, exact counts under fork-join and spawned-thread contention,
+and x64, including generic payloads and guard declaration order.
+`tests/safe_sync_runtime_test.w` covers lock release on every exit
+path, exact counts under fork-join and spawned-thread contention (with
+`int` and record payloads, nested mutexes and a spawned mutex owner),
 release/acquire publication, and exactly-once cleanup with `W_DEBUG_ALLOC=1`.
 
 ## Persistent REPL and debugger sessions
@@ -1730,41 +1791,93 @@ an edited imported module is checked afresh, including its new contracts.
 Options and the target are fixed for the life of a process, so there is no
 option-change path to invalidate.
 
+**Lifetime-labeled bindings.** Bindings whose checked types carry lifetime
+labels are session bindings like any other: labeled references and slices
+(`ref[a] cell* r = q`), inline borrowed records (`ref[x] holder h =
+holder(a, 3)`, `refmut exclusive e = exclusive(a, 1)`, copies such as
+`ref holder k = h`) and owners carrying borrowed groups (`own[y] stored* s
+= store(a)`). The transcript replays each declaration as a labeled local,
+so the loan ties a binding to the bindings it borrows across entries
+exactly as within one function: the borrowed owner cannot be mutated,
+moved or replaced incompatibly while a later entry still uses the labeled
+binding, and once the owner was replaced or moved a later use reports the
+checker's own diagnostic. A struct-valued initializer is copied into the
+binding's persistent storage. Borrowed records have no destructor; an owner
+carrying borrowed groups is destroyed like any session owner (its owned
+fields, never the borrowed data) at replacement, `:reset` and exit, newest
+first, so it is always retired before or with the owners it borrows.
+Replacing such an owner is checked as a use of it (the transcript moves
+it into its destruction), so it is rejected once an earlier entry changed
+the data it borrows, which is conservative: the destruction itself does
+not read that data. Fault discard applies unchanged. An inferred `h :=
+holder(a, 3)` is rejected by the checker (`safe: unsupported type or
+reference-bearing aggregate`), as it is for a local.
+
+Lock guards stay rejected (`safe: session bindings cannot hold lock guards
+(own[a] WSafeGuard[T]*); lock and unlock inside a function`), directly or
+through owned fields; the check is by the guard record's name and fails
+closed on unbounded shapes. A guard's destruction unlocks its mutex, so it
+uses its loan until the session ends, and `lib/safe_thread.w` cannot be
+imported in-process anyway: in-process images reject `thread_local` (W0324),
+and admitting it would need per-thread storage beyond the host's fixed TLS
+block, which entries cannot grow. Lowering it to shared storage would be
+unsound once an entry spawns a thread.
+
 **Unsupported forms.** These fail explicitly instead of being
 approximated: `--safe` on in-process entry points; checked declarations in
 an entry that does not run (`:type`, `safe: an entry that is not run cannot
 declare checked session bindings`); declaring, replacing or naming a checked
 session binding from a nested entry (a stop inside a running entry, or any
 debugger evaluation); `return`, `goto`, `defer` and `yield` in an item that
-names a checked session binding; and session bindings with lifetime-labeled
-checked types such as `own[a] WSafeGuard*` lock guards (`safe: session
-bindings cannot have lifetime-labeled checked types ...`), whose loans tie
-them to another value. Owner assignment to an existing persistent binding
-is rejected by the existing `owner assignment requires a plain local or
-parameter` rule; declare a new generation instead.
+names a checked session binding; and lock guards (above). Owner assignment
+to an existing persistent binding is rejected by the existing `owner
+assignment requires a plain local or parameter` rule; declare a new
+generation instead.
 
 **Debugger evaluation.** wdbg checks its debuggee before running it. At a
 stop, `print`, breakpoint conditions, logpoints and `repl` entries are the
 same in-process entries, so they follow the same rules (breakpoint and
-evaluation parity). When the stopped frame has checked locals, the checker
-re-analyzes the stopped function and reads the flow state at the stop's
-statement:
+evaluation parity). When the selected frame has checked locals, the checker
+re-analyzes that frame's function and reads its flow state:
 
-- a checked owner or borrow that is definitely initialized there (and, for
-  a borrow, still used later by the program, so its loan is valid) is
-  presented as a read-only `ref T*` view, a parameter of the entry's own
-  check that never joins the replayed session;
+- in the innermost frame, at the stop's statement;
+- in an outer frame (`up`, `frame <n>`), which is suspended inside a call
+  its statement makes, both before and after that statement, so moves the
+  statement makes count (an owner moved into the call in progress is not
+  held), while every borrow the statement uses -- including those the
+  callee holds -- counts as in use and must still have every root it
+  borrows held;
+- a checked owner, reference, optional owner or reference, inline checked
+  slice (`ref T[]`, `refmut T[]`) or inline borrowed record, labeled or
+  not, that is definitely initialized there (and, for a borrow or an owner
+  carrying borrowed groups, still used later by the program or known
+  absent, so its loans are valid) is presented as a read-only view, a
+  parameter of the entry's own check that never joins the replayed
+  session: `ref T*` for owners (including `own[a] R*` owners carrying
+  borrowed groups) and references, `optref T*` for optional ones
+  (dereferencing still requires a presence check in the entry), `ref T[]`
+  for slices (element writes are `safe: write through a shared
+  reference`), and `ref[labels] R` for a borrowed record whose fields are
+  all shared, `ref` or `refmut` (fields read through it, field writes are
+  `safe: write through a shared reference`). Labels of pointers and slices
+  are dropped: the view only reads, and its loans end with the entry;
 - other checked locals are hidden; naming one reports why (`safe: this
   checked local is not definitely initialized and live at this debugger
-  stop`, or that only owner and reference pointers without lifetime labels
-  can be viewed);
+  stop`; in an outer frame, `safe: this checked local is lent exclusively
+  to the call this frame is suspended in` for a local, or the root of a
+  reborrow, that the statement passes as `refmut` or as an owned record's
+  exclusive group; `safe: borrowed records with exclusive fields cannot be
+  viewed read-only at a debugger stop`, since a shared view of a record
+  with `refmut` fields is not a valid checked type; `safe: arrays of
+  checked values cannot be viewed at a debugger stop`; `safe: this checked
+  local's type has no read-only view spelling at a debugger stop (generic
+  or redefined target)`; `safe: checked locals are only available in
+  analyzed functions at a debugger stop` when the frame is not in an
+  analyzed function);
 - assigning a view (`safe: checked debugger locals are read-only views at a
   stop; assign them in the program`) or moving out of it (`safe: owner
   requires new storage or an ownership transfer`) is rejected, and frame
   writes of checked locals are never copied back;
-- outer frames (`up`) have no known state mid-call, so their checked locals
-  are hidden (`safe: checked locals are only available in the innermost
-  frame of an analyzed function at a debugger stop`);
 - `set` refuses checked locals and globals (`set: checked variables cannot
   be written by the debugger; their ownership state would go stale`), in
   process and in attach mode.
@@ -1773,15 +1886,19 @@ Plain locals are presented by value as before and still write back.
 Attach mode (`--attach`) evaluates with its own read-only interpreter over
 ptrace and runs no checked code in the target.
 
-The hook into the checker is one optional callback,
-`safe_function_end_hook`, which `compiler/safe.w` calls with each analyzed
-function before releasing its flow graph; it is zero outside sessions.
+The hooks into the checker are two optional callbacks, zero outside
+sessions: `safe_function_end_hook`, which `compiler/safe.w` calls with each
+analyzed function before releasing its flow graph, and
+`safe_call_argument_hook`, which sees each call argument's contract, roots
+and reborrow parents while an outer frame's call statement is re-run.
 `tests/safe_repl_session_test.w` and `tests/safe_session_debugger_test.w`
 (each with an x64 twin) cover persistence, replacement, reset and exit
 destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
-diagnostic recovery, fault discards, every unsupported form above, an
-imported-source edit across `:reset`, and the debugger views, conditions
-and rejections.
+diagnostic recovery, fault discards, lifetime-labeled bindings (borrowed
+records, owners carrying borrowed groups, the lock-guard rejection),
+every unsupported form above, an imported-source edit across `:reset`, and
+the debugger views (innermost and outer frames, optional, slice, record
+and labeled views), conditions and rejections.
 
 ## Entry points, diagnostics and costs
 
@@ -1842,6 +1959,13 @@ and 38% more peak memory. Retaining application bindings before discovering
 later contracts is necessary for the current flag-independent implementation;
 reducing that retention cost is future work. The small legacy fixture's
 executable is byte-identical between the two compilers.
+
+Progress (2026-10-24, #714): a keyed `type_lookup_pointer`, debug line
+tables that compare file names by pointer, cached interned file names and a
+cheaper `retained_intern` comparison cut self-compile Ir by 14.3% on x86 and
+9.8% on x64, with byte-identical output. They also make the count almost
+independent of the checkout path. The retention work itself remains;
+`safe_mode_instruction_growth.md` has the measurements.
 
 On this branch, compiling the manual fixture took 38.69 ms / 4,672 KiB;
 compiling `tests/safe_cost_fixture.w` with `--safe` took 48.56 ms / 6,464 KiB.

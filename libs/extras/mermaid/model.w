@@ -142,6 +142,8 @@ struct mm_narrative_event:
 	int end
 	int dashed
 	int arrow
+	# Sequence central connections `()`: bit 1 at the sender, bit 2 at the receiver.
+	int central
 
 # Gantt calendar settings. Units are days, or minutes when the date format
 # has a time of day. Excluded and included day lists are sorted and unique.
@@ -155,6 +157,10 @@ struct mm_gantt_settings:
 	list[int] excluded
 	list[int] included
 	int today
+
+const int MM_CURVE_STEP = 1
+const int MM_CURVE_LINEAR = 2
+const int MM_CURVE_BASIS = 3
 
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
@@ -173,9 +179,20 @@ struct mm_member:
 	char* text
 	int method
 
+# Metadata value types (agentflow `@{ ... }` YAML); value holds the scalar
+# text, or canonical JSON for a mapping or sequence.
+const int MM_VALUE_STRING = 0
+const int MM_VALUE_INT = 1
+const int MM_VALUE_FLOAT = 2
+const int MM_VALUE_BOOL = 3
+const int MM_VALUE_NULL = 4
+const int MM_VALUE_MAP = 5
+const int MM_VALUE_LIST = 6
+
 struct mm_property:
 	char* key
 	char* value
+	int type
 
 struct mm_node:
 	char* id
@@ -195,6 +212,12 @@ struct mm_node:
 	char* role
 	int global_node
 	list[mm_property*] metadata
+	# Interaction (flowchart/class `click`, class `link`/`callback`); null when absent.
+	# Links are exported as SVG anchors only for safe schemes; callbacks never run.
+	char* link
+	char* link_target
+	char* tooltip
+	char* callback
 
 struct mm_edge:
 	int from_node
@@ -213,6 +236,24 @@ struct mm_edge:
 	char* right_label
 	int scope
 	mm_style style
+	# Optional owned explicit edge ID (flowchart, use case and agentflow `id@-->`); null when anonymous.
+	char* id
+	# Label displacement in pixels (C4 UpdateRelStyle $offsetX/$offsetY).
+	int label_dx
+	int label_dy
+	# Minimum rank distance requested by extra dashes (0 or 1 = adjacent).
+	int min_length
+	# Agentflow `e1@{ ... }` edge metadata (null when none) and curve
+	# (MM_CURVE_*, 0 = family default).
+	list[mm_property*] metadata
+	# Flowchart link extensions: stroke 0 normal / 1 thick / 2 invisible,
+	# extra ranks from longer links, animate 0 off / 1 on / 2 fast / 3 slow.
+	# `curve` below is per family: flowchart 0 inherited else edge_curve + 1;
+	# agentflow MM_CURVE_* (0 = family default).
+	int stroke
+	int extra_rank
+	int animate
+	int curve
 
 # UML notes are annotations, not graph vertices.
 struct mm_note:
@@ -277,6 +318,20 @@ struct mm_document:
 	# Configured fontFamily (owned, 0 = native default) and fontSize in px (0 = 16).
 	char* font_family
 	int font_size
+	# C4 UpdateLayoutConfig: shapes and boundaries per row (0 = upstream default 4 / 2).
+	int c4_shape_in_row
+	int c4_boundary_in_row
+	# Architecture `align row|column` directives, flattened as
+	# [axis (0 row, 1 column), member count, node indices...]; null when none.
+	list[int] arch_align
+	# Use case `colorScheme: rotate` (0 = role colours).
+	int usecase_rotate
+	# Resolved per-family configuration (config.w): validated values keyed by
+	# their path below `config.` ("sequence.mirrorActors", "timeline.sectionFills.0").
+	# Null when nothing was configured; read with the mm_config_* getters below.
+	list[mm_property*] config
+	# Configuration paths that were read but ignored (unknown or unsupported keys).
+	list[char*] config_ignored
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -333,6 +388,8 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	d.nodes.push(n)
 	return d.nodes.length - 1
 
+void mm_config_free(mm_document* d);
+
 void mm_document_free(mm_document* d):
 	if (d == 0): return
 	if (d.comment_ranges != 0): __w_list_free(cast(__w_list*, d.comment_ranges))
@@ -359,13 +416,25 @@ void mm_document_free(mm_document* d):
 			free(property.value)
 			free(property)
 		__w_list_free(cast(__w_list*, n.metadata))
+		if (n.link != 0): free(n.link)
+		if (n.link_target != 0): free(n.link_target)
+		if (n.tooltip != 0): free(n.tooltip)
+		if (n.callback != 0): free(n.callback)
 		free(n.role)
 		free(n.annotation)
 		free(n.direction)
 		free(n.id)
 		free(n.label)
 		free(n)
+	if (d.arch_align != 0): __w_list_free(cast(__w_list*, d.arch_align))
 	for mm_edge* e in d.edges:
+		if (e.id != 0): free(e.id)
+		if (e.metadata != 0):
+			for mm_property* property in e.metadata:
+				free(property.key)
+				free(property.value)
+				free(property)
+			__w_list_free(cast(__w_list*, e.metadata))
 		free(e.label)
 		free(e.left_label)
 		free(e.right_label)
@@ -440,7 +509,91 @@ void mm_document_free(mm_document* d):
 	free(d.direction)
 	free(d.error)
 	if (d.ticket_base_url != 0): free(d.ticket_base_url)
+	mm_config_free(d)
 	free(d)
+
+void mm_config_free(mm_document* d):
+	if (d.config != 0):
+		for mm_property* property in d.config:
+			free(property.key)
+			free(property.value)
+			free(property)
+		__w_list_free(cast(__w_list*, d.config))
+	if (d.config_ignored != 0):
+		for char* path in d.config_ignored: free(path)
+		__w_list_free(cast(__w_list*, d.config_ignored))
+	d.config = 0
+	d.config_ignored = 0
+
+# A configured value (validated by config.w), or null when not configured.
+char* mm_config_value(mm_document* d, char* key):
+	if (d.config == 0): return 0
+	for mm_property* property in d.config:
+		if (strcmp(property.key, key) == 0): return property.value
+	return 0
+
+int mm_config_has(mm_document* d, char* key):
+	return mm_config_value(d, key) != 0
+
+int mm_config_flag(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return strcmp(value, c"true") == 0
+
+# Signed decimal text in thousandths ("0.17" -> 170); fractions past three digits truncate.
+int mm_config_parse_milli(char* value):
+	int at = 0
+	int sign = 1
+	if (value[0] == '-'):
+		sign = -1
+		at = 1
+	else if (value[0] == '+'): at = 1
+	int whole = 0
+	while (value[at] >= '0' && value[at] <= '9'):
+		if (whole < 100000000): whole = whole * 10 + value[at] - '0'
+		at = at + 1
+	int fraction = 0
+	int scale = 100
+	if (value[at] == '.'):
+		at = at + 1
+		while (value[at] >= '0' && value[at] <= '9'):
+			fraction = fraction + (value[at] - '0') * scale
+			scale = scale / 10
+			at = at + 1
+	if (whole > 1000000): whole = 1000000
+	return sign * (whole * 1000 + fraction)
+
+int mm_config_milli(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return mm_config_parse_milli(value)
+
+# Integer value (decimal values truncate toward zero).
+int mm_config_number(mm_document* d, char* key, int fallback):
+	char* value = mm_config_value(d, key)
+	if (value == 0): return fallback
+	return mm_config_parse_milli(value) / 1000
+
+# Number of items in a configured list (`key.0`, `key.1`, ...).
+int mm_config_count(mm_document* d, char* key):
+	int count = 0
+	while (count < 1024):
+		string_builder* path = string_from(key)
+		string_append_char(path, '.')
+		string_append_int(path, count)
+		int found = mm_config_value(d, path.data) != 0
+		string_free(path)
+		if (found == 0): return count
+		count = count + 1
+	return count
+
+char* mm_config_item(mm_document* d, char* key, int index):
+	string_builder* path = string_from(key)
+	string_append_char(path, '.')
+	string_append_int(path, index)
+	char* value = mm_config_value(d, path.data)
+	string_free(path)
+	return value
 
 # Lossless writer, including comments and formatting, even for invalid documents.
 char* mm_write(mm_document* d):

@@ -23,15 +23,29 @@ read through key-value coding instead — valueForKey: boxes it in an
 NSValue (an object id), and getValue:size: copies its two doubles into
 W memory — so both calls stay integer-register-only. CHAR codes are
 full Unicode codepoints decoded from [event characters]; AppKit's
-private-use function-key characters (U+F700..) become NAV codes. There
-is no NSTextInputClient yet, so dead keys and IME composition do not
-compose (#459).
+private-use function-key characters (U+F700..) become NAV codes.
+
+Composition: by itself the backend reads [event characters], so dead
+keys and IME composition do not compose. Importing
+graphics.text_input_cocoa and calling gfx_cocoa_text_input_enable
+installs the NSTextInputClient companion (graphics/ui/native/
+text_input.m) through key_hook and focus_hook: key-downs go through
+interpretKeyEvents:, committed text arrives as CHAR, marked text as the
+PREEDIT stream, and keys the input system hands back as commands keep
+this backend's own CHAR/NAV translation. Events queue in
+graphics.input_queue, which grows for long commits (#459).
 */
 import lib.lib
 import graphics.cocoa
 import graphics.gl
 import graphics.event
+import graphics.input_queue
 
+
+# Hooks a text-input bridge installs (see the header comment); the
+# first argument is the gfx_window*.
+type gfx_cocoa_key_hook = fn(void*, int, int) -> int
+type gfx_cocoa_focus_hook = fn(void*, int, int, int, int, int, int) -> void
 
 struct gfx_window:
 	# public surface, shared by every backend
@@ -70,10 +84,19 @@ struct gfx_window:
 	# scroll delta carried between events, in hundredths of a
 	# notch unit (lines, or points for trackpads)
 	int32 scroll_accum
-	# per-frame event ring (graphics.event)
-	int32 event_head
-	int32 event_tail
-	int32[320] event_ring
+	gfx_input_queue input_queue
+	# Optional text-input bridge (graphics.text_input_cocoa): key_hook
+	# sees each non-Command key-down after KEY_DOWN is queued and returns
+	# 1 when it produced the text itself; focus_hook follows
+	# gfx_text_input. text_focus is the focused field's stable ID.
+	gfx_cocoa_key_hook* key_hook
+	gfx_cocoa_focus_hook* focus_hook
+	int text_bridge
+	int32 text_focus
+
+
+# The window gfx_text_input addresses: the most recently opened one.
+gfx_window* gfx_cocoa_active
 
 
 # The Mac backend hands out 3.2-core contexts, where GLSL 130 no longer
@@ -174,8 +197,12 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	# Like run_mode: made in the open pool, so it lives until destroy.
 	win.key_location = objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, c"locationInWindow"))
 	win.scroll_accum = 0
-	win.event_head = 0
-	win.event_tail = 0
+	gfx_input_queue_init(&win.input_queue)
+	win.key_hook = cast(gfx_cocoa_key_hook*, 0)
+	win.focus_hook = cast(gfx_cocoa_focus_hook*, 0)
+	win.text_bridge = 0
+	win.text_focus = 0
+	gfx_cocoa_active = win
 	return win
 
 
@@ -260,7 +287,7 @@ void gfx_cocoa_track_mouse(gfx_window* win, int event):
 
 
 void gfx_cocoa_push(gfx_window* win, int kind, int code, int mods):
-	gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, kind, code, win.mouse_x, win.mouse_y, mods)
+	gfx_input_queue_push(&win.input_queue, kind, code, win.mouse_x, win.mouse_y, mods)
 
 
 # One key-down event: KEY_DOWN, then a CHAR or NAV per character.
@@ -274,6 +301,8 @@ int gfx_cocoa_key_down(gfx_window* win, int event, int mods):
 	# too (with the Super bit) so a W menu can bind Cmd+S; text fields
 	# do not type a character that arrives with Super held.
 	int forward = (mods & GFX_MOD_SUPER) != 0
+	if ((forward == 0) && (win.key_hook != 0)):
+		if (win.key_hook(win, event, mods)): return 0
 	int text = objc_msg0(event, win.sel_characters)
 	if (text == 0): return forward
 	char* s = cast(char*, objc_msg0(text, win.sel_utf8_string))
@@ -352,6 +381,7 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 # open (0 once the red button closed it).
 int gfx_window_poll(gfx_window* win):
 	if (win.should_close): return 0
+	gfx_input_queue_begin(&win.input_queue)
 	int pool = objc_autoreleasePoolPush()
 	while (1):
 		# mask -1 = NSEventMaskAny; distantPast = poll without blocking.
@@ -367,10 +397,10 @@ int gfx_window_poll(gfx_window* win):
 	return 1
 
 
-# Pop the oldest queued input event (graphics.event); returns 1 while
-# events remain from the polls since the last drain.
+# Pop the oldest queued input event (graphics.input_queue, within its
+# per-frame text budgets); returns 1 while events remain.
 int gfx_window_next_event(gfx_window* win, gfx_event* out):
-	return gfx_event_ring_next(&win.event_ring[0], &win.event_head, &win.event_tail, out)
+	return gfx_input_queue_next(&win.input_queue, out)
 
 
 void gfx_window_swap(gfx_window* win):
@@ -387,4 +417,6 @@ void gfx_window_destroy(gfx_window* win):
 	objc_msg0(objc_getClass(c"NSOpenGLContext"), sel_registerName(c"clearCurrentContext"))
 	objc_msg0(win.window, win.sel_close)
 	objc_autoreleasePoolPop(win.pool)
+	gfx_input_queue_free(&win.input_queue)
+	if (gfx_cocoa_active == win): gfx_cocoa_active = cast(gfx_window*, 0)
 	free(win)

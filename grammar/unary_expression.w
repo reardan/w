@@ -297,6 +297,7 @@ int unary_expression_operand():
 		expect(c"(")
 		int want = type_name()
 		expect(c",")
+		int allocator_call = peek(c"malloc")
 		int outer_cast = cast_context
 		cast_context = 1
 		type = expression()
@@ -317,6 +318,7 @@ int unary_expression_operand():
 				(type_get_pointer_level(type_unqualified(want)) > 0) &
 				(type_decays_to_pointer(want, type) == 0)):
 			warning(c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead")
+		if (cast_malloc_lacks_array_descriptors(want, allocator_call)): warning(cast_malloc_array_warning())
 		coerce_explicit(want, type)
 		expect(c")")
 		return type_value(want)

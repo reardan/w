@@ -19,6 +19,14 @@ const int UI_ACCESS_LIST_ITEM = 11
 const int UI_ACCESS_TABLE = 12
 const int UI_ACCESS_ROW = 13
 const int UI_ACCESS_CELL = 14
+const int UI_ACCESS_RADIO = 15
+const int UI_ACCESS_SWITCH = 16
+const int UI_ACCESS_COMBOBOX = 17
+const int UI_ACCESS_TAB_LIST = 18
+const int UI_ACCESS_TAB = 19
+const int UI_ACCESS_PROGRESS = 20
+const int UI_ACCESS_DIALOG = 21
+const int UI_ACCESS_ROLE_LAST = 21
 const int UI_ACCESS_DISABLED = 1
 const int UI_ACCESS_CHECKED = 2
 const int UI_ACCESS_SELECTED = 4
@@ -84,7 +92,7 @@ ui_access_node* ui_access_find(ui_access_tree* tree, int id):
 # Parents precede children; exactly one root (parent_id = 0).
 # Invalid input and exhausted budgets leave the snapshot unchanged.
 ui_access_node* ui_access_add(ui_access_tree* tree, int id, int parent_id, int role, ui_rect bounds):
-	if ((tree == 0) || (id <= 0) || (role < UI_ACCESS_DOCUMENT) || (role > UI_ACCESS_CELL)): return 0
+	if ((tree == 0) || (id <= 0) || (role < UI_ACCESS_DOCUMENT) || (role > UI_ACCESS_ROLE_LAST)): return 0
 	if ((tree.count >= tree.max_nodes) || (ui_access_find(tree, id) != 0)): return 0
 	ui_access_node* parent = ui_access_find(tree, parent_id)
 	if (parent_id == 0):
@@ -177,6 +185,52 @@ int ui_access_move_focus(ui_access_tree* tree, int reverse):
 	tree.focused_id = id
 	return id
 
+int ui_access_text_same(ui_access_text* a, ui_access_text* b):
+	if (a.length != b.length): return 0
+	for i in range(a.length):
+		if (a.data[i] != b.data[i]): return 0
+	return 1
+
+# 1 when two snapshots would publish identically: same nodes in the same
+# order with equal fields, text, bounds and focus. Lets a per-frame
+# capture republish only on semantic changes.
+int ui_access_tree_same(ui_access_tree* a, ui_access_tree* b):
+	if ((a == 0) || (b == 0)): return a == b
+	if ((a.count != b.count) || (a.focused_id != b.focused_id)): return 0
+	ui_access_node* x = a.allocations
+	ui_access_node* y = b.allocations
+	while ((x != 0) && (y != 0)):
+		if ((x.id != y.id) || (x.role != y.role) || (x.states != y.states) || (x.actions != y.actions) || (x.heading_level != y.heading_level)): return 0
+		int xp = 0
+		int yp = 0
+		if (x.parent != 0): xp = x.parent.id
+		if (y.parent != 0): yp = y.parent.id
+		if (xp != yp): return 0
+		if ((x.bounds.x != y.bounds.x) || (x.bounds.y != y.bounds.y) || (x.bounds.w != y.bounds.w) || (x.bounds.h != y.bounds.h)): return 0
+		if (!ui_access_text_same(&x.name, &y.name) || !ui_access_text_same(&x.value, &y.value) || !ui_access_text_same(&x.description, &y.description)): return 0
+		x = x.allocation_next
+		y = y.allocation_next
+	return (x == 0) && (y == 0)
+
+# An owned copy of a snapshot (no action callback): what a bridge keeps
+# to answer queries after the application has replaced its own tree.
+ui_access_tree* ui_access_tree_clone(ui_access_tree* tree):
+	if (tree == 0): return 0
+	ui_access_tree* copy = ui_access_tree_new(tree.max_nodes, tree.max_text_bytes)
+	for int id in tree.nodes:
+		ui_access_node* n = tree.nodes[id]
+		int parent_id = 0
+		if (n.parent != 0): parent_id = n.parent.id
+		ui_access_node* c = ui_access_add(copy, id, parent_id, n.role, n.bounds)
+		if (c != 0):
+			c.states = n.states
+			c.actions = n.actions
+			c.heading_level = n.heading_level
+			ui_access_set_text(copy, id, UI_ACCESS_NAME, n.name.data, n.name.length)
+			ui_access_set_text(copy, id, UI_ACCESS_VALUE, n.value.data, n.value.length)
+			ui_access_set_text(copy, id, UI_ACCESS_DESCRIPTION, n.description.data, n.description.length)
+	copy.focused_id = tree.focused_id
+	return copy
 
 void ui_access_tree_free(ui_access_tree* tree):
 	if (tree == 0): return

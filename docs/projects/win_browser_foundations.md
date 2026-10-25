@@ -13,8 +13,8 @@ cookies/cache and content isolation remain in the application repository.
 | URLs / loading | `libs.standard.web.urlparse`, `.http_client`; [networking](browser_network.md) | References/fragments, dot segments, canonical IPv6 hosts including dotted tails, origin tuples, owned clients, checked total-deadline transport, task cancellation, redirect approval/final URL, bounded delivery |
 | Content decoding | `libs.standard.web.content_decode`; [decoding](browser_network.md#content-decoding) | Bounded chunk collection and explicit completion, identity and registered gzip/deflate, separate input/output caps, validated concatenated gzip members |
 | Images | `graphics.image.png`, `.jpeg`, `graphics.ui.render`; [images](images.md) | Bounded PNG and baseline JPEG into owned RGBA; texture updates, alpha, scaling, clipping, queued lifetime and native readback probes |
-| Text / input | `graphics.ui.bidi`, `graphics.ui.shape`, `graphics.ui.grapheme`, `graphics.event`; [UI dependencies](browser_ui.md) | Optional Linux x64 paragraph bidi with independent wrapped-line reordering, OpenType run shaping, grapheme-safe editing, X11 Unicode commits, Windows Unicode/IMM and web preedit |
-| Accessibility | `graphics.ui.accessibility`, `.accessibility_web`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in web ARIA and macOS NSAccessibility bridges, and default-theme contrast checks |
+| Text / input | `graphics.ui.bidi`, `graphics.ui.shape`, `graphics.ui.grapheme`, `graphics.event`; [UI dependencies](browser_ui.md) | Portable UAX #9 paragraph bidi (FriBidi optional) with independent wrapped-line reordering, portable OpenType run shaping (HarfBuzz optional) with grapheme carets, TrueType and CFF outlines, grapheme-safe editing, X11 Unicode commits, Windows Unicode/IMM, web preedit and an opt-in macOS NSTextInputClient bridge |
+| Accessibility | `graphics.ui.accessibility`, `.accessibility_web`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in web ARIA, macOS NSAccessibility, Linux AT-SPI and Windows UI Automation bridges, automatic widget semantics and keyboard focus routing, and default-theme contrast checks |
 
 The support contracts are intentionally specific. HTML does not implement every
 WHATWG tree algorithm; CSS does not validate every selector/property
@@ -27,10 +27,10 @@ budget across gzip members. PNG excludes interlace and packed/16-bit samples; JP
 scan/color modes. Consult each linked document before accepting a wider input
 contract.
 
-These issue tracks remain broader than the delivered APIs. Portable bidi/shaping,
-script/font segmentation, shaped caret layout, Cocoa IME and other text work remain
-[#459](https://github.com/reardan/w/issues/459). Linux AT-SPI, Windows UI
-Automation, automatic widget metadata and widget-wide keyboard routing remain
+These issue tracks remain broader than the delivered APIs. Paragraph
+line breaking, hinting and Sinhala/Myanmar/Khmer/USE shaping remain
+open text work after [#459](https://github.com/reardan/w/issues/459). Screen-reader qualification on
+real Windows/macOS and richer text/table semantics remain
 [#465](https://github.com/reardan/w/issues/465). Broader JavaScript syntax,
 standard built-ins and full early-error/runtime conformance remain
 [#492](https://github.com/reardan/w/issues/492). The macOS accessibility helper
@@ -84,9 +84,10 @@ fix and acceptance audit. Remaining work continues in its existing tracks:
 
 - [#459](https://github.com/reardan/w/issues/459): portable shaping/bidi,
   script/font segmentation, shaped carets, Cocoa IME and native input qualification.
-- [#465](https://github.com/reardan/w/issues/465): AT-SPI/UI Automation,
-  automatic widget semantics, keyboard routing and native assistive-technology
-  qualification. The reusable page-content snapshot API is already delivered.
+- [#465](https://github.com/reardan/w/issues/465): native assistive-technology
+  qualification (Narrator/NVDA, VoiceOver) and text/table pattern depth. The
+  snapshot API, web/macOS/AT-SPI/UI Automation bridges, automatic widget
+  semantics and keyboard routing are delivered.
 - [#492](https://github.com/reardan/w/issues/492): broader JavaScript syntax,
   standard-library and runtime conformance beyond the embedding subset.
 - The application repository: dependency-pin upgrades, DOM/layout integration,

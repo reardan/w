@@ -667,8 +667,9 @@ cannot be overwritten in place).
 `setsid`, output to `bin/.wbuildd.log` — and waits until it answers),
 `stop`, `status [--json]`, `affected PATH...` (the memoized queries an
 edit to PATH would invalidate; it asks a running daemon and never
-starts one), and the four queries `check|deps|symbols
-ARGS` (≡ `bin/wv2 check|deps|symbols ARGS`) and `changed ARGS`
+starts one), and the queries `check|deps|symbols
+ARGS` (≡ `bin/wv2 check|deps|symbols ARGS`), `defhash ARGS` (≡ `bin/wv2
+defhash ARGS`, issue #485) and `changed ARGS`
 (≡ `bin/wtest changed ARGS`, including a path list on stdin). The
 socket is `bin/.wbuildd.sock` relative to the checkout root; `serve`
 options are `--prewarm-manifest M`, `--no-prewarm`, `--no-refresh`
@@ -678,7 +679,7 @@ test uses so a failed run cannot leave a daemon behind).
 
 **Protocol.** JSON-RPC 2.0 over `lib/framing.w` Content-Length frames
 (`lib/json_rpc.w`, §2.1), methods `check`, `deps`, `symbols`,
-`test_changed`, `affected`, `status`, `shutdown` (protocol 3). A query's params are
+`defhash`, `test_changed`, `affected`, `status`, `shutdown` (protocol 4). A query's params are
 `{protocol, cwd, args, stdin?}`; its result is `{stdout, stderr,
 status, cached}` — the one-shot command's raw output bytes rather than
 re-parsed diagnostics, so byte-identity with the one-shot path holds by
@@ -892,7 +893,7 @@ daemon stop listening, finish the builds in flight and exit; the next
 client starts a fresh one.
 
 **Auto-start (§2.2).** When nothing answers on the socket, a client
-command (`check`, `deps`, `symbols`, `changed`, `build`; never `status`
+command (`check`, `deps`, `symbols`, `defhash`, `changed`, `build`; never `status`
 or `stop`) spawns `serve --detach` itself and retries for up to 15s
 before falling back. It prints nothing of its own, so answers stay
 byte-identical. Only a working directory holding `build.base.json`
@@ -922,3 +923,51 @@ auto-start.
 now; it runs on x86-64 Linux hosts like the rest of the toolchain. A
 build's children see the client's environment, but the check/deps/
 symbols subprocesses still see the daemon's.
+
+### Save-time defhash index (issue #485)
+
+`bin/wbuildd defhash ARGS` is memoized like `check`: the answer is
+kept with the root's import closure and dropped, then re-computed in
+the background, when a file in that closure changes. Those memoized
+`defhash <path>` answers are the resident index.
+
+**Save-time rehash.** When inotify reports a `.w` file outside `bin/`
+finished (`IN_CLOSE_WRITE`, or renamed into place), the daemon queues
+`defhash <path>` on the background re-check queue, whether or not
+anyone asked for that file before. It is queued behind every answer a
+request has used (`used_ms` 0), so it never delays one, and it is
+bounded and debounced like the rest of the queue. Until it has run, the
+only file it is known to read is the saved file, so an event anywhere
+during the run makes the daemon redo it (up to three times) rather
+than store it. `status` reports `defhash_indexed` (index entries),
+`defhash_rehashes` (save-time runs queued) and `defhash_index_served`
+(records handed to `bin/wtest`). `--no-refresh` turns the save-time
+rehash off with the rest of the re-check.
+
+**Serving it to `wtest changed --defhash`.** A `test_changed` request
+with `--defhash` first waits for a defhash re-check in flight, then
+writes the index to `bin/.wbuildd_defhash_index.<pid>`: one NDJSON
+record per memoized single-path answer, `{path, digest, status,
+stdout}`, where `digest` is the SHA-256 of the file's content now (all
+pending events were drained first, so the answer matches it). bin/wtest
+gets `--defhash-index FILE` appended to its arguments, and
+`wtest_defhash_collect` uses the record for a path in place of running
+`bin/wv2 defhash` only while the file still has that digest. A missing
+record, a different digest, or an unreadable or malformed index runs
+the compiler as before. The record holds the one-shot command's exact
+stdout and status, so the selection, the `--verbose` notes and the exit
+status are the same with or without it; `wbuildd_test` compares
+`changed --defhash` through the daemon with the one-shot run, and
+`wtest_defhash_test` checks that a matching record is used and a stale,
+failed or malformed one is not. A client may not pass
+`--defhash-index` itself; such a request falls back to the one-shot
+command.
+
+**Limits.** Only the worktree side of the comparison is served. The
+other side is a revision's content (`git show HEAD:<path>`), staged to
+a scratch file and hashed per run, as before. A query arriving inside
+the 200 ms debounce after a save finds no record yet and runs the
+compiler itself, which is correct but not warm. Selection itself still
+runs in `bin/wtest` with its own closure cache; moving it into the
+daemon is the in-memory closure index that §8's `test_changed` notes
+leave open.

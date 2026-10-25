@@ -123,6 +123,36 @@ void test_unsupported_forms_fail_explicitly():
 	process_result_free(r)
 
 
+# Lifetime-labeled bindings (tests/safe_repl_session_fixture.w): a shared
+# borrowed record and its copy, an exclusive one, owners carrying a
+# borrowed group (replaced, destroyed at :reset, discarded after a fault),
+# and the lock-guard shape that stays rejected. Struct-valued initializers
+# copy the record into its persistent storage.
+void test_lifetime_labeled_bindings():
+	string_builder* in = string_new()
+	string_append(in, c"own cell* a = new cell\na.value = 4\nref[x] holder h = holder(a, 3)\nref holder k = h\nsafe_repl_hold(k) + 50\nsafe_repl_hold(h) + 10\n")
+	# Replacing the borrowed owner destroys it; the borrow is dead after.
+	string_append(in, c"own cell* a = new cell\nsafe_repl_report(c\"replaced\")\nsafe_repl_hold(h)\na.value = 6\n")
+	string_append(in, c"own[y] stored* s = safe_repl_store(a)\nsafe_repl_stored(s) + 20\nown[y] stored* s = safe_repl_store(a)\nsafe_repl_report(c\"restored\")\n")
+	# An exclusive record ends the shared loan's validity for later uses.
+	string_append(in, c"refmut exclusive e = exclusive(a, 1)\nsafe_repl_bump(e) + 30\nsafe_repl_stored(s)\n")
+	string_append(in, c"own[g] safe_repl_guard* gd = safe_repl_lock(a)\nstruct plain_pair:\n\tint u\n\tint v\n\nplain_pair pp = plain_pair(1, 2)\nplain_pair pq = pp\npq.v + 60\n")
+	string_append(in, c"own cell* b = new cell\nb.value = 8\nown[q] stored* t = safe_repl_store(b)\nint z = safe_repl_take_stored(t); 1 / 0\nsafe_repl_stored(t)\nsafe_repl_report(c\"faulted\")\n:reset\nsafe_repl_report(c\"reset\")\n")
+	string_append(in, c"own cell* c = new cell\nown[r] stored* u = safe_repl_store(c)\nsafe_repl_report(c\"last\")\n:quit\n")
+	process_result* r = safe_repl_run(in.data)
+	string_free(in)
+	assert_equal(0, r.status)
+	safe_repl_expect_order(r.stdout_text, safe_repl_lines(c"57", c"17", c"replaced live=1", c"26"))
+	safe_repl_expect_order(r.stdout_text, safe_repl_lines(c"26", c"restored live=2", c"37", c"62"))
+	# t's scratch was freed by the call that faulted afterwards; :reset
+	# destroys a, s and b, never t a second time.
+	safe_repl_expect_order(r.stdout_text, safe_repl_lines(c"62", c"note: checked session bindings were discarded after the fault", c"faulted live=3", c"reset live=0"))
+	safe_repl_expect_order(r.stdout_text, safe_repl_lines(c"reset live=0", c"last live=2", 0, 0))
+	safe_repl_expect_order(r.stderr_text, safe_repl_lines(c"use of uninitialized or moved value", c"conflicting access while a borrow is live", c"session bindings cannot hold lock guards (own[a] WSafeGuard[T]*)", c"this checked session binding was discarded after a runtime fault"))
+	assert_lacks(r.stdout_text, c"memory_debug")
+	process_result_free(r)
+
+
 void test_imported_source_edit_and_reset():
 	char* module = safe_repl_path(c"bin/safe_repl_session_mod", c".w")
 	char* second = safe_repl_path(c"bin/safe_repl_session_mod_next", c".w")

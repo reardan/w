@@ -375,8 +375,10 @@ void repl_entry_item(int entry_symbol):
 	# Generic function definitions ('T twice[T](T a):'): captured into
 	# the generics registry (no code emitted) and skipped. Each entry is
 	# staged in its own file, so the recorded span stays re-parseable
-	# from later entries.
-	if (generic_declaration_scan_repl()):
+	# from later entries. A statement keyword never starts one: 'return
+	# d[1]' (the debugger's wrapped expressions) indexes, it does not
+	# declare a generic named d.
+	if ((repl_token_is_statement() == 0) && generic_declaration_scan_repl()):
 		current_function_symbol = entry_symbol
 		number_of_args = 0
 		return;
@@ -430,16 +432,26 @@ void repl_entry_item(int entry_symbol):
 			# compile "name = expression" into the entry function
 			sym_get_value(decl_name) /* address into eax */
 			push_slot()
+			int address_slot = stack_pos
 			int value_type = expression()
 			value_type = promote(value_type)
 			# Conversions the compiler's variable_declaration also
 			# performs (var boxing, cstr-to-string, float widths)
 			coerce(decl_type, value_type)
-			pop_ebx()
+			# A struct-valued initializer (a constructor or a call
+			# returning a record) parks its buffer on the stack above the
+			# saved address and leaves its address in eax: read the saved
+			# address in place and copy the aggregate, as assignment does
+			# (grammar/expression.w). The entry's final be_pop drops the
+			# parked words.
+			int buried = stack_pos - address_slot
+			if (buried > 0): mov_ebx_esp_plus(buried << word_size_log2)
+			else: pop_ebx()
 			if (types_compatible_with_expression(decl_type, value_type) == 0):
 				warn_type_mismatch(c"initialization", decl_type, value_type)
-			assign_store(decl_type)
-			stack_pos = stack_pos - 1
+			if ((type_num_args(decl_type) > 0) && (type_num_args(value_type) > 0)): assign_store_struct(decl_type)
+			else: assign_store(decl_type)
+			if (buried == 0): stack_pos = stack_pos - 1
 		expect_or_newline(c";")
 		retained_semantic_mode = decl_semantic
 		free(decl_name)

@@ -430,6 +430,13 @@ int st_call_site(int v):
 			return 1 /* call *eax / call *rax */
 		if (st_byte(v - 5) == 232):
 			return 1 /* call rel32 (asm stubs) */
+		if (st_machine == 62):
+			# LLVM-built images (tools/wllvm.w) also call through any
+			# register, REX-prefixed or not, and through call *rel32(%rip).
+			if ((st_byte(v - 2) == 255) & ((st_byte(v - 1) & 248) == 208)):
+				return 1
+			if ((st_byte(v - 6) == 255) & (st_byte(v - 5) == 21)):
+				return 1
 		return 0
 	if (st_machine == 183):
 		if (v - 4 < st_base): return 0

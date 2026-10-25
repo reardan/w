@@ -34,6 +34,7 @@
 			"simple": "hand-run scratch program (tests/simple.w)",
 			"testing_ground": "hand-run argv demo (tests/testing_ground.w)",
 			"rewrite_c_strings": "one-off source rewriting tool",
+			"mermaid_corpus_update": "rewrites tests/mermaid_corpus/manifest.txt and the docs counts block from current behavior; mutates the checkout",
 			"grammars_refresh": "rewrites the committed json/csv translator outputs in libs/extras/grammars; mutates the checkout",
 			"javascript_inspect": "manual JavaScript inspection CLI; parser behavior is covered by javascript_parser_test",
 			"javascript_transform": "manual module-specifier rewriting CLI; covered by javascript_transform_test",

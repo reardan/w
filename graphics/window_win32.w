@@ -93,6 +93,12 @@ struct gfx_window:
 
 
 gfx_window* gfx_win32_active    /* the window the procedure reports into */
+
+# Optional WM_GETOBJECT (0x3D) handler, e.g. the UI Automation bridge's
+# ui_access_uia_wm_getobject. A nonzero result is the message's answer;
+# zero (or no hook) falls through to DefWindowProcW as before.
+type gfx_win32_getobject_fn = fn(int, int, int) -> int
+gfx_win32_getobject_fn* gfx_win32_getobject
 int gfx_win32_class_registered
 char* gfx_win32_class_name
 
@@ -195,6 +201,9 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 	if ((m == 16) || (m == 2)):          /* WM_CLOSE, WM_DESTROY */
 		win.should_close = 1
 		return 0
+	if ((m == 61) && (gfx_win32_getobject != 0)):  /* WM_GETOBJECT */
+		int answer = gfx_win32_getobject(hwnd, wparam, lparam)
+		if (answer != 0): return answer
 	if (m == 5):                          /* WM_SIZE */
 		win.width = lparam & 65535
 		win.height = (lparam >> 16) & 65535

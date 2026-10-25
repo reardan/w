@@ -94,6 +94,7 @@ struct ui_tree_state:
 	float32 body_x
 	float32 body_y
 	float32 body_w
+	int32 access_saved_parent
 
 
 void ui_tree_init(ui_tree_state* st):
@@ -114,6 +115,7 @@ void ui_tree_init(ui_tree_state* st):
 	st.body_x = 0.0
 	st.body_y = 0.0
 	st.body_w = 0.0
+	st.access_saved_parent = 0
 
 
 int ui_tree_row_height(ui_context* ctx, ui_tree_state* st):
@@ -139,6 +141,11 @@ void ui_tree_begin(ui_context* ctx, ui_rect area, ui_tree_state* st):
 	st.changed = 0
 	st.pending_nav = 0
 	st.pending_enter = 0
+	# One focus stop for the whole tree; the arrows move the row cursor.
+	# Semantically a list whose visible rows are its items.
+	st.access_saved_parent = ctx.access_parent
+	if (ui_access_widget(ctx, id, UI_ACCESS_LIST, area, 0) != 0): ctx.access_parent = id
+	ui_focus_stop(ctx, id, area, 0)
 
 	# Focus follows the press, like ui_textarea's. It is claimed by the
 	# container rather than by a row: row ids shift as the tree expands
@@ -214,6 +221,15 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 	if (ui_tree_row_visible(st, row_h, index) == 0): return 0
 
 	int clicked = ui_click_behavior(ctx, id, row)
+	# Rows are exposed (and activatable by a bridge) only while visible.
+	int item_id = ui_access_aux_id(ctx)
+	ui_access_node* item = ui_access_widget(ctx, item_id, UI_ACCESS_LIST_ITEM, row, label)
+	if (item != 0):
+		item.actions = UI_ACCESS_ACTIVATE
+		if (st.selected == index): item.states = item.states | UI_ACCESS_SELECTED
+		if (is_node && expanded): item.states = item.states | UI_ACCESS_EXPANDED
+	if ((ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0) && ui_access_take_activation(ctx, item_id)):
+		clicked = 1
 	if (clicked):
 		if (st.selected != index):
 			st.selected = index
@@ -308,6 +324,7 @@ int ui_tree_leaf(ui_context* ctx, ui_tree_state* st, char* label):
 # was activated, 0 otherwise.
 int ui_tree_end(ui_context* ctx, ui_tree_state* st):
 	ui_scroll_end(ctx, &st.scroll)
+	ctx.access_parent = st.access_saved_parent
 	st.row_count = st.walk_index
 	# The walk may have shrunk under the cursor — a node collapsing
 	# takes its children with it.

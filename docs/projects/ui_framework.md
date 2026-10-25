@@ -50,8 +50,9 @@ input landed 2026-09-25 (#462): struct values such as
 `locationInWindow` are read through key-value coding (`valueForKey:`
 boxes the NSPoint in an NSValue, `getValue:size:` copies it out), so
 the no-struct-return rule in `graphics/cocoa.w` stands. Still pending:
-complex-script shaping (#459) and accessibility (#465). Runtime TrueType
-fonts and the Win32/WGL backend have since shipped.
+accessibility (#465). Runtime TrueType/CFF fonts, portable complex-script
+shaping and bidi (#459), an opt-in NSTextInputClient bridge, and the
+Win32/WGL backend have since shipped.
 
 The widget set's expansion past stage 3 is issue #441 and has its own
 pair of docs: `docs/projects/ui_widgets.md` (design — the
@@ -523,8 +524,9 @@ editing and Windows support have since advanced as recorded above.
   today (§1) and not proposed here; the wasm/WebGL2 web target running
   in a mobile browser is the only "mobile" story in scope.
 - **Accessibility depth** (screen readers, semantic roles, platform
-  a11y APIs). §2 point 5 stands: this starts from zero and needs its
-  own design once there is a widget tree to attach semantics to.
+  a11y APIs). Since delivered separately (#465, [accessibility](accessibility.md)):
+  widget focus routing and focus ring, automatic widget semantics, and web,
+  macOS, Linux AT-SPI and Windows UI Automation bridges.
 - **A general animation/transition system.** Flat, static widget
   states only for v1 — matches "minimal" and avoids a whole extra
   design axis (easing, timelines) before the base widgets exist.

@@ -704,6 +704,7 @@ int global_address_initializer(char* name, int cell, int type):
 		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
 	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
 	if (t >= 0):
+		retained_initializer_note(name, retained_initializer_function, 0, t, 0, 0)
 		get_token()
 		if (peek(c"(")):
 			# 'int g = f()' is a call, not an address: report it as the
@@ -724,10 +725,12 @@ int global_address_initializer(char* name, int cell, int type):
 		t = sym_lookup(token)
 		if ((t < 0) || (table[t + 1] != 'D') || (load_int(table + t + 10) != 1) || (sym_is_thread_local(t))):
 			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
 		value = load_int(table + t + 2)
 		get_token()
 	else:
 		int length = process_prefixed_string_literal()
+		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
 		value = code_offset + codepos
 		emit(length, token)
 		emit_int8(0)
@@ -749,6 +752,7 @@ void global_initializer(char* name, int current_symbol, int decl_type):
 	global_initializer_check_type(name, decl_type)
 	if (global_address_initializer(name, load_int(table + current_symbol + 2), decl_type)): return;
 	int value = parse_constant_literal(c"initializer for global", name)
+	retained_initializer_note(name, retained_initializer_constant, value, -1, 0, 0)
 	write_global_initial_value(current_symbol, decl_type, value)
 
 
@@ -1101,6 +1105,9 @@ void program_item():
 			char* defhash_op_name = operator_definition(decl_type)
 			defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 			return;
+		# An ordinary declaration named operator is recorded (and retained)
+		# like any other: it cannot collide with the overloads' names.
+		defhash_name = strclone(c"operator")
 		current_symbol = sym_declare_global(c"operator", decl_type, 1)
 	else:
 		defhash_name = strclone(token)
@@ -1119,19 +1126,13 @@ void program_item():
 		flow_definition_type_set = 1
 		function_definition(current_symbol)
 		if (export_pending):
-			char* export_name = defhash_name
-			if (export_name == 0): export_name = c"operator"
-			export_function_note(current_symbol, export_name, decl_type)
+			export_function_note(current_symbol, defhash_name, decl_type)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"=")):
 		if (export_pending): error(c"only functions can be exported")
-		# defhash_name is 0 only on the 'operator' branch above,
-		# which declared that literal name
-		char* init_name = defhash_name
-		if (init_name == 0): init_name = c"operator"
-		global_variable_declaration(current_symbol, decl_type, init_name)
+		global_variable_declaration(current_symbol, decl_type, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 

@@ -34,6 +34,13 @@ int ui_popup_is_top(ui_context* ctx, int id):
 	return 0
 
 
+# 1 when this id is anywhere on the open-popup stack.
+int ui_popup_registered(ui_context* ctx, int id):
+	for i in range(ctx.popup_depth):
+		if (ctx.popup_stack[i] == id): return 1
+	return 0
+
+
 # Register a popup as open, making everything outside it inert until it
 # is dismissed. Idempotent: a widget calls this every frame it is open
 # without stacking duplicates. A push past ui_popup_max_depth is
@@ -63,6 +70,7 @@ void ui_popup_begin(ui_context* ctx, int id, ui_rect area, int layer):
 	if (ctx.bracket_depth < ui_popup_max_depth):
 		ctx.scope_saved[ctx.bracket_depth] = ctx.scope
 		ctx.layer_saved[ctx.bracket_depth] = ctx.rndr.layer
+		ctx.access_saved[ctx.bracket_depth] = ctx.access_parent
 	ctx.bracket_depth = ctx.bracket_depth + 1
 	ctx.scope = id
 	ui_render_layer(ctx.rndr, layer)
@@ -82,9 +90,11 @@ void ui_popup_end(ui_context* ctx):
 	if (ctx.bracket_depth < ui_popup_max_depth):
 		ui_render_layer(ctx.rndr, ctx.layer_saved[ctx.bracket_depth])
 		ctx.scope = ctx.scope_saved[ctx.bracket_depth]
+		ctx.access_parent = ctx.access_saved[ctx.bracket_depth]
 	else:
 		# Past the save array: the enclosing scope is unrecoverable, so
 		# fall back to the base rather than leaving a stale scope in
 		# force.
 		ui_render_layer(ctx.rndr, UI_LAYER_BASE)
 		ctx.scope = 0
+		if (ctx.access != 0): ctx.access_parent = ui_access_root_id

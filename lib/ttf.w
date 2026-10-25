@@ -9,8 +9,11 @@ cmap formats 4 and 12, hhea/hmtx, post (underline metrics), OS/2
 glyphs plus composites (offset, uniform/x-y/2x2 scaled components;
 point-matched anchors fail loudly). Quadratic contours are flattened
 to line segments and filled by the non-zero winding rule over 4x4
-subsamples per pixel (unhinted grayscale coverage). CFF/OpenType
-outlines and hinting are not supported.
+subsamples per pixel (unhinted grayscale coverage). 'OTTO' fonts with
+CFF outlines load too: Type 2 charstrings with global and local
+subroutines, name-keyed or CID-keyed (FDSelect), cubics flattened the
+same way; ttf_glyph_bbox gives their control-point bounds. Hinting is
+not supported, and ttf_subset handles only glyf fonts.
 
 Fonts come from a path (ttf_load) or from bytes already in memory
 (ttf_load_bytes, for hosts without a filesystem). Every table read is
@@ -50,6 +53,12 @@ struct ttf_font:
 	int kern_pairs      # its pair count
 	int gpos_feature    # offset of the GPOS 'kern' Feature table, or 0
 	int gpos_lookup_list # offset of the GPOS LookupList
+	int cff             # offset of the 'CFF ' table ('OTTO' fonts), or 0
+	int cff_charstrings # its CharStrings INDEX
+	int cff_gsubrs      # its Global Subr INDEX
+	int cff_subrs       # the Private DICT's local Subrs INDEX, or 0
+	int cff_fdarray     # CID-keyed: the Font DICT INDEX, or 0
+	int cff_fdselect    # CID-keyed: the FDSelect table
 
 
 # Out-of-range reads yield 0: a truncated file degrades to a failed
@@ -117,6 +126,7 @@ char* ttf_read_file(char* path, int* size):
 
 int ttf_load_bytes(ttf_font* f, char* data, int size);
 void ttf_index_kerning(ttf_font* f);
+int ttf_cff_init(ttf_font* f);
 
 
 # Load and index a TrueType file. Returns 1, or 0 after printing what
@@ -144,10 +154,16 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 		print_error(c"ttf: file too short\n")
 		return 0
 	int version = ttf_u32(f, 0)
-	if ((version != 65536) && (version != 1953658213)):
-		# 0x00010000 or 'true'; 'OTTO' (CFF outlines) and collections
-		# are not TrueType-outline fonts.
-		print_error(c"ttf: not a TrueType-outline font\n")
+	f.cff = 0
+	if (version == 1330926671):
+		# 'OTTO': CFF (Type 2 charstring) outlines.
+		f.cff = ttf_table(f, c"CFF ")
+		if ((f.cff == 0) || !ttf_cff_init(f)):
+			print_error(c"ttf: unreadable CFF table\n")
+			return 0
+	else if ((version != 65536) && (version != 1953658213)):
+		# 0x00010000 or 'true'; collections are not single fonts.
+		print_error(c"ttf: not a TrueType or OpenType font\n")
 		return 0
 	int head = ttf_table(f, c"head")
 	int maxp = ttf_table(f, c"maxp")
@@ -156,8 +172,9 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 	f.loca = ttf_table(f, c"loca")
 	f.glyf = ttf_table(f, c"glyf")
 	f.hmtx = ttf_table(f, c"hmtx")
-	if ((head == 0) || (maxp == 0) || (cmap == 0) || (hhea == 0) || (f.loca == 0) || (f.glyf == 0) || (f.hmtx == 0)):
-		print_error(c"ttf: required table missing (need head/maxp/cmap/hhea/loca/glyf/hmtx)\n")
+	int outlines = (f.cff != 0) || ((f.loca != 0) && (f.glyf != 0))
+	if ((head == 0) || (maxp == 0) || (cmap == 0) || (hhea == 0) || !outlines || (f.hmtx == 0)):
+		print_error(c"ttf: required table missing (need head/maxp/cmap/hhea/hmtx and loca/glyf or CFF)\n")
 		return 0
 	f.upem = ttf_u16(f, head + 18)
 	f.loc_long = ttf_u16(f, head + 50)
@@ -349,6 +366,8 @@ int ttf_pair_pos(ttf_font* f, int sub, int left, int right, int* matched):
 # (negative pulls the right glyph closer). GPOS 'kern' lookups when the
 # font has them, else the legacy kern table; 0 when neither lists the
 # pair.
+int ttf_kern_table_units(ttf_font* f, int left, int right);
+
 int ttf_kern_units(ttf_font* f, int left, int right):
 	if (f.gpos_feature != 0):
 		int total = 0
@@ -377,18 +396,46 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 				if (matched): s = subs
 				s = s + 1
 		return total
-	if (f.kern == 0): return 0
+	return ttf_kern_table_units(f, left, right)
+
+# Binary-search one format-0 kern subtable (pairs starts at nPairs).
+int ttf_kern_pair_value(ttf_font* f, int pairs, int left, int right, int* found):
 	int key = left * 65536 + right
 	int lo = 0
-	int hi = f.kern_pairs - 1
+	int hi = ttf_u16(f, pairs) - 1
 	while (lo <= hi):
 		int mid = (lo + hi) / 2
-		int rec = f.kern + 8 + mid * 6
+		int rec = pairs + 8 + mid * 6
+		if (rec + 6 > f.size): return 0
 		int k = ttf_u16(f, rec) * 65536 + ttf_u16(f, rec + 2)
-		if (k == key): return ttf_s16(f, rec + 4)
+		if (k == key):
+			found[0] = 1
+			return ttf_s16(f, rec + 4)
 		if (k < key): lo = mid + 1
 		else: hi = mid - 1
 	return 0
+
+# The legacy 'kern' table's value for the pair, ignoring GPOS: the sum
+# over its horizontal format-0 subtables (an override subtable replaces
+# the sum so far), as HarfBuzz applies them.
+int ttf_kern_table_units(ttf_font* f, int left, int right):
+	if (f.kern == 0): return 0
+	int kern = ttf_table(f, c"kern")
+	int tables = ttf_u16(f, kern + 2)
+	int sub = kern + 4
+	int total = 0
+	for t in range(tables):
+		if (sub + 6 > f.size): return total
+		int length = ttf_u16(f, sub + 2)
+		int coverage = ttf_u16(f, sub + 4)
+		if (((coverage >> 8) == 0) && ((coverage & 7) == 1)):
+			int found = 0
+			int value = ttf_kern_pair_value(f, sub + 6, left, right, &found)
+			if (found):
+				if (coverage & 8): total = value
+				else: total = total + value
+		sub = sub + length
+	return total
 
 
 # Release the bytes ttf_load read. Not for ttf_load_bytes fonts, whose
@@ -486,6 +533,21 @@ int ttf_boost_coverage(int v):
 int ttf_glyf_offset(ttf_font* f, int gid):
 	if (f.loc_long): return ttf_u32(f, f.loca + gid * 4)
 	return ttf_u16(f, f.loca + gid * 2) * 2
+
+
+# A glyph's ink box in font units (y up): box[0..3] = xMin, yMin, xMax,
+# yMax. Returns 0, with a zero box, for an empty or missing glyph.
+int ttf_cff_bbox(ttf_font* f, int gid, int* box);
+
+int ttf_glyph_bbox(ttf_font* f, int gid, int* box):
+	for i in range(4): box[i] = 0
+	if ((gid < 0) || (gid >= f.glyph_count)): return 0
+	if (f.cff != 0): return ttf_cff_bbox(f, gid, box)
+	int off = ttf_glyf_offset(f, gid)
+	if (ttf_glyf_offset(f, gid + 1) <= off): return 0
+	int at = f.glyf + off
+	for i in range(4): box[i] = ttf_s16(f, at + 2 + i * 2)
+	return 1
 
 
 struct ttf_bitmap:
@@ -734,10 +796,13 @@ int ttf_add_composite(ttf_font* f, ttf_outline* o, int off, ttf_xform* m, int de
 
 # Append glyph gid's outline, transformed by m. Returns 1 (an empty
 # glyph appends nothing), or 0 after printing why.
+int ttf_cff_add(ttf_font* f, ttf_outline* o, int gid, ttf_xform* m);
+
 int ttf_add_glyph(ttf_font* f, ttf_outline* o, int gid, ttf_xform* m, int depth):
 	if ((gid < 0) || (gid >= f.glyph_count)):
 		print_error(c"ttf: glyph id out of range\n")
 		return 0
+	if (f.cff != 0): return ttf_cff_add(f, o, gid, m)
 	if (depth > 8):
 		print_error(c"ttf: composite glyphs nested too deeply\n")
 		return 0
@@ -1089,6 +1154,9 @@ int ttf_checksum(char* data, int length):
 # font's bytes (caller frees) with the length in size[0], or 0 after
 # printing why.
 char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
+	if (f.cff != 0):
+		print_error(c"ttf: subsetting CFF-outline fonts is not supported\n")
+		return 0
 	int n = f.glyph_count
 	char* keep = cast(char*, malloc(n + 1))
 	mem_fill(keep, 0, n)
@@ -1315,3 +1383,543 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	size[0] = out.length
 	free(out)
 	return data
+
+
+# ---- CFF (Type 2 charstring) outlines --------------------------------
+#
+# 'OTTO' fonts keep outlines in a CFF table: INDEX structures of
+# charstrings, global and local subroutines, and DICTs that point at
+# them (Adobe TN #5176, Type 2 charstrings TN #5177). Name-keyed fonts
+# have one Private DICT; CID-keyed ones pick a Font DICT per glyph
+# through FDSelect. Cubic segments are flattened like the quadratic
+# ones; hints are skipped (unhinted output, as for TrueType).
+
+# A big-endian offset of size bytes (1-4).
+int ttf_cff_offset(ttf_font* f, int at, int size):
+	int v = 0
+	for i in range(size): v = (v << 8) | ttf_u8(f, at + i)
+	return v
+
+
+# Absolute offset of item i of the INDEX at idx, with its byte length in
+# length[0]; 0 (length 0) when i is out of range or the INDEX is bad.
+int ttf_cff_index_item(ttf_font* f, int idx, int i, int* length):
+	length[0] = 0
+	int count = ttf_u16(f, idx)
+	if ((i < 0) || (i >= count)): return 0
+	int size = ttf_u8(f, idx + 2)
+	if ((size < 1) || (size > 4)): return 0
+	int offsets = idx + 3
+	int a = ttf_cff_offset(f, offsets + i * size, size)
+	int b = ttf_cff_offset(f, offsets + (i + 1) * size, size)
+	int data = offsets + (count + 1) * size - 1
+	if ((a < 1) || (b < a) || (data + b > f.size)): return 0
+	length[0] = b - a
+	return data + a
+
+
+# The offset just past the INDEX at idx.
+int ttf_cff_index_end(ttf_font* f, int idx):
+	int count = ttf_u16(f, idx)
+	if (count == 0): return idx + 2
+	int size = ttf_u8(f, idx + 2)
+	if ((size < 1) || (size > 4)): return f.size
+	int offsets = idx + 3
+	return offsets + (count + 1) * size - 1 + ttf_cff_offset(f, offsets + count * size, size)
+
+
+# Find operator op (12 x is 1200 + x) in the DICT at [start, start +
+# length) and copy up to max of its integer operands into values.
+# Returns the operand count, or -1 when op is absent. Real operands
+# read as 0 (no operator used here takes one).
+int ttf_cff_dict(ttf_font* f, int start, int length, int op, int* values, int max):
+	int at = start
+	int end = start + length
+	int n = 0
+	while (at < end):
+		int b0 = ttf_u8(f, at)
+		if (b0 <= 21):
+			int code = b0
+			at = at + 1
+			if (b0 == 12):
+				code = 1200 + ttf_u8(f, at)
+				at = at + 1
+			if (code == op): return n
+			n = 0
+			continue
+		int value = 0
+		if (b0 == 28):
+			value = ttf_s16(f, at + 1)
+			at = at + 3
+		else if (b0 == 29):
+			value = ttf_u32(f, at + 1)
+			at = at + 5
+		else if (b0 == 30):
+			# A real: nibbles up to an 0xf terminator.
+			at = at + 1
+			int done = 0
+			while (!done && (at < end)):
+				int byte = ttf_u8(f, at)
+				if (((byte & 15) == 15) || ((byte >> 4) == 15)): done = 1
+				at = at + 1
+		else if ((b0 >= 32) && (b0 <= 246)):
+			value = b0 - 139
+			at = at + 1
+		else if ((b0 >= 247) && (b0 <= 250)):
+			value = (b0 - 247) * 256 + ttf_u8(f, at + 1) + 108
+			at = at + 2
+		else if ((b0 >= 251) && (b0 <= 254)):
+			value = 0 - (b0 - 251) * 256 - ttf_u8(f, at + 1) - 108
+			at = at + 2
+		else:
+			at = at + 1
+		if (n < max): values[n] = value
+		n = n + 1
+	return -1
+
+
+# The local Subrs INDEX of the Private DICT that dict's operator 18
+# (size, offset) names, or 0.
+int ttf_cff_private_subrs(ttf_font* f, int dict, int dict_length):
+	int[2] priv
+	if (ttf_cff_dict(f, dict, dict_length, 18, &priv[0], 2) != 2): return 0
+	int start = f.cff + priv[1]
+	int[1] subrs
+	if (ttf_cff_dict(f, start, priv[0], 19, &subrs[0], 1) != 1): return 0
+	return start + subrs[0]
+
+
+# Index the CFF table: CharStrings, the global and local subroutines,
+# and for CID-keyed fonts the FDArray and FDSelect. Returns 0 when the
+# table is unusable.
+int ttf_cff_init(ttf_font* f):
+	int cff = f.cff
+	if (ttf_u8(f, cff) != 1): return 0
+	int names = cff + ttf_u8(f, cff + 2)
+	int top_index = ttf_cff_index_end(f, names)
+	int strings = ttf_cff_index_end(f, top_index)
+	f.cff_gsubrs = ttf_cff_index_end(f, strings)
+	int top_length = 0
+	int top = ttf_cff_index_item(f, top_index, 0, &top_length)
+	if (top == 0): return 0
+	int[2] values
+	if (ttf_cff_dict(f, top, top_length, 17, &values[0], 1) != 1): return 0
+	f.cff_charstrings = cff + values[0]
+	f.cff_subrs = ttf_cff_private_subrs(f, top, top_length)
+	f.cff_fdarray = 0
+	f.cff_fdselect = 0
+	if (ttf_cff_dict(f, top, top_length, 1236, &values[0], 1) == 1):
+		f.cff_fdarray = cff + values[0]
+		if (ttf_cff_dict(f, top, top_length, 1237, &values[0], 1) != 1): return 0
+		f.cff_fdselect = cff + values[0]
+	return ttf_u16(f, f.cff_charstrings) > 0
+
+
+# CID-keyed fonts: the Font DICT index of gid (FDSelect formats 0 and 3).
+int ttf_cff_fd_index(ttf_font* f, int gid):
+	int sel = f.cff_fdselect
+	int format = ttf_u8(f, sel)
+	if (format == 0): return ttf_u8(f, sel + 1 + gid)
+	if (format != 3): return 0
+	int ranges = ttf_u16(f, sel + 1)
+	for i in range(ranges):
+		int rec = sel + 3 + i * 3
+		int next = ttf_u16(f, rec + 3)
+		if ((gid >= ttf_u16(f, rec)) && (gid < next)): return ttf_u8(f, rec + 2)
+	return 0
+
+
+# The local Subrs INDEX that gid's charstring calls into, or 0.
+int ttf_cff_local_subrs(ttf_font* f, int gid):
+	if (f.cff_fdarray == 0): return f.cff_subrs
+	int length = 0
+	int dict = ttf_cff_index_item(f, f.cff_fdarray, ttf_cff_fd_index(f, gid), &length)
+	if (dict == 0): return 0
+	return ttf_cff_private_subrs(f, dict, length)
+
+
+# The bias added to a subroutine number (Type 2: by subroutine count).
+int ttf_cff_bias(ttf_font* f, int idx):
+	if (idx == 0): return 0
+	int count = ttf_u16(f, idx)
+	if (count < 1240): return 107
+	if (count < 33900): return 1131
+	return 32768
+
+
+# Flatten one cubic (p0, c1, c2, p1) into 12 line segments.
+void ttf_outline_cubic(ttf_outline* o, float32 x0, float32 y0, float32 x1, float32 y1, float32 x2, float32 y2, float32 x3, float32 y3):
+	float32 px = x0
+	float32 py = y0
+	for i in range(1, 12 + 1):
+		float32 t = cast(float32, i) / 12.0
+		float32 u = 1.0 - t
+		float32 a = u * u * u
+		float32 b = 3.0 * u * u * t
+		float32 c = 3.0 * u * t * t
+		float32 d = t * t * t
+		float32 qx = a * x0 + b * x1 + c * x2 + d * x3
+		float32 qy = a * y0 + b * y1 + c * y2 + d * y3
+		ttf_outline_push(o, px, py, qx, qy)
+		px = qx
+		py = qy
+
+
+# Charstring interpreter state. Coordinates are font units, y up. The
+# path goes to an outline (o, transformed by m), a text dump (path), or
+# only the control-point bounds.
+struct ttf_cff_run:
+	ttf_font* f
+	ttf_outline* o
+	ttf_xform* m
+	string_builder* path
+	float32* stack
+	int sp
+	float32 x
+	float32 y
+	float32 start_x
+	float32 start_y
+	int open
+	int stems
+	int width_done
+	int gsubrs
+	int gbias
+	int subrs
+	int lbias
+	int ended
+	int bad
+	int has_bounds
+	float32 min_x
+	float32 min_y
+	float32 max_x
+	float32 max_y
+
+
+void ttf_cff_bound(ttf_cff_run* r, float32 x, float32 y):
+	if (!r.has_bounds):
+		r.min_x = x
+		r.max_x = x
+		r.min_y = y
+		r.max_y = y
+		r.has_bounds = 1
+		return
+	if (x < r.min_x): r.min_x = x
+	if (x > r.max_x): r.max_x = x
+	if (y < r.min_y): r.min_y = y
+	if (y > r.max_y): r.max_y = y
+
+
+float32 ttf_cff_tx(ttf_cff_run* r, float32 x, float32 y):
+	float32 ty = (r.m.b * x + r.m.d * y + r.m.dy) * r.o.scale
+	return (r.m.a * x + r.m.c * y + r.m.dx) * r.o.scale + r.o.skew * ty
+
+
+float32 ttf_cff_ty(ttf_cff_run* r, float32 x, float32 y):
+	return 0.0 - (r.m.b * x + r.m.d * y + r.m.dy) * r.o.scale
+
+
+void ttf_cff_dump(ttf_cff_run* r, char* op, float32 x, float32 y):
+	string_append(r.path, op)
+	string_append_int(r.path, ttf_floor(x + 0.5))
+	string_append_char(r.path, ' ')
+	string_append_int(r.path, ttf_floor(y + 0.5))
+
+
+void ttf_cff_line_to(ttf_cff_run* r, float32 x, float32 y):
+	if (r.o != 0): ttf_outline_push(r.o, ttf_cff_tx(r, r.x, r.y), ttf_cff_ty(r, r.x, r.y), ttf_cff_tx(r, x, y), ttf_cff_ty(r, x, y))
+	if (r.path != 0): ttf_cff_dump(r, c" L ", x, y)
+	r.x = x
+	r.y = y
+	ttf_cff_bound(r, x, y)
+
+
+void ttf_cff_close(ttf_cff_run* r):
+	if (!r.open): return
+	if ((r.x != r.start_x) || (r.y != r.start_y)):
+		if (r.o != 0): ttf_outline_push(r.o, ttf_cff_tx(r, r.x, r.y), ttf_cff_ty(r, r.x, r.y), ttf_cff_tx(r, r.start_x, r.start_y), ttf_cff_ty(r, r.start_x, r.start_y))
+	if (r.path != 0): string_append(r.path, c" Z")
+	# The implicit closing line leaves the current point where the last
+	# segment ended: the next moveto is relative to that.
+	r.open = 0
+
+
+void ttf_cff_move_by(ttf_cff_run* r, float32 dx, float32 dy):
+	ttf_cff_close(r)
+	r.x = r.x + dx
+	r.y = r.y + dy
+	r.start_x = r.x
+	r.start_y = r.y
+	r.open = 1
+	if (r.path != 0): ttf_cff_dump(r, c" M ", r.x, r.y)
+	ttf_cff_bound(r, r.x, r.y)
+
+
+void ttf_cff_line_by(ttf_cff_run* r, float32 dx, float32 dy):
+	ttf_cff_line_to(r, r.x + dx, r.y + dy)
+
+
+void ttf_cff_curve_by(ttf_cff_run* r, float32 dx1, float32 dy1, float32 dx2, float32 dy2, float32 dx3, float32 dy3):
+	float32 x1 = r.x + dx1
+	float32 y1 = r.y + dy1
+	float32 x2 = x1 + dx2
+	float32 y2 = y1 + dy2
+	float32 x3 = x2 + dx3
+	float32 y3 = y2 + dy3
+	if (r.o != 0): ttf_outline_cubic(r.o, ttf_cff_tx(r, r.x, r.y), ttf_cff_ty(r, r.x, r.y), ttf_cff_tx(r, x1, y1), ttf_cff_ty(r, x1, y1), ttf_cff_tx(r, x2, y2), ttf_cff_ty(r, x2, y2), ttf_cff_tx(r, x3, y3), ttf_cff_ty(r, x3, y3))
+	if (r.path != 0):
+		ttf_cff_dump(r, c" C ", x1, y1)
+		ttf_cff_dump(r, c" ", x2, y2)
+		ttf_cff_dump(r, c" ", x3, y3)
+	ttf_cff_bound(r, x1, y1)
+	ttf_cff_bound(r, x2, y2)
+	r.x = x3
+	r.y = y3
+	ttf_cff_bound(r, x3, y3)
+
+
+# The first stack-clearing operator may carry the advance width as an
+# extra leading operand; drop it (hmtx gives the advance).
+void ttf_cff_take_width(ttf_cff_run* r, int extra):
+	if (r.width_done): return
+	r.width_done = 1
+	if (extra && (r.sp > 0)):
+		for i in range(r.sp - 1): r.stack[i] = r.stack[i + 1]
+		r.sp = r.sp - 1
+
+
+# hhcurveto/vvcurveto/hvcurveto/vhcurveto: horizontal = 1 when the
+# first curve starts horizontally; alternate flips it per curve.
+void ttf_cff_hv_curves(ttf_cff_run* r, int horizontal):
+	float32* s = r.stack
+	int i = 0
+	while (i + 4 <= r.sp):
+		int last = i + 4 >= r.sp - 1
+		float32 extra = 0.0
+		if (last && (r.sp - i == 5)): extra = s[i + 4]
+		if (horizontal): ttf_cff_curve_by(r, s[i], 0.0, s[i + 1], s[i + 2], extra, s[i + 3])
+		else: ttf_cff_curve_by(r, 0.0, s[i], s[i + 1], s[i + 2], s[i + 3], extra)
+		horizontal = !horizontal
+		i = i + 4
+		if (last && (r.sp - i == 1)): i = i + 1
+
+
+# Run one charstring (or subroutine) at [at, at + length).
+void ttf_cff_exec(ttf_cff_run* r, int at, int length, int depth):
+	ttf_font* f = r.f
+	int end = at + length
+	if (depth > 10):
+		r.bad = 1
+		return
+	float32* s = r.stack
+	while ((at < end) && !r.ended && !r.bad):
+		int b0 = ttf_u8(f, at)
+		if ((b0 >= 32) || (b0 == 28)):
+			float32 value = 0.0
+			if (b0 == 28):
+				value = cast(float32, ttf_s16(f, at + 1))
+				at = at + 3
+			else if (b0 <= 246):
+				value = cast(float32, b0 - 139)
+				at = at + 1
+			else if (b0 <= 250):
+				value = cast(float32, (b0 - 247) * 256 + ttf_u8(f, at + 1) + 108)
+				at = at + 2
+			else if (b0 <= 254):
+				value = cast(float32, 0 - (b0 - 251) * 256 - ttf_u8(f, at + 1) - 108)
+				at = at + 2
+			else:
+				# 255: a 16.16 fixed-point number.
+				int whole = ttf_s16(f, at + 1)
+				value = cast(float32, whole) + cast(float32, ttf_u16(f, at + 3)) / 65536.0
+				at = at + 5
+			if (r.sp >= 48):
+				r.bad = 1
+				return
+			s[r.sp] = value
+			r.sp = r.sp + 1
+			continue
+		at = at + 1
+		int op = b0
+		if (op == 12):
+			op = 1200 + ttf_u8(f, at)
+			at = at + 1
+		if ((op == 1) || (op == 3) || (op == 18) || (op == 23)):
+			# hstem vstem hstemhm vstemhm
+			ttf_cff_take_width(r, r.sp & 1)
+			r.stems = r.stems + r.sp / 2
+			r.sp = 0
+		else if ((op == 19) || (op == 20)):
+			# hintmask cntrmask: pending operands are vstems.
+			ttf_cff_take_width(r, r.sp & 1)
+			r.stems = r.stems + r.sp / 2
+			r.sp = 0
+			at = at + (r.stems + 7) / 8
+		else if (op == 21):
+			ttf_cff_take_width(r, r.sp > 2)
+			if (r.sp >= 2): ttf_cff_move_by(r, s[0], s[1])
+			r.sp = 0
+		else if (op == 22):
+			ttf_cff_take_width(r, r.sp > 1)
+			if (r.sp >= 1): ttf_cff_move_by(r, s[0], 0.0)
+			r.sp = 0
+		else if (op == 4):
+			ttf_cff_take_width(r, r.sp > 1)
+			if (r.sp >= 1): ttf_cff_move_by(r, 0.0, s[0])
+			r.sp = 0
+		else if (op == 5):
+			int i = 0
+			while (i + 2 <= r.sp):
+				ttf_cff_line_by(r, s[i], s[i + 1])
+				i = i + 2
+			r.sp = 0
+		else if ((op == 6) || (op == 7)):
+			int horizontal = op == 6
+			for i in range(r.sp):
+				if (horizontal): ttf_cff_line_by(r, s[i], 0.0)
+				else: ttf_cff_line_by(r, 0.0, s[i])
+				horizontal = !horizontal
+			r.sp = 0
+		else if ((op == 8) || (op == 24)):
+			# rrcurveto, rcurveline (curves then one line)
+			int i = 0
+			while (i + 6 <= r.sp):
+				ttf_cff_curve_by(r, s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5])
+				i = i + 6
+			if ((op == 24) && (i + 2 <= r.sp)): ttf_cff_line_by(r, s[i], s[i + 1])
+			r.sp = 0
+		else if (op == 25):
+			# rlinecurve: lines, then one curve
+			int i = 0
+			while (i + 8 <= r.sp):
+				ttf_cff_line_by(r, s[i], s[i + 1])
+				i = i + 2
+			if (i + 6 <= r.sp): ttf_cff_curve_by(r, s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4], s[i + 5])
+			r.sp = 0
+		else if ((op == 26) || (op == 27)):
+			# vvcurveto, hhcurveto: an odd count leads with the other delta.
+			int i = 0
+			float32 lead = 0.0
+			if (r.sp & 1):
+				lead = s[0]
+				i = 1
+			while (i + 4 <= r.sp):
+				if (op == 26): ttf_cff_curve_by(r, lead, s[i], s[i + 1], s[i + 2], 0.0, s[i + 3])
+				else: ttf_cff_curve_by(r, s[i], lead, s[i + 1], s[i + 2], s[i + 3], 0.0)
+				lead = 0.0
+				i = i + 4
+			r.sp = 0
+		else if ((op == 30) || (op == 31)):
+			ttf_cff_hv_curves(r, op == 31)
+			r.sp = 0
+		else if ((op == 10) || (op == 29)):
+			if (r.sp < 1):
+				r.bad = 1
+				return
+			r.sp = r.sp - 1
+			int index = ttf_floor(s[r.sp])
+			int subrs = r.subrs
+			if (op == 29):
+				subrs = r.gsubrs
+				index = index + r.gbias
+			else: index = index + r.lbias
+			int sub_length = 0
+			int sub = 0
+			if (subrs != 0): sub = ttf_cff_index_item(f, subrs, index, &sub_length)
+			if (sub == 0):
+				r.bad = 1
+				return
+			ttf_cff_exec(r, sub, sub_length, depth + 1)
+		else if (op == 11):
+			return
+		else if (op == 14):
+			ttf_cff_take_width(r, (r.sp == 1) || (r.sp == 5))
+			ttf_cff_close(r)
+			r.ended = 1
+		else if ((op == 1234) || (op == 1235) || (op == 1236) || (op == 1237)):
+			# hflex flex hflex1 flex1: two curves (the flex depth is ignored).
+			if (op == 1234):
+				ttf_cff_curve_by(r, s[0], 0.0, s[1], s[2], s[3], 0.0)
+				ttf_cff_curve_by(r, s[4], 0.0, s[5], 0.0 - s[2], s[6], 0.0)
+			else if (op == 1235):
+				ttf_cff_curve_by(r, s[0], s[1], s[2], s[3], s[4], s[5])
+				ttf_cff_curve_by(r, s[6], s[7], s[8], s[9], s[10], s[11])
+			else if (op == 1236):
+				ttf_cff_curve_by(r, s[0], s[1], s[2], s[3], s[4], 0.0)
+				ttf_cff_curve_by(r, s[5], 0.0, s[6], s[7], s[8], 0.0 - (s[1] + s[3] + s[7]))
+			else:
+				float32 dx = s[0] + s[2] + s[4] + s[6] + s[8]
+				float32 dy = s[1] + s[3] + s[5] + s[7] + s[9]
+				float32 adx = dx
+				float32 ady = dy
+				if (adx < 0.0): adx = 0.0 - adx
+				if (ady < 0.0): ady = 0.0 - ady
+				ttf_cff_curve_by(r, s[0], s[1], s[2], s[3], s[4], s[5])
+				if (adx > ady): ttf_cff_curve_by(r, s[6], s[7], s[8], s[9], s[10], 0.0 - dy)
+				else: ttf_cff_curve_by(r, s[6], s[7], s[8], s[9], 0.0 - dx, s[10])
+			r.sp = 0
+		else:
+			# Arithmetic and storage operators (unused by current fonts)
+			# and reserved codes: discard the operands.
+			r.sp = 0
+
+
+# Interpret gid's charstring into o (transformed by m), path, or only
+# the bounds. Returns 1, or 0 on a malformed charstring.
+int ttf_cff_run_glyph(ttf_font* f, int gid, ttf_cff_run* r):
+	r.f = f
+	r.stack = cast(float32*, malloc(48 * 4))
+	r.sp = 0
+	r.x = 0.0
+	r.y = 0.0
+	r.open = 0
+	r.stems = 0
+	r.width_done = 0
+	r.ended = 0
+	r.bad = 0
+	r.has_bounds = 0
+	r.gsubrs = f.cff_gsubrs
+	r.gbias = ttf_cff_bias(f, f.cff_gsubrs)
+	r.subrs = ttf_cff_local_subrs(f, gid)
+	r.lbias = ttf_cff_bias(f, r.subrs)
+	int length = 0
+	int at = ttf_cff_index_item(f, f.cff_charstrings, gid, &length)
+	if (at != 0): ttf_cff_exec(r, at, length, 0)
+	ttf_cff_close(r)
+	free(cast(char*, r.stack))
+	if (r.bad): print_error(c"ttf: malformed CFF charstring\n")
+	return !r.bad
+
+
+int ttf_cff_add(ttf_font* f, ttf_outline* o, int gid, ttf_xform* m):
+	ttf_cff_run r
+	r.o = o
+	r.m = m
+	r.path = 0
+	return ttf_cff_run_glyph(f, gid, &r)
+
+
+# Control-point bounds of a CFF glyph in font units (as glyf headers and
+# HarfBuzz's CFF extents use), rounded outward.
+int ttf_cff_bbox(ttf_font* f, int gid, int* box):
+	ttf_cff_run r
+	r.o = 0
+	r.m = 0
+	r.path = 0
+	if (!ttf_cff_run_glyph(f, gid, &r) || !r.has_bounds): return 0
+	box[0] = ttf_floor(r.min_x)
+	box[1] = ttf_floor(r.min_y)
+	box[2] = ttf_ceil(r.max_x)
+	box[3] = ttf_ceil(r.max_y)
+	return 1
+
+
+# The glyph's CFF path as text ("M x y", "L x y", "C x1 y1 x2 y2 x y",
+# "Z"; font units rounded), for tests and tools. Returns 0 when f has no
+# CFF outlines or the charstring is malformed.
+int ttf_cff_path(ttf_font* f, int gid, string_builder* path):
+	if (f.cff == 0): return 0
+	ttf_cff_run r
+	r.o = 0
+	r.m = 0
+	r.path = path
+	return ttf_cff_run_glyph(f, gid, &r)

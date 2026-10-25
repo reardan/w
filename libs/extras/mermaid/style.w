@@ -285,25 +285,6 @@ void mm_style_property(mm_document* d, mm_style* style, char* key, char* value, 
 	if (mask == MM_STYLE_FAMILY): style.family = parsed
 	if (mask == MM_STYLE_RADIUS): style.radius = parsed
 
-# C4 UpdateElementStyle / UpdateRelStyle arguments ($bgColor="red" ...) as
-# the shared CSS subset: returns 1 when name is a styling argument (its value
-# is then checked like the matching CSS property), 0 for other arguments.
-int mm_style_c4_property(mm_document* d, mm_style* style, char* name, char* value, int offset):
-	list[char*] names = list[char*]{c"$bgColor", c"$fontColor", c"$borderColor", c"$lineColor", c"$textColor", c"$borderThickness", c"$borderStyle"}
-	list[char*] keys = list[char*]{c"fill", c"color", c"stroke", c"stroke", c"color", c"stroke-width", c"stroke-dasharray"}
-	int found = -1
-	for i in range(names.length):
-		if (strcmp(name, names[i]) == 0): found = i
-	if (found == 6):
-		# Upstream's c4 border styles: dashed and dotted map to dash arrays.
-		if (strcmp(value, c"dashed") == 0): mm_style_property(d, style, keys[found], c"6 4", offset)
-		else if (strcmp(value, c"dotted") == 0): mm_style_property(d, style, keys[found], c"2 2", offset)
-		else if (strcmp(value, c"solid") != 0): mm_error(d, offset, c"C4 $borderStyle must be solid, dashed or dotted")
-	else if (found >= 0): mm_style_property(d, style, keys[found], value, offset)
-	__w_list_free(cast(__w_list*, names))
-	__w_list_free(cast(__w_list*, keys))
-	return found >= 0
-
 mm_style mm_style_parse(mm_parser* p):
 	mm_style style
 	mm_style_clear(&style)
@@ -433,9 +414,16 @@ int mm_style_statement(mm_parser* p):
 	char* targets
 	if (mm_peek(p) == '"'): targets = mm_quoted(p)
 	else:
-		int start = p.pos
-		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
-		targets = str_copy_range(p.doc.source, start, p.pos)
+		# Comma-separated targets may have spaces after the commas (`A, B`).
+		string_builder* joined = string_new()
+		while (p.doc.error == 0):
+			int start = p.pos
+			while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
+			string_append_bytes(joined, p.doc.source + start, p.pos - start)
+			if (p.pos == start || joined.data[joined.length - 1] != ','): break
+			while (mm_peek(p) == 32 || mm_peek(p) == 9): p.pos = p.pos + 1
+		targets = strclone(joined.data)
+		string_free(joined)
 	mm_space(p)
 	mm_style style
 	mm_style_clear(&style)
@@ -475,8 +463,10 @@ int mm_style_statement(mm_parser* p):
 	return 1
 
 void mm_style_validate(mm_document* d):
-	# Mindmap and TreeView classes name stylesheet (themeCSS) classes; unknown names are ignored.
-	if (d.kind == MM_MINDMAP || d.kind == MM_TREEVIEW): return
+	# Mindmap and TreeView classes name stylesheet (themeCSS) classes, and use
+	# case and class-diagram classes need no classDef upstream (`:::name` and
+	# cssClass may name external CSS): unknown names stay CSS class names.
+	if (d.kind == MM_MINDMAP || d.kind == MM_TREEVIEW || d.kind == MM_USECASE || d.kind == MM_CLASS): return
 	for mm_node* node in d.nodes:
 		int start = 0
 		int length = strlen(node.style_classes)
@@ -765,13 +755,13 @@ void mm_style_theme_resolve(mm_document* d, int theme, list[int] user, int dark)
 	__w_list_free(cast(__w_list*, lights))
 	__w_list_free(cast(__w_list*, touched))
 
-# Native layered-layout gaps; flowchart nodeSpacing/rankSpacing override them.
+# Native layered-layout gaps; flowchart (and use case) nodeSpacing/rankSpacing override them.
 int mm_style_lane_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 1)): return d.node_spacing * 2
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 1)): return d.node_spacing * 2
 	return 100
 
 int mm_style_rank_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 2)): return d.rank_spacing + 90
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 2)): return d.rank_spacing + 90
 	return 140
 
 # Font size configuration: 8..72, optionally followed by px; -1 when invalid.

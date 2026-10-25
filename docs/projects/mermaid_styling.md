@@ -74,7 +74,7 @@ and to swimlane edges.
 | Swimlane | `style`, `classDef`, `class` and `:::NAME` on nodes and lanes, `linkStyle` on edges; circles and decisions are fillable |
 | Use case | `style`, `classDef`, `class`, `:::NAME` after an actor, use case or boundary |
 | Block | node styles as above; `-.->`/`-.-` draw dotted links and `==>`/`===` thick (4px) links |
-| C4 | `mm_style_c4_property` maps `$bgColor`, `$fontColor`, `$borderColor`, `$lineColor`, `$textColor`, `$borderThickness` and `$borderStyle` (solid/dashed/dotted) onto this property set for the C4 parser's style statements (`UpdateElementStyle`) |
+| C4 | `UpdateElementStyle` (`$bgColor`, `$fontColor`, `$borderColor`) and `UpdateRelStyle` (`$textColor`, `$lineColor`) set fill, color and stroke (see the C4 family) |
 | Quadrant | point styles and classes (see the data family) |
 
 Style rules in data charts name existing items: an unmatched target fails with
@@ -118,22 +118,15 @@ A -->|label| B
 ```
 
 Configuration comes from YAML frontmatter, from `%%{init: {...}}%%` /
-`%%{initialize: {...}}%%` directives, or both. Both become the same dotted keys
-and pass one validator, so they accept the same keys and report the same
-diagnostics. Directives must come after any frontmatter and before the diagram
-header; they may span lines and be mixed with `%%` comments and blank lines, and
-several may be given. A directive after the header is still rejected. Later
-sources override earlier ones key by key (frontmatter, then directives in
-order); repeating a key inside one source is an error.
-
-Frontmatter is a bounded YAML subset: block mappings at any consistent space
-indentation (tabs are rejected; a dedent must return to an enclosing level), `#`
-comment lines and trailing comments, plain or single/double-quoted scalars
-(without escapes), quoted keys, and inline `{key: value}` flow mappings. Lists,
-block scalars, anchors and tags produce a diagnostic. Directive objects are
-JSON-ish: single- or double-quoted strings, bare keys and values, numbers,
-booleans, nested objects and trailing commas; arrays and escapes are rejected.
-At most 256 entries and four levels of nesting are read.
+`%%{initialize: {...}}%%` directives anywhere in the diagram, or both. All
+sources become the same dotted keys and pass one validator; later sources
+override earlier ones key by key (frontmatter, then directives in order).
+Frontmatter is a bounded YAML subset with lists, block scalars, anchors,
+aliases, merge keys and escapes. The sources, precedence, YAML subset, bounds
+and the per-family keys (sequence, gantt, timeline, xyChart, sankey, radar,
+gitGraph, railroad, requirement, c4) are documented in
+[mermaid_config.md](mermaid_config.md). The keys below are the theme, look,
+layout and flowchart settings.
 
 | Key | Accepted values |
 | --- | --- |
@@ -147,7 +140,9 @@ At most 256 entries and four levels of nesting are read.
 | `flowchart.curve` | `basis`, `linear`, `step`, `stepBefore`, `stepAfter` |
 | `packet.bitsPerRow`, `packet.bitOrder` | see the packet family |
 
-Any other key — other diagram sections, `look: handDrawn` — produces a
+Keys that are not supported natively — unsupported diagram settings — are
+ignored deterministically and recorded in `mm_document.config_ignored`;
+invalid values of supported keys, such as `look: handDrawn`, produce a
 diagnostic.
 
 ### Themes
@@ -226,8 +221,9 @@ percentage points, clamped; hue wraps):
 
 `darkMode` defaults to the theme's own mode. Variables a theme does not define
 upstream are derived as above. Without any configuration, charts keep the fixed
-native series colors. An unknown variable fails with `unsupported theme
-variable`.
+native series colors. An unknown variable (`gitBranchLabel0`, `cScaleLabel0`,
+`commitLabelColor`, ...) is ignored and recorded in `config_ignored`, like
+other unknown keys.
 
 ### Layout keys
 
@@ -273,11 +269,12 @@ variables, malformed input, truncation, budgets and owned scene lifetime.
 property (through `style`, `classDef` + `class` and `:::`), `themeCSS`, each
 font key, every theme with the neo look, every theme variable, each family
 styling form, the rich labels, and the deliberately unsupported options
-(`look: handDrawn`, other CSS properties and selectors, unknown variables,
-out-of-range font sizes, TreeView icons, styled start states, unmatched data
+(`look: handDrawn`, other CSS properties and selectors, out-of-range font sizes, TreeView icons, styled start states, unmatched data
 style targets).
 `./wbuild config_test config_64_test` covers palette derivation, upstream theme
 palettes, variables with every theme and dark mode, pie/cScale series colors,
 init directives (quoting, multi-line, fenced, frontmatter override, line numbers),
 relaxed frontmatter, spacing and curves, every configuration diagnostic, the
-entry budget and truncated prefixes.
+entry budget and truncated prefixes; `config_yaml_test` and
+`config_family_test` cover the YAML subset and per-family keys
+([mermaid_config.md](mermaid_config.md#checks)).

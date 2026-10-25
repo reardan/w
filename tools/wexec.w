@@ -72,6 +72,7 @@ the step finishes, so output is visible but not interleaved live.
 
 Usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target]
              [--no-cache] [--keep-going] [--ordered-output] [--shard I/N] [--shard-costs path] [--timings path] [-j N] target...
+       wexec [-f manifest.json] --remote=<host> [--remote-dir=<dir>] target...
 
 Direct-file UX (issue #323 stage 1): in place of a target name, wexec
 also accepts a bare "<file>.w" or a "[selector] <file>.w" pair (e.g.
@@ -134,6 +135,16 @@ treat as this target's inputs) -- an audit surface that runs no build
 step differently and changes nothing about a plain `wexec <target>`.
 See tools/wexec_trace.w for the ptrace mechanism and its documented
 noise filter.
+
+Remote execution (issue #487), "--remote=<host> [--remote-dir=<dir>]
+target...", runs the requested targets on another host over ssh: wexec
+ships their declared input closure (content addressed, so a repeat run
+uploads only what changed), runs them there with the host's ./wbuild in
+a tree holding only the shipped files, and brings the declared outputs
+back as a WBUN1 bundle that fills the local stamps (and, with
+W_CACHE_PUSH=1, the shared cache). "--write-bundle <path> target..." is
+the host half. See the "Remote execution" block comment above
+wexec_remote_execute.
 
 Before running any requested target's steps through the ordinary
 scheduler (wexec_execute), wexec takes an advisory single-writer lock on
@@ -211,6 +222,8 @@ map[char*, char*] wexec_target_status
 map[char*, char*] wexec_target_cache
 int wexec_timings_started_ms
 int wexec_timings_error
+char* wexec_remote_host          # --remote=<host>: run the requested targets there (issue #487)
+char* wexec_remote_dir_arg       # --remote-dir=<dir> on that host
 
 
 void wexec_timings_record(char* name, char* status);
@@ -239,6 +252,7 @@ void wexec_usage():
 	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target] [--no-cache] [--keep-going] [--ordered-output] [--shard I/N] [--shard-costs path] [--timings path] [-j N] target...")
 	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
 	stream_write_line(err, c"       wexec [-f manifest.json] --trace target [--hermetic]")
+	stream_write_line(err, c"       wexec [-f manifest.json] --remote=<host> [--remote-dir=<dir>] [--no-cache] [--keep-going] target...")
 	stream_flush(err)
 
 
@@ -1986,13 +2000,35 @@ int wexec_bundle_read_uint(char* data, int length, int* pos):
 	return value
 
 
+# The bundle records no file modes, so a restored file is made
+# executable when its content starts like a program: ELF, Mach-O, PE or
+# a #! script -- what declared outputs such as bin/wv2 are.
+int wexec_bundle_looks_executable(char* data, int length):
+	if (length < 2): return 0
+	int b0 = data[0] & 255
+	int b1 = data[1] & 255
+	if ((b0 == '#') && (b1 == '!')): return 1
+	if ((b0 == 'M') && (b1 == 'Z')): return 1
+	if (length < 4): return 0
+	int b2 = data[2] & 255
+	int b3 = data[3] & 255
+	if ((b0 == 127) && (b1 == 'E') && (b2 == 'L') && (b3 == 'F')): return 1
+	if (((b0 == 207) || (b0 == 206)) && (b1 == 250) && (b2 == 237) && (b3 == 254)): return 1
+	return 0
+
+
 int wexec_bundle_write_file(char* path, char* data, int length):
-	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 420 = rw-r--r--
-	int fd = open(path, 577, 420)
+	# 420 = rw-r--r--, 493 = rwxr-xr-x
+	int mode = 420
+	if (wexec_bundle_looks_executable(data, length)): mode = 493
+	# 577 = O_WRONLY | O_CREAT | O_TRUNC
+	int fd = open(path, 577, mode)
 	if (fd < 0): return 0
 	int written = 0
 	if (length > 0): written = write(fd, data, length)
 	close(fd)
+	# O_TRUNC keeps an existing file's mode; set the one chosen above.
+	file_chmod(path, mode)
 	return written >= length
 
 
@@ -2042,41 +2078,25 @@ char* wexec_read_file_bytes(char* path, int* out_len):
 	return data
 
 
-# Serializes a target's declared "outputs" into a bundle (see the
-# format above). Returns 0 (nothing to push) when "outputs" is
-# missing/empty or any listed file cannot be read -- a target that
-# just ran should always have its outputs present, but a push is
-# best-effort and never worth failing the build over.
-char* wexec_bundle_build(json_value* target, int* out_len):
-	json_value* outputs = jfield_array(target, c"outputs")
-	if (outputs == 0): return 0
-	int n = json_array_length(outputs)
-	if (n == 0): return 0
-	list[char*] paths = new list[char*]
+# Serializes a list of files into a bundle (see the format above), in
+# list order. Returns 0 when any listed file cannot be read; an empty
+# list is a valid zero-file bundle.
+char* wexec_bundle_build_paths(list[char*] paths, int* out_len):
 	list[char*] blobs = new list[char*]
 	list[int] sizes = new list[int]
-	int i = 0
-	int ok = 1
-	while ((i < n) && ok):
-		json_value* entry = json_array_get(outputs, i)
-		if (entry.type != json_type_string()): ok = 0
-		else:
-			int flen = 0
-			char* data = wexec_read_file_bytes(entry.string_value, &flen)
-			if (data == 0): ok = 0
-			else:
-				paths.push(entry.string_value)
-				blobs.push(data)
-				sizes.push(flen)
-		i = i + 1
-	if (ok == 0):
-		for char* blob in blobs: free(blob)
-		return 0
+	for char* path in paths:
+		int flen = 0
+		char* data = wexec_read_file_bytes(path, &flen)
+		if (data == 0):
+			for char* blob in blobs: free(blob)
+			return 0
+		blobs.push(data)
+		sizes.push(flen)
 	string_builder* s = string_new()
 	string_append(s, c"WBUN1\n")
 	string_append_int(s, paths.length)
 	string_append_char(s, 10)
-	i = 0
+	int i = 0
 	while (i < paths.length):
 		char* path = paths[i]
 		string_append_int(s, strlen(path))
@@ -2091,6 +2111,34 @@ char* wexec_bundle_build(json_value* target, int* out_len):
 	char* text = s.data
 	free(s)
 	return text
+
+
+# Appends a target's declared "outputs" to paths, skipping duplicates.
+# Returns 0 when an entry is not a string.
+int wexec_bundle_add_outputs(json_value* target, list[char*] paths, map[char*, int] seen):
+	json_value* outputs = jfield_array(target, c"outputs")
+	if (outputs == 0): return 1
+	int i = 0
+	while (i < json_array_length(outputs)):
+		json_value* entry = json_array_get(outputs, i)
+		if (entry.type != json_type_string()): return 0
+		if ((entry.string_value in seen) == 0):
+			seen[entry.string_value] = 1
+			paths.push(entry.string_value)
+		i = i + 1
+	return 1
+
+
+# Serializes a target's declared "outputs" into a bundle. Returns 0
+# (nothing to push) when "outputs" is missing/empty or any listed file
+# cannot be read -- a target that just ran should always have its
+# outputs present, but a push is best-effort and never worth failing
+# the build over.
+char* wexec_bundle_build(json_value* target, int* out_len):
+	list[char*] paths = new list[char*]
+	if (wexec_bundle_add_outputs(target, paths, new map[char*, int]) == 0): return 0
+	if (paths.length == 0): return 0
+	return wexec_bundle_build_paths(paths, out_len)
 
 
 # GET <url>/objects/<key>; on a 200 with a bundle that unpacks cleanly,
@@ -2666,7 +2714,9 @@ int wexec_load_manifest(char* path):
 	if (m == 0):
 		wexec_error(manifest_parse_error)
 		return 1
-	manifest_host_prepare(m, repository && strcmp(path, c"build.base.json") == 0)
+	# --remote ships the logical manifest: the host's Mac/Android
+	# planning would only mark Linux targets unavailable here.
+	if (wexec_remote_host == 0): manifest_host_prepare(m, repository && strcmp(path, c"build.base.json") == 0)
 	wexec_manifest = m.root
 	wexec_targets = m.by_name
 	wexec_names = m.names
@@ -3169,6 +3219,517 @@ int wexec_trace_cmd(char* name, int hermetic):
 	return wexec_trace_run(name, target, declared, hermetic)
 
 
+/* Remote execution (issue #487): 'wexec --remote=<host> target...'
+runs the requested targets on another machine over ssh -- the Mac
+checkout's "ssh host w" habit (CLAUDE.md) made a build-system feature.
+There is no execution API and no worker daemon: wexec ships the
+targets' declared input closure to the host, runs them there with the
+host's own ./wbuild, and brings the declared outputs back as a WBUN1
+bundle (the shared-cache format above), so a remote result fills the
+local stamp and, with W_CACHE_PUSH=1, the W_CACHE_URL cache exactly as
+a local run would.
+
+What is shipped is the set --trace --hermetic audits against
+(wexec_trace_collect_declared): every closure target's declared
+"inputs" (directory prefixes walked) plus its compile roots' import
+closures, together with wbuild and SEEDS for the remote bootstrap and
+the closures of "wv2", "wexec" and "generated", which wbuild and the
+generated-source gate always run. Declared outputs of closure targets
+and generated sources are left out: the host rebuilds them. The
+manifest itself is shipped as .wexec_remote/manifest.json and loaded
+there with -f, so the host runs the exact targets this checkout
+generated; it is the logical (Linux) manifest, without this host's
+Mac/Android planning, because the point of a remote is a platform this
+host cannot run.
+
+Upload is content addressed. Round 1 sends the index -- one
+"<sha256> <mode> <path>" line per file -- and the host answers with
+the hashes its object store lacks; round 2 sends a tar of just those
+objects (objects/<sha256>, written by wexec_remote_tar_add below, so
+nothing local needs tar) and runs the build; round 3 fetches the
+bundle. A repeat run uploads only what changed. On the host, under
+--remote-dir (default .cache/wexec-remote/w, relative to the remote
+home):
+
+  objects/<sha256>   every file content ever shipped
+  base/              the shipped tree, updated from the index diff
+  run/               a fresh copy of base/ per run, plus the previous
+                     run's bin/ (its stamps and outputs are the host's
+                     cache) and its ./w seed
+
+Because run/ is rebuilt from base/ each time, a step sees exactly the
+declared files: an undeclared read that works locally fails remotely.
+That is the hermeticity the issue asks for, and 'wexec --trace <target>
+--hermetic' on a Linux checkout names the undeclared file. Only bin/
+carries over, as it does locally. One run per remote dir at a time.
+
+The remote command is POSIX sh on the host (mkdir, cat, sort, comm, cp,
+tar), wrapped in 'sh -c' so a non-POSIX login shell still works. The
+transport is 'ssh <host> <command>'; WEXEC_REMOTE_SSH names another
+program with the same calling convention (the test's local stand-in,
+tests/wexec/fake_ssh.sh). ssh's own configuration (~/.ssh/config)
+supplies ports, users and keys. */
+
+char* wexec_remote_dir():
+	if (wexec_remote_dir_arg != 0): return wexec_remote_dir_arg
+	return c".cache/wexec-remote/w"
+
+
+char* wexec_remote_manifest_path():
+	return c".wexec_remote/manifest.json"
+
+
+# Single-quotes text for sh: ' becomes '\''.
+void wexec_remote_append_quoted(string_builder* s, char* text):
+	string_append_char(s, 39)
+	int i = 0
+	while (text[i] != 0):
+		if (text[i] == 39):
+			string_append_char(s, 39)
+			string_append_char(s, 92)
+			string_append_char(s, 39)
+			string_append_char(s, 39)
+		else: string_append_char(s, text[i])
+		i = i + 1
+	string_append_char(s, 39)
+
+
+# A relative path with no ".." component and no newline: anything else
+# cannot be placed in the remote tree (and an index line is one line).
+int wexec_remote_shippable_path(char* path):
+	if ((path[0] == 0) || (path[0] == '/')): return 0
+	int start = 0
+	int i = 0
+	while (1):
+		char c = path[i]
+		if ((c == 10) || (c == 13)): return 0
+		if ((c == '/') || (c == 0)):
+			if (((i - start) == 2) && (path[start] == '.') && (path[start + 1] == '.')): return 0
+			if (c == 0): return 1
+			start = i + 1
+		i = i + 1
+	return 1
+
+
+struct wexec_remote_file:
+	char* path
+	char* hash
+	int executable
+	char* data      # in-memory content (the manifest), 0 = read path
+	int length
+
+
+char* wexec_remote_hash_bytes(char* data, int length):
+	deps_hash h
+	deps_hash_init(&h, 1)
+	deps_hash_bytes(&h, data, length)
+	return deps_hash_hex(&h)
+
+
+# The closure to ship and key: the requested targets plus the targets
+# wbuild and the generated-source gate always run on the host.
+int wexec_remote_collect_closure(list[char*] requested):
+	if (wexec_targets.get(c"generated", 0) != 0):
+		if (wexec_collect_closure(c"generated")): return 1
+	if (wexec_targets.get(c"wv2", 0) != 0):
+		if (wexec_collect_closure(c"wv2")): return 1
+	if (wexec_targets.get(c"wexec", 0) != 0):
+		if (wexec_collect_closure(c"wexec")): return 1
+	for char* name in requested:
+		if (wexec_collect_closure(name)): return 1
+	return 0
+
+
+list[char*] wexec_remote_collect_paths():
+	map[char*, int] produced = new map[char*, int]
+	for char* name in wexec_closure:
+		json_value* outputs = jfield_array(wexec_targets[name], c"outputs")
+		if (outputs == 0): continue
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* output = json_array_get(outputs, i)
+			if (output.type == json_type_string()): produced[output.string_value] = 1
+			i = i + 1
+	map[char*, int] wanted = new map[char*, int]
+	wanted[c"wbuild"] = 1
+	wanted[c"SEEDS"] = 1
+	for char* name in wexec_closure:
+		map[char*, int] declared = wexec_trace_collect_declared(wexec_targets[name])
+		for char* path, int present in declared: wanted[path] = present
+	list[char*] paths = new list[char*]
+	for char* path, int present in wanted:
+		if (path in produced): continue
+		if (wexec_is_generated_output(path)): continue
+		if (wexec_remote_shippable_path(path) == 0): continue
+		file_stat st
+		if (file_stat_path(path, &st) < 0): continue
+		if (file_is_reg(&st) == 0): continue
+		paths.push(path)
+	wexec_sort_strings(paths)
+	return paths
+
+
+# The logical manifest, as loaded (host planning is skipped under
+# --remote), with any direct-file target synthesized this run.
+char* wexec_remote_manifest_text():
+	json_value* root = json_object()
+	json_value* dirs = json_object_get(wexec_manifest, c"dirs")
+	if (dirs != 0): json_object_set(root, c"dirs", dirs)
+	json_value* targets = json_array()
+	for char* name in wexec_names: json_array_push(targets, wexec_targets[name])
+	json_object_set(root, c"targets", targets)
+	return json_stringify(root)
+
+
+list[wexec_remote_file*] wexec_remote_index_files(list[char*] paths):
+	list[wexec_remote_file*] files = new list[wexec_remote_file*]
+	for char* path in paths:
+		int length = 0
+		char* data = wexec_read_file_bytes(path, &length)
+		if (data == 0): continue
+		wexec_remote_file* f = new wexec_remote_file()
+		f.path = path
+		f.hash = wexec_remote_hash_bytes(data, length)
+		free(data)
+		file_stat st
+		if (file_stat_path(path, &st) == 0): f.executable = (file_mode_perm(&st) & 64) != 0
+		files.push(f)
+	wexec_remote_file* m = new wexec_remote_file()
+	m.path = wexec_remote_manifest_path()
+	m.data = wexec_remote_manifest_text()
+	m.length = strlen(m.data)
+	m.hash = wexec_remote_hash_bytes(m.data, m.length)
+	files.push(m)
+	return files
+
+
+char* wexec_remote_index_text(list[wexec_remote_file*] files):
+	string_builder* s = string_new()
+	for wexec_remote_file* f in files:
+		string_append(s, f.hash)
+		if (f.executable): string_append(s, c" 755 ")
+		else: string_append(s, c" 644 ")
+		string_append(s, f.path)
+		string_append_char(s, 10)
+	char* text = s.data
+	free(s)
+	return text
+
+
+# A ustar member "objects/<sha256>": the name always fits the 100-byte
+# field, so no prefix or pax header is ever needed.
+void wexec_remote_tar_octal(char* h, int offset, int digits, int value):
+	int i = digits - 1
+	while (i >= 0):
+		h[offset + i] = '0' + (value & 7)
+		value = value >> 3
+		i = i - 1
+	h[offset + digits] = 0
+
+
+void wexec_remote_tar_add(string_builder* tar, char* name, char* data, int length):
+	char* h = cast(char*, malloc(512))
+	for i in range(512): h[i] = 0
+	int n = strlen(name)
+	for i in range(n): h[i] = name[i]
+	wexec_remote_tar_octal(h, 100, 7, 420)
+	wexec_remote_tar_octal(h, 108, 7, 0)
+	wexec_remote_tar_octal(h, 116, 7, 0)
+	wexec_remote_tar_octal(h, 124, 11, length)
+	wexec_remote_tar_octal(h, 136, 11, 0)
+	h[156] = '0'
+	char* magic = c"ustar"
+	for i in range(5): h[257 + i] = magic[i]
+	h[263] = '0'
+	h[264] = '0'
+	for i in range(8): h[148 + i] = ' '
+	int sum = 0
+	for i in range(512): sum = sum + (h[i] & 255)
+	wexec_remote_tar_octal(h, 148, 6, sum)
+	h[155] = ' '
+	string_append_bytes(tar, h, 512)
+	free(h)
+	if (length > 0): string_append_bytes(tar, data, length)
+	int pad = (512 - (length % 512)) % 512
+	for i in range(pad): string_append_char(tar, 0)
+
+
+# Runs the transport with a remote sh script. capture = 1 collects
+# stdout (the output then goes to *out); otherwise the remote output
+# streams straight to ours. Returns the decoded exit status, or -1 when
+# the transport cannot start.
+int wexec_remote_ssh(char* script, char* input, int input_length, int capture, process_result** out):
+	char* program = env_get(c"WEXEC_REMOTE_SSH")
+	if ((program == 0) || (program[0] == 0)): program = c"ssh"
+	char* resolved = wexec_resolve_program(program)
+	if (resolved == 0):
+		wexec_error2(c"remote: cannot find ", program)
+		return -1
+	string_builder* command = string_new()
+	string_append(command, c"sh -c ")
+	wexec_remote_append_quoted(command, script)
+	char** argv = strv_new(3)
+	strv_set(argv, 0, program)
+	strv_set(argv, 1, wexec_remote_host)
+	strv_set(argv, 2, command.data)
+	if (capture):
+		process_result* result = process_run_bytes(resolved, argv, 0, input, input_length, 0)
+		if (result == 0):
+			wexec_error2(c"remote: cannot run ", program)
+			return -1
+		*out = result
+		return result.status
+	spawn_options* opts = spawn_options_new()
+	opts.stdin_mode = process_pipe
+	process* p = process_spawn(resolved, argv, opts)
+	if (p == 0):
+		wexec_error2(c"remote: cannot run ", program)
+		return -1
+	int offset = 0
+	while (offset < input_length):
+		int written = write(p.stdin_fd, input + offset, input_length - offset)
+		if (written <= 0): offset = input_length
+		else: offset = offset + written
+	process_close_stdin(p)
+	return process_wait(p)
+
+
+# The script prefix every round shares: strict, byte-order sorting
+# (comm needs the same collation as sort), inside the remote dir.
+void wexec_remote_script_start(string_builder* s):
+	string_append(s, c"set -e\nexport LC_ALL=C\nmkdir -p ")
+	wexec_remote_append_quoted(s, wexec_remote_dir())
+	string_append(s, c"/objects\ncd ")
+	wexec_remote_append_quoted(s, wexec_remote_dir())
+	string_append_char(s, 10)
+
+
+void wexec_remote_append_targets(string_builder* s, list[char*] requested):
+	for char* name in requested:
+		string_append_char(s, ' ')
+		wexec_remote_append_quoted(s, name)
+
+
+char* wexec_remote_sync_script():
+	string_builder* s = string_new()
+	wexec_remote_script_start(s)
+	string_append(s, c"cat > index.new\n")
+	string_append(s, c"while read -r h m p; do [ -f \"objects/$h\" ] || echo \"$h\"; done < index.new | sort -u\n")
+	char* text = s.data
+	free(s)
+	return text
+
+
+char* wexec_remote_run_script(list[char*] requested):
+	string_builder* s = string_new()
+	wexec_remote_script_start(s)
+	# Unpack the missing objects, then bring base/ to the new index:
+	# lines only in the old index are removed, lines only in the new one
+	# are (re)written. The index is committed only after that succeeds,
+	# so an interrupted sync redoes its diff next time.
+	string_append(s, c"tar -xf -\nmkdir -p base\ntouch index.base\n")
+	string_append(s, c"sort index.base > index.old.sorted\nsort index.new > index.new.sorted\n")
+	string_append(s, c"comm -23 index.old.sorted index.new.sorted | while read -r h m p; do rm -f \"base/$p\"; done\n")
+	string_append(s, c"comm -13 index.old.sorted index.new.sorted | while read -r h m p; do mkdir -p \"base/$(dirname \"$p\")\"; cp \"objects/$h\" \"base/$p\"; chmod \"$m\" \"base/$p\"; done\n")
+	string_append(s, c"mv index.new index.base\n")
+	# A fresh run/ per run; the previous bin/ (with any shipped bin/
+	# inputs laid over it) and seed carry over.
+	string_append(s, c"rm -rf run.new outputs.wbun\ncp -Rp base run.new\n")
+	string_append(s, c"if [ -d run/bin ]; then if [ -d run.new/bin ]; then cp -Rp run.new/bin/. run/bin/; rm -rf run.new/bin; fi; mv run/bin run.new/bin; fi\n")
+	string_append(s, c"if [ -f run/w ]; then mv run/w run.new/w; fi\n")
+	# Declared outputs land beside sources a partial tree may not have
+	# shipped (graphics/ui/font_data.w with nothing else under
+	# graphics/ui/), so their directories are made up front.
+	map[char*, int] made = new map[char*, int]
+	for char* name in wexec_closure:
+		json_value* outputs = jfield_array(wexec_targets[name], c"outputs")
+		if (outputs == 0): continue
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* output = json_array_get(outputs, i)
+			i = i + 1
+			if (output.type != json_type_string()): continue
+			if (wexec_remote_shippable_path(output.string_value) == 0): continue
+			char* dir = strclone(output.string_value)
+			int slash = -1
+			int j = 0
+			while (dir[j] != 0):
+				if (dir[j] == '/'): slash = j
+				j = j + 1
+			if (slash <= 0): continue
+			dir[slash] = 0
+			if (dir in made): continue
+			made[dir] = 1
+			string_append(s, c"mkdir -p run.new/")
+			wexec_remote_append_quoted(s, dir)
+			string_append_char(s, 10)
+	string_append(s, c"rm -rf run\nmv run.new run\ncd run\n")
+	string_append(s, c"WBUILD_BOOTSTRAP_MANIFEST=")
+	wexec_remote_append_quoted(s, wexec_remote_manifest_path())
+	string_append(s, c" sh ./wbuild -f ")
+	wexec_remote_append_quoted(s, wexec_remote_manifest_path())
+	if (wexec_no_cache): string_append(s, c" --no-cache")
+	if (wexec_keep_going): string_append(s, c" --keep-going")
+	wexec_remote_append_targets(s, requested)
+	string_append(s, c"\n./bin/wexec -f ")
+	wexec_remote_append_quoted(s, wexec_remote_manifest_path())
+	string_append(s, c" --write-bundle ../outputs.wbun")
+	wexec_remote_append_targets(s, requested)
+	string_append_char(s, 10)
+	char* text = s.data
+	free(s)
+	return text
+
+
+char* wexec_remote_fetch_script():
+	string_builder* s = string_new()
+	wexec_remote_script_start(s)
+	string_append(s, c"cat outputs.wbun\n")
+	char* text = s.data
+	free(s)
+	return text
+
+
+void wexec_remote_note(char* message):
+	wstream* out = stdout_writer()
+	stream_write_cstr(out, c"wexec: remote ")
+	stream_write_cstr(out, wexec_remote_host)
+	stream_write_cstr(out, c": ")
+	stream_write_line(out, message)
+	stream_flush(out)
+
+
+# Keys every closure target (dependency order, so each sees its
+# dependencies' keys) and reports whether the requested targets are
+# already satisfied by the local stamp or W_CACHE_URL -- then nothing
+# needs to go remote.
+int wexec_remote_satisfied(list[char*] requested):
+	for char* name in wexec_closure:
+		char* key = wexec_cache_key(name, wexec_targets[name])
+		if (key != 0): wexec_keys[name] = key
+	if (wexec_no_cache): return 0
+	for char* name in requested:
+		char* key = wexec_keys.get(name, 0)
+		if (key == 0): return 0
+		json_value* target = wexec_targets[name]
+		if (wexec_cache_fresh(name, key, target) == 0):
+			if (wexec_cache_remote_try(name, key, target) == 0): return 0
+		else: wexec_print_target_header(name, c" (cached)")
+	return 1
+
+
+int wexec_remote_execute(list[char*] requested):
+	if (wexec_remote_host[0] == 0 || wexec_remote_host[0] == '-'):
+		wexec_error2(c"--remote needs a host name, not ", wexec_remote_host)
+		return 1
+	if (wexec_deps_usable() == 0):
+		wexec_error(c"--remote needs bin/wv2 to compute the import closures it ships; run ./wbuild first")
+		return 1
+	if (wexec_remote_collect_closure(requested)): return 1
+	if (wexec_remote_satisfied(requested)): return 0
+
+	list[wexec_remote_file*] files = wexec_remote_index_files(wexec_remote_collect_paths())
+	char* index = wexec_remote_index_text(files)
+	process_result* sync = 0
+	int status = wexec_remote_ssh(wexec_remote_sync_script(), index, strlen(index), 1, &sync)
+	if (status != 0):
+		if (sync != 0): write(2, sync.stderr_text, sync.stderr_length)
+		wexec_error(cstr(f"remote: syncing with {wexec_remote_host} failed (exit status {status})"))
+		return 1
+	map[char*, int] missing = new map[char*, int]
+	string_builder* line = string_new()
+	for i in range(sync.stdout_length):
+		if (sync.stdout_text[i] == 10):
+			if (line.length > 0): missing[strclone(line.data)] = 1
+			string_clear(line)
+		else: string_append_char(line, sync.stdout_text[i])
+	string_free(line)
+	process_result_free(sync)
+
+	string_builder* tar = string_new()
+	int uploaded = 0
+	int upload_bytes = 0
+	for wexec_remote_file* f in files:
+		if (missing.get(f.hash, 0) == 0): continue
+		missing[f.hash] = 0
+		int length = f.length
+		char* data = f.data
+		if (data == 0): data = wexec_read_file_bytes(f.path, &length)
+		if (data == 0):
+			wexec_error2(c"remote: cannot read ", f.path)
+			return 1
+		wexec_remote_tar_add(tar, cstr(f"objects/{f.hash}"), data, length)
+		if (f.data == 0): free(data)
+		uploaded = uploaded + 1
+		upload_bytes = upload_bytes + length
+	for i in range(1024): string_append_char(tar, 0)
+	wexec_remote_note(cstr(f"uploading {uploaded} of {files.length} input files ({upload_bytes} bytes)"))
+
+	status = wexec_remote_ssh(wexec_remote_run_script(requested), tar.data, tar.length, 0, 0)
+	string_free(tar)
+	if (status != 0):
+		wexec_error(cstr(f"remote: build on {wexec_remote_host} failed (exit status {status})"))
+		return 1
+
+	process_result* fetched = 0
+	status = wexec_remote_ssh(wexec_remote_fetch_script(), 0, 0, 1, &fetched)
+	if (status != 0):
+		if (fetched != 0): write(2, fetched.stderr_text, fetched.stderr_length)
+		wexec_error(cstr(f"remote: fetching outputs from {wexec_remote_host} failed (exit status {status})"))
+		return 1
+	int restored = 0
+	int pos = 0
+	if (wexec_bundle_check_magic(fetched.stdout_text, fetched.stdout_length, &pos)):
+		restored = wexec_bundle_read_uint(fetched.stdout_text, fetched.stdout_length, &pos)
+	if ((restored < 0) || (wexec_bundle_unpack(fetched.stdout_text, fetched.stdout_length) == 0)):
+		wexec_error(cstr(f"remote: corrupt output bundle from {wexec_remote_host}"))
+		return 1
+	process_result_free(fetched)
+	wexec_remote_note(cstr(f"restored {restored} output files"))
+
+	# The outputs now on disk are what these keys describe: stamp them,
+	# and share them when this checkout pushes to the remote cache.
+	for char* name in requested:
+		char* key = wexec_keys.get(name, 0)
+		if (key == 0): continue
+		wexec_cache_store(name, key)
+		wexec_cache_remote_push_if_enabled(name, key)
+	return 0
+
+
+# --write-bundle <path> target...: the host half of --remote. Bundles
+# the requested targets' declared outputs (deduplicated, in order) into
+# one file; a declared output that does not exist is an error.
+int wexec_write_bundle(char* path, list[char*] requested):
+	list[char*] paths = new list[char*]
+	map[char*, int] seen = new map[char*, int]
+	for char* name in requested:
+		json_value* target = wexec_targets.get(name, 0)
+		if (target == 0):
+			wexec_error2(c"unknown target ", name)
+			return 1
+		if (wexec_bundle_add_outputs(target, paths, seen) == 0):
+			wexec_error2(c"\"outputs\" entries must be strings in target ", name)
+			return 1
+	int length = 0
+	char* bundle = wexec_bundle_build_paths(paths, &length)
+	if (bundle == 0):
+		wexec_error(c"--write-bundle: a declared output is missing")
+		return 1
+	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 420 = rw-r--r--
+	int fd = open(path, 577, 420)
+	if (fd < 0):
+		wexec_error2(c"--write-bundle: cannot write ", path)
+		return 1
+	int written = write(fd, bundle, length)
+	close(fd)
+	free(bundle)
+	if (written != length):
+		wexec_error2(c"--write-bundle: cannot write ", path)
+		return 1
+	return 0
+
+
 /* Advisory single-writer lock on the managed bin/ directory
 (docs/projects/ai_tooling_next_steps.md, "Two ./wbuild/wexec invocations
 racing in the same worktree" bullet): a foregrounded './wbuild verify'
@@ -3377,6 +3938,7 @@ int wexec_main(int argc, int argv):
 	char* explain_cache_target = 0
 	char* trace_target = 0
 	int hermetic = 0
+	char* write_bundle_path = 0
 	int i = 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
@@ -3428,6 +3990,19 @@ int wexec_main(int argc, int argv):
 			char** trace_value = argv + i * __word_size__
 			trace_target = *trace_value
 		else if (strcmp(*arg, c"--hermetic") == 0): hermetic = 1
+		else if (starts_with(*arg, c"--remote=")):
+			char* host_arg = *arg
+			wexec_remote_host = host_arg + 9
+		else if (starts_with(*arg, c"--remote-dir=")):
+			char* dir_arg = *arg
+			wexec_remote_dir_arg = dir_arg + 13
+		else if (strcmp(*arg, c"--write-bundle") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** bundle_value = argv + i * __word_size__
+			write_bundle_path = *bundle_value
 		else if (strcmp(*arg, c"--no-cache") == 0): wexec_no_cache = 1
 		else if (strcmp(*arg, c"--keep-going") == 0): wexec_keep_going = 1
 		else if (strcmp(*arg, c"--ordered-output") == 0): wexec_ordered_output = 1
@@ -3446,6 +4021,12 @@ int wexec_main(int argc, int argv):
 	if (wexec_jobs < 1): wexec_jobs = wexec_default_jobs()
 	if (wexec_shard_costs_path != 0 && wexec_shard_count == 0):
 		wexec_error(c"--shard-costs requires --shard")
+		return 1
+	if (wexec_remote_dir_arg != 0 && wexec_remote_host == 0):
+		wexec_error(c"--remote-dir requires --remote=<host>")
+		return 1
+	if (wexec_remote_host != 0 && (wexec_shard_count != 0 || list_only || trace_target != 0 || explain_cache_target != 0 || write_bundle_path != 0)):
+		wexec_error(c"--remote runs targets; it does not combine with --list, --shard, --trace, --explain-cache or --write-bundle")
 		return 1
 
 	if (wexec_load_manifest(manifest_path)): return 1
@@ -3478,6 +4059,7 @@ int wexec_main(int argc, int argv):
 		wexec_usage()
 		wexec_list_targets()
 		return 1
+	if (write_bundle_path != 0): return wexec_write_bundle(write_bundle_path, requested)
 
 	if (wexec_shard_count):
 		requested = wexec_select_shard(requested)
@@ -3497,6 +4079,14 @@ int wexec_main(int argc, int argv):
 	# reentrant skip for wexec's own nested test-harness invocations).
 	if (wexec_lock_acquire() == 0): return 1
 	defer wexec_lock_release()
+
+	if (wexec_remote_host != 0):
+		int remote_failed = wexec_remote_execute(requested)
+		if (deps_dirty): deps_cache_save()
+		if (remote_failed): return 1
+		wexec_completed = requested.length
+		wexec_report_ok()
+		return 0
 
 	# Run-step child cleanup (docs/projects/wexec.md, "Run-step timeouts
 	# and child cleanup"): only the outermost invocation -- the one that

@@ -122,6 +122,10 @@ build. For a changed path P the emitted targets are the union of:
         the fixture path itself is a literal inside the test's source,
         passed to a bin/wexec subprocess as a "-f" argument at run
         time, so neither rule (a) nor rule (b) can see the coupling.
+        tests/wexec/remote_exec.json, tests/wexec/fake_ssh.sh and wbuild
+        -> wexec_remote_exec_test the same way: the manifest and the
+        ssh stand-in are run-time arguments, and the test's "remote"
+        runs ./wbuild.
       - tools/mac/run_darwin_tests.sh -> the darwin cross-compile
         targets whose Mach-O binaries it executes on a Mac
         (arm64_darwin_smoke_test, net_darwin, graphics_darwin,
@@ -305,6 +309,20 @@ Generic and operator-overload definitions are recorded by 'bin/wv2
 defhash' too (grammar/generic.w and grammar/operator_overload.w call
 defhash_note), so the comparison above catches a real edit to one with
 no textual pre-check.
+
+--defhash-index FILE is how bin/wbuildd serves its resident defhash
+index to a --defhash run (issue #485, docs/projects/wbuildd.md). FILE
+holds one NDJSON record per definition hash the daemon has memoized:
+{"path", "digest", "status", "stdout"}, where stdout and status are
+exactly what 'bin/wv2 defhash <path>' printed and returned, and digest
+is the SHA-256 of the path's content when the daemon wrote the file.
+wtest_defhash_collect uses a record in place of running the compiler
+only while the file still has that digest; anything else (no record, a
+different digest, an unreadable or malformed index) runs 'bin/wv2
+defhash' as before, so the selection is the same with or without the
+index. The daemon keeps the records current by rehashing each .w file
+it sees saved; the flag is internal plumbing, not meant to be passed by
+hand.
 
 Commit-ranged selection (issue #251 direction 4b; 'changed' only, not
 'for'): a single positional argument containing '..' is a git revision
@@ -495,6 +513,10 @@ map[char*, int] wtest_seed_warned
 # worktree byte-identical — committed-clean, the ranged-form footgun's
 # signature. Feeds wtest_defhash_clean_warning for stdin-piped runs.
 int wtest_defhash_clean_count
+# --defhash-index FILE (header comment): the file bin/wbuildd wrote, and
+# its records by path once loaded (0 = not loaded, or no index at all).
+char* wtest_defhash_index_path
+map[char*, json_value*] wtest_defhash_index
 char* wtest_manifest_path
 int wtest_closures_ready
 # Resolved 'bin/wv2 deps' shell-out budget in ms; 0 until first read
@@ -1462,6 +1484,51 @@ int wtest_range_exists(char* path):
 	return wtest_git_exists_at(wtest_range_right, path)
 
 
+# Loads the --defhash-index file once. An unreadable file, or any line
+# that is not a record with all four fields, leaves the index empty:
+# every lookup misses and the compiler runs, as without the flag.
+void wtest_defhash_index_load():
+	wtest_defhash_index = new map[char*, json_value*]
+	char* text = file_read_text(wtest_defhash_index_path)
+	if (text == 0): return
+	map[char*, json_value*] records = new map[char*, json_value*]
+	string_builder* line = string_new()
+	int i = 0
+	int ok = 1
+	while (ok):
+		int c = text[i]
+		if ((c == 10) || (c == 0)):
+			if (line.length > 0):
+				json_value* rec = json_parse(line.data)
+				if ((rec == 0) || (rec.type != json_type_object())): ok = 0
+				else:
+					char* path = jfield_string(rec, c"path")
+					if ((path == 0) || (jfield_string(rec, c"digest") == 0) || (jfield_string(rec, c"stdout") == 0) || (jfield_int(rec, c"status", -1) < 0)): ok = 0
+					else: records[path] = rec
+			string_clear(line)
+			if (c == 0): break
+		else: string_append_char(line, c)
+		i = i + 1
+	string_free(line)
+	free(text)
+	if (ok): wtest_defhash_index = records
+
+
+# The index record standing in for 'bin/wv2 defhash <file_path>', or 0:
+# only while the file's content still has the digest the daemon saw.
+json_value* wtest_defhash_indexed(char* file_path):
+	if (wtest_defhash_index_path == 0): return 0
+	if (wtest_defhash_index == 0): wtest_defhash_index_load()
+	json_value* rec = wtest_defhash_index.get(file_path, 0)
+	if (rec == 0): return 0
+	char* digest = deps_file_digest(file_path, 1)
+	if (digest == 0): return 0
+	int same = strcmp(digest, jfield_string(rec, c"digest")) == 0
+	free(digest)
+	if (same == 0): return 0
+	return rec
+
+
 # Runs 'bin/wv2 defhash <file_path>' and collects its NDJSON into a
 # name -> hash map (default, root-only scope -- exactly the definitions
 # declared directly in this file, matching what we are comparing). Returns
@@ -1469,19 +1536,26 @@ int wtest_range_exists(char* path):
 # likely an import that does not resolve for the HEAD-content temp file),
 # or any record that fails to parse as a JSON object with both fields.
 map[char*, char*] wtest_defhash_collect(char* file_path):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, build_host_compiler())
-	strv_set(argv, 1, c"defhash")
-	strv_set(argv, 2, file_path)
-	process_result* result = process_run(build_host_compiler(), argv, 0, 0, 120000)
-	free(cast(char*, argv))
-	if (result == 0): return 0
-	if (result.status != 0):
-		process_result_free(result)
-		return 0
+	process_result* result = 0
+	char* text = 0
+	json_value* indexed = wtest_defhash_indexed(file_path)
+	if (indexed != 0):
+		if (jfield_int(indexed, c"status", -1) != 0): return 0
+		text = jfield_string(indexed, c"stdout")
+	else:
+		char** argv = strv_new(3)
+		strv_set(argv, 0, build_host_compiler())
+		strv_set(argv, 1, c"defhash")
+		strv_set(argv, 2, file_path)
+		result = process_run(build_host_compiler(), argv, 0, 0, 120000)
+		free(cast(char*, argv))
+		if (result == 0): return 0
+		if (result.status != 0):
+			process_result_free(result)
+			return 0
+		text = result.stdout_text
 	map[char*, char*] out = new map[char*, char*]
 	string_builder* line = string_new()
-	char* text = result.stdout_text
 	int i = 0
 	int at_end = 0
 	int failed = 0
@@ -1518,7 +1592,7 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 		else: string_append_char(line, c)
 		i = i + 1
 	string_free(line)
-	process_result_free(result)
+	if (result != 0): process_result_free(result)
 	if (failed): return 0
 	return out
 
@@ -1894,6 +1968,9 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (strcmp(path, c"tests/wexec/remote_cache.json") == 0):
 		wtest_add(path, c"wexec_remote_cache_test")
+		matched = 1
+	if ((strcmp(path, c"tests/wexec/remote_exec.json") == 0) || (strcmp(path, c"tests/wexec/fake_ssh.sh") == 0) || (strcmp(path, c"wbuild") == 0)):
+		wtest_add(path, c"wexec_remote_exec_test")
 		matched = 1
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
@@ -3379,6 +3456,13 @@ int main(int argc, int argv):
 				return 1
 			char** value = argv + pre * __word_size__
 			wtest_manifest_path = *value
+		else if (strcmp(argval, c"--defhash-index") == 0):
+			pre = pre + 1
+			if (pre >= argc):
+				wtest_usage()
+				return 1
+			char** index_value = argv + pre * __word_size__
+			wtest_defhash_index_path = *index_value
 		else if ((for_mode == 0) && (argval[0] != '-') && contains(argval, c"..")):
 			if (range_index != 0):
 				wtest_error(c"only one revision range argument is allowed, got a second: ", argval)
@@ -3395,7 +3479,7 @@ int main(int argc, int argv):
 		else if (strcmp(*arg, c"--available") == 0): wtest_available_flag = 1
 		else if (strcmp(*arg, c"--runnable-here") == 0): wtest_runnable_here_flag = 1
 		else if (strcmp(*arg, c"--defhash") == 0): wtest_defhash_flag = 1
-		else if (strcmp(*arg, c"-f") == 0):
+		else if ((strcmp(*arg, c"-f") == 0) || (strcmp(*arg, c"--defhash-index") == 0)):
 			i = i + 1   # value already consumed by the pre-scan above
 		else if (i == range_index):
 			if (wtest_range_expand(*arg)): return 1

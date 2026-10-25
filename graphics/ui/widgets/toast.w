@@ -111,6 +111,7 @@ int ui_toast(ui_context* ctx, ui_toast_state* st, int now_ms):
 	float32 w = cast(float32, ui_text_width(&st.text[0], scale)) + pad * 4.0
 	float32 h = ui_toast_height()
 	ui_rect surface = ui_rect_new((vw - w) * 0.5, vh - h - ui_toast_margin(), w, h)
+	ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, surface, &st.text[0])
 
 	# UI_LAYER_TOP, so a toast is visible over an open modal — which is
 	# the case that motivates a third layer at all. Saved and restored

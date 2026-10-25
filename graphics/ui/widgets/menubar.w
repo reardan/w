@@ -154,6 +154,19 @@ int ui_menubar_menu(ui_context* ctx, ui_menubar_state* bar, char* label):
 	if (bar.menu.open): ctx.scope = bar.menu.id
 	int live = (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)
 	ctx.scope = saved
+	# Titles are buttons that expand their menu; menu bars stay out of
+	# Tab order (Alt+mnemonic reaches them), as on every desktop.
+	ui_access_node* node = ui_menu_access(ctx, id, UI_ACCESS_BUTTON, title, label)
+	if (node != 0):
+		node.actions = UI_ACCESS_ACTIVATE
+		if ((bar.open_index == i) && bar.menu.open): node.states = node.states | UI_ACCESS_EXPANDED
+	if (live && ui_access_take_activation(ctx, id)):
+		if (bar.open_index == i):
+			bar.menu.open = 0
+			bar.pending = 0 - 1
+		else:
+			bar.pending = i
+			bar.pending_kb = 1
 	if (live):
 		float32 mx = cast(float32, ctx.input.mouse_x)
 		float32 my = cast(float32, ctx.input.mouse_y)

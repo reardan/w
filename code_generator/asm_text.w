@@ -105,6 +105,24 @@ void asm_text_lines(int arch, char* text):
 		i = i + 1
 
 
+# A forward short branch in a stub, so the stubs need no hand-counted
+# ".+N" offsets: asm_text_jump8_begin assembles one x86-family jump
+# line written with the placeholder target ".+2" (a rel8 of 0) and
+# returns its code position; asm_text_jump8_end then points that jump
+# at the current codepos.
+int asm_text_jump8_begin(int arch, char* text):
+	int pos = codepos
+	asm_text_lines(arch, text)
+	if (codepos - pos != 2): asm_text_fail(text)
+	return pos
+
+
+void asm_text_jump8_end(int pos):
+	int disp = codepos - pos - 2
+	if (disp > 127): asm_text_fail(c"short stub branch out of range")
+	code[pos + 1] = disp
+
+
 # 32-bit x86 instructions ('mov eax,1; ret').
 void x86_asm(char* text):
 	asm_text_lines(ASM_ARCH_X86, text)

@@ -112,6 +112,10 @@ int compile_attempt(char* fn):
 		if (verbosity >= 1): file_not_found_error()
 		filename = old_filename
 		return 0
+	# The opened path's process-lifetime copy: the debug line table then
+	# recognises it by address on every statement (code_generator/dwarf.w,
+	# #714). fn itself stays owned by the caller.
+	filename = debug_source_intern(fn)
 	if (ast_retain_mode):
 		int source = retained_source_begin(filename)
 		if (retained_pending_import != 0): retained_sources[source].import_key = strclone(retained_pending_import)
@@ -200,9 +204,10 @@ int compile_joined(char* cwd, char* filename):
 		free(joined2)
 		joined2 = joined3
 
-	# Attempt to compile the path. On success joined2 stays allocated:
-	# it is the global filename now, and diagnostics may still print it
-	# after this frame returns (#190). One path per compiled file leaks.
+	# Attempt to compile the path. On success joined2 stays allocated, as
+	# it did when it became the global filename (#190); compile_attempt
+	# now points filename at the debug table's process-lifetime copy
+	# instead. One path per compiled file leaks.
 	int result = compile_attempt(joined2)
 	if (result == 0): free(joined2)
 	return result

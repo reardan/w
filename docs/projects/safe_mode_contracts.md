@@ -629,16 +629,30 @@ the child: scope exit, replacement, early return and optional-owner cleanup.
 
 A live-thread counter is updated with `atomic_add`. It refuses a spawn when
 64 checked threads are unjoined, which bounds the address space taken by 4 MB
-stacks and gives refusal a deterministic test. Refusal and `clone` failure
-both return before the child exists. The generic `safe_thread_spawn` body
+stacks and gives refusal a deterministic test. Refusal, stack `mmap` failure
+and `clone` failure all return before the child exists. The generic `safe_thread_spawn` body
 then returns without clearing its `own T*` parameter. The ordinary recursive
 owner cleanup therefore destroys the payload. On success the parameter's slot
 is cleared, as in `owned_int_buffer_push`, and the child's entry consumes the
 payload. The child copies the payload pointer out of the handle and clears
 the field before calling the entry.
 
+The checked runtime spawns and joins from threads other than the main thread:
+a nested `safe_thread_fork_join` forks again on its child, and a transferred
+`WSafeThread` is joined by the thread it was moved to. `lib/thread.w`'s constraints allow
+exactly that: any thread may call `thread_spawn` and `thread_join` (the spawn
+lock serializes the handoff globals, and `thread_join` only futex-waits,
+munmaps and frees), and only the pool entry points (`parallel_for`,
+`thread_pool_init`, `thread_pool_shutdown`) are main-thread-only. Checked
+code cannot reach the pool. A spawn whose stack `mmap` or `clone` fails
+returns 0 from `thread_spawn` with nothing mapped (the `thread_create`
+builtin checks the `mmap` result and unmaps the stack after a failed `clone`;
+`tests/thread_spawn_failure_test.w`), so refusal, `mmap` failure and `clone`
+failure all reach the absent-handle path above (the same test checks that
+the refused payload is destroyed, under `W_DEBUG_ALLOC=1`).
+
 Memory ordering follows `lib/thread.w`. The child writes `result` before the
-worker stores `done = 1`. `thread_join` waits for `done` and then for the
+worker stores `done = 1` (an `atomic_store`). `thread_join` waits for `done` and then for the
 kernel's exit-time CLEARTID store before the joiner reads `result` and frees
 the handle. On x86-TSO, with the futex syscalls, the result and every write
 the child made to lent `refmut` storage are visible to the joiner. No other
@@ -656,20 +670,39 @@ This section is the reviewable argument for #699 deliverable 4. It covers
 the lifetime rules that keep the mutex payload inside critical sections and
 the x86/x64 lowering of each admitted atomic ordering. The runtime tests in
 `tests/safe_sync_runtime_test.w` add evidence; they are not a substitute for
-reviewing this argument. Like the rest of the thread runtime it applies to
+reviewing this argument. `tests/safe_atomic_litmus_test.w` is the
+store-buffering (Dekker) litmus: 200,000 lock-step rounds of `seq_cst`
+stores and loads on two threads, which must never let both loads miss the
+other thread's store. On x86 the fence after a `seq_cst` store is the only
+thing that rules that outcome out; with release stores and acquire loads the
+same test sees it in practically every run. Like the rest of the thread runtime it applies to
 Linux x86 and x64 only, where hardware follows x86-TSO.
 
 ### Guard lifetimes in the checker
 
-The mutex, guard and atomic are nominal records of the pinned
-`lib/safe_thread.w` (`safe_sync_record`). They are opaque in the same way as
-`WSafeThread`. Field projections, partial moves, field replacement, `new`
-and plain construction are all rejected, so checked code reaches the payload
-only through `safe_guard_value`. The audited runtime is a fixed set of calls
-(`safe_runtime_call`).
+The mutex and guard are generic records `WSafeMutex[T]` and `WSafeGuard[T]`
+of the pinned `lib/safe_thread.w`; the atomic is the plain record
+`WSafeAtomic`. `safe_sync_record` recognizes every instance by the pinned
+source and the mangled name (`WSafeMutex$...`, `WSafeGuard$...`; a user
+definition with the same spelling elsewhere is not trusted). They are opaque
+in the same way as `WSafeThread`. Field projections, partial moves, field
+replacement, `new` and plain construction are all rejected, so checked code
+reaches the payload only through `safe_guard_value`. The audited runtime is
+a fixed set of calls (`safe_runtime_call`, the `safe_mutex_*$` and
+`safe_guard_*$` specializations).
 
-`safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` reuses mixed
-owner provenance. `WSafeGuard` declares a single `ref[held]` group, so the
+Every `WSafeMutex[T]` has the same layout, a `wmutex` followed by one owner
+word, so the runtime allocates them all through one untyped storage record
+(`__w_safe_mutex_storage`, itself not a checked owner shape) and casts. The
+type argument only fixes what the guard's view returns. `T` is whatever a
+lifetime-free `own T*` admits: a sized plain value or an owned record graph
+with no borrowed fields. A borrowed record payload would need `own[a] T*`,
+which the parameter does not carry, so it is rejected; a guard payload is
+rejected for the same reason (guards always carry their mutex lifetime).
+
+`safe_mutex_lock(ref[a] WSafeMutex[T]*) -> own[a] WSafeGuard[T]*` reuses
+mixed owner provenance. `WSafeGuard[T]` declares a single `ref[held]` group,
+so the
 returned owner retains the mutex's shared borrow through moves, owner fields
 and returns, exactly as other mixed owners do. Two rules close the gaps that
 ordinary mixed owners do not need, because dropping an ordinary mixed owner
@@ -688,26 +721,37 @@ never reads its borrowed data:
    cleanup ends a root, the ordinary rule kills borrowers of that root.
    For a possibly initialized guard local declared outside the block, that is
    instead an error (`lock guard outlives the mutex it borrows`). Its later
-   drop would otherwise unlock freed memory.
+   drop would otherwise unlock freed memory. Cleanup drops one block's
+   owners in reverse declaration order, so the same error applies to a
+   guard declared *before* the mutex root it borrows, in the same block, at
+   that block's end and at every `return` (`safe_guard_order_check`); a
+   loop body left by `break` or `continue` reaches the same block-end event.
+   A guard of a parameter, or of a root declared before it, is dropped
+   first and is accepted. The guard-bearing walk fails closed: an owner
+   graph past its depth or node bound counts as holding a guard.
 
 Guard owners must be labeled. The owned-shape walk stops treating a guard as
-plain opaque storage, and `safe_type_check` rejects `own WSafeGuard*`.
+plain opaque storage, and `safe_type_check` rejects `own WSafeGuard[T]*`.
 Otherwise an unlabeled owner would carry no borrow. The view
-`safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` uses the existing
+`safe_guard_value(refmut[a] WSafeGuard[T]*) -> refmut[a] T*` uses the existing
 returned-reference contract: the view borrows the guard, so the guard
 cannot be unlocked, moved or dropped while the view is live. Rule 1 makes the
 guard's scope-exit drop an access too. Thread eligibility rejects a guard in
 both detached and scoped modes, at any depth. Unlocking therefore always
 happens on the locking thread, as `lib/thread.w`'s mutex requires. A mutex
-is examined in detached mode with sharing cleared: it is shareable whenever
-its payload is transferable. Atomics stay sealed opaque storage that is both
+is examined in detached mode with sharing cleared, through its `own T*
+value` field: it is shareable whenever its payload is transferable (Rust's
+`Mutex<T>: Sync` when `T: Send`). Atomics stay sealed opaque storage that is both
 transferable and shareable.
 
 The mutex payload is consumed by `safe_mutex_new`, which clears the
 parameter slot as `safe_thread_spawn` does. The ordinary recursive owner
-drop frees it once, before the mutex allocation. A guard owner is the
-mutex's own address, never a separate allocation, and its audited destructor
-`__w_safe_guard_drop` only unlocks. `safe_guard_unlock` is an empty function;
+drop of the concrete instance frees it once, with `T`'s own owned fields,
+before the mutex allocation. A guard owner is the mutex's own address, never
+a separate allocation, and its audited destructor `__w_safe_guard_drop`
+only unlocks. It takes the mutex's leading `wmutex*`, so one helper serves
+every `WSafeGuard[T]` (`safe_owner_drop_helper` checks that parameter type
+for guard instances). `safe_guard_unlock` is an empty function;
 its own parameter cleanup is the unlock.
 
 ### Mutex: exclusion and happens-before
@@ -723,8 +767,8 @@ Happens-before between holders: the critical section's payload stores
 precede the unlock's `lock xadd`, a full barrier, in program order. Under
 TSO, stores become visible in program order, so they are visible before
 the `0` that the next holder's `lock cmpxchg` observes. That observation
-comes either from the `xadd` (`1 -> 0`) or from the later plain store
-(`2 -> 1 -> 0`). The `lock cmpxchg` is itself a full barrier, so the new
+comes either from the `xadd` (`1 -> 0`) or from the later store of `0`
+(`2 -> 1 -> 0`), an `atomic_store` that lowers to a plain `mov`. The `lock cmpxchg` is itself a full barrier, so the new
 holder's later loads cannot be satisfied early. Payload accesses therefore
 form a total order consistent with the lock order, and the payload has no
 data race.
@@ -733,11 +777,15 @@ Each payload access is inside a critical section. Accesses go only through
 a view. A view is live only while its guard is (checker rule above), and a
 guard exists only between its `mutex_lock` and its unlock on one thread.
 The compiler keeps payload accesses on the correct side of lock and unlock.
-They are loads and stores through a `refmut int*`, not promoted locals.
+They are loads and stores through a `refmut T*`, not promoted locals.
 Lock and unlock are out-of-line calls in the pinned runtime. Under
 `--inline`, the atomic intrinsics still spill parked values and clear
 folding notes (`atomic_notes_reset`). Any future optimizer must treat these
-calls as acquire/release boundaries.
+calls as acquire/release boundaries. `tests/thread_wait_reload_test.w`
+enforces the part a caching optimizer would break first: it decodes
+`lib/thread.w`'s futex wait loops in the produced binary, under the default
+options, `--inline` and `--profile-use` on x86 and x64, and fails unless every
+iteration re-reads the waited-on word from memory.
 
 Destruction and the final wake: the contended unlock calls `futex_wake` on
 the mutex word after releasing it. The mutex cannot be freed in between.
@@ -745,8 +793,11 @@ Only its owner can drop it. Another thread reaches it only through a
 fork-join borrow, which lasts until that thread's entry returns, after its
 guard drop has finished. A detached thread reaches it only by owning it.
 
-Deadlock (re-locking on one thread, lock-order inversion) is possible and is
-not a memory-safety violation.
+Deadlock is possible and is not a memory-safety violation: re-locking a
+mutex on one thread, lock-order inversion, holding a guard across a
+fork-join whose entry locks the same mutex, and replacing a guard with a
+new lock of the same mutex (`g = safe_mutex_lock(m)` while `g` holds `m`:
+the right side runs, and blocks, before the old guard is dropped).
 
 ### Atomics: x86-TSO lowering
 
@@ -785,7 +836,11 @@ Why each row is sufficient under TSO:
   barriers, which is at least `acq_rel` and `seq_cst` for every order. A
   failed `cmpxchg` is still a locked full barrier, so every admitted failure
   order holds. `release` and `acq_rel` failure orders are rejected
-  statically, because a failure performs no store (the C++ rule).
+  statically, because a failure performs no store. A failure order
+  stronger than the success order is admitted: that is the C++17 rule
+  (C++11 forbade it); it costs nothing on x86, where both are the same
+  locked instruction, and a weaker-ISA port must lower the stronger of
+  the two.
 - **Sequential consistency.** TSO's only relaxation is that a later load may
   complete before an earlier store to another address is visible. A
   `seq_cst` store is followed by a full fence, and every RMW is one, so no

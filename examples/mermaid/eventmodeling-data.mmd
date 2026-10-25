@@ -1,0 +1,26 @@
+eventmodeling
+title Cart checkout
+// Entities referenced by the slices below.
+entity Cart.Item
+tf 01 ui CartUI
+tf 02 cmd AddItem [[AddItem01]]
+tf 03 evt Cart.ItemAdded [[ItemAdded]] `json`
+tf 04 rmo Cart.Items `jsobj` { items: [{ id: 1 }], total: { amount: 20.4 } }
+/* A second user action starts a new slice. */
+rf 05 evt Cart.Cleared "manual reset"
+
+data AddItem01 `json` {
+  description: 'john'
+  price: 20.4
+}
+
+data ItemAdded {
+  description: string
+  price: number
+}
+
+note 02 {
+  Validates stock before accepting
+}
+
+gwt 03 given evt ItemAdded when cmd AddItem then evt ItemAdded

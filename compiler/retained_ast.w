@@ -36,6 +36,22 @@ const int retained_tile_expression = 9
 const int retained_tile_statement = 10
 const int retained_function_expression = 11
 
+# A global's compile-time initializer, kept on its declaration record in a
+# semantic session: a constant (value), a C string literal (bytes, length;
+# the storage adds the NUL), or the address of a global or a function
+# (binding). Declarations without one, and plain compiles, keep 0.
+const int retained_initializer_constant = 1
+const int retained_initializer_string = 2
+const int retained_initializer_global = 3
+const int retained_initializer_function = 4
+
+struct retained_initializer:
+	int kind
+	int value
+	int binding
+	char* bytes
+	int length
+
 struct retained_source:
 	char* path
 	char* import_key
@@ -119,6 +135,8 @@ struct retained_node:
 	# S2.2a: a retained statement node's pending walk record
 	# (code_generator/retained_emit.w), or -1 once walked or never deferred.
 	int statement_walk
+	# A global declaration's initializer, or 0.
+	retained_initializer* initializer
 
 # P1.2b: an expression group's own fields and its operands' columns.
 # columns holds retained_expression_columns blocks of count words, in the
@@ -188,6 +206,7 @@ struct retained_record:
 	# opaque here so non-compiler tree consumers need not import its grammar.
 	char* tile_payload
 	char* function_payload
+	retained_initializer* initializer
 
 struct retained_checkpoint:
 	char* pending_import
@@ -422,11 +441,19 @@ void retained_copy_columns(int* to, int* from, int count, int stride, int column
 		left = left - 1
 
 
-# Index of the first word where a and b differ, or -1.
+# Index of the first word where a and b differ, or -1. Every semantic
+# expression group compares all its columns here (#714: 269M Ir of an x86
+# self-compile), so equal runs are skipped four words at a time and the
+# word loop below only locates a difference.
 int retained_words_differ(int* a, int* b, int count):
 	int* p = a
 	int* q = b
 	int left = count
+	while (left >= 4):
+		if ((p[0] != q[0]) || (p[1] != q[1]) || (p[2] != q[2]) || (p[3] != q[3])): break
+		p = &p[4]
+		q = &q[4]
+		left = left - 4
 	while (left > 0):
 		if (*p != *q): return count - left
 		p = p + __word_size__
@@ -514,6 +541,7 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 	node.layout_depth = 0
 	node.tile_payload = 0
 	node.function_payload = 0
+	node.initializer = 0
 	return node
 
 
@@ -596,6 +624,7 @@ void retained_node_load(int id, retained_node* view):
 	view.name_binding = -1
 	view.type_value_flags = 0
 	view.statement_walk = record.statement_walk
+	view.initializer = record.initializer
 	retained_group* group = record.group
 	if (group == 0): return
 	if ((entry & 1) == 0):
@@ -615,6 +644,7 @@ void retained_node_load(int id, retained_node* view):
 	view.kind = retained_expression
 	view.parent = group.id
 	view.statement_walk = -1
+	view.initializer = 0
 	view.import_source = -1
 	view.import_path = 0
 	view.import_alias = 0

@@ -60,6 +60,17 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.pointer_mode = 0
 	ui_layout_reset(&ctx.layout_stack[0], ui_rect_new(0.0, 0.0, 0.0, 0.0))
 	ctx.layout_depth = 1
+	ctx.focus_count = 0
+	ctx.focus_visible = 0
+	ctx.focus_tab_widget = 0
+	ctx.focus_before_modal = 0
+	ctx.access = 0
+	ctx.access_parent = 0
+	ctx.access_next_aux = 0
+	ctx.access_label = 0
+	ctx.access_activation_count = 0
+	ctx.access_value_id = 0
+	ctx.access_value_length = 0
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
@@ -67,6 +78,8 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 # menus; CHAR/NAV queue up for the focused widget.
 void ui_feed_event(ui_context* ctx, gfx_event* e):
 	if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 1)):
+		# Pointer use hides the keyboard focus ring until the next Tab.
+		ctx.focus_visible = 0
 		ctx.input.mouse_down = 1
 		ctx.input.mouse_pressed = 1
 		ctx.input.press_x = e.x
@@ -135,11 +148,76 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 	ctx.input.mods = e.mods
 
 
+# Move keyboard focus one stop along the previous frame's focus order,
+# wrapping; with nothing focused, Tab enters at the first stop and
+# Shift-Tab at the last.
+void ui_focus_step(ui_context* ctx, int reverse):
+	int count = ctx.focus_count
+	if (count == 0): return
+	int at = 0 - 1
+	for i in range(count):
+		if (ctx.focus_order[i] == ctx.focus): at = i
+	if (at < 0):
+		if (reverse): at = count - 1
+		else: at = 0
+	else if (reverse):
+		at = at - 1
+		if (at < 0): at = count - 1
+	else:
+		at = at + 1
+		if (at >= count): at = 0
+	ctx.focus = ctx.focus_order[at]
+	ctx.focus_visible = 1
+
+
+# 1 when focus belongs to the application rather than a widget: an id
+# past the previous frame's widget ids (ctx.next_id has not been reset
+# yet) that registered no focus stop, such as a custom canvas.
+int ui_focus_app_owned(ui_context* ctx):
+	if ((ctx.focus == 0) || (ctx.focus < ctx.next_id)): return 0
+	for i in range(ctx.focus_count):
+		if (ctx.focus_order[i] == ctx.focus): return 0
+	return 1
+
+
+# Drain this frame's Tab/Shift-Tab CHARs into focus moves. Plain Tab
+# stays queued for a focused stop that consumes it (a textarea indents)
+# and for application-owned focus; Ctrl+Tab always moves, the GTK
+# convention for leaving such a field.
+void ui_focus_route(ui_context* ctx):
+	int kept = 0
+	int i = 0
+	while (i < ctx.char_count):
+		int ch = ctx.chars[i]
+		int mods = ctx.char_mods[i]
+		int owner = (ctx.focus_tab_widget == ctx.focus) || ui_focus_app_owned(ctx)
+		int claimed = (ctx.focus != 0) && owner && ((mods & GFX_MOD_CTRL) == 0)
+		if ((ch == 9) && ((mods & (GFX_MOD_ALT | GFX_MOD_SUPER)) == 0) && (claimed == 0)):
+			ui_focus_step(ctx, mods & GFX_MOD_SHIFT)
+		else:
+			ctx.chars[kept] = ch
+			ctx.char_mods[kept] = mods
+			kept = kept + 1
+		i = i + 1
+	ctx.char_count = kept
+
+
 # Start a frame: reset ids/hot/layout, start the render batch, clear
 # to the theme background (skipped headless).
 void ui_begin(ui_context* ctx, int width, int height):
+	# Tab routes against last frame's stops and ids before they are
+	# rebuilt.
+	ui_focus_route(ctx)
 	ctx.hot = 0
 	ctx.next_id = 1
+	ctx.focus_count = 0
+	ctx.focus_tab_widget = 0
+	ctx.access_label = 0
+	ctx.access_next_aux = 0
+	ctx.access_parent = 0
+	if (ctx.access != 0):
+		if (ui_access_add(ctx.access, ui_access_root_id, 0, UI_ACCESS_DOCUMENT, ui_rect_new(0.0, 0.0, cast(float32, width), cast(float32, height))) != 0):
+			ctx.access_parent = ui_access_root_id
 	# The root region is the window inset by the theme pad, so the
 	# plain vertical stack is just the depth-1 case of a region.
 	float32 pad = cast(float32, ctx.theme.pad)
@@ -199,6 +277,13 @@ void ui_end(ui_context* ctx):
 		int editing = ui_text_input_active(ctx)
 		gfx_text_input(editing, ctx.text_input_multiline, cast(int, r.x), cast(int, r.y), cast(int, r.w), cast(int, r.h), ctx.text_input_id)
 		gfx_pointer_mode(ctx.pointer_mode)
+	if (ctx.access != 0):
+		ui_access_node* focused = ui_access_find(ctx.access, ctx.focus)
+		ctx.access.focused_id = 0
+		if ((focused != 0) && ((focused.states & UI_ACCESS_FOCUSABLE) != 0)): ctx.access.focused_id = ctx.focus
+	# Assistive requests live for exactly the frame after their dispatch.
+	ctx.access_activation_count = 0
+	ctx.access_value_id = 0
 	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
@@ -265,6 +350,146 @@ int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
 			ctx.active = id
 	if (ctx.input.mouse_released && (ctx.active == id) && over): return 1
 	return 0
+
+
+# Consume a pending activate/toggle request for id: 1 when there was
+# one. Widgets call it only where a click would also be accepted.
+int ui_access_take_activation(ui_context* ctx, int id):
+	for i in range(ctx.access_activation_count):
+		if (ctx.access_activations[i] == id):
+			ctx.access_activation_count = ctx.access_activation_count - 1
+			ctx.access_activations[i] = ctx.access_activations[ctx.access_activation_count]
+			return 1
+	return 0
+
+
+# Take one Space or Return keypress (no command modifiers) from the
+# frame's CHAR queue: the focused control's activation key.
+int ui_focus_take_activation(ui_context* ctx):
+	int i = 0
+	while (i < ctx.char_count):
+		int ch = ctx.chars[i]
+		if (((ch == 32) || (ch == 13)) && ((ctx.char_mods[i] & (GFX_MOD_CTRL | GFX_MOD_ALT | GFX_MOD_SUPER)) == 0)):
+			# 0 is no character at all: every consumer skips it.
+			ctx.chars[i] = 0
+			return 1
+		i = i + 1
+	return 0
+
+
+# ui_click_behavior plus the non-pointer paths a focusable control
+# needs: Space or Return while it holds focus, and an activate/toggle
+# request from an accessibility bridge (ui_access_capture). Editors keep
+# calling ui_click_behavior so typed spaces stay text.
+int ui_activate_behavior(ui_context* ctx, int id, ui_rect r):
+	int clicked = ui_click_behavior(ctx, id, r)
+	if (ctx.disabled || ui_scope_blocked(ctx)): return clicked
+	if (ui_access_take_activation(ctx, id)):
+		clicked = 1
+	if ((ctx.focus == id) && ui_focus_take_activation(ctx)): clicked = 1
+	return clicked
+
+
+# A 2px ring in the theme's focus token, 2px outside r so the control's
+# own fill never covers it.
+void ui_focus_ring(ui_context* ctx, ui_rect r):
+	ui_rect o = ui_rect_inset(r, 0.0 - 4.0)
+	float32 t = 2.0
+	ui_color c = ctx.theme.focus
+	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y, o.w, t), c)
+	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y + o.h - t, o.w, t), c)
+	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y + t, t, o.h - t * 2.0), c)
+	ui_render_rect(ctx.rndr, ui_rect_new(o.x + o.w - t, o.y + t, t, o.h - t * 2.0), c)
+
+
+# Register id as this frame's next keyboard focus stop. A press inside r
+# focuses it; while focused after keyboard navigation it draws the focus
+# ring. claims_tab marks a control that consumes plain Tab itself.
+# Disabled and popup-blocked controls are skipped. Returns 1 while id
+# holds focus.
+int ui_focus_stop(ui_context* ctx, int id, ui_rect r, int claims_tab):
+	if (ctx.disabled || ui_scope_blocked(ctx)): return 0
+	if (ctx.focus_count < ui_focus_max_stops):
+		ctx.focus_order[ctx.focus_count] = id
+		ctx.focus_count = ctx.focus_count + 1
+	if (ctx.input.mouse_pressed && ui_pointer_inside(ctx, r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+		ctx.focus = id
+	ui_access_node* n = ui_access_find(ctx.access, id)
+	if (n != 0):
+		n.states = n.states | UI_ACCESS_FOCUSABLE
+		n.actions = n.actions | UI_ACCESS_FOCUS
+	if (ctx.focus != id): return 0
+	if (claims_tab): ctx.focus_tab_widget = id
+	if (ctx.focus_visible): ui_focus_ring(ctx, r)
+	return 1
+
+
+# The next id for a semantic node no widget id names (labels, groups).
+int ui_access_aux_id(ui_context* ctx):
+	ctx.access_next_aux = ctx.access_next_aux + 1
+	return ui_access_root_id + ctx.access_next_aux
+
+
+# Add a semantic node for the widget being issued, under the current
+# semantic parent, when a capture is active; 0 otherwise. A null name
+# takes the pending form-row label. Disabled scope is reflected; the
+# caller sets role-specific states, value and actions on the result.
+ui_access_node* ui_access_widget(ui_context* ctx, int id, int role, ui_rect r, char* name):
+	if (ctx.access == 0): return 0
+	if (name == 0): name = ctx.access_label
+	ctx.access_label = 0
+	ui_access_node* n = ui_access_add(ctx.access, id, ctx.access_parent, role, r)
+	if (n == 0): return 0
+	if (name != 0): ui_access_set_text(ctx.access, id, UI_ACCESS_NAME, name, strlen(name))
+	if (ctx.disabled): n.states = n.states | UI_ACCESS_DISABLED
+	return n
+
+
+void ui_access_set_value(ui_context* ctx, ui_access_node* n, char* value, int length):
+	if (n != 0): ui_access_set_text(ctx.access, n.id, UI_ACCESS_VALUE, value, length)
+
+
+# A pending set-value request for id this frame, or 0. The bytes are
+# valid UTF-8, NUL-terminated at access_value_length.
+char* ui_access_value_request(ui_context* ctx, int id):
+	if ((ctx.access_value_id != id) || (id == 0) || ctx.disabled || ui_scope_blocked(ctx)): return 0
+	ctx.access_value_id = 0
+	return &ctx.access_value[0]
+
+
+# The tree action callback ui_access_capture installs: focus applies at
+# once, activation and values are held for the named widget to apply
+# (and revalidate) on the next frame.
+int ui_access_widget_action(void* context, int id, int action, char* data, int length):
+	ui_context* ctx = cast(ui_context*, context)
+	if (action == UI_ACCESS_FOCUS):
+		ctx.focus = id
+		ctx.focus_visible = 1
+		return 1
+	if ((action == UI_ACCESS_ACTIVATE) || (action == UI_ACCESS_TOGGLE)):
+		if (ctx.access_activation_count >= 16): return 0
+		ctx.access_activations[ctx.access_activation_count] = id
+		ctx.access_activation_count = ctx.access_activation_count + 1
+		return 1
+	if (action == UI_ACCESS_SET_VALUE):
+		if (length > 1023): return 0
+		for i in range(length): ctx.access_value[i] = data[i]
+		ctx.access_value[length] = 0
+		ctx.access_value_length = length
+		ctx.access_value_id = id
+		return 1
+	return 0
+
+
+# Capture the next frame's widget semantics into tree, a fresh snapshot
+# (ui_access_tree_new); 0 stops capturing. ui_begin adds the document
+# root; publish the tree after ui_end. Bridge actions dispatched against
+# it reach the widgets on the following frame.
+void ui_access_capture(ui_context* ctx, ui_access_tree* tree):
+	ctx.access = tree
+	if (tree != 0):
+		tree.action = ui_access_widget_action
+		tree.context = cast(void*, ctx)
 
 
 ui_color ui_widget_fill(ui_context* ctx, int id):

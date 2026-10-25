@@ -1,7 +1,10 @@
 // Opt-in semantic snapshot -> DOM mirror. No HTML parsing, canvas input hooks,
 // or dependencies. The application paints focus and republishes after actions.
 const roles = ['', 'document', 'group', '', 'heading', 'link', 'button',
-  'checkbox', 'textbox', 'img', 'list', 'listitem', 'table', 'row', 'cell'];
+  'checkbox', 'textbox', 'img', 'list', 'listitem', 'table', 'row', 'cell',
+  'radio', 'switch', 'combobox', 'tablist', 'tab', 'progressbar', 'dialog'];
+// Toggle when the node supports it (checkboxes, switches), else activate.
+const pressAction = n => (n.actions & 8) ? 8 : 1;
 const encoder = new TextEncoder();
 let nextBridgeId = 0;
 const integer = n => Number.isInteger(n) && n >= 0 && n <= 0x7fffffff;
@@ -74,12 +77,17 @@ export function createAccessibility({ document, container, canvas = null }) {
         if (roles[n.role]) el.setAttribute('role', roles[n.role]);
         if (n.role === 3) el.textContent = n.text[0];
         else if (n.text[0]) el.setAttribute('aria-label', n.text[0]);
+        // A select-only combobox's value is its text content.
+        if (n.role === 17 && n.text[1]) el.textContent = n.text[1];
+        if (n.role === 20 && n.text[1]) el.setAttribute('aria-valuetext', n.text[1]);
+        if (n.role === 21) el.setAttribute('aria-modal', 'true');
         if (n.hidden) el.setAttribute('aria-hidden', 'true');
         if (n.inert) el.setAttribute('aria-disabled', 'true');
         if (n.role === 4) el.setAttribute('aria-level', String(n.level));
-        if (n.role === 7) el.setAttribute('aria-checked', String(!!(n.states & 2)));
-        if (n.role === 13 || n.role === 14) el.setAttribute('aria-selected', String(!!(n.states & 4)));
-        if ((n.states & 8) && [5, 6, 7, 13].includes(n.role)) el.setAttribute('aria-expanded', 'true');
+        if ([7, 15, 16].includes(n.role)) el.setAttribute('aria-checked', String(!!(n.states & 2)));
+        if ([13, 14, 19].includes(n.role)) el.setAttribute('aria-selected', String(!!(n.states & 4)));
+        if (n.role === 17) el.setAttribute('aria-expanded', String(!!(n.states & 8)));
+        else if ((n.states & 8) && [5, 6, 7, 13].includes(n.role)) el.setAttribute('aria-expanded', 'true');
         if (n.role === 8) {
           el.value = n.text[1];
           el.readOnly = !!(n.states & 16) || !(n.actions & 4);
@@ -94,11 +102,11 @@ export function createAccessibility({ document, container, canvas = null }) {
         // Do not let a child's action bubble into an actionable ancestor.
         el.addEventListener('click', e => {
           if (e.target !== el) return;
-          request(s, n, n.role === 7 ? 8 : 1);
+          request(s, n, pressAction(n));
         });
         el.addEventListener('keydown', e => {
           if (e.target !== el || e.repeat || n.role === 8) return;
-          const action = n.role === 7 ? 8 : 1;
+          const action = pressAction(n);
           if ((e.key === 'Enter' || (e.key === ' ' && n.role !== 5)) && allowed(n, action)) {
             e.preventDefault();
             request(s, n, action);

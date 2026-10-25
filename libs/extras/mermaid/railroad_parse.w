@@ -32,7 +32,7 @@ void mm_rail_space(mm_parser* p):
 			p.pos = p.pos + 1
 			continue
 		if (mm_match(p, c"%%") || (p.doc.kind == MM_RAIL_PEG && mm_match(p, c"#"))):
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"railroad configuration directives are unsupported")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			continue
 		int comment = 0

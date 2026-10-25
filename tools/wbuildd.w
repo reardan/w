@@ -17,6 +17,7 @@ One binary is both the daemon and its thin client:
   check    ...  == bin/wv2 check ...      (e.g. check --json file.w)
   deps     ...  == bin/wv2 deps ...
   symbols  ...  == bin/wv2 symbols ...
+  defhash  ...  == bin/wv2 defhash ...
   changed  ...  == bin/wtest changed ...  (stdin path list included)
   build    ...  == bin/wexec ...          (targets, --keep-going, -j, -f)
 
@@ -58,8 +59,8 @@ tears the build down as it would in a one-shot run.
 Daemon side. A single-threaded lib/event_loop.w loop multiplexes
   - the unix-socket listener (lib/net.w socket_listen_unix_path),
     speaking JSON-RPC 2.0 over lib/framing.w Content-Length frames via
-    lib/json_rpc.w (methods: check, deps, symbols, test_changed,
-    affected, status, shutdown);
+    lib/json_rpc.w (methods: check, deps, symbols, defhash,
+    test_changed, affected, status, shutdown);
   - one lib/inotify.w fd watching every directory of the tree (dot
     directories such as .git skipped; inotify is not recursive, so the
     walk adds one watch per directory and new directories are added as
@@ -73,7 +74,7 @@ Daemon side. A single-threaded lib/event_loop.w loop multiplexes
 
 Warm state, and how each piece is invalidated:
 
-  check / deps / symbols: every answer (stdout, stderr, status) is
+  check / deps / symbols / defhash: every answer (stdout, stderr, status) is
   memoized under its exact argument list together with the import
   closure of its root file -- 'bin/wv2 deps [arch] <root>', itself a
   memoized entry. A later request with the same arguments is answered
@@ -105,6 +106,19 @@ Warm state, and how each piece is invalidated:
   longer of the two compiler runs, not their sum. 'bin/wbuildd affected
   PATH...' prints the memoized requests an edit to PATH would
   invalidate.
+
+  defhash index (issue #485): the memoized 'defhash <path>' answers
+  are a resident per-definition hash index. A .w file saved outside
+  bin/ (IN_CLOSE_WRITE, or renamed into place) gets its 'bin/wv2 defhash
+  <path>' answer re-computed in the background, behind every re-check
+  of an answer a request used, so the index is current by the time
+  'wtest changed --defhash' asks about the file. A test_changed request
+  with --defhash writes the index to a scratch file and passes it to
+  bin/wtest as '--defhash-index FILE'; wtest uses a record instead of
+  running the compiler only while the file still has the content
+  digest recorded with it, so the selection is byte-identical to the
+  one-shot run's. --no-refresh turns the save-time rehash off with the
+  rest of the re-check.
 
   test_changed: runs 'bin/wtest changed ...' per request, whose own
   bin/.wtest_deps_cache holds the import closures of every manifest
@@ -155,7 +169,7 @@ import lib.dir
 import compiler.module_graph
 
 
-const int wbd_protocol = 3
+const int wbd_protocol = 4
 
 
 /* ---- small helpers ---- */
@@ -269,6 +283,8 @@ int wbd_idle_timeout_ms       # 0 = serve until stopped
 int wbd_last_activity_ms
 int wbd_listen_fd
 int wbd_stopping              # listener closed; exit once no build is in flight
+int wbd_defhash_rehashes      # save-time defhash runs queued
+int wbd_defhash_served        # index records handed to bin/wtest
 
 
 /* ---- build RPC state ---- */
@@ -677,6 +693,9 @@ int wbd_in_bin(char* dir):
 	return starts_with(dir, c"bin/")
 
 
+void wbd_defhash_rehash(char* path);
+
+
 void wbd_handle_event(inotify_event* ev):
 	if (ev.mask & IN_Q_OVERFLOW):
 		wbd_rewatch_pending = 1
@@ -727,6 +746,8 @@ void wbd_handle_event(inotify_event* ev):
 		# absolute path, and such closures are never cached).
 		if (ev.mask & (IN_CREATE | IN_MOVED_TO())): paths.push(strjoin(c"bin/", paths[0]))
 		wbd_invalidate_paths(paths)
+		# A finished save outside bin/ refreshes the defhash index.
+		if ((bin == 0) && (ev.mask & (IN_CLOSE_WRITE | IN_MOVED_TO()))): wbd_defhash_rehash(paths[0])
 		for char* p in paths: free(p)
 		paths.free()
 		# Sources under bin/ are scratch files of tests and tools,
@@ -1245,6 +1266,40 @@ void wbd_refresh_queue_entry(wbd_entry* e):
 	wbd_refresh_enqueue(r)
 
 
+# Save-time defhash (issue #485): queues 'defhash <path>' for a file
+# just saved, whether or not anyone asked for it before. It goes last
+# (used_ms 0) and evicts nothing a request used; until it runs, the
+# only file it is known to read is the one saved.
+void wbd_defhash_rehash(char* path):
+	if ((wbd_refresh_enabled == 0) || wbd_stopping): return
+	if (wbd_hash_path_ok(path) == 0): return
+	list[char*] args = new list[char*]
+	args.push(strclone(path))
+	char* key = wbd_key(c"defhash", args)
+	int known = wbd_lookup(key) != 0
+	if (wbd_refresh_current != 0):
+		if (strcmp(wbd_refresh_current.key, key) == 0): known = 1
+	if (known):
+		free(key)
+		wbd_free_list(args)
+		return
+	wbd_refresh* r = new wbd_refresh()
+	r.key = key
+	r.sub = strclone(c"defhash")
+	r.args = args
+	r.closure = wbd_clone_list(args)
+	r.used_ms = 0
+	r.attempts = 0
+	r.stale = 0
+	r.seq = 0
+	r.timer = 0
+	r.node = -1
+	r.deps_key = 0
+	r.deps_args = 0
+	wbd_defhash_rehashes = wbd_defhash_rehashes + 1
+	wbd_refresh_enqueue(r)
+
+
 void wbd_refresh_mark_stale(void* refresh):
 	wbd_refresh* r = cast(wbd_refresh*, refresh)
 	r.stale = 1
@@ -1531,6 +1586,57 @@ json_value* wbd_handle_symbols(json_value* params, void* ctx):
 	return wbd_serve_wv2(c"symbols", params)
 
 
+json_value* wbd_handle_defhash(json_value* params, void* ctx):
+	return wbd_serve_wv2(c"defhash", params)
+
+
+# Writes the resident defhash index (header comment) for one
+# test_changed request: a record per memoized 'defhash <path>' answer,
+# with the digest of the path's content now. Every pending event was
+# drained first, so each answer still matches that content. Returns the
+# file's path, or 0 when it could not be written.
+char* wbd_defhash_index_write():
+	string_builder* out = string_new()
+	int records = 0
+	for wbd_entry* e in wbd_cache:
+		if (e.dropped || (strcmp(e.sub, c"defhash") != 0) || (e.args.length != 1)): continue
+		char* path = e.args[0]
+		if (path[0] == '-'): continue
+		char* digest = deps_file_digest(path, 1)
+		if (digest == 0): continue
+		json_value* rec = json_object()
+		json_object_set(rec, c"path", json_string(path))
+		json_object_set(rec, c"digest", json_string(digest))
+		json_object_set(rec, c"status", json_int(e.status))
+		json_object_set(rec, c"stdout", json_string(e.stdout_text))
+		char* line = json_stringify(rec)
+		string_append(out, line)
+		string_append_char(out, 10)
+		free(line)
+		json_free(rec)
+		free(digest)
+		records = records + 1
+	string_builder* name = string_new()
+	string_append(name, c"bin/.wbuildd_defhash_index.")
+	string_append_int(name, getpid())
+	char* index_path = name.data
+	free(name)
+	int ok = file_write_text(index_path, out.data)
+	string_free(out)
+	if (ok == 0):
+		free(index_path)
+		return 0
+	wbd_defhash_served = wbd_defhash_served + records
+	return index_path
+
+
+int wbd_defhash_indexed():
+	int n = 0
+	for wbd_entry* e in wbd_cache:
+		if ((e.dropped == 0) && (strcmp(e.sub, c"defhash") == 0)): n = n + 1
+	return n
+
+
 json_value* wbd_handle_test_changed(json_value* params, void* ctx):
 	wbd_requests = wbd_requests + 1
 	wbd_touch()
@@ -1538,15 +1644,36 @@ json_value* wbd_handle_test_changed(json_value* params, void* ctx):
 	char* why = 0
 	list[char*] args = wbd_request_args(params, &why)
 	if (args == 0): return wbd_error_result(why)
+	int defhash = 0
 	for char* a in args:
 		if (strcmp(a, c"--run") == 0):
 			return wbd_error_result(c"--run executes builds; not served by the read-only daemon")
+		if (strcmp(a, c"--defhash-index") == 0): return wbd_error_result(c"--defhash-index is the daemon's own")
+		if (strcmp(a, c"--defhash") == 0): defhash = 1
 	char* stdin_text = 0
 	json_value* input = json_object_get(params, c"stdin")
 	if ((input != 0) && (input.type == json_type_string())): stdin_text = input.string_value
 	wbd_prewarm_wait()
 	wbd_misses = wbd_misses + 1
+	char* index_path = 0
+	if (defhash):
+		# A save-time rehash in flight is about to land in the index.
+		if (wbd_refresh_current != 0):
+			if (strcmp(wbd_refresh_current.sub, c"defhash") == 0):
+				char* running = strclone(wbd_refresh_current.key)
+				wbd_refresh_settle(running, 0)
+				free(running)
+		index_path = wbd_defhash_index_write()
+		if (index_path != 0):
+			list[char*] with_index = wbd_clone_list(args)
+			with_index.push(strclone(c"--defhash-index"))
+			with_index.push(strclone(index_path))
+			args = with_index
 	process_result* result = wbd_run_tool(c"bin/wtest", c"changed", args, stdin_text, 0)
+	if (index_path != 0):
+		unlink(index_path)
+		free(index_path)
+		wbd_free_list(args)
 	if (result == 0): return wbd_error_result(c"could not run bin/wtest")
 	if (result.status < 0):
 		process_result_free(result)
@@ -1584,6 +1711,9 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	json_object_set(result, c"refresh", json_string(wbd_refresh_state()))
 	json_object_set(result, c"refreshed", json_int(wbd_refreshed))
 	json_object_set(result, c"refresh_discarded", json_int(wbd_refresh_discarded))
+	json_object_set(result, c"defhash_indexed", json_int(wbd_defhash_indexed()))
+	json_object_set(result, c"defhash_rehashes", json_int(wbd_defhash_rehashes))
+	json_object_set(result, c"defhash_index_served", json_int(wbd_defhash_served))
 	return result
 
 
@@ -2089,6 +2219,7 @@ int wbd_serve(wbd_serve_options* o):
 	jsonrpc_register(wbd_server, c"check", wbd_handle_check)
 	jsonrpc_register(wbd_server, c"deps", wbd_handle_deps)
 	jsonrpc_register(wbd_server, c"symbols", wbd_handle_symbols)
+	jsonrpc_register(wbd_server, c"defhash", wbd_handle_defhash)
 	jsonrpc_register(wbd_server, c"test_changed", wbd_handle_test_changed)
 	jsonrpc_register(wbd_server, c"affected", wbd_handle_affected)
 	jsonrpc_register(wbd_server, c"status", wbd_handle_status)
@@ -2603,7 +2734,7 @@ void wbd_usage():
 	wbd_err(c"usage: wbuildd [--socket PATH] [--no-daemon|--require-daemon] [--no-autostart] <command> [args...]\n")
 	wbd_err(c"  serve|start [--prewarm-manifest M | --no-prewarm] [--no-refresh] [--log FILE] [--idle-timeout-ms N]\n")
 	wbd_err(c"  stop | status [--json]                                           control it\n")
-	wbd_err(c"  check|deps|symbols ARGS   == bin/wv2 check|deps|symbols ARGS\n")
+	wbd_err(c"  check|deps|symbols|defhash ARGS  == bin/wv2 <command> ARGS\n")
 	wbd_err(c"  changed ARGS              == bin/wtest changed ARGS\n")
 	wbd_err(c"  build ARGS                == bin/wexec ARGS\n")
 	wbd_err(c"  affected PATH...          memoized requests an edit to PATH re-checks\n")
@@ -2640,6 +2771,8 @@ int main(int argc, int argv):
 	if (strcmp(command, c"deps") == 0): return wbd_query(c"deps", c"bin/wv2", c"deps", rest)
 	if (strcmp(command, c"symbols") == 0):
 		return wbd_query(c"symbols", c"bin/wv2", c"symbols", rest)
+	if (strcmp(command, c"defhash") == 0):
+		return wbd_query(c"defhash", c"bin/wv2", c"defhash", rest)
 	if (strcmp(command, c"changed") == 0):
 		return wbd_query(c"test_changed", c"bin/wtest", c"changed", rest)
 	if (strcmp(command, c"build") == 0): return wbd_build_main(rest)

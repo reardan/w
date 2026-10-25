@@ -198,7 +198,7 @@ void mm_hierarchy_body(mm_parser* p):
 		if (mm_peek(p) == 0): break
 		if (mm_peek(p) == 10 || mm_peek(p) == 13): continue
 		if (mm_match(p, c"%%")):
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"configuration directives are unsupported")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			continue
 		if (p.doc.kind == MM_MINDMAP && mm_peek(p) == ':'):

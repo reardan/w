@@ -266,12 +266,22 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	# Header arrows: a click turns the page.
 	ui_rect prev = ui_rect_new(r.x, r.y, s, s)
 	ui_rect next = ui_rect_new(r.x + r.w - s, r.y, s, s)
-	if (ui_click_behavior(ctx, prev_id, prev)): ui_calendar_show_month(st, -1)
-	if (ui_click_behavior(ctx, next_id, next)): ui_calendar_show_month(st, 1)
+	# The arrows are buttons in focus order; the grid is one more stop
+	# (when it has a keyboard cursor) whose arrows move the day.
+	ui_access_node* pn = ui_access_widget(ctx, prev_id, UI_ACCESS_BUTTON, prev, c"Previous month")
+	if (pn != 0): pn.actions = UI_ACCESS_ACTIVATE
+	ui_focus_stop(ctx, prev_id, prev, 0)
+	if (ui_activate_behavior(ctx, prev_id, prev)): ui_calendar_show_month(st, -1)
+	ui_access_node* nn = ui_access_widget(ctx, next_id, UI_ACCESS_BUTTON, next, c"Next month")
+	if (nn != 0): nn.actions = UI_ACCESS_ACTIVATE
+	ui_focus_stop(ctx, next_id, next, 0)
+	if (ui_activate_behavior(ctx, next_id, next)): ui_calendar_show_month(st, 1)
 
 	# The grid is one id: the click is a release over the same cell the
 	# press landed in.
 	ui_rect g = ui_calendar_grid_rect(ctx, r)
+	ui_access_node* gn = ui_access_widget(ctx, grid_id, UI_ACCESS_GROUP, g, 0)
+	if (cursor != 0): ui_focus_stop(ctx, grid_id, g, 0)
 	int grid_click = ui_click_behavior(ctx, grid_id, g)
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(g, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
@@ -343,6 +353,15 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	title[n] = ' '
 	time_write_4_digits(&title[n + 1], st.year)
 	title[n + 5] = 0
+	if (gn != 0):
+		# Named by the page, valued by the keyboard's day (or the pick).
+		ui_access_set_text(ctx.access, grid_id, UI_ACCESS_NAME, &title[0], n + 5)
+		ui_date* shown = selected
+		if ((cursor != 0) && ui_date_is_set(cursor)): shown = cursor
+		if ((shown != 0) && ui_date_is_set(shown)):
+			char[12] day_text
+			ui_date_format(shown, &day_text[0])
+			ui_access_set_value(ctx, gn, &day_text[0], strlen(&day_text[0]))
 	ui_draw_text_centered(ctx.rndr, ui_rect_new(r.x + s, r.y, r.w - s * 2.0, s), &title[0], scale, ui_text_color(ctx))
 
 	# Weekday row.

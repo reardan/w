@@ -25,6 +25,9 @@ struct mm_primitive:
 	int text_style
 	# Optional owned hyperlink for SVG text; native renderers ignore it.
 	char* href
+	# Optional owned SVG link target (`_blank`, ...) and tooltip of a text run.
+	char* href_target
+	char* tooltip
 	# Theme role (MM_ROLE_* in style_render.w) and categorical series index.
 	int role
 	int series
@@ -131,6 +134,8 @@ void mm_scene_free(mm_scene* s):
 		free(p.text)
 		if (p.href != 0): free(p.href)
 		if (p.font != 0): free(p.font)
+		if (p.href_target != 0): free(p.href_target)
+		if (p.tooltip != 0): free(p.tooltip)
 		free(p)
 	for mm_bounds* b in s.nodes: free(b)
 	__w_list_free(cast(__w_list*, s.items))
@@ -282,7 +287,14 @@ char* mm_svg(mm_scene* scene):
 			mm_svg_number(out, c"x2", p.x2)
 			mm_svg_number(out, c"y2", p.y2)
 			mm_svg_dash(out, p)
-			string_append(out, c"/>\n")
+			# Animated flowchart links (dashed 4-6) march their dashes with SMIL, no script.
+			if (p.dashed >= 4 && p.dashed <= 6):
+				string_append(out, c"><animate attributeName=\"stroke-dashoffset\" from=\"20\" to=\"0\" dur=\"")
+				if (p.dashed == 5): string_append(out, c"0.5s")
+				else if (p.dashed == 6): string_append(out, c"2s")
+				else: string_append(out, c"1s")
+				string_append(out, c"\" repeatCount=\"indefinite\"/></line>\n")
+			else: string_append(out, c"/>\n")
 		else if (p.kind == MM_BOX):
 			string_append(out, c"<rect")
 			mm_svg_paint(out, p)
@@ -313,7 +325,18 @@ char* mm_svg(mm_scene* scene):
 			if (p.href != 0):
 				string_append(out, c"<a href=\"")
 				mm_xml(out, p.href)
-				string_append(out, c"\">")
+				string_append_char(out, '"')
+				if (p.href_target != 0):
+					if (strcmp(p.href_target, c"_blank") == 0): string_append(out, c" rel=\"noopener noreferrer\"")
+					string_append(out, c" target=\"")
+					mm_xml(out, p.href_target)
+					string_append_char(out, '"')
+				string_append_char(out, '>')
+			else if (p.tooltip != 0): string_append(out, c"<g>")
+			if (p.tooltip != 0):
+				string_append(out, c"<title>")
+				mm_xml(out, p.tooltip)
+				string_append(out, c"</title>")
 			string_append(out, c"<text font-family=\"")
 			if (p.font != 0): mm_xml(out, p.font)
 			else if (scene.font_family != 0): mm_xml(out, scene.font_family)
@@ -331,6 +354,7 @@ char* mm_svg(mm_scene* scene):
 			mm_xml(out, p.text)
 			string_append(out, c"</text>")
 			if (p.href != 0): string_append(out, c"</a>")
+			else if (p.tooltip != 0): string_append(out, c"</g>")
 			string_append_char(out, 10)
 	string_append(out, c"</g></svg>\n")
 	char* result = out.data

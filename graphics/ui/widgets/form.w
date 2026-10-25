@@ -87,6 +87,8 @@ void ui_form_row(ui_context* ctx, ui_form_state* st, char* label):
 	ui_rect r = ui_layout_next(ctx, st.label_w, cast(float32, ctx.theme.widget_height))
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x, ty, label, scale, ui_text_color(ctx))
+	# The row's field is named by its label for assistive technology.
+	ctx.access_label = label
 	ui_same_line(ctx)
 
 
@@ -98,6 +100,9 @@ int ui_form_error(ui_context* ctx, ui_form_state* st, char* msg):
 	if (msg == 0): return 1
 	st.invalid = st.invalid + 1
 	if (st.show_errors == 0): return 0
+	# The showing error describes the field just issued, the newest node.
+	if ((ctx.access != 0) && (ctx.access.allocations != 0)):
+		ui_access_set_text(ctx.access, ctx.access.allocations.id, UI_ACCESS_DESCRIPTION, msg, strlen(msg))
 	ui_layout* lo = ui_layout_top(ctx)
 	float32 gap = cast(float32, ctx.theme.gap)
 	# The field was the last widget placed: it ends at last_right, and

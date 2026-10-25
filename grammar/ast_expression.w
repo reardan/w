@@ -726,10 +726,26 @@ void ast_expression_note_root(expression_ast* tree, int root):
 	ast_expression_note_constant(tree, ast_expression_literal_before(tree, root, tree.end_offset))
 
 
+# The instance a forward generic reference (ast_forward_generic) names
+# once its declaration is drained: the reference's spelling and type
+# arguments, mangled. The caller frees it.
+char* ast_expression_forward_callee(expression_ast* tree, int id):
+	int count = tree.high[id]
+	int args = cast(int, malloc((count + 1) * __word_size__))
+	int argument = tree.left[id]
+	for i in range(count):
+		save_ptr(args + i * __word_size__, tree.value[argument])
+		argument = tree.next_arg[argument]
+	char* mangled = generic_mangle(&tree.type_names[tree.value[id]], args, count)
+	free(cast(char*, args))
+	return mangled
+
+
 # The mangled callee name of generic call node id ('G' or 'W'), as its
 # committed instantiation (ast_expression_commit_generic) spells it.
 # The caller frees it.
 char* ast_expression_generic_callee(expression_ast* tree, int id):
+	if (tree.op[id] == ast_forward_generic): return ast_expression_forward_callee(tree, id)
 	if (tree.generic_instance[id] >= 0): return strclone(generic_inst_mangled(tree.generic_instance[id]))
 	int count = generic_def_param_count(tree.value[id])
 	int args = cast(int, malloc(count * __word_size__))
@@ -1574,12 +1590,16 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 	# Invert only the admitted borrowed record/slice wrapper. The
 	# final concrete signature still checks access and lifetime effects.
 	int[10] borrowed_shapes
+	# An opaque 'Name[T]*' parameter binds T from its argument's instance.
+	int[10] applications
 	generic_type_ast* parameter = syntax.parameters
 	int count = 0
 	while (parameter != 0):
 		int kind = ast_expression_generic_shape(tree, def, parameter, &data)
 		if ((kind == -3) || (count == 10)): return -1
 		borrowed_shapes[count] = 0
+		applications[count] = 0
+		if ((kind == -2) && (parameter.application == 1)): applications[count] = cast(int, parameter)
 		if ((parameter.safety == 2) || (parameter.safety == 3)):
 			if ((kind >= 0) && (parameter.stars == 0)):
 				borrowed_shapes[count] = 1
@@ -1666,6 +1686,8 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 				inferred = type_unqualified(inferred)
 				if ((bound >= 0) && (bound != inferred)): return -1
 				types[kind] = inferred
+		else if (applications[count]):
+			if (generic_infer_bind_application(def, cast(generic_type_ast*, applications[count]), got, cast(char*, &types[0])) == 0): return -1
 		else if (kind == -1):
 			int want = shapes[count]
 			if (ast_expression_data_value(want) == 0): return -1
@@ -2458,6 +2480,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
 		int want = ast_expression_named_type(tree, 1, depth + 1)
 		if ((want < 0) || (ast_expression_accept(tree, c",") == 0)): return -1
+		int allocator_call = peek(c"malloc")
 		tree.cast_depth = tree.cast_depth + 1
 		int child = ast_expression_assignment(tree, depth + 1)
 		tree.cast_depth = tree.cast_depth - 1
@@ -2471,6 +2494,8 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
 			if (type_decays_to_pointer(want, got) == 0):
 				if (ast_expression_warning_message(tree, c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead") == 0): return -1
+		if (cast_malloc_lacks_array_descriptors(want, allocator_call)):
+			if (ast_expression_warning_message(tree, cast_malloc_array_warning()) == 0): return -1
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
 		if (((got == 4) || (type_get_pointer_level(got) > 0) || buffer_value) && (type_get_pointer_level(want) == 0)):

@@ -121,24 +121,46 @@ int ui_dropdown_multi(ui_context* ctx, float32 w, char** items, int item_count, 
 	float32 row_h = cast(float32, ctx.theme.widget_height)
 	ui_rect r = ui_layout_next(ctx, w, row_h)
 	int changed = 0
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_COMBOBOX, r, 0)
+	if (node != 0):
+		node.actions = UI_ACCESS_ACTIVATE
+		if (open[0]): node.states = node.states | UI_ACCESS_EXPANDED | UI_ACCESS_FOCUSABLE
 
 	if (open[0] == 0):
-		if (ui_click_behavior(ctx, id, r)):
+		ui_focus_stop(ctx, id, r, 0)
+		if (ui_activate_behavior(ctx, id, r)):
 			open[0] = 1
 			# The opening click's press lies outside the surface; left in
 			# place, the popover would read it as a press-away and close
 			# on the frame it opened.
 			ctx.input.mouse_pressed = 0
-	else: ctx.hot = id
+	else:
+		ctx.hot = id
+		if (ui_access_take_activation(ctx, id)):
+			open[0] = 0
 
 	if (ui_popover_begin(ctx, id, r, r.w, ui_dropdown_multi_list_height(ctx, item_count), open)):
 		ui_rect body = ui_layout_top(ctx).bounds
 		for i in range(item_count):
 			ui_rect row = ui_rect_new(body.x, body.y + row_h * cast(float32, i), body.w, row_h)
+			# Each option is a checkbox and a focus stop inside the
+			# popup, so Tab walks the options and Space toggles one.
+			int option = ui_access_aux_id(ctx)
+			ui_access_node* box = ui_access_widget(ctx, option, UI_ACCESS_CHECKBOX, row, items[i])
+			int focused = ui_focus_stop(ctx, option, row, 0)
+			int hit = 0
 			if (ctx.input.mouse_pressed && ui_rect_contains(row, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+				hit = 1
+				ctx.input.mouse_pressed = 0
+			if (ui_access_take_activation(ctx, option)):
+				hit = 1
+			if (focused && ui_focus_take_activation(ctx)): hit = 1
+			if (hit):
 				checked[i] = 1 - checked[i]
 				changed = 1
-				ctx.input.mouse_pressed = 0
+			if (box != 0):
+				box.actions = box.actions | UI_ACCESS_TOGGLE
+				if (checked[i]): box.states = box.states | UI_ACCESS_CHECKED
 			ui_dropdown_multi_row(ctx, row, items[i], checked[i])
 			ui_region_claim(ctx, row)
 		ui_popover_end(ctx)
@@ -147,6 +169,7 @@ int ui_dropdown_multi(ui_context* ctx, float32 w, char** items, int item_count, 
 	# toggles, not last frame's; it is on the base layer either way.
 	char[128] summary
 	int count = ui_dropdown_multi_summary(&summary[0], 128, items, item_count, checked)
+	if (node != 0): ui_access_set_value(ctx, node, &summary[0], strlen(&summary[0]))
 	if (count == 0):
 		ui_dropdown_draw_header(ctx, id, r, ui_dropdown_multi_placeholder(), ctx.theme.text_muted)
 	else: ui_dropdown_draw_header(ctx, id, r, &summary[0], ui_text_color(ctx))

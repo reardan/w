@@ -108,10 +108,10 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    and **debug runtime failures** by scripting `./bin/wdbg` over stdin rather
    than adding print statements.
 5. **Optional warm daemon (Linux x86/x64)**: `bin/wbuildd` (build it with
-   `./wbuild wbuildd`) keeps check/deps/symbols answers, the `wtest`
+   `./wbuild wbuildd`) keeps check/deps/symbols/defhash answers, the `wtest`
    closure cache and a build's manifest and content hashes warm,
    invalidated by inotify. `bin/wbuildd check --json <file>`,
-   `bin/wbuildd deps|symbols ...`, `git diff --name-only HEAD |
+   `bin/wbuildd deps|symbols|defhash ...`, `git diff --name-only HEAD |
    bin/wbuildd changed` and `bin/wbuildd build <targets>` print exactly
    what the `bin/wv2`/`bin/wtest`/`bin/wexec` commands print; the first
    one starts the daemon (`WBUILDD=0` runs the one-shot command instead),
@@ -224,3 +224,29 @@ working in this repo.
  prompt such as: "Install wine (wine64) via apt into the snapshot so win64
  W-compiler test binaries (PE32+ .exe) can run under Wine, mirroring how
  qemu-user-static is baked in for the ARM64 tests."
+
+## Working on GitHub issues
+
+- When asked to implement an issue, keep working until the issue is fully
+  complete. Don't stop after a first slice and don't block waiting on the
+  maintainer: make reasonable calls, note them, and split independent parts
+  of the work across parallel subagents so the work keeps moving.
+- A PR says `Closes #N` only when nothing in the issue remains; otherwise
+  use `Part of #N`.
+- If the work can't be fully completed (it needs a Mac, the ssh host `w`,
+  a human review, ...), post a comment on the issue that states what was
+  accomplished so far, the concrete next steps, and whether the issue
+  should be broken into smaller issues — suggest the breakdown when it
+  should.
+- Draft vs. ready for review: a PR stays **Draft** only while work on it
+  is still ongoing. Once its work is complete and CI is green, the agent
+  that owns it marks it ready for review itself (`gh pr ready <N>`, or
+  the GitHub API / MCP `update_pull_request` with `draft: false`); do
+  not leave that click to the maintainer. A non-draft PR means "ready to
+  review and merge", so never mark one ready while commits, fixes or a
+  red CI run are still pending, and move it back to draft
+  (`gh pr ready --undo`) if new work turns up. A `Part of #N` PR is
+  ready once its own planned slice is done and the status comment above
+  is posted on the issue; if more of its slice is still coming, it stays
+  draft.
+- Never report an issue as done while it is still open.

@@ -78,6 +78,10 @@ void ui_draw_text_strike_n(ui_renderer* r, float32 x, float32 y, char* s, int li
 		int cp = 0
 		i = ui_utf8_next(s, i, &cp)
 		ui_glyph g = ui_font_glyph(strike, cp)
+		if (ui_font_on_base(&prev, &g, cp)):
+			# Over the glyph before it, taking no advance.
+			ui_render_glyph_strike(r, cast(float32, pen + ui_font_mark_dx(&prev, &g)), cast(float32, top), cp, strike, skew, color)
+			continue
 		pen = pen + ui_font_kern(strike, &prev, &g)
 		ui_render_glyph_strike(r, cast(float32, pen), cast(float32, top), cp, strike, skew, color)
 		pen = pen + g.advance

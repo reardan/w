@@ -128,14 +128,23 @@ else
 	# at all (one built before the manifest stopped being committed); rebuild
 	# it from the seed as on a cold tree. A current executor always loads at
 	# least build.base.json's targets, so this only fires across that change.
-	if ! ./bin/wexec --list >/dev/null 2>&1; then
+	# WBUILD_BOOTSTRAP_MANIFEST (set by 'wexec --remote' on the host it
+	# runs on, issue #487) points the executor refresh below at a shipped
+	# manifest instead of generating one from the (partial) tree; the
+	# caller passes the same -f to the run itself.
+	if [ -n "${WBUILD_BOOTSTRAP_MANIFEST:-}" ]; then
+		bootstrap_wexec() { ./bin/wexec -f "$WBUILD_BOOTSTRAP_MANIFEST" "$@"; }
+	else
+		bootstrap_wexec() { ./bin/wexec "$@"; }
+	fi
+	if ! bootstrap_wexec --list >/dev/null 2>&1; then
 		echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
 		./w w.w -o "bin/wv2.stage.$$"
 		mv -f "bin/wv2.stage.$$" bin/wv2
 		./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
 		mv -f "bin/wexec.stage.$$" bin/wexec
 	fi
-	./bin/wexec wv2 wexec >/dev/null
+	bootstrap_wexec wv2 wexec >/dev/null
 	executor=./bin/wexec
 fi
 if [ "$1" = "test_changed" ]; then

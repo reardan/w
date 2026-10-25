@@ -132,7 +132,11 @@ suggesting that it behaves like pointer arithmetic.
   local evaluation in debugger regression tests. The same failure occurs
   for `p counts[8]` on a local map in
   `tests/ast_map_default_expression_fixture.w` (`counts.length` evaluates
-  correctly); include container indexing in that coverage.
+  correctly); include container indexing in that coverage. The debugger
+  part is fixed (2026-10-24, #713 follow-up): REPL items that start with a
+  statement keyword such as `return` are no longer scanned as generic
+  definitions, so `p values[0]` evaluates; the nested-descriptor trap is
+  still open (#701).
 
 - **Multi-file `w check` shares one compilation unit, so two root
   programs cannot be checked in one invocation.** Observed 2026-08-07
@@ -289,7 +293,11 @@ suggesting that it behaves like pointer arithmetic.
   dependent roots cached as failures because their root/compiler hashes were
   unchanged, dropping HTTP and wexec targets from selection and failing seven
   `wtest_map_test` assertions. Remove those failed records to retry; `--no-cache`
-  is the `wexec` development workaround.
+  is the `wexec` development workaround. Seen again 2026-10-24 while extending
+  `wllvm`: a cached failed closure made `./wbuild wllvm` report "(cached)"
+  after the import was fixed. Again 2026-10-25: with a prototype missing in
+  `tools/wllvm_emit.w`, `./wbuild wllvm` kept reporting "(cached)" and "OK"
+  while an old `bin/wllvm` ran, so tests silently exercised stale code.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
@@ -1500,3 +1508,22 @@ when stderr is not a terminal.
 - **`bin/wtest changed` from a unit branch** needs the integration
   branch as its base (see the `test_changed` entry above); every w-orm
   unit agent piped its own staged file list instead.
+
+## Stale `bin/wllvm` after an edit (2026-10-25, wllvm runtime stubs)
+
+- **`./wbuild wllvm` reported `OK` without rebuilding** after a scripted
+  edit to `tools/wllvm_emit.w` made within a second of the previous
+  build; the old binary kept emitting the old IR until `--no-cache`.
+  Observed once in a worktree under parallel load. Direction: key the
+  cache check on content hashes only (never an mtime/size shortcut), or
+  print which input digests a cached target was matched against.
+
+## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
+
+`./wbuild wmermaid` (a `# wbuild: binary=wmermaid` target in
+`tools/wmermaid.w`) stays cached after an edit to any module it imports,
+for example `libs/extras/mermaid/scene.w`, so the CLI silently runs stale
+code; `<name>_test` targets in the same tree do rebuild on the same edit.
+Only `--no-cache` (or compiling with `bin/wv2` by hand) refreshes it.
+Direction: give source-owned `binary=`/`target=` compile steps the same
+`bin/wv2 deps` closure inputs that conventional test targets get.

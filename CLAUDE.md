@@ -32,6 +32,9 @@ Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
    `c_import_errno_test`, `c_import_libc_test`, `float_abi_test`,
    `varargs_test`, `extern_data_test`, `thread_local_dynamic_test`. `verify_arm64` and the arm64 run
    targets need `qemu-user-static`.
+   `./wbuild --remote=w <target>` does this from the Mac: it ships the
+   target's declared inputs, runs it there and brings back its outputs
+   (docs/projects/wexec.md, "Remote execution").
 3. **The `w-dev` Docker container** (`tools/mac/wdev.sh`, repo
    bind-mounted at `/w`) ONLY when absolutely necessary — i.e. a job
    neither of the above can do, such as natively executing aarch64-Linux
@@ -223,3 +226,29 @@ imports them needs one `./wbuild` first.
   in July 2026.)
 - Design docs for major features live in `docs/projects/*.md`;
   `docs/todo.txt` tracks the working/missing inventory.
+
+## Working on GitHub issues
+
+- When asked to implement an issue, keep working until the issue is fully
+  complete. Don't stop after a first slice and don't block waiting on the
+  maintainer: make reasonable calls, note them, and split independent parts
+  of the work across parallel subagents so the work keeps moving.
+- A PR says `Closes #N` only when nothing in the issue remains; otherwise
+  use `Part of #N`.
+- If the work can't be fully completed (it needs a Mac, the ssh host `w`,
+  a human review, ...), post a comment on the issue that states what was
+  accomplished so far, the concrete next steps, and whether the issue
+  should be broken into smaller issues — suggest the breakdown when it
+  should.
+- Draft vs. ready for review: a PR stays **Draft** only while work on it
+  is still ongoing. Once its work is complete and CI is green, the agent
+  that owns it marks it ready for review itself (`gh pr ready <N>`, or
+  the GitHub API / MCP `update_pull_request` with `draft: false`); do
+  not leave that click to the maintainer. A non-draft PR means "ready to
+  review and merge", so never mark one ready while commits, fixes or a
+  red CI run are still pending, and move it back to draft
+  (`gh pr ready --undo`) if new work turns up. A `Part of #N` PR is
+  ready once its own planned slice is done and the status comment above
+  is posted on the issue; if more of its slice is still coming, it stays
+  draft.
+- Never report an issue as done while it is still open.

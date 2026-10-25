@@ -200,6 +200,24 @@ map[char*, char*] deps_loaded_chunks     # id -> record text as loaded
 int deps_dirty                           # a record changed since the load
 
 
+# Content hash of one file as it is on disk now (not memoized), or 0
+# when it cannot be opened. sha as in deps_hash_init.
+char* deps_file_digest(char* path, int sha):
+	int fd = open(path, 0, 0)
+	if (fd < 0): return 0
+	deps_hash h
+	deps_hash_init(&h, sha)
+	int buffer_size = 65536
+	char* buffer = cast(char*, malloc(buffer_size))
+	int n = read(fd, buffer, buffer_size)
+	while (n > 0):
+		deps_hash_bytes(&h, buffer, n)
+		n = read(fd, buffer, buffer_size)
+	free(buffer)
+	close(fd)
+	return deps_hash_hex(&h)
+
+
 # Content hash of one file, memoized. A missing file hashes to a
 # sentinel no digest matches, so a deletion invalidates its records.
 char* deps_file_hash(char* path):
@@ -207,20 +225,8 @@ char* deps_file_hash(char* path):
 	char* cached = deps_file_hashes.get(path, 0)
 	if (cached != 0):
 		return cached
-	char* digest = c"<missing>"
-	int fd = open(path, 0, 0)
-	if (fd >= 0):
-		deps_hash h
-		deps_hash_init(&h, deps_cache_sha)
-		int buffer_size = 65536
-		char* buffer = cast(char*, malloc(buffer_size))
-		int n = read(fd, buffer, buffer_size)
-		while (n > 0):
-			deps_hash_bytes(&h, buffer, n)
-			n = read(fd, buffer, buffer_size)
-		free(buffer)
-		close(fd)
-		digest = deps_hash_hex(&h)
+	char* digest = deps_file_digest(path, deps_cache_sha)
+	if (digest == 0): digest = c"<missing>"
 	deps_file_hashes[path] = digest
 	return digest
 

@@ -137,7 +137,10 @@ void test_style_unsupported_options():
 	parity_reject(c"---\nconfig:\n  look: handDrawn\n---\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo")
 	parity_reject(c"flowchart LR\nA\nstyle A text-shadow:1px\n", c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry")
 	parity_reject(c"---\nconfig:\n  themeCSS: \"#A rect { fill: red }\"\n---\nflowchart LR\nA\n", c"themeCSS supports .class { property: value; } rules")
-	parity_reject(c"---\nconfig:\n  themeVariables:\n    fooColor: '#123456'\n---\nflowchart LR\nA\n", c"unsupported theme variable")
+	# Unknown theme variables are ignored and recorded, as other unknown keys are.
+	mm_document* ignored = parity_parse(c"---\nconfig:\n  themeVariables:\n    fooColor: '#123456'\n---\nflowchart LR\nA\n")
+	asserts(c"unknown theme variable recorded as ignored", ignored.config_ignored != 0 && ignored.config_ignored.length == 1)
+	mm_document_free(ignored)
 	parity_reject(c"---\nconfig:\n  fontSize: 200\n---\nflowchart LR\nA\n", c"fontSize must be 8 to 72 (px)")
 	parity_reject(c"treeView-beta\n  App.tsx icon(fa)\n", c"TreeView icons are not yet supported")
 	parity_reject(c"stateDiagram-v2\n[*]:::hot --> A\nclassDef hot fill:red\n", c"start and end states cannot be styled")

@@ -35,13 +35,13 @@ restrictions and budgets.
 
 Details: [Flow/ER compatibility](mermaid.md#flowchart-and-er-compatibility) and
 [UML additions and limits](mermaid_uml.md).
-Node styling: [Styles and themes](mermaid_styling.md). Labels: [Text layout](mermaid_text.md).
+Node styling: [Styles and themes](mermaid_styling.md). Configuration: [Config reference](mermaid_config.md). Labels: [Text layout](mermaid_text.md).
 
 | Family / headers | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
-| Flowchart — `flowchart`, `graph` | Five directions, basic/stadium/subroutine/hexagonal/slanted shapes, labelled/chained edges, cycles, nested subgraphs, scoped directions, link styles, `<br>`/Markdown-string labels with emphasis and wrapping, `nodeSpacing`/`rankSpacing`/`curve` configuration | Additional shapes/edges, click actions, other rich text, dense routing and remaining configuration | [build.mmd](../../examples/mermaid/build.mmd) |
+| Flowchart — `flowchart`, `graph` | Five directions, every classic bracket shape plus the full named-shape inventory through `A@{ shape, label, icon, img, ... }` (cylinders, documents, stacked/lined/divided/tagged rectangles, braces, forks, flags, ...), labelled/chained edges with `&` groups, `<-->`/`o--o`/`x--x`/`~~~`/thick links and extended lengths, edge IDs with `animate`/`curve`, collapsed subgraphs, `click` hrefs/callbacks/tooltips/targets kept in the model and exported as safe SVG links (callbacks never run), cycles, nested subgraphs, scoped directions, link styles, `<br>`/Markdown-string labels with emphasis and wrapping, `nodeSpacing`/`rankSpacing`/`curve` configuration | Icon packs and remote images (drawn as placeholders), Font Awesome text, smooth-curve and animation fidelity (SMIL dash approximation), other rich text, dense routing and remaining configuration | [build.mmd](../../examples/mermaid/build.mmd) |
 | ER — `erDiagram` | Entities/aliases, typed attributes and keys, all symbolic cardinalities and textual aliases, identifying/non-identifying relationships, link styles and optional force layout | Rich attribute text, additional configuration and crowded relationship routing | [orders.mmd](../../examples/mermaid/orders.mmd) |
-| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, nested and comma-separated generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes; graphical rename/delete/add/link/drag for top-level classes | Interactive links, richer member labels and graphical editing inside namespaces | [classes.mmd](../../examples/mermaid/classes.mmd) |
+| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, nested and comma-separated generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes; `link`/`click`/`callback` statements as safe SVG links and tooltips; member labels with visibility, `~T~` generics, parameter lists, `name(params) : Return` display and `$` static (underlined) / `*` abstract (italic) classifiers; graphical rename/delete/add/link/drag for top-level classes | Graphical editing inside namespaces | [classes.mmd](../../examples/mermaid/classes.mmd) |
 | State — `stateDiagram`, `stateDiagram-v2` | Initial/final states, cross-scope transitions, composite states, concurrent `--` regions, choices, forks/joins, notes and scoped directions; graphical rename/delete/add/link/drag for top-level states | Rich labels and graphical editing inside composite states | [states.mmd](../../examples/mermaid/states.mmd) |
 
 ## Graphs, hierarchy and workflows
@@ -54,21 +54,22 @@ Details and exact restrictions: [Graph and workflow families](mermaid_graph_fami
 | Mindmap — `mindmap` | Single indentation tree, plain/square/rounded/circle/cloud/bang/hexagon nodes, icon names, CSS class names, subtree layout | Icon fonts, class-driven styling and ambiguous-indentation heuristics | [mindmap.mmd](../../examples/mermaid/mindmap.mmd) |
 | Kanban — `kanban` | Columns/cards, generated or explicit IDs, assignment/ticket/priority metadata, column layout, `ticketBaseUrl` links, nested cards flattened into their column as upstream | Column metadata and other kanban configuration | [kanban.mmd](../../examples/mermaid/kanban.mmd) |
 | TreeView — `treeView-beta` | Indented forests, quoted/Unicode labels, `tree`-command prefixes, `##` descriptions, source-ordered rows and ancestry connectors | Icons | [treeview.mmd](../../examples/mermaid/treeview.mmd) |
-| Ishikawa — `ishikawa-beta` | Problem head, alternating fishbone branches, indented causes/subcauses and ancestry | Exact upstream geometry, theme/configuration parity and richer labels | [ishikawa.mmd](../../examples/mermaid/ishikawa.mmd) |
-| Cynefin — `cynefin-beta` | Five regions, quoted items, titles, domain transitions and transition legend | Organic boundaries, upstream layout/configuration parity and dense transition routing | [cynefin.mmd](../../examples/mermaid/cynefin.mmd) |
+| Ishikawa — `ishikawa-beta` | Upstream fishbone geometry: fish-head problem, 82° cause bones sharing a 500px length pool, alternating upper/lower pairs, alternating horizontal/diagonal sub-cause bones, 15-character label wrapping and arrowheads | Theme/configuration parity | [ishikawa.mmd](../../examples/mermaid/ishikawa.mmd) |
+| Cynefin — `cynefin-beta` | Upstream 800×600 field: unstroked quadrants, seeded wavy fold/boundary, Clear/Chaotic cliff, central Confusion ellipse (three badges plus "+N more"), domain models/practices, item badges and quadratic transitions with labels (self-loops skipped) | Theme/configuration parity (including `seed`) and dense transition routing | [cynefin.mmd](../../examples/mermaid/cynefin.mmd) |
 | Wardley — `wardley-beta` | Anchors/components, normalized coordinates, forward dependencies, custom evolution stages, `evolve` arrows, notes, pipelines, label offsets, build/buy/outsource and inertia decorators | Flows (`+>`, `limited by`), market/ecosystem/submap, annotations, accelerators and `evolve` renaming | [wardley.mmd](../../examples/mermaid/wardley.mmd) |
 | GitGraph — `gitGraph` | Branch heads, commits/types/tags, checkout/switch, merges, cherry-picks with validated merge parents, branch order, LR/TB/BT layouts | Branch configuration and upstream geometry | [history.mmd](../../examples/mermaid/history.mmd) |
 | Block — `block`, `block-beta` | Grid columns/spans, spaces, nested composites, the full block shape set, block arrows, labelled solid links and `style`/`classDef`/`class`/`linkStyle` | Dotted and thick links | [blocks.mmd](../../examples/mermaid/blocks.mmd) |
-| Architecture — `architecture-beta` | Services/groups/junctions, built-in icons, all source/target port pairs and arrowheads | Icon packs, group-edge modifiers, alignment directives and port-direction placement constraints | [architecture.mmd](../../examples/mermaid/architecture.mmd) |
-| Use case — `usecase-beta` | Actors, oval/rectangular cases, one-level boundaries, associations, include/extend and generalization validation | Metadata/stereotypes, JSON nodes, notes and rich labels | [usecase.mmd](../../examples/mermaid/usecase.mmd) |
-| C4 — `C4Context`, `C4Container`, `C4Component`, `C4Dynamic`, `C4Deployment` | Typed cards and technology/descriptions, nested boundaries/deployment nodes, relations and numbered dynamic interactions | Named configuration arguments, directional relation macros, custom styling and upstream geometry | [c4.mmd](../../examples/mermaid/c4.mmd) |
-| Swimlane — `swimlane-beta` | Responsibility lanes, five directions, basic flow shapes, labelled chains, handoffs and cycles | Nested lanes, additional shapes, styles and complex routing | [swimlanes.mmd](../../examples/mermaid/swimlanes.mmd) |
-| Event modeling — `eventmodeling` | Timeframes/resetframes, five entity types, namespace lanes, inferred/explicit inputs and simple inline data | External data blocks, typed/nested payloads and richer annotations | [eventmodeling.mmd](../../examples/mermaid/eventmodeling.mmd) |
+| Architecture — `architecture-beta` | Services/groups/junctions, built-in icons and `pack:name` icons with a native glyph/unknown-icon fallback (never fetched), all port pairs and arrowheads, `{group}` edge endpoints, `align row`/`align column`, port-pair grid placement with elbow routing | fcose force-directed geometry, edge labels and bundled icon packs | [architecture.mmd](../../examples/mermaid/architecture.mmd) |
+| Use case — `usecase-beta` | Actors (normal/hollow/awesome/icon, business), oval/rectangular cases, quoted declarations, one-level rect/package boundaries, `@{}` metadata, `<<stereotypes>>`, notes, JSON tables, Markdown/entity labels, all association operators with lengths, labels and edge IDs, include/extend/generalization validation, classes/styles on nodes and edges | ELK layout, numbered boundary palettes and animated SVG edges | [usecase.mmd](../../examples/mermaid/usecase.mmd) |
+| C4 — `C4Context`, `C4Container`, `C4Component`, `C4Dynamic`, `C4Deployment` | Typed cards, positional and `$name=` arguments, nested boundaries/deployment nodes, `Rel`/`BiRel`/`Rel_Back`/`RelIndex` and directional `Rel_U/D/L/R` macros, `UpdateElementStyle`/`UpdateRelStyle`/`UpdateLayoutConfig`, upstream row layout, palette and shapes | Sprites, tags/legends (`AddElementTag`/`AddRelTag`), `Lay_*` and link rendering | [c4.mmd](../../examples/mermaid/c4.mmd) |
+| Swimlane — `swimlane-beta` | Responsibility lanes with nested sub-lanes (32 levels), five directions, every flowchart bracket shape and the `@{ shape }` catalogue, `&` groups, inline/pipe labels, thick/dotted links, `x`/`o`/bidirectional heads, `classDef`/`class`/`style`/`linkStyle`, handoffs and cycles | Complex routing and edge-label collision avoidance | [swimlanes.mmd](../../examples/mermaid/swimlanes.mmd), [swimlanes-nested.mmd](../../examples/mermaid/swimlanes-nested.mmd) |
+| Event modeling — `eventmodeling` | Timeframes/resetframes (1–3 digit ids), five entity types, namespace lanes, inferred/explicit inputs, `[[ref]]` external data blocks, backtick data types, nested inline `{…}`/quoted payloads, `data`/`note`/`gwt`/`entity` statements and `/* */`/`//` comments | Rich rendering of `figma`/`salt`/`html`/`md` payloads (shown as text) | [eventmodeling.mmd](../../examples/mermaid/eventmodeling.mmd), [eventmodeling-data.mmd](../../examples/mermaid/eventmodeling-data.mmd) |
 
 C4 is one family with all five headers implemented. Context/container/component
 cards retain their type annotations; deployment adds nested deployment nodes;
-dynamic relations are numbered in source order. The shared native card layout
-is not an implementation of upstream C4 styling macros.
+dynamic relations are numbered in source order. A dedicated C4 renderer follows
+the upstream statement-order row layout and fixed palette, and implements the
+`UpdateElementStyle`/`UpdateRelStyle`/`UpdateLayoutConfig` macros.
 
 ## Ordered narratives and schedules
 
@@ -76,11 +77,11 @@ Details: [Ordered diagrams](mermaid_narratives.md).
 
 | Family / header | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
-| Sequence — `sequenceDiagram` | Participants/actors, aliases, lifecycle, message variants, notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes, `rect` highlights and `link`/`links` menus kept in the model | Participant objects, rendered link menus, `properties`/`details` and rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
+| Sequence — `sequenceDiagram` | Participants/actors, `@{ "type": ... }` participant objects (boundary/control/entity/database/collections/queue symbols), aliases, lifecycle, message variants including central `()` connections, entity codes (`#9829;`, `#infin;`), notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes, `rect` highlights, `link`/`links` menus rendered as SVG link boxes, and `properties`/`details` kept in the model | Half-arrows, property-driven icons/CSS classes and other rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
 | Journey — `journey` | Sections, tasks, 1–5 scores, actor lists and source-ordered score plot | Upstream avatar/face rendering, themes and HTML labels | [journey.mmd](../../examples/mermaid/journey.mmd) |
 | Timeline — `timeline` | Sections, ordinal period labels, multiple/continued events, `<br>` line breaks and chronological columns | Other rich labels, configuration and alternative layouts | [timeline.mmd](../../examples/mermaid/timeline.mmd) |
 | Gantt — `gantt` | Validated dates in `YYYY`/`MM`/`DD`/`HH:mm` `dateFormat`s, minute/hour/day/week durations, `excludes`/`includes`/`weekend`, strftime `axisFormat`, fixed-date `todayMarker`, `click` hrefs kept in the model, sequential starts, forward/multiple dependencies, until endpoints and status/milestone marks | Timezones, month/year units, other moment.js tokens, `tickInterval`/`topAxis` and drawn links | [gantt.mmd](../../examples/mermaid/gantt.mmd) |
-| ZenUML — `zenuml` | Participants/actors and `@Annotation` kinds, aliases, `new` creation, assignment replies, async/sync/nested and inline-bodied calls, returns, alternatives, loops, try/catch/finally and parallel/optional fragments | `@return`/`@Starter`, annotation icons, rich comments and styles | [zenuml.mmd](../../examples/mermaid/zenuml.mmd) |
+| ZenUML — `zenuml` | Participants/actors and `@Annotation` kinds with Boundary/Control/Entity/Database/Collections/Queue symbols, `@Starter`, `@return`/`@reply` dashed replies, aliases, `new` creation (with or without arguments), assignment replies, async/sync/nested and inline-bodied calls, returns, alternatives, loops, try/catch/finally and parallel/optional fragments, `//` Markdown comments above messages and fragments | Icons for other annotation kinds and styles | [zenuml.mmd](../../examples/mermaid/zenuml.mmd) |
 
 Gantt schedules use their actual calendar semantics rather than generic graph
 positions. ZenUML is the separately documented extension included in the native
@@ -106,7 +107,7 @@ Details, numeric precision and family-specific budgets: [Data diagrams](mermaid_
 | Family / headers | Implemented core | Important remaining gaps | Details and examples |
 | --- | --- | --- | --- |
 | Railroad — `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Owned grammar trees, EBNF exceptions, ABNF incremental rules/case semantics, numeric/repeat semantics, PEG ordered choice/predicates/classes | Extended escapes, configuration and exact curved geometry | [Reference](mermaid_railroad.md); [IR](../../examples/mermaid/railroad.mmd), [EBNF](../../examples/mermaid/railroad-ebnf.mmd), [ABNF](../../examples/mermaid/railroad-abnf.mmd), [PEG](../../examples/mermaid/railroad-peg.mmd) |
-| Agentflow — `agentflow-beta` | Six roles, scalar node metadata, nested/global flows, connectors, sequence/reference/failure edges and directions | General YAML metadata, edge metadata/IDs, collapsed flows, algorithms, animation/curves and full shape inventory | [Reference](mermaid_agentflow.md); [agentflow.mmd](../../examples/mermaid/agentflow.mmd) |
+| Agentflow — `agentflow-beta` | Six roles, YAML metadata (nested maps, lists, block scalars, JSON-schema typing), nested/global flows, connectors, edge IDs and `id@{…}` edge metadata, collapsed flows, `algorithm`, static `curve` rendering, the full shape inventory with coercion, sequence/reference/failure edges and directions | `animate`/`animation` are kept as metadata only (static renderer); `agentflow.*` configuration keys | [Reference](mermaid_agentflow.md); [agentflow.mmd](../../examples/mermaid/agentflow.mmd), [agentflow-collapsed.mmd](../../examples/mermaid/agentflow-collapsed.mmd) |
 
 Railroad rules currently require terminating semicolons in every notation;
 references are not expanded. Agentflow metadata describes systems and remains
@@ -120,7 +121,7 @@ connectors or external systems.
 | Read/write | Lossless original UTF-8 source; separate canonical flow/ER model serializer | Canonical model serialization for families beyond flow/ER and themed/configured documents |
 | Edit | Flow/ER/class/state node and edge selection, label editing, node/edge deletion, creation/connections, top-level dragging, click-to-place and keyboard movement; transactional undo/redo, grouped source typing and stable viewport | Group/nested-node movement, multi-selection, resizing, richer edge/attribute inspectors and graphical editing for the remaining families |
 | View/export | Deterministic display lists, SVG export, layered crossing reduction, optional force layout, persisted flow/ER node positions, live edge updates and cursor-anchored zoom | Dense-layout quality, text metrics for families with their own renderers and upstream geometry parity |
-| Markdown/frontmatter | Selectable Mermaid fences, surrounding prose preservation, original-source diagnostics, title, relaxed YAML frontmatter and `%%{init}%%` directives with themes, layout, flowchart, kanban and packet configuration | YAML lists/block scalars/anchors, directives after the header and arbitrary configuration |
+| Markdown/frontmatter | Selectable Mermaid fences, surrounding prose preservation, original-source diagnostics, title, bounded YAML frontmatter (block/flow lists, block scalars with chomping, anchors/aliases/merge keys, escapes) and `%%{init}%%`/`%%{initialize}%%`/`%%{wrap}%%` directives anywhere with upstream precedence; themes, layout, flowchart, kanban, packet and per-family sequence, gantt, timeline, xyChart, sankey, radar, gitGraph, railroad, requirement and C4 keys ([config reference](mermaid_config.md)); unknown keys ignored deterministically | YAML tags, complex keys and multi-line plain or quoted scalars; font/CSS keys; the per-family keys listed as ignored in the config reference |
 | Accessibility | Escaped SVG titles/descriptions, visible titles, visible canvas selection, keyboard navigation/editing and non-drag move controls | Screen-reader integration and broader native accessibility interactions |
 | Node styling | `style`/`classDef`/`class`/`:::` across flow, ER, class, state, requirement, use-case, swimlane and block diagrams, mindmap/TreeView classes, treemap/Venn/packet/radar style rules, link styles, dotted/thick block links, C4 style-argument mapping; the CSS subset (fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight/style/size/family, rx/ry) and `.class` `themeCSS`; `fontFamily`/`fontSize` driving metrics; rich labels (line breaks, Markdown, bold/italic, wrapping) in graphs, ER attributes, requirements, sequence, journey, timeline and use case | Selectors beyond `.class`, other CSS properties, native font loading, TreeView icons |
 | Themes | Upstream mermaid@12.2.0 values for all eleven themes (default/base/dark/forest/neutral, neo, redux families), the neo look (drop shadow, gradient outlines), theme font size and stroke width, 82 variables with upstream derivation and `darkMode`, including note/actor/signal, Gantt task/grid/section, `git0`–`git7`, `venn1`–`venn8`, ER row and gradient variables | Hand-drawn look, upstream theme font family, redux SVG filters |
@@ -131,6 +132,72 @@ See [Use and library ownership](mermaid.md) for command syntax, UTF-8 edit rules
 atomic save semantics, scene/document lifetimes and editor conflict handling. See [Styles and themes](mermaid_styling.md) for exact values, precedence
 and frontmatter indentation. Supported palettes are native approximations;
 accepting a theme name does not imply upstream visual parity.
+
+## Conformance corpus
+
+[`tests/mermaid_corpus/`](../../tests/mermaid_corpus/README.md) vendors every
+Mermaid code block of the pinned `mermaid@12.2.0` syntax documentation (the 33
+sidebar pages plus `railroad.md`; MIT, attribution in the corpus README) as one
+`.mmd` file per example, grouped by detected family. `./wbuild
+mermaid_corpus_test` (part of `./wbuild tests`) reads each example through the
+same path as `wmermaid` (frontmatter, `%%{init}%%`, fences), renders it and
+exports SVG, and compares the outcome with `tests/mermaid_corpus/manifest.txt`:
+*supported* parses and renders a non-empty scene and SVG; *partial* parses but
+renders nothing, or renders with a known difference recorded as a note;
+*unsupported* is rejected with the recorded diagnostic. Regressions and newly
+accepted examples both fail the test until `./wbuild mermaid_corpus_update`
+rewrites the manifest and the table below (notes are preserved). Counts measure
+acceptance, not visual parity: a *supported* example renders, but may still
+differ from upstream in layout or detail.
+
+<!-- corpus-counts:begin -->
+
+| Family | Supported | Partial | Unsupported | Total |
+| --- | ---: | ---: | ---: | ---: |
+| agentflow | 11 | 0 | 1 | 12 |
+| architecture | 6 | 0 | 0 | 6 |
+| block | 26 | 0 | 4 | 30 |
+| c4 | 6 | 0 | 0 | 6 |
+| class | 38 | 0 | 0 | 38 |
+| cynefin | 3 | 0 | 0 | 3 |
+| er | 23 | 0 | 2 | 25 |
+| eventmodeling | 13 | 0 | 0 | 13 |
+| flowchart | 111 | 4 | 1 | 116 |
+| gantt | 4 | 0 | 7 | 11 |
+| gitgraph | 34 | 0 | 2 | 36 |
+| ishikawa | 1 | 0 | 0 | 1 |
+| journey | 1 | 0 | 0 | 1 |
+| kanban | 2 | 0 | 1 | 3 |
+| mindmap | 12 | 2 | 1 | 15 |
+| packet | 4 | 0 | 0 | 4 |
+| pie | 4 | 0 | 0 | 4 |
+| quadrant | 3 | 0 | 0 | 3 |
+| radar | 3 | 0 | 0 | 3 |
+| railroad | 14 | 0 | 0 | 14 |
+| requirement | 6 | 0 | 3 | 9 |
+| sankey | 8 | 0 | 0 | 8 |
+| sequence | 42 | 0 | 0 | 42 |
+| state | 22 | 0 | 0 | 22 |
+| swimlane | 13 | 0 | 0 | 13 |
+| timeline | 13 | 0 | 1 | 14 |
+| treemap | 8 | 0 | 0 | 8 |
+| treeview | 8 | 0 | 5 | 13 |
+| usecase | 24 | 0 | 0 | 24 |
+| venn | 8 | 0 | 0 | 8 |
+| wardley | 12 | 0 | 7 | 19 |
+| xychart | 8 | 0 | 0 | 8 |
+| zenuml | 16 | 0 | 0 | 16 |
+| **All** | **507** | **6** | **35** | **548** |
+
+<!-- corpus-counts:end -->
+
+To review a future upstream bump, re-run `python3 -I
+tools/mermaid_corpus_extract.py --tag mermaid@<new>` (after adding any new
+syntax pages to its `DOCS` table), then `./wbuild mermaid_corpus_update`, and
+review the corpus diff: new and renumbered examples appear in `index.txt`,
+their outcomes in `manifest.txt`, and family totals in this table. New
+unsupported examples are the inventory of syntax the bump introduced; update the
+family rows above and the inventory baseline accordingly.
 
 ## Remaining completion criteria
 

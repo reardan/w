@@ -45,12 +45,16 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
 	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
-	if (ends_with(path, c"/lib/safe_thread.w")): return c"aece9bfefb701d7fcc9e68d888a0140309d58db2adb028c9bd2973ec65bd6fa4"
-	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"
-	if (ends_with(path, c"/lib/signal.w")): return c"0b8751e18c25050a798d5e1e0db3e46d02f2af9ac59afbde2da0bb5e4f8b6f93"
+	if (ends_with(path, c"/lib/safe_thread.w")): return c"a064d476124a979d8d340b57a08dc64b7c62179c17466078baa7f5cfbcc591fa"
+	if (ends_with(path, c"/lib/thread.w")): return c"15a7911fab851ab513845f60445385845a8a67ec095ed215e245d6a72b222fd8"
+	# The handler thunk also passes SysV registers (wllvm); its page and
+	# allocation are unchanged.
+	if (ends_with(path, c"/lib/signal.w")): return c"62ee27c31dbac1e17f4390b2824ca74e0279d9b039af6be8b005b67b2e148d57"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"
 	if (ends_with(path, c"/lib/thread_heap.w")): return c"0ae75c1654e73b1a5342b3cb21bbe60e4a4d62f5f2d24f44999c53a1e0a7161f"
-	if (ends_with(path, c"/lib/stack_trace.w")): return c"91290aa483be398e3b118ca5debc70e9b3f77c88bb422a6fc7337444d8e77f72"
+	# st_call_site accepts LLVM's indirect call forms; reads stay bounded
+	# by the same st_base check.
+	if (ends_with(path, c"/lib/stack_trace.w")): return c"40acb1c77dba5d72aa0b2de333c115bc7284626ab1d114599c79fa4bb17a7b52"
 	if (ends_with(path, c"/lib/syscalls_linux_x86.w")): return c"8f9eeccd5c165f9c89b482c2e97b0b5d6171c6aff16b538ce383bd4b0fe5119d"
 	if (ends_with(path, c"/lib/valgrind.w")): return c"793fe83498d76b5e8840c7ecdd807de90b935cd20a57eee6ec532105d93459dd"
 	if (ends_with(path, c"/lib/win32_stubs.w")): return c"7a5c41c01f0b3278c637301f2797b2e5002231003d12b696220c63c361b704f1"
