@@ -129,16 +129,22 @@ int mm_card(mm_parser* p, int left):
 	if (mm_card_alias(p, c"one or zero") || mm_card_alias(p, c"zero or one")): return 0
 	if (mm_card_alias(p, c"one or more") || mm_card_alias(p, c"one or many") || mm_card_alias(p, c"many(1)") || mm_card_alias(p, c"1+")): return 3
 	if (mm_card_alias(p, c"zero or more") || mm_card_alias(p, c"zero or many") || mm_card_alias(p, c"many(0)") || mm_card_alias(p, c"0+")): return 2
-	if (mm_card_alias(p, c"only one") || mm_card_alias(p, c"1")): return 1
+	if (mm_card_alias(p, c"many")): return 2
+	if (mm_card_alias(p, c"only one") || mm_card_alias(p, c"one") || mm_card_alias(p, c"1")): return 1
 	if (mm_match(p, c"||")): return 1
+	# Upstream's lexer reads every marker spelling on either side of the
+	# line (`PERSON o{--|| HOUSE` is zero-or-more at PERSON); the side only
+	# decides which spelling is tried first.
 	if (left):
 		if (mm_match(p, c"|o")): return 0
 		if (mm_match(p, c"}o")): return 2
 		if (mm_match(p, c"}|")): return 3
-	else:
-		if (mm_match(p, c"o|")): return 0
-		if (mm_match(p, c"o{")): return 2
-		if (mm_match(p, c"|{")): return 3
+	if (mm_match(p, c"o|")): return 0
+	if (mm_match(p, c"o{")): return 2
+	if (mm_match(p, c"|{")): return 3
+	if (mm_match(p, c"|o")): return 0
+	if (mm_match(p, c"}o")): return 2
+	if (mm_match(p, c"}|")): return 3
 	mm_error(p.doc, p.pos, c"expected ER cardinality marker")
 	return 0
 
@@ -631,7 +637,7 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	# UpdateLayoutConfig statements in the diagram win over c4 configuration.
 	if (d.c4_shape_in_row == 0): d.c4_shape_in_row = envelope.c4_shape_in_row
 	if (d.c4_boundary_in_row == 0): d.c4_boundary_in_row = envelope.c4_boundary_in_row
-	if (d.layout_algorithm == 1 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force layout is only supported for graph diagrams")
+	if (d.layout_algorithm != 0 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force and elk layouts are only supported for graph diagrams")
 	# The force layout is quadratic per round; it keeps the general node budget.
 	if (d.layout_algorithm == 1 && d.nodes.length > MM_MAX_ITEMS): mm_error(d, 0, c"force layout node limit exceeded")
 	free(d.source)

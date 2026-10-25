@@ -323,7 +323,8 @@ struct mm_document:
 	int palette_line
 	int palette_label
 	mm_style edge_style
-	# Native layout selection: 0 layered, 1 deterministic force-directed.
+	# Native layout selection: 0 layered, 1 deterministic force-directed,
+	# 2 `elk` requested (approximated with the layered engine; no ELK port).
 	int layout_algorithm
 	int packet_bits
 	int packet_msb
@@ -569,6 +570,10 @@ void mm_config_free(mm_document* d):
 		__w_list_free(cast(__w_list*, d.config_ignored))
 	d.config = 0
 	d.config_ignored = 0
+
+# Stands for a literal '.' inside one key of a configuration path (YAML
+# member keys such as `.ts:` or `README.md:`; see config.w mm_yaml_key).
+const int MM_CONFIG_KEY_DOT = 31
 
 # A configured value (validated by config.w), or null when not configured.
 char* mm_config_value(mm_document* d, char* key):

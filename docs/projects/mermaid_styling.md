@@ -27,7 +27,8 @@ Supported properties (the classDef property set, shared by `style`,
 | --- | --- | --- |
 | `fill`, `stroke`, `color` | `#RGB`, `#RRGGBB`, supported names, `none`, `transparent` | shape fill, outline, label text |
 | `stroke-width` | 1–16, optionally `px` | outline width |
-| `stroke-dasharray` | `none`, `0`, or one or two 1–64px lengths (`5 3`) | dashed outlines and lines |
+| `stroke-dasharray` | `none`, `0`, or one or two 1–64px lengths separated by a space or a comma (`5 3`, `5\,3`; the documented unescaped `9,5` is read as one value) | dashed outlines and lines |
+| `stroke-dashoffset`, `animation`, `animation-name`/`-duration`/`-timing-function`/`-iteration-count`/`-direction`/`-delay` | a length; CSS keywords, names and times | validated, not drawn: the scene is static, so an animated dashed edge shows its dash pattern without motion |
 | `opacity`, `fill-opacity` | 0–1 (`0.25`) or a percentage | whole-primitive / fill alpha |
 | `font-weight` | `normal`, `bold`, `bolder`, `lighter`, 100–900 (≥ 600 is bold) | bold label runs |
 | `font-style` | `normal`, `italic`, `oblique` | italic label runs |
@@ -134,11 +135,23 @@ layout and flowchart settings.
 | `theme` | `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, `redux-dark-color` |
 | `look` | `classic`, `neo` (drop shadows and gradient outlines, see below) |
 | `fontFamily`, `fontSize`, `themeCSS` | see Fonts and themeCSS above |
-| `layout` | `dagre` (native layered), `force` |
+| `layout` | `dagre` (native layered), `force`, `elk` (graph families only; drawn with the native layered layout, see below) |
 | `themeVariables.*` | see below; any theme |
 | `flowchart.nodeSpacing`, `flowchart.rankSpacing` | integer 0–500 |
 | `flowchart.curve` | `basis`, `linear`, `step`, `stepBefore`, `stepAfter` |
 | `packet.bitsPerRow`, `packet.bitOrder` | see the packet family |
+
+`layout: elk` selects upstream's ELK layered engine, which has no native port.
+Rejecting it would refuse otherwise supported diagrams (upstream's own
+agentflow and flowchart examples use it), and its layered algorithm is the
+closest native relative, so `elk` is accepted for the same graph families as
+`force`, recorded (`mm_document.layout_algorithm` is 2) and laid out exactly
+as `dagre`. ELK-specific geometry (port-aware routing, `elk.*` options and
+per-flow `algorithm` values such as `elk.rectpacking`) is not reproduced;
+the conformance corpus records such examples as partial. Other layout names
+fail with `supported layouts: dagre, force, elk (drawn with the native layered
+layout)`, and `force` or `elk` on a non-graph family fails with `force and
+elk layouts are only supported for graph diagrams`.
 
 Keys that are not supported natively — unsupported diagram settings — are
 ignored deterministically and recorded in `mm_document.config_ignored`;

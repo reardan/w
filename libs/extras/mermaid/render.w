@@ -846,6 +846,8 @@ mm_scene* mm_render_diagram(mm_document* d):
 
 # Apply document metadata once, after the family's own layout has completed.
 void mm_render_metadata(mm_document* d, mm_scene* s):
+	# `fa:fa-name` label prefixes become native pictograms (icons.w).
+	if (d.kind == MM_FLOW): mm_fa_glyphs(s)
 	if (d.title[0] != 0 && s.has_title == 0):
 		for mm_primitive* p in s.items:
 			p.y = p.y + 40

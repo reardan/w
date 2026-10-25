@@ -121,17 +121,52 @@ void mm_config_utf8(string_builder* out, int c):
 # limit. Double quotes take JSON/YAML escapes (\" \\ \/ \n \t \r \b \f \0 \'
 # \xHH \uHHHH \UHHHHHHHH); single quotes take '' for a quote. *next receives
 # the index after the closing quote; unterminated reports message.
+char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline);
+
 char* mm_config_quoted(mm_document* d, int at, int limit, int* next, char* unterminated):
+	return mm_config_quoted_lines(d, at, limit, next, unterminated, 0)
+
+# multiline: a YAML flow scalar that may continue on later lines (YAML 1.2
+# 7.3): each line break folds to a space, n blank lines to n newlines, the
+# whitespace around a break is dropped, and in double quotes a `\` before
+# the break joins the lines with nothing between them.
+char* mm_config_quoted_lines(mm_document* d, int at, int limit, int* next, char* unterminated, int multiline):
 	int quote = d.source[at]
 	string_builder* out = string_new()
 	int i = at + 1
 	int closed = 0
-	while (i < limit && d.source[i] != 10 && d.error == 0):
+	# Length of out up to its last character that is not raw blank space,
+	# so folding can drop the trailing white space of a line.
+	int keep = 0
+	while (i < limit && d.error == 0):
 		int c = d.source[i] & 255
+		if (c == 10 || c == 13 || (multiline && quote == '"' && c == '\\' && i + 1 < limit && (d.source[i + 1] == 10 || d.source[i + 1] == 13))):
+			if (multiline == 0): break
+			int escaped = c == '\\'
+			if (escaped):
+				i = i + 1
+				keep = out.length
+			else:
+				out.length = keep
+				out.data[keep] = 0
+			int breaks = 0
+			while (i < limit && (d.source[i] == 10 || d.source[i] == 13 || d.source[i] == 32 || d.source[i] == 9)):
+				if (d.source[i] == 10): breaks = breaks + 1
+				i = i + 1
+			if (escaped == 0):
+				if (breaks <= 1): string_append_char(out, 32)
+				else:
+					for k in range(breaks - 1): string_append_char(out, 10)
+			else if (breaks > 1):
+				for k in range(breaks - 1): string_append_char(out, 10)
+			keep = out.length
+			if (escaped == 0 && breaks <= 1): keep = out.length - 1
+			continue
 		if (c == quote):
 			if (quote == '\'' && i + 1 < limit && d.source[i + 1] == '\''):
 				string_append_char(out, '\'')
 				i = i + 2
+				keep = out.length
 				continue
 			closed = 1
 			break
@@ -163,8 +198,10 @@ char* mm_config_quoted(mm_document* d, int at, int limit, int* next, char* unter
 					i = i + 1
 				if (d.error == 0 && ((code < 32 && code != 9 && code != 10) || (code >= 55296 && code < 57344) || code > 1114111)): mm_error(d, i, c"invalid unicode escape in configuration string")
 				if (d.error == 0): mm_config_utf8(out, code)
+			keep = out.length
 			continue
 		string_append_char(out, c)
+		if (c != 32 && c != 9): keep = out.length
 		i = i + 1
 	if (closed == 0 && d.error == 0): mm_error(d, at, unterminated)
 	*next = i + 1
@@ -443,7 +480,9 @@ int mm_yaml_colon(mm_config_reader* r, int start, int end):
 		i = i + 1
 	return -1
 
-char* mm_yaml_key(mm_config_reader* r, int start, int colon, int offset):
+# allow_dot: the key names a member of an icon name mapping (treeView
+# filenameIcons/extensionIcons), where file names and extensions are keys.
+char* mm_yaml_key(mm_config_reader* r, int start, int colon, int offset, int allow_dot):
 	mm_document* d = r.doc
 	char* key
 	if (d.source[start] == '"' || d.source[start] == '\''):
@@ -455,12 +494,18 @@ char* mm_yaml_key(mm_config_reader* r, int start, int colon, int offset):
 		if (first == '&' || first == '*' || first == '!' || first == '?' || first == '|' || first == '>' || first == '%' || first == '@' || first == '`'): mm_error(d, offset, c"invalid frontmatter key")
 	int valid = key[0] != 0
 	for i in range(strlen(key)):
-		if (key[i] == '.' || ((key[i] & 255) < 32)): valid = 0
+		if ((key[i] == '.' && allow_dot == 0) || ((key[i] & 255) < 32)): valid = 0
 	if (valid == 0): mm_error(d, offset, c"invalid frontmatter key")
+	# Configuration paths join keys with '.', so a literal dot inside such a
+	# member key is stored as MM_CONFIG_KEY_DOT; control bytes are never valid
+	# key text, so the escape cannot collide.
+	for i in range(strlen(key)):
+		if (key[i] == '.'): key[i] = MM_CONFIG_KEY_DOT
 	return key
 
 
 void mm_yaml_block(mm_config_reader* r, char* path, int indent);
+char* mm_config_spec(char* key);
 
 # |, |-, |+, >, >-, >+ with an optional indentation digit, on the lines after
 # the header that are indented beyond the parent.
@@ -576,6 +621,21 @@ void mm_yaml_value(mm_config_reader* r, char* path, int indent, int at, int end,
 			mm_yaml_line* l = r.lines[r.line]
 			if (l.begin > r.pos): break
 			r.line = r.line + 1
+	else if (d.source[at] == '"' || d.source[at] == '\''):
+		# A quoted scalar may continue over the following lines.
+		mm_yaml_line* last = r.lines[r.lines.length - 1]
+		int next = 0
+		char* inner = mm_config_quoted_lines(d, at, last.end, &next, c"unterminated quoted configuration value", 1)
+		int stop = mm_config_line_end(d, next, d.source_end)
+		if (stop > last.end): stop = last.end
+		int rest = next
+		while (rest < stop && (d.source[rest] == 32 || d.source[rest] == 9 || d.source[rest] == 13)): rest = rest + 1
+		if (d.error == 0 && rest < stop && (d.source[rest] != '#' || rest == next)): mm_error(d, rest, c"unexpected text after quoted configuration value")
+		while (r.line < r.lines.length):
+			mm_yaml_line* l = r.lines[r.line]
+			if (l.begin >= next): break
+			r.line = r.line + 1
+		mm_config_add(r, path, inner, 0, offset)
 	else:
 		int quoted = 0
 		mm_config_add(r, path, mm_config_scalar(d, at, end, &quoted), 0, offset)
@@ -628,7 +688,13 @@ void mm_yaml_mapping(mm_config_reader* r, char* path, int indent):
 		if (colon < 0):
 			mm_error(d, l.begin, c"frontmatter entry requires key: value")
 			return
-		char* key = mm_yaml_key(r, l.start, colon, l.begin)
+		int allow_dot = 0
+		if (index_of(path, c"config.") == 0):
+			char* spec = mm_config_spec(path + 7)
+			if (spec != 0):
+				allow_dot = spec[0] == 'N'
+				free(spec)
+		char* key = mm_yaml_key(r, l.start, colon, l.begin, allow_dot)
 		r.line = next + 1
 		if (d.error == 0):
 			if (strcmp(key, c"<<") == 0): mm_yaml_merge(r, path, colon + 1, l.end, l.begin)
@@ -1119,7 +1185,10 @@ int mm_config_key(mm_document* d, mm_config_entry* e, char* key, list[int] user,
 		if (mm_config_scalar_entry(d, e)):
 			if (strcmp(value, c"force") == 0): d.layout_algorithm = 1
 			else if (strcmp(value, c"dagre") == 0): d.layout_algorithm = 0
-			else: mm_error(d, e.offset, c"supported native layouts: dagre, force")
+			# Upstream lays `elk` out with the ELK layered engine; the native
+			# layered (dagre-style) layout stands in for it, and the value is kept.
+			else if (strcmp(value, c"elk") == 0): d.layout_algorithm = 2
+			else: mm_error(d, e.offset, c"supported layouts: dagre, force, elk (drawn with the native layered layout)")
 	else if (strcmp(key, c"packet.bitsPerRow") == 0):
 		if (mm_config_scalar_entry(d, e)):
 			int bits = mm_config_int(value, 1, 128)

@@ -67,8 +67,14 @@ Frontmatter is a bounded YAML subset:
   and merge keys (`<<: *a`, `<<: [*a, *b]`): explicit keys win over merged
   ones and an earlier merge wins over a later one.
 
-Tags (`!!str`), complex keys (`?`) and multi-line plain or quoted scalars
-are rejected. Top-level `title` must be a scalar;
+Single- and double-quoted scalars may continue over following lines (YAML
+1.2 line folding: a line break becomes a space, each blank line a newline,
+the white space around a break is dropped, and a `\` before the break in
+double quotes joins the lines). Keys may contain `.` only as members of the
+icon name maps (`treeView.filenameIcons`, `treeView.extensionIcons`),
+where file names and extensions are keys; anywhere else a dotted key is an `invalid frontmatter key`, because configuration
+paths are dot-joined. Tags (`!!str`), complex keys (`?`) and multi-line
+plain scalars are rejected. Top-level `title` must be a scalar;
 `displayMode` is upstream's gantt shorthand for `config.gantt.displayMode` and
 wins over it. Other top-level fields are ignored.
 
@@ -157,7 +163,7 @@ key switches to the upstream meaning.
 | `rowIndent` | integer 0–200, native 36 | Indent per level (at least 12 px) |
 | `lineThickness` | integer 1–16 | Connector width (at most 8 px) |
 | `defaultIconPack` | string | Kept; icon packs are never fetched |
-| `filenameIcons`, `extensionIcons` | mapping of names to icon names | Icons by whole file name or extension (extension keys such as `.ts` need dotted YAML keys, which are not accepted yet) |
+| `filenameIcons`, `extensionIcons` | mapping of names to icon names | Icons by whole file name (`README.md`) or extension, written with or without its dot (`.ts`, `ts`); the longest matching suffix wins (`.d.ts` before `.ts`) |
 | `themeVariables.treeView.labelColor`, `lineColor`, `descriptionColor`, `iconColor`, `highlightStroke` | colors | Label, connector, description, icon and `highlight` outline colours |
 | `themeVariables.treeView.highlightBg` | any CSS value | `highlight` row fill when it is a plain colour (native tint otherwise) |
 
