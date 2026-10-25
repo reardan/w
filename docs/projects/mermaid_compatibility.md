@@ -155,9 +155,9 @@ differ from upstream in layout or detail.
 | Family | Supported | Partial | Unsupported | Total |
 | --- | ---: | ---: | ---: | ---: |
 | agentflow | 9 | 0 | 3 | 12 |
-| architecture | 2 | 0 | 4 | 6 |
+| architecture | 6 | 0 | 0 | 6 |
 | block | 24 | 0 | 6 | 30 |
-| c4 | 0 | 0 | 6 | 6 |
+| c4 | 6 | 0 | 0 | 6 |
 | class | 31 | 0 | 7 | 38 |
 | cynefin | 3 | 0 | 0 | 3 |
 | er | 22 | 0 | 3 | 25 |
@@ -182,12 +182,12 @@ differ from upstream in layout or detail.
 | timeline | 6 | 0 | 8 | 14 |
 | treemap | 5 | 0 | 3 | 8 |
 | treeview | 5 | 0 | 8 | 13 |
-| usecase | 9 | 0 | 15 | 24 |
+| usecase | 24 | 0 | 0 | 24 |
 | venn | 7 | 0 | 1 | 8 |
 | wardley | 12 | 0 | 7 | 19 |
 | xychart | 4 | 0 | 4 | 8 |
 | zenuml | 13 | 0 | 3 | 16 |
-| **All** | **321** | **6** | **221** | **548** |
+| **All** | **346** | **6** | **196** | **548** |
 
 <!-- corpus-counts:end -->
 

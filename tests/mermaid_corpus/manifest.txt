@@ -15,11 +15,11 @@ agentflow/agentflow_010.mmd	supported	ok
 agentflow/agentflow_011.mmd	unsupported	error 3:1: unsupported configuration key
 agentflow/agentflow_012.mmd	unsupported	error 3:1: supported native layouts: dagre, force
 architecture/architecture_001.mmd	supported	ok
-architecture/architecture_002.mmd	unsupported	error 10:11: expected architecture source port
-architecture/architecture_003.mmd	unsupported	error 9:11: expected architecture source port
-architecture/architecture_004.mmd	unsupported	error 24:11: expected architecture source port
+architecture/architecture_002.mmd	supported	ok
+architecture/architecture_003.mmd	supported	ok
+architecture/architecture_004.mmd	supported	ok
 architecture/architecture_005.mmd	supported	ok
-architecture/architecture_006.mmd	unsupported	error 2:32: unsupported architecture icon
+architecture/architecture_006.mmd	supported	ok
 block/block_001.mmd	supported	ok
 block/block_002.mmd	supported	ok
 block/block_003.mmd	supported	ok
@@ -50,12 +50,12 @@ block/block_027.mmd	supported	ok
 block/block_028.mmd	supported	ok
 block/block_029.mmd	unsupported	error 3:21: style property requires colon
 block/block_030.mmd	supported	ok
-c4/c4_001.mmd	unsupported	error 36:37: named C4 configuration arguments are unsupported
-c4/c4_002.mmd	unsupported	error 36:37: named C4 configuration arguments are unsupported
-c4/c4_003.mmd	unsupported	error 4:89: named C4 configuration arguments are unsupported
-c4/c4_004.mmd	unsupported	error 27:31: named C4 configuration arguments are unsupported
-c4/c4_005.mmd	unsupported	error 14:28: named C4 configuration arguments are unsupported
-c4/c4_006.mmd	unsupported	error 39:62: unsupported C4 declaration or configuration
+c4/c4_001.mmd	supported	ok
+c4/c4_002.mmd	supported	ok
+c4/c4_003.mmd	supported	ok
+c4/c4_004.mmd	supported	ok
+c4/c4_005.mmd	supported	ok
+c4/c4_006.mmd	supported	ok
 class/classDiagram_001.mmd	supported	ok
 class/classDiagram_002.mmd	supported	ok
 class/classDiagram_003.mmd	supported	ok
@@ -478,25 +478,25 @@ usecase/usecase_001.mmd	supported	ok
 usecase/usecase_002.mmd	supported	ok
 usecase/usecase_003.mmd	supported	ok
 usecase/usecase_004.mmd	supported	ok
-usecase/usecase_005.mmd	unsupported	error 3:29: unsupported use-case syntax
-usecase/usecase_006.mmd	unsupported	error 2:32: unsupported use-case syntax
-usecase/usecase_007.mmd	unsupported	error 5:18: unsupported use-case syntax
-usecase/usecase_008.mmd	unsupported	error 7:32: unsupported use-case syntax
+usecase/usecase_005.mmd	supported	ok
+usecase/usecase_006.mmd	supported	ok
+usecase/usecase_007.mmd	supported	ok
+usecase/usecase_008.mmd	supported	ok
 usecase/usecase_009.mmd	supported	ok
-usecase/usecase_010.mmd	unsupported	error 2:38: expected entity or node identifier
-usecase/usecase_011.mmd	unsupported	error 6:16: unsupported use-case syntax
-usecase/usecase_012.mmd	unsupported	error 9:10: unsupported use-case syntax
-usecase/usecase_013.mmd	unsupported	error 4:35: unsupported use-case syntax
+usecase/usecase_010.mmd	supported	ok
+usecase/usecase_011.mmd	supported	ok
+usecase/usecase_012.mmd	supported	ok
+usecase/usecase_013.mmd	supported	ok
 usecase/usecase_014.mmd	supported	ok
-usecase/usecase_015.mmd	unsupported	error 5:10: unsupported use-case syntax
-usecase/usecase_016.mmd	unsupported	error 2:6: unsupported use-case syntax
-usecase/usecase_017.mmd	unsupported	error 3:6: unsupported use-case syntax
-usecase/usecase_018.mmd	unsupported	error 2:15: unsupported use-case syntax
+usecase/usecase_015.mmd	supported	ok
+usecase/usecase_016.mmd	supported	ok
+usecase/usecase_017.mmd	supported	ok
+usecase/usecase_018.mmd	supported	ok
 usecase/usecase_019.mmd	supported	ok
-usecase/usecase_020.mmd	unsupported	error 4:1: unsupported configuration key
-usecase/usecase_021.mmd	unsupported	error 3:1: unsupported configuration key
+usecase/usecase_020.mmd	supported	ok
+usecase/usecase_021.mmd	supported	ok
 usecase/usecase_022.mmd	supported	ok
-usecase/usecase_023.mmd	unsupported	error 9:27: unsupported use-case syntax
+usecase/usecase_023.mmd	supported	ok
 usecase/usecase_024.mmd	supported	ok
 journey/userJourney_001.mmd	supported	ok
 venn/venn_001.mmd	supported	ok
