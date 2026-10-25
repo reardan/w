@@ -10,6 +10,10 @@
 # the source stays meaningful to every Mermaid renderer.
 import libs.extras.mermaid.edit_outline
 
+# The moved item's index after the last successful slot command, so a
+# selection can follow it (indices shift as the source is reordered).
+int mm_slot_moved
+
 # Siblings of index (same parent), in node order; caller frees.
 list[int] mm_slot_siblings(mm_document* d, int index):
 	list[int] result = new list[int]
@@ -231,6 +235,7 @@ int mm_editor_slot_step(mm_editor* e, int index, int delta):
 		char* id = strclone(e.document.nodes[index].id)
 		for k in range(count):
 			if (ok): ok = mm_bs_step(e, id, delta > 0)
+		if (ok): mm_slot_moved = mm_find_node(e.document, id)
 		free(id)
 	else:
 		int at = index
@@ -238,6 +243,7 @@ int mm_editor_slot_step(mm_editor* e, int index, int delta):
 			if (ok):
 				at = mm_os_step(e, at, delta < 0)
 				ok = at >= 0
+		if (ok): mm_slot_moved = at
 	if (ok): mm_editor_commit(e)
 	else: mm_editor_rollback(e)
 	return ok
@@ -264,15 +270,18 @@ int mm_editor_slot_move(mm_editor* e, int index, int target):
 		before = target
 		if (index < target): before = target - 1
 	mm_editor_begin(e)
+	int size = mm_oe_subtree_end(d, index) - index
 	int moved_parent = parent
-	if (index < parent): moved_parent = parent - 1
+	if (index < parent): moved_parent = parent - size
 	int ok = mm_outline_reparent(e, index, parent)
+	int at = -1
+	if (ok): at = mm_oe_subtree_end(e.document, moved_parent) - size
 	if (ok && before >= 0):
 		# Reparented as the column's last card; step up to the target's slot.
-		int at = mm_oe_subtree_end(e.document, moved_parent) - 1
 		while (ok && at > before):
 			at = mm_os_step(e, at, 1)
 			ok = at >= 0
+	if (ok): mm_slot_moved = at
 	if (ok): mm_editor_commit(e)
 	else: mm_editor_rollback(e)
 	return ok
@@ -290,7 +299,10 @@ int mm_editor_slot_column(mm_editor* e, int index, int delta):
 	int ok = 0
 	if (at >= 0 && at < columns.length):
 		mm_editor_move_cancel(e)
-		ok = mm_outline_reparent(e, index, columns[at])
+		int column = columns[at]
+		ok = mm_outline_reparent(e, index, column)
+		if (index < column): column = column - 1
+		if (ok): mm_slot_moved = mm_oe_subtree_end(e.document, column) - 1
 	__w_list_free(cast(__w_list*, columns))
 	return ok
 

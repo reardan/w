@@ -2,7 +2,8 @@
 # Real X11/XTest editor workflows; run through the opt-in Xvfb target:
 # the pointer/keyboard flowchart workflow, keyboard-only edit/undo/redo
 # chains in each graphically editable family, group editing and
-# multi-selection (Space, Ctrl+A, rubber band), and external-change
+# multi-selection (Space, Ctrl+A, rubber band), C4 geometry, block cell and
+# kanban card moves, inspector line typing, and external-change
 # detection with refused saves, Keep mine, reload and deletion.
 import tools.host_tools
 import lib.str
@@ -281,6 +282,89 @@ void mu_multiselect(char* work):
 	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
 	mu_quit(editor)
 
+# Layout edits beyond the graph families: a C4 card moves and resizes as
+# saved geometry, a block cell moves to the next cell and widens its column
+# span, a kanban card moves to the next column; every step undoes exactly.
+void mu_layouts(char* work):
+	char* path = path_join(work, c"c4.mmd")
+	char* source = c"C4Context\nPerson(user, \"User\")\nSystem(app, \"Editor\")\nRel(user, app, \"Uses\")\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right", c"Shift_L")
+	char* moved = mu_saved_change(source, c"c4: keyboard move was not saved")
+	ht_require(contains(moved, c"%% @w-position \"user\""), c"c4: move did not store a position")
+	mu_key(c"Right", c"Alt_L")
+	char* resized = mu_saved_change(moved, c"c4: Alt+Right resize was not saved")
+	ht_require(contains(resized, c"%% @w-size \"user\""), c"c4: resize did not store a size")
+	mu_undo(moved, c"c4: undo of the resize")
+	mu_undo(source, c"c4: undo of the move")
+	mu_redo(moved, c"c4: redo of the move")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+	path = path_join(work, c"block.mmd")
+	source = c"block\ncolumns 3\na b c\n"
+	ht_write(path, source, strlen(source))
+	editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* swapped = mu_saved_change(source, c"block: keyboard move was not saved")
+	ht_require(contains(swapped, c"\nb a c\n") && !contains(swapped, c"@w-position"), c"block: move did not reorder the cells")
+	mu_key(c"Right", c"Alt_L")
+	char* wider = mu_saved_change(swapped, c"block: Alt+Right did not change the span")
+	ht_require(contains(wider, c"\nb a:2 c\n"), c"block: span not written")
+	mu_undo(swapped, c"block: undo of the span")
+	mu_undo(source, c"block: undo of the move")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+	path = path_join(work, c"kanban.mmd")
+	source = c"kanban\n  todo[Todo]\n    docs[Write docs]\n  done[Done]\n"
+	ht_write(path, source, strlen(source))
+	editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* carded = mu_saved_change(source, c"kanban: Right did not move the card")
+	ht_require(contains(carded, c"  done[Done]\n    docs[Write docs]\n"), c"kanban: card not in the next column")
+	mu_undo(source, c"kanban: undo of the card move")
+	mu_quit(editor)
+
+# Inspector line field: Ctrl+P focuses a class member line, typing edits it
+# in place, and the whole typing run is one undo step.
+void mu_inspector(char* work):
+	char* path = path_join(work, c"members.mmd")
+	char* source = c"classDiagram\nclass Order {\n  +int id\n  +total() float\n}\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"p", c"Control_L")
+	mu_key(c"End")
+	mu_type(c"entifier")
+	mu_save()
+	mu_wait(c"  +int identifier\n", 2, c"inspector: member line was not edited in place")
+	char* typed = ht_read(mu_path).data
+	ht_require(contains(typed, c"  +total() float\n") && !contains(typed, c"+int id\n"), c"inspector: edit touched the wrong line")
+	mu_undo(source, c"inspector: the typing run was not one undo step")
+	mu_redo(typed, c"inspector: redo of the typing run")
+	mu_key(c"d", c"Control_L")
+	mu_key(c"p", c"Control_L")
+	mu_key(c"p", c"Control_L")
+	mu_key(c"BackSpace")
+	mu_key(c"BackSpace")
+	mu_key(c"BackSpace")
+	mu_key(c"BackSpace")
+	mu_key(c"BackSpace")
+	mu_type(c"double")
+	mu_save()
+	mu_wait(c"  +total() double\n", 2, c"inspector: Ctrl+P did not step to the next line")
+	mu_undo(typed, c"inspector: undo of the second line edit")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+
 # External changes: a save over a changed file is refused, Keep mine makes
 # the next save replace exactly that version, Reload from disk adopts it,
 # and a deleted file is only recreated after Keep mine.
@@ -422,6 +506,8 @@ int main():
 	mu_families(work)
 	mu_groups(work)
 	mu_multiselect(work)
+	mu_layouts(work)
+	mu_inspector(work)
 	mu_conflicts(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()

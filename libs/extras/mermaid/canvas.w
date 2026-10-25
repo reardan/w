@@ -244,6 +244,12 @@ int mm_canvas_slot_at(mm_editor* e, int index, int x, int y):
 		best = at
 	return best
 
+# The selection follows the item a slot command moved.
+void mm_canvas_follow_slot(mm_canvas* c):
+	mm_canvas_clear_selection(c)
+	c.node = mm_slot_moved
+	c.edge = -1
+
 # Release of a source-order drag: the slot under the dragged box's centre.
 int mm_canvas_slot_drop(mm_canvas* c, mm_editor* e):
 	int index = e.move_index
@@ -256,7 +262,9 @@ int mm_canvas_slot_drop(mm_canvas* c, mm_editor* e):
 	mm_editor_move_cancel(e)
 	int target = mm_canvas_slot_at(e, index, cx, cy)
 	if (target < 0): return 0
-	return mm_editor_slot_move(e, index, target)
+	int ok = mm_editor_slot_move(e, index, target)
+	if (ok): mm_canvas_follow_slot(c)
+	return ok
 
 int mm_canvas_press_mods(mm_canvas* c, mm_editor* e, float32 x, float32 y, int mods):
 	int wx = cast(int, (x - c.pan_x) / c.zoom)
@@ -266,7 +274,9 @@ int mm_canvas_press_mods(mm_canvas* c, mm_editor* e, float32 x, float32 y, int m
 		int target = mm_canvas_slot_at(e, c.node, wx, wy)
 		c.move_here = 0
 		if (target < 0): return 0
-		return mm_editor_slot_move(e, c.node, target)
+		int moved = mm_editor_slot_move(e, c.node, target)
+		if (moved): mm_canvas_follow_slot(c)
+		return moved
 	if (c.move_here && mm_editor_can_move(e, c.node)):
 		int ok = mm_editor_move_node(e, c.node, mm_canvas_bound_x(wx), mm_canvas_bound_y(e, wy))
 		c.move_here = 0
@@ -443,18 +453,22 @@ int mm_canvas_slot_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
 	int along = 0
 	if (dy > 0): along = 1
 	if (dy < 0): along = -1
+	int columns = 0
 	if (d.kind == MM_BLOCK):
-		int columns = 0
 		int parent = d.nodes[one].parent
 		if (parent >= 0): columns = d.nodes[parent].value_x
 		if (columns <= 0):
 			list[int] siblings = mm_slot_siblings(d, one)
 			columns = siblings.length
 			__w_list_free(cast(__w_list*, siblings))
-		return mm_editor_slot_step(e, one, across + along * columns)
-	if (d.kind == MM_KANBAN && across != 0): return mm_editor_slot_column(e, one, across)
-	if (along == 0): along = across
-	return mm_editor_slot_step(e, one, along)
+	int ok = 0
+	if (d.kind == MM_BLOCK): ok = mm_editor_slot_step(e, one, across + along * columns)
+	else if (d.kind == MM_KANBAN && across != 0): ok = mm_editor_slot_column(e, one, across)
+	else:
+		if (along == 0): along = across
+		ok = mm_editor_slot_step(e, one, along)
+	if (ok): mm_canvas_follow_slot(c)
+	return ok
 
 int mm_canvas_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
 	if (mm_slot_family(e.document.kind)):

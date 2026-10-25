@@ -1055,3 +1055,81 @@ char* mm_editor_edge_kinds(int kind):
 	if (kind == MM_REQUIREMENT): return c"contains copies derives satisfies verifies refines traces"
 	if (kind == MM_USECASE): return c"--> --- ..>"
 	return c""
+
+# The inspector's compartment lines: ER attributes, class members and
+# requirement properties, one editable text per line.
+int mm_editor_line_count(mm_editor* e, int index):
+	mm_document* d = e.document
+	if (d.error != 0 || index < 0 || index >= d.nodes.length): return 0
+	mm_node* n = d.nodes[index]
+	if (d.kind == MM_ER):
+		if (n.attributes == 0): return 0
+		return n.attributes.length
+	if (d.kind != MM_CLASS && d.kind != MM_REQUIREMENT): return 0
+	if (n.members == 0): return 0
+	return n.members.length
+
+# Owned text of line `which`: `type name [keys] ["comment"]` for an ER
+# attribute, the member text otherwise; null when out of range.
+char* mm_editor_line_text(mm_editor* e, int index, int which):
+	if (which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	mm_node* n = e.document.nodes[index]
+	if (e.document.kind == MM_ER):
+		mm_attribute* a = n.attributes[which]
+		return mm_ee_attribute_text(a.type_name, a.name, a.keys, a.comment)
+	return strclone(n.members[which].text)
+
+char* mm_edit_trimmed(char* text, int start, int end):
+	while (start < end && (text[start] == 32 || text[start] == 9)): start = start + 1
+	while (end > start && (text[end - 1] == 32 || text[end - 1] == 9)): end = end - 1
+	return str_copy_range(text, start, end)
+
+# Rewrite line `which` in place from its inspector text (one validated
+# splice; an ER text splits into type, name, keys and a quoted comment).
+int mm_editor_line_set(mm_editor* e, int index, int which, char* text):
+	if (text == 0 || which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	char* current = mm_editor_line_text(e, index, which)
+	int same = strcmp(current, text) == 0
+	free(current)
+	if (same): return 1
+	if (e.document.kind != MM_ER): return mm_editor_member_set(e, index, which, text)
+	int length = strlen(text)
+	int quote = index_of(text, c"\"")
+	int code_end = length
+	char* comment = strclone(c"")
+	if (quote >= 0):
+		int close = length
+		while (close > quote + 1 && text[close - 1] != '"'): close = close - 1
+		if (close <= quote + 1 || close - 1 == quote):
+			free(comment)
+			return 0
+		free(comment)
+		comment = str_copy_range(text, quote + 1, close - 1)
+		code_end = quote
+		for i in range(close, length):
+			if (text[i] != 32 && text[i] != 9):
+				free(comment)
+				return 0
+	# type and name are the first two words; the rest are the keys.
+	list[int] starts = new list[int]
+	list[int] ends = new list[int]
+	int at = 0
+	while (at < code_end && starts.length < 2):
+		while (at < code_end && (text[at] == 32 || text[at] == 9)): at = at + 1
+		if (at >= code_end): break
+		starts.push(at)
+		while (at < code_end && text[at] != 32 && text[at] != 9): at = at + 1
+		ends.push(at)
+	int ok = 0
+	if (starts.length == 2):
+		char* type_name = str_copy_range(text, starts[0], ends[0])
+		char* name = str_copy_range(text, starts[1], ends[1])
+		char* keys = mm_edit_trimmed(text, ends[1], code_end)
+		ok = mm_editor_attribute_set(e, index, which, type_name, name, keys, comment)
+		free(type_name)
+		free(name)
+		free(keys)
+	free(comment)
+	__w_list_free(cast(__w_list*, starts))
+	__w_list_free(cast(__w_list*, ends))
+	return ok
