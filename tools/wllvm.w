@@ -30,7 +30,8 @@ void wllvm_usage():
 	println(c"Subset: integer, bool, char, pointer, enum, string-handle and record types;")
 	println(c"locals, globals, fixed arrays, calls (direct, indirect, syscall), if, while,")
 	println(c"for-range, break, continue and return, across every module the entry reaches.")
-	println(c"Floats, containers, generics, records by value and other constructs fail.")
+	println(c"Also floats, f-strings, setjmp, threads and stack traces; containers,")
+	println(c"generics, records by value and other constructs fail.")
 	println(c"The front end currently also emits native code to the null device.")
 	println(c"To build IR by hand: clang -O2 -static -nostdlib output.ll -o program")
 
@@ -61,9 +62,61 @@ int wllvm_same_file(char* input, char* output):
 	return (in_stat.ino == out_stat.ino) && (in_stat.dev == out_stat.dev)
 
 
-# Build output from ir with clang; clang's diagnostics pass through.
+# lib/stack_trace.w (print_stack_trace, the lib/crash.w reporter) reads
+# .symtab and .debug_line from the running image at base + file offset, as
+# native W executables map them. When every PT_LOAD shares one
+# vaddr - offset, the first maps the ELF header and the last has no .bss
+# (the emitter keeps globals in .data), the last one is extended to the end
+# of the file. Other layouts are left as they are: traces then print
+# nothing, like a native binary without symbols. Returns 0, or 1 when the
+# file cannot be rewritten.
+int wllvm_map_image(char* path):
+	wstream* in = stream_open_read(path)
+	if (in == 0): return wllvm_error(c"cannot read the linked executable")
+	string_builder* image = string_new()
+	io_result r
+	int status = stream_read_all_checked(in, image, &r)
+	stream_close(in)
+	char* data = image.data
+	int length = image.length
+	int patched = 0
+	if ((status == IO_OK) && (length >= 64) && (data[0] == 127) && (data[1] == 'E') && (data[2] == 'L') && (data[3] == 'F') && (data[4] == 2)):
+		int phoff = load_i(data + 32, 8)
+		int phentsize = load_i(data + 54, 2)
+		int phnum = load_i(data + 56, 2)
+		char* last = 0
+		int delta = -1
+		int consistent = (phentsize == 56) && (phoff + phnum * 56 <= length)
+		int first_offset = -1
+		for k in range(phnum):
+			if (consistent == 0): break
+			char* header = data + phoff + k * 56
+			if (load_i(header, 4) != 1): continue
+			int offset = load_i(header + 8, 8)
+			int here = load_i(header + 16, 8) - offset
+			if ((delta != -1) && (here != delta)): consistent = 0
+			delta = here
+			if (first_offset == -1): first_offset = offset
+			if ((last == 0) || (offset > load_i(last + 8, 8))): last = header
+		if (consistent && (last != 0) && (first_offset == 0) && ((delta & 4095) == 0)):
+			int offset = load_i(last + 8, 8)
+			if ((load_i(last + 32, 8) == load_i(last + 40, 8)) && (offset < length)):
+				save_i(last + 32, length - offset, 8)
+				save_i(last + 40, length - offset, 8)
+				patched = 1
+	int failed = 0
+	if (patched):
+		io_result written
+		if (file_write_text_checked(path, data, length, &written) != IO_OK): failed = wllvm_error(c"cannot rewrite the linked executable")
+	string_free(image)
+	return failed
+
+
+# Build output from ir with clang; clang's diagnostics pass through. Shrink
+# wrapping stays off so every prologue starts its function, where the
+# trace reader looks for the frame-pointer push.
 int wllvm_link(char* path, char* level, char* ir, char* output):
-	list[char*] args = list[char*]{path, level, c"-static", c"-nostdlib", c"-Wno-override-module", c"-o", output, ir}
+	list[char*] args = list[char*]{path, level, c"-static", c"-nostdlib", c"-Wno-override-module", c"-mllvm", c"-enable-shrink-wrap=false", c"-o", output, ir}
 	char** vector = strv_new(args.length)
 	for i in range(args.length): strv_set(vector, i, args[i])
 	process_result* result = process_run(path, vector, 0, 0, 600000)
@@ -75,7 +128,7 @@ int wllvm_link(char* path, char* level, char* ir, char* output):
 	int status = result.status
 	process_result_free(result)
 	if (status != 0): return wllvm_error(c"clang failed")
-	return 0
+	return wllvm_map_image(output)
 
 
 int main(int argc, int argv):
