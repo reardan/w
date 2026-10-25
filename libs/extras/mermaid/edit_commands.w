@@ -1033,11 +1033,12 @@ int mm_editor_member_remove(mm_editor* e, int index, int which):
 int mm_editor_member_set(mm_editor* e, int index, int which, char* text):
 	return mm_ee_member_set(e, index, which, text)
 
-# Connector choices the inspector offers per family (`|`-separated).
+# Connector choices the inspector offers per family, space-separated (class
+# operators contain `|`).
 char* mm_editor_edge_kinds(int kind):
-	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"|-->|---|-.->|==>|--o|--x|<-->|"
-	if (kind == MM_CLASS): return c"|-->|--|..>|..|<|--|*--|o--|..|>|"
-	if (kind == MM_STATE): return c"|-->|"
-	if (kind == MM_REQUIREMENT): return c"|contains|copies|derives|satisfies|verifies|refines|traces|"
-	if (kind == MM_USECASE): return c"|-->|---|..>|"
+	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"--> --- -.-> ==> --o --x <-->"
+	if (kind == MM_CLASS): return c"--> -- ..> .. <|-- *-- o-- ..|>"
+	if (kind == MM_STATE): return c"-->"
+	if (kind == MM_REQUIREMENT): return c"contains copies derives satisfies verifies refines traces"
+	if (kind == MM_USECASE): return c"--> --- ..>"
 	return c""

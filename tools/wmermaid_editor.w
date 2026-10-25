@@ -607,7 +607,7 @@ int main(int argc, int argv):
 			# Connection kind: one button per connector this family offers.
 			ui_label(&ctx, c"Kind")
 			if (e.document.kind == MM_ER):
-				list[char*] names = list[char*]{c"1-1", c"1-N", c"0-N", c"N-N"}
+				list[char*] names = list[char*]{c"1 to 1", c"1 to 1+", c"1 to 0+", c"1+ to 1+"}
 				list[int] lefts = list[int]{1, 1, 1, 3}
 				list[int] rights = list[int]{1, 3, 2, 3}
 				for k in range(names.length):
@@ -621,7 +621,7 @@ int main(int argc, int argv):
 				__w_list_free(cast(__w_list*, lefts))
 				__w_list_free(cast(__w_list*, rights))
 			else:
-				list[char*] kinds = split(mm_editor_edge_kinds(e.document.kind), '|')
+				list[char*] kinds = split(mm_editor_edge_kinds(e.document.kind))
 				for char* kind in kinds:
 					if (kind[0] == 0): continue
 					ui_same_line(&ctx)
