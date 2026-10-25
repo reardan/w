@@ -1,10 +1,11 @@
 # wbuild: target=safe_wasm_contract_runtime_test tag=tests_wasm dep=safe_wasm_contract_test dep=wrun
-# wbuild: step="env W_SAFE_WASM_RUN=1 bin/safe_wasm_contract_test"
+# wbuild: step="env W_SAFE_WASM_RUN=1 W_SAFE_WASM_KEEP=bin/safe_wasm_browser_contract bin/safe_wasm_contract_test"
 # Every contract is checked and compiled for wasm with and without --safe,
 # and checked for the default x86 target: wasm must report the same first
 # diagnostic as x86. Rejections must prevent publication of a module,
 # including with nonfatal warnings. tests_wasm reruns the matrix and
-# executes each accepted module under bin/wrun wasm.
+# executes each accepted module under bin/wrun wasm, then keeps it for
+# safe_wasm_browser_test, which runs it again in headless Chromium.
 import lib.testing
 import lib.process
 import lib.file
@@ -12,6 +13,35 @@ import lib.env
 
 
 int wasm_contract_case_number
+char* wasm_contract_kept
+
+
+# W_SAFE_WASM_KEEP=<dir> keeps each accepted module as <dir>/case_<n>.wasm
+# (case_<n>_safe.wasm for the --safe build) and lists them in
+# <dir>/manifest.txt, which safe_wasm_browser_test runs in headless
+# Chromium (tools/web/run_browser_wasi.mjs --list).
+void wasm_contract_keep(char* output, char* number, int safe):
+	char* dir = env_get(c"W_SAFE_WASM_KEEP")
+	if (dir == 0): return
+	mkdir(dir, 493)
+	char* prefix = strjoin(dir, c"/case_")
+	char* stem = strjoin(prefix, number)
+	char* suffix = c".wasm"
+	if (safe): suffix = c"_safe.wasm"
+	char* kept = strjoin(stem, suffix)
+	assert_equal(0, rename(output, kept))
+	if (wasm_contract_kept == 0): wasm_contract_kept = strclone(c"")
+	char* line = strjoin(kept, c"\n")
+	char* listed = strjoin(wasm_contract_kept, line)
+	free(wasm_contract_kept)
+	wasm_contract_kept = listed
+	char* manifest = strjoin(dir, c"/manifest.txt")
+	assert1(file_write_text(manifest, wasm_contract_kept))
+	free(manifest)
+	free(line)
+	free(kept)
+	free(stem)
+	free(prefix)
 
 
 void wasm_contract_result(process_result* result, char* diagnostic, int checking, char* path):
@@ -77,7 +107,6 @@ void wasm_contract_case(char* source, char* diagnostic, int relaxed = 0, char* t
 	wasm_contract_case_number = wasm_contract_case_number + 1
 	char* number = itoa(wasm_contract_case_number)
 	char* path = strjoin(c"bin/wasm_contract_case_", number)
-	free(number)
 	char* full = strjoin(path, c".w")
 	free(path)
 	char* output = strjoin(full, c".wasm")
@@ -146,10 +175,12 @@ void wasm_contract_case(char* source, char* diagnostic, int relaxed = 0, char* t
 				assert_equal(0, executed.status)
 				process_result_free(executed)
 				free(cast(void*, run))
+			wasm_contract_keep(output, number, mode)
 		unlink(output)
 	unlink(full)
 	free(output)
 	free(full)
+	free(number)
 
 
 

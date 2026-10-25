@@ -1391,6 +1391,26 @@ scenarios (`safe_wasm_guard_test`) under `bin/wrun wasm` (wasmtime, else
 node's WASI). Execution under a WASI host is a required admission gate;
 cross-compilation alone does not admit the target.
 
+`safe_wasm_browser_test`, also in `tests_wasm`, runs the same modules in
+headless Chromium: the contract matrix's accepted programs in both flag
+modes (kept under `bin/safe_wasm_browser_contract/` by
+`safe_wasm_contract_runtime_test`), every runtime fixture in its three builds
+plus the explicit `--safe` variant, and the guard substitute's positive run and six fault scenarios
+with their arguments. `tools/web/run_browser_wasi.mjs` reads the module list
+and expectations from the `bin/wrun wasm` step lines of
+`tests/safe_wasm_runtime_test.w` and `tests/safe_wasm_guard_fixture.w`, runs
+each module under `bin/wrun wasm` as the reference, then instantiates it in
+the page against `tools/web/wasi_lite.mjs` (the browser WASI subset, with
+argv). The browser run must reproduce the reference's stdout, stderr and
+exit status exactly and meet each step's `expect_fail`/`expect_stderr`. A
+trap, whose host message differs between engines, must match a nonzero
+reference whose stderr begins with the program's own output. The browser is
+`$CHROMIUM`, a `chromium`/`google-chrome` binary on `PATH`, or a globally
+installed Playwright's Chromium (`tools/web/headless_chromium.mjs`; nothing
+is downloaded). Without one the target prints `safe_wasm_browser SKIP` and
+passes, so CI's skip report shows it; `W_REQUIRE_BROWSER=1` makes a missing
+browser fail instead.
+
 ## Thread transfer and spawn/join
 
 Checked code can move owned work to another thread and lend borrows to a

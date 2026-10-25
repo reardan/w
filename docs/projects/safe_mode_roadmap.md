@@ -17,7 +17,8 @@ checked methods and concrete generic calls,
 owned-integer buffers, byte arenas
 and win64 support. Linux ARM64 target admission extends the same bounded
 contracts with audited runtime pins and a QEMU execution gate; wasm32/WASI
-admission does the same with a node execution gate. Android/iOS targets
+admission does the same with Node/wasmtime and headless-Chromium execution
+gates. Android/iOS targets
 remain under #712. Persistent REPL and debugger sessions (#713) check
 every entry and stop against a replayed session transcript
 ([usage](safe_mode.md#persistent-repl-and-debugger-sessions)). The remaining requirements
@@ -69,7 +70,7 @@ IDs below identify feature requirements, not a second execution schedule.
 | Generic containers and checked iteration | [#697](https://github.com/reardan/w/issues/697) | Wave 3, after element ownership and checked generic/callback contracts |
 | Foreign boundaries and typed arenas | [#698](https://github.com/reardan/w/issues/698) | Foreign-boundary contracts in Wave 2 when ready; typed arenas in Wave 3 |
 | Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites; transfer/share rules, spawn/join and scoped fork-join landed for Linux x86/x64 ([usage](safe_mode.md#thread-transfer-and-spawnjoin)); guarded mutexes and explicit-order atomics landed for Linux x86/x64 ([usage](safe_mode.md#synchronization-guarded-mutexes-and-atomics), [ordering argument](safe_mode_contracts.md#synchronization-and-memory-ordering)); generic `WSafeMutex[T]` payloads landed, and an independent (AI) review of the memory-ordering argument found and closed a guard-declared-before-mutex cleanup hole; remaining review items (stale `lib/thread.w` plain-store argument, `thread_create` mmap/clone failure handling) are open |
-| Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
+| Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize; under #712, wasm32/WASI is admitted with WASI-host (`bin/wrun wasm`: wasmtime, else Node) and browser (`safe_wasm_browser_test`: headless Chromium) execution of the checked corpus ([usage](safe_mode.md#webassembly-runtime-contract)); Android/iOS remain rejected |
 
 Workstream #700 was split at implementation kickoff into
 [additional checked targets (#712)](https://github.com/reardan/w/issues/712),

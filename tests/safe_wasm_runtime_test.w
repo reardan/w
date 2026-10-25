@@ -236,6 +236,8 @@
 # wbuild: step="bin/wrun wasm bin/safe_win64_runtime_wasm_plain"
 # wbuild: step="bin/wrun wasm bin/safe_win64_runtime_wasm_inline"
 # wbuild: step="bin/wrun wasm bin/safe_explicit_runtime_wasm"
+# wbuild: target=safe_wasm_browser_test tag=tests_wasm dep=safe_wasm_runtime_compile_test dep=safe_wasm_contract_runtime_test dep=safe_wasm_guard_test dep=wrun input=tools/web/run_browser_wasi.mjs input=tools/web/headless_chromium.mjs input=tools/web/wasi_lite.mjs
+# wbuild: step="bin/wrun node tools/web/run_browser_wasi.mjs --steps tests/safe_wasm_runtime_test.w --steps tests/safe_wasm_guard_fixture.w --list bin/safe_wasm_browser_contract/manifest.txt" expect_stdout="safe_wasm_browser"
 
 # The contract matrix (tests/safe_wasm_contract_test.w) owns accepted and
 # rejected programs. This corpus runs every checked runtime fixture as a
@@ -243,5 +245,9 @@
 # compilation, plus one whole-program --safe build. The fixtures force the
 # debug allocator, whose wasm substitute (lib/memory_debug.w) keeps leak,
 # double-free, canary and free-poison accounting without page faults.
+# safe_wasm_browser_test reruns this corpus, the guard scenarios and the
+# contract matrix's accepted modules in headless Chromium through
+# tools/web/run_browser_wasi.mjs, which reads the step lines above and
+# compares each browser run with its bin/wrun wasm reference.
 int main():
 	return 0

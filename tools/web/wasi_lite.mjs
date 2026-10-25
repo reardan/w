@@ -1,9 +1,11 @@
 // Minimal browser-side WASI preview1 shim — just enough of the fixed
 // import set W wasm modules declare (code_generator/wasm_module.w) to
-// run a graphics program in a page: stdout/stderr to the console (and
-// an optional sink), a real clock, no filesystem, no args.
+// run a program in a page: stdout/stderr to the console (and an optional
+// sink), a real clock, no filesystem, and an optional argv.
 //
-// makeWasi({ onWrite }) returns { imports, exitCode() }: pass imports
+// makeWasi({ memory, onWrite, args }) returns { imports, exitCode() }:
+// args (default none) is the program's argv as strings, argv[0] first,
+// exactly as wasmtime and node:wasi hand it over. Pass imports
 // as the "wasi_snapshot_preview1" module, call _start inside
 // runStart(instance) which absorbs the proc_exit unwind.
 
@@ -14,8 +16,9 @@ class WasiExit extends Error {
   constructor(code) { super(`proc_exit(${code})`); this.code = code; }
 }
 
-export function makeWasi({ memory, onWrite = null } = {}) {
+export function makeWasi({ memory, onWrite = null, args = [] } = {}) {
   const decoder = new TextDecoder();
+  const argBytes = args.map(a => new TextEncoder().encode(a + '\0'));
   let exitCode = null;
   const lineBuf = ['', '', '']; // per fd 0..2, line-buffered console output
 
@@ -52,11 +55,20 @@ export function makeWasi({ memory, onWrite = null } = {}) {
     path_unlink_file: () => ERRNO_NOENT,
     args_sizes_get: (argcPtr, buflenPtr) => {
       const dv = new DataView(memory().buffer);
-      dv.setUint32(argcPtr, 0, true);
-      dv.setUint32(buflenPtr, 0, true);
+      dv.setUint32(argcPtr, argBytes.length, true);
+      dv.setUint32(buflenPtr, argBytes.reduce((n, b) => n + b.length, 0), true);
       return 0;
     },
-    args_get: () => 0,
+    args_get: (argvPtr, bufPtr) => {
+      const dv = new DataView(memory().buffer);
+      const b = new Uint8Array(memory().buffer);
+      argBytes.forEach((bytes, i) => {
+        dv.setUint32(argvPtr + 4 * i, bufPtr, true);
+        b.set(bytes, bufPtr);
+        bufPtr += bytes.length;
+      });
+      return 0;
+    },
     clock_time_get: (clock, precision, outPtr) => {
       new DataView(memory().buffer)
         .setBigUint64(outPtr, BigInt(Math.round(Date.now())) * 1000000n, true);
