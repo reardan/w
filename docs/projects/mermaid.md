@@ -38,7 +38,7 @@ bin/wmermaid_editor examples/mermaid/states.mmd
 ```
 
 `write` preserves the original bytes, including comments and CRLF. It is not a
-formatter. `edit INPUT START END REPLACEMENT_FILE OUTPUT` replaces the half-open
+formatter; `format` is (see "Canonical serialization and formatting" below). `edit INPUT START END REPLACEMENT_FILE OUTPUT` replaces the half-open
 UTF-8 byte range `[START, END)` and writes the result; replacement text is read
 literally from the file. Invalid intermediate syntax is allowed in source edits
 and writes. Run `check` to validate, or `svg` to validate and export. Neither
@@ -294,13 +294,44 @@ destinations. `save_guard_test` (x86, x64 and a win64 twin under wine) injects
 a writer at each stage (`mm_save_race_hook`) and checks that nothing is
 overwritten and no temp or claim file is left behind.
 
-`--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg
-and canonical operations (default 0). Read/write/edit preserve the complete source;
-check/svg operate on the selected diagram. `canonical INPUT OUTPUT` emits a
-standalone flowchart or ER diagram from its semantic model, including groups,
-styles, attributes and relationships. It deliberately replaces comments and
-formatting. Unsupported families, themes/force configuration, or unrepresentable
-model values fail explicitly. Lossless `write` behavior is unchanged.
+`--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg,
+canonical and format operations (default 0). Read/write/edit preserve the complete
+source; check/svg/canonical/format operate on the selected diagram.
+
+### Canonical serialization and formatting
+
+```sh
+bin/wmermaid format INPUT              # canonical source on stdout
+bin/wmermaid format INPUT -o OUTPUT    # ... written durably to OUTPUT
+bin/wmermaid format --check INPUT      # exit 1 if INPUT is not canonical
+bin/wmermaid canonical INPUT OUTPUT    # same as format INPUT -o OUTPUT
+```
+
+`format` rebuilds the selected diagram from its semantic model: frontmatter
+(title, theme, themeVariables, layout, look, spacing and family keys), the
+family header, accessibility lines, declarations, relationships, class
+definitions and styles, in one consistent layout (one statement per line,
+explicit quoted labels, nested blocks indented). It works for all 33 families.
+Comments, position-hint comments, blank lines and the original spelling of
+equivalent syntax are dropped; Markdown around a fence is not written, so
+formatting a `.md` input yields the standalone diagram. `--check` compares the
+selected diagram's own text (inside its fence, frontmatter included) with the
+canonical form and writes nothing. A parse error, or a model with no exact
+canonical source, fails with a diagnostic and leaves OUTPUT untouched. The
+lossless `write`/`mm_save` path is unchanged and stays the save default.
+
+The serializer never approximates: every emitted text is reparsed and compared
+with the original model (`mm_document_diff`, semantic fields only, in index
+order: node/edge/event order, labels, shapes, styles, configuration), and a
+remaining difference makes the result null. One serializer file per family group
+(`serialize_flow.w`, `serialize_uml.w`, `serialize_narrative.w`,
+`serialize_data.w`, `serialize_c4.w`, ...) is dispatched from `serialize.w`;
+`serialize_common.w` holds frontmatter, quoting and style helpers, and
+`serialize_equal.w` the model comparison. `serialize_roundtrip_test` formats every
+`examples/mermaid` diagram and every parsing-corpus manifest entry, asserts that
+the reparsed model is equal and that formatting is idempotent, and keeps a
+known-failure list with reasons (currently empty) that fails both when a listed
+family starts passing and when an unlisted one fails.
 
 For a reproducible native preview on a headless Linux host with Xvfb:
 
@@ -514,8 +545,11 @@ mm_document_free(doc)
   document is unchanged. Fields are inspectable; edit source and reparse to keep
   the model and lossless writer consistent. `mm_write` always returns original bytes.
   `mm_parse_selected(bytes, length, index)` selects a zero-based Markdown diagram.
-- `serialize`: `mm_serialize(doc)` returns canonical standalone flow/ER source from
-  the model, or null if the model cannot be represented without dropping semantics.
+- `serialize`: `mm_serialize(doc)` returns canonical standalone source for any
+  family from the model, or null if the model cannot be represented without
+  dropping semantics; `mm_serialize_explain(doc, &diff)` also returns the first
+  model difference. `mm_format(bytes, length)` parses and serializes in one call.
+  `mm_document_equal(a, b)` / `mm_document_diff(a, b)` compare semantic models.
 - `render`: `mm_render(doc)` returns an owned display list, or null for a failed
   parse; `mm_svg(scene)` returns owned escaped XML. `mm_scene_free` releases it.
 - `io`: `mm_read(path)` returns an owned document, or null for I/O/budget failure;
@@ -574,7 +608,7 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Extend canonical serialization beyond flow/ER and graphical editing beyond
+4. Extend graphical editing beyond
    flow/ER/class/state (requirement, use-case and the other graph families),
    and into namespaces, composite states and notes; add group movement, multi-selection, resize and richer edge/attribute inspectors.
    Use editor commands to keep source/history synchronized; mutating the AST
