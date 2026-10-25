@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -80,12 +80,32 @@ void test_wllvm_deterministic_ir():
 	assert1(a != 0)
 	assert_contains(a, c"icmp ne i64")
 	unlink(first)
+	free(a)
+	# Imports keep the C ABI and name the libraries to link dynamically;
+	# an alias shares its import's one declaration.
+	wllvm_test_emit(c"tests/wllvm_extern_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"; C imports; link with: clang -nostartfiles -l:libc.so.6 -l:libm.so.6")
+	assert_contains(a, c"declare i64 @\"printf\"(ptr, ...)")
+	assert_contains(a, c"call i64 (ptr, i64, ptr, ...) @\"snprintf\"(ptr ")
+	assert_contains(a, c"declare i32 @\"abs\"(i32)")
+	assert_contains(a, c"declare double @\"sqrt\"(double)")
+	assert_contains(a, c"declare float @\"sqrtf\"(float)")
+	assert_contains(a, c"fpext float ")
+	assert_contains(a, c"@\"stdout\" = external global [8 x i8]")
+	assert_contains(a, c"define internal i64 @wllvm.cthunk.")
+	int puts = index_of(a, c"declare i64 @\"puts\"(ptr)")
+	assert1(puts >= 0)
+	assert_equal(-1, index_of(a + puts + 1, c"declare i64 @\"puts\""))
+	unlink(first)
 	# Containers lower to calls into the auto-imported runtime.
 	wllvm_test_emit(c"tests/wllvm_container_fixture.w", first)
 	a = file_read_text(first)
 	assert1(a != 0)
 	assert_contains(a, c"phi i64")
 	unlink(first)
+	free(a)
 	# Floats ride in the word as bit patterns; f-strings call the runtime.
 	wllvm_test_emit(c"tests/wllvm_float_fixture.w", first)
 	a = file_read_text(first)
@@ -95,7 +115,7 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"fcmp ueq double")
 	assert_contains(a, c"sitofp i64 ")
 	assert_contains(a, c"fpext float ")
-	assert_contains(a, c"call i64 @llvm.x86.sse2.cvttsd2si64(")
+	assert_contains(a, c"call i64 @llvm.fptosi.sat.i64.f64(")
 	assert_contains(a, c"c\"specs [\\00\"")
 	unlink(first)
 	free(a)
@@ -270,11 +290,13 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
 	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
+	wllvm_test_differential(clang, c"tests/wllvm_extern_fixture.w", 54)
 	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
 	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
 	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)
 	wllvm_test_differential(clang, c"tests/wllvm_runtime_fixture.w", 21)
 	wllvm_test_differential(clang, c"tests/wllvm_math_fixture.w", 0)
+	wllvm_test_differential(clang, c"tests/wllvm_half_fixture.w", 50)
 	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
 	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
 	free(clang)
@@ -371,3 +393,58 @@ void test_wllvm_library_trap_stub():
 	free(input)
 	free(native)
 	free(clang)
+
+
+# AArch64 Linux: the arch selector runs the front end for arm64 (its
+# lib/__arch__/arm64 syscall numbers) and emits svc #0 syscalls. With
+# clang, ld.lld and qemu-aarch64 the fixtures must match bin/wv2 arm64's
+# build.
+void test_wllvm_arm64_target():
+	char* ir = wllvm_test_path(c".ll")
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_memory_fixture.w", c"-o", ir}))
+	char* text = file_read_text(ir)
+	assert1(text != 0)
+	assert_contains(text, c"target triple = \"aarch64-unknown-linux-gnu\"")
+	assert_contains(text, c"asm sideeffect \"svc #0\"")
+	assert_contains(text, c"module asm \"  bl __wllvm_start\"")
+	assert_equal(-1, index_of(text, c"\"syscall\""))
+	free(text)
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"--target", c"arm64", c"tests/wllvm_scalar_fixture.w", c"-o", ir}))
+	# float16 converts with fcvt, and C math lowers inline rather than
+	# through an AArch64 libm.
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_half_fixture.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c" to half")
+	assert_equal(-1, index_of(text, c"vcvtps2ph"))
+	free(text)
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_math_fixture.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c"call double @llvm.sqrt.f64(")
+	assert_equal(-1, index_of(text, c"declare double @\"sqrt\""))
+	free(text)
+	unlink(ir)
+	free(ir)
+	char* clang = process_which(c"clang")
+	char* lld = process_which(c"ld.lld")
+	char* qemu = process_which(c"qemu-aarch64-static")
+	if (qemu == 0): qemu = process_which(c"qemu-aarch64")
+	if ((clang == 0) || (lld == 0) || (qemu == 0)):
+		println(c"wllvm: clang, ld.lld or qemu-aarch64 unavailable; arm64 run skipped")
+		return
+	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w", c"tests/wllvm_half_fixture.w"}
+	for fixture in fixtures:
+		char* native = wllvm_test_path(c".arm64")
+		char* reference = wllvm_test_path(c".arm64ref")
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wv2", c"arm64", fixture, c"-o", reference}))
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"--cc", clang, fixture, c"-o", native}))
+		process_result* baseline = wllvm_test_run(list[char*]{qemu, reference})
+		process_result* result = wllvm_test_run(list[char*]{qemu, native})
+		assert_equal(baseline.status, result.status)
+		assert_strings_equal(baseline.stdout_text, result.stdout_text)
+		process_result_free(baseline)
+		process_result_free(result)
+		unlink(native)
+		unlink(reference)
+		free(native)
+		free(reference)
+	fixtures.free()

@@ -177,9 +177,10 @@ int extern_statement():
 			be_align_code()
 			sym_define_global(sym)
 			emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
-			if (is_variadic):
-				sym_set_variadic(sym, param_count)
-				sym_set_got_vaddr(sym, got_vaddr)
+			# Every import records its slot: the variadic call path loads
+			# through it, and tools/wllvm_emit.w finds the import by it.
+			sym_set_got_vaddr(sym, got_vaddr)
+			if (is_variadic): sym_set_variadic(sym, param_count)
 
 		free(param_classes)
 		if (import_name != name): free(import_name)

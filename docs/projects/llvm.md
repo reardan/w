@@ -3,7 +3,7 @@
 `bin/wllvm` is an opt-in LLVM backend over the production compiler's
 retained AST. A visitor walks the semantic forest the normal front end
 already builds and emits LLVM IR text; for an executable it hands that IR
-to clang, which produces a freestanding x86-64 Linux binary. The production
+to clang, which produces a freestanding x86-64 or AArch64 Linux binary. The production
 parser and semantic analyzer remain the source of truth: the tool adds no
 second W parser or type checker and does not use the parser-generator
 grammar. The original proposal and dependency tradeoffs are recorded in
@@ -17,7 +17,17 @@ bin/wllvm program.w -o bin/program          # executable, clang -O2
 bin/wllvm -O3 program.w -o bin/program      # any of -O0 -O1 -O2 -O3 -Os
 bin/wllvm program.w -o bin/program.ll       # IR text only (or --emit-llvm)
 clang -O2 -static -nostdlib bin/program.ll -o bin/program
+bin/wllvm arm64 program.w -o bin/program    # AArch64 Linux (or --target arm64)
 ```
+
+`arm64` runs the front end for AArch64, so the standard library resolves
+its `lib/__arch__/arm64` modules (the generic-table syscall numbers of
+`lib/arm64/syscalls.w`). The module targets `aarch64-unknown-linux-gnu`;
+`syscall`/`syscall7` become `svc #0` with the number in `x8` and arguments
+in `x0`-`x5`, `_start` passes `[sp]` and `sp + 8` as argc and argv, and the
+exit is `exit_group` (94). Clang links it with `--target=aarch64-linux-gnu
+-fuse-ld=lld`, so ld.lld must be installed; run the result on AArch64
+Linux or under `qemu-aarch64`.
 
 Clang is needed only to turn IR into an executable: `--cc PATH`, else
 `$WLLVM_CC`, else `clang` on `PATH`. Emitting `.ll`, bootstrapping W and the
@@ -28,17 +38,68 @@ and was developed against Clang 18.
 The executable keeps W's no-C-runtime model. The module defines `_start`
 (module-level assembly) and calls the program's real entry, `lib.lib`'s
 `_main`, when the program imports it, else `main`; it exits with
-`exit_group`. W's `syscall`/`syscall7` stubs become x86-64 inline
-`syscall` instructions, so the standard library's own I/O and `malloc`
+`exit_group`. W's `syscall`/`syscall7` stubs become inline `syscall`
+(x86-64) or `svc #0` (AArch64) instructions, so the standard library's own I/O and `malloc`
 (mmap-based) lower like any other W code. The module also defines
 `memset`, `memcpy` and `memmove`, which LLVM may call for large copies,
-as loops marked `"no-builtins"`. Nothing links against libc. The runtime
+as loops marked `"no-builtins"`, with hidden visibility. A program
+without C imports links statically against nothing. The runtime
 functions the native backends write in assembly
 (`code_generator/x64_asm.w`) are module-asm twins with the SysV argument
 registers and the same memory layouts: `repl_setjmp`/`setjmp` (declared
 `returns_twice`), `repl_longjmp`/`longjmp`, `thread_create`,
 `stack_create` and `__w_tls_set`; `__w_tls_size()` reads the block size
-the module settles once every function is emitted.
+the module settles once every function is emitted. These and
+`thread_local` globals (`gs:[0]`) are x86-64 only; AArch64 rejects them.
+
+### C imports
+
+`extern` functions and objects without a W body, whether declared by hand
+(`c_lib "libc.so.6"`, `extern int printf(char* fmt, ...)`, `= "symbol"`
+aliases) or by `c_import`, lower to LLVM declarations of the library
+symbol, and such a program links dynamically. The front end binds each
+extern symbol to a dynamic-registry import: a function through its GOT
+slot (`sym_got_vaddr`, which the front end now records for every import,
+not only variadic ones), an object through the address it reserved. Calls
+use the C ABI while W functions keep the i64 ABI: each fixed parameter and
+the result take the LLVM type of their W type (`ptr`, `i8` to `i64` with
+`signext`/`zeroext` below 32 bits, `float`, `double`), so a W `int` is an
+`i64` and an `int32` an `i32` whose result sign-extends. A variadic call
+spells its function type (`call i64 (ptr, i64, ptr, ...) @"snprintf"(...)`)
+and passes the tail as words, a `float32` promoted to `double` and a
+fixed array or slice decayed to its data pointer, as the native inline
+call does. `c_import`'s weak imports become `extern_weak`; its integer
+macros and enumerators (`SEEK_END`, `ENOENT`) are constants, and its
+layout padding fields are skipped.
+
+Linking keeps W's own `_start` (`-nostartfiles`) rather than crt1 and
+`__libc_start_main`, the model the native backends use: the dynamic
+loader initializes libc before `_start` runs, and the program still exits
+with `exit_group`, so C `atexit` handlers do not run and buffered stdio
+must be flushed explicitly (`fflush(0)`), exactly as natively. The link
+names every `c_lib` the program declares (`-l:libc.so.6 -l:libm.so.6`),
+since the native image lists each as `DT_NEEDED` and the loader resolves
+an import in any of them; the IR's header comment repeats that command
+for `--emit-llvm` output.
+
+An imported object is the library's own storage rather than a COPY of it
+sized by its W type, so its W type must match the C object: `extern int
+optind` (8 bytes) reads past libc's 4-byte `int` under wllvm, while the
+native COPY space zero-fills the rest. AArch64 dynamic links (which need
+an AArch64 sysroot) are not covered.
+
+An import used as a value (`call_text(puts, s)`, a function-typed
+argument or global) is the address of a per-binding W-ABI thunk,
+`@wllvm.cthunk.<binding>`, which takes and returns words and makes the C
+call, as the native symbol names the import's ABI shim; a variadic
+import's thunk passes the fixed parameters only, like that shim.
+
+C bit-fields: c_import gives each bit-field member an access type whose
+side table holds the storage unit's size and the field's bit offset,
+width and signedness. A member access names the unit, a read loads it
+zero-extended and sign-extends (shift left, arithmetic shift right) or
+shifts and masks, and a write is the read-modify-write of
+`grammar/promote.w`'s `bit_field_assign_store`.
 
 This is not a switch on `wv2` and does not replace a production backend.
 
@@ -143,14 +204,16 @@ point, and the output file is left untouched.
   integers, `float32` and `float64`, and mixed integer/float operands, all
   with the native backend's SSE semantics (see below). A `float16` or
   `bfloat16` value is a `float32` rounded to the type: loads widen and
-  stores narrow, `float16` with `vcvtph2ps`/`vcvtps2ph` (nearest-even,
-  F16C, the instructions the native backend uses) and `bfloat16` with
+  stores narrow, `float16` with `vcvtph2ps`/`vcvtps2ph` on x86-64 (F16C)
+  and `fpext`/`fptrunc` of `half` (`fcvt`) on AArch64, nearest-even like
+  the native backends, and `bfloat16` with
   `code_generator/bfloat.w`'s integer rounding.
 - C math calls: `sqrt`, `fabs`, `floor`, `ceil`, `trunc`, `fmin`, `fmax`,
   `copysign` and their `float32` `...f` forms, declared `extern` or
-  through `c_import`. Natively these bind libm through the dynamic linker
-  (W code uses `lib/fmath*.w`, which lowers like any W code); the
-  freestanding build lowers them inline with the same bits:
+  through `c_import`. On x86-64 they are ordinary C imports (libm, linked
+  dynamically, below); on AArch64, whose dynamic links are not covered,
+  and for a declaration with no import behind it, they lower inline with
+  libm's bits:
   `llvm.sqrt`, `llvm.minnum`/`llvm.maxnum`, sign-mask arithmetic, and a
   `cvtt` round trip below 2^52 (2^23) for the roundings, so neither SSE4.1
   nor libm is needed. Other libm functions (`pow`, `fmod`, `fma`, ...)
@@ -245,22 +308,32 @@ in the low 32 bits) and is bitcast around each LLVM `float`/`double`
 operation, so it uses the same internal ABI as every other word. The
 native semantics are spelled out where LLVM's differ: float `==` is true
 and `!=` false on NaN operands (`ucomisd` + `sete`), the ordered
-comparisons are false; float-to-integer conversion uses the
-`cvttss2si`/`cvttsd2si` intrinsics, whose out-of-range result is
-`0x8000000000000000` (LLVM's `fptosi` is poison there), and a float cast to
-a narrow integer keeps that whole word as natively; integer-to-float takes
-the whole signed word. LLVM leaves a NaN result's sign and payload open
-and folds `0.0 / 0.0` to `0x7ff8...`, so each arithmetic result selects
-the SSE answer explicitly: the first NaN operand quieted, else the second,
-else the default NaN `0xfff8...` (`0xffc00000` for `float32`).
+comparisons are false; float-to-integer conversion is the saturating
+`llvm.fptosi.sat` (LLVM's `fptosi` is poison out of range), and on x86 a
+NaN or a value at or above 2^63 selects `cvttss2si`/`cvttsd2si`'s integer
+indefinite `0x8000000000000000` instead; a float cast to a narrow integer
+keeps that whole word as natively; integer-to-float takes the whole signed
+word. LLVM leaves a NaN result's sign and payload open and folds `0.0 /
+0.0` to `0x7ff8...`, so each arithmetic result selects the SSE answer
+explicitly: the first NaN operand quieted, else the second, else the
+default NaN `0xfff8...` (`0xffc00000` for `float32`).
+
+On AArch64 the same IR follows `bin/wv2 arm64`'s instructions: `fcvtzs`
+saturates (NaN gives 0), which is `llvm.fptosi.sat` exactly; `fcmp` with
+`cset eq`/`ne` makes `==` false and `!=` true on NaN (the ordered
+comparisons stay false, since `<` and `<=` swap into `gt`/`ge`); and with
+FPCR.DN clear a signaling NaN operand wins over a quiet one, the first
+operand before the second, and the default NaN is positive (`0x7ff8...`,
+`0x7fc00000`). `tests/wllvm_float_fixture.w` runs under qemu against the
+native arm64 build. Generators are rejected on AArch64: their entry thunk
+and `gen_switch` follow the x86-64 stack layout.
 
 Not yet supported, and rejected with a diagnostic: `var`, records
 passed or returned by value (including checked slices and borrowed records
-crossing a call), `switch`, `defer`, `goto`, GPU code, C imports and other
-`extern` functions without a W body (except the math functions above), the
-`debugger` statement, and the `get_context`/`store_context` stubs. A
-container trap (out-of-range index, missing key) prints its message and
-then the stack trace.
+crossing a call), `switch`, `defer`, `goto`, GPU code, the `debugger`
+statement, and the `get_context`/`store_context` stubs. A container trap
+(out-of-range index, missing key) prints its message and then the stack
+trace.
 
 Generators are stackful coroutines (`lib/generator.w`) and lower with the
 native runtime unchanged. The body is an ordinary function whose last
@@ -327,16 +400,19 @@ lowering, unsupported-program diagnostics, CLI errors and input/output
 identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
 `tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
-`tests/wllvm_container_fixture.w`, `tests/wllvm_slice_fixture.w` and
-`tests/wllvm_generator_fixture.w` with
-W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
-`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w`,
+`tests/wllvm_container_fixture.w`, `tests/wllvm_slice_fixture.w`,
+`tests/wllvm_generator_fixture.w`,
+`tests/wllvm_generic_fixture.w` (generics and checked owners),
+`tests/wllvm_extern_fixture.w` (libc and libm calls through the C ABI,
+variadic, float and narrow-integer signatures, an alias, an imported
+object and a `c_import` constant; linked dynamically),
 `tests/wllvm_float_fixture.w` (floats, NaN and conversion edge cases,
 f-strings), `tests/wllvm_registry_fixture.w` (the synthesized test
 registry), `tests/wllvm_runtime_fixture.w` (`setjmp`/`longjmp`, a thread,
 `stack_trace_collect` frames and lines, compound shifts, `float16` and
 `bfloat16` storage) and `tests/wllvm_math_fixture.w` (the C math calls,
-bit for bit against libm) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
+bit for bit against libm) and `tests/wllvm_half_fixture.w` (`float16` and
+`bfloat16` rounding, overflow and NaN payloads; also run on AArch64) with W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, checks that the crash reporter
 prints the native frames and lines for `tests/crash_deep_chain_fixture.w`
@@ -351,5 +427,6 @@ import graph.
 
 1. Records by value (copy-in parameters, caller-provided result buffers)
    and `switch`.
-2. Other targets: arm64 Linux needs only a different `_start` and syscall
-   constraint string.
+2. Other targets: AArch64 Darwin (Mach-O, `svc #0x80` with BSD numbers
+   and code signing) and win64 would need their own entry and system-call
+   layers.

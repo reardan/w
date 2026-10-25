@@ -295,7 +295,9 @@ suggesting that it behaves like pointer arithmetic.
   `wtest_map_test` assertions. Remove those failed records to retry; `--no-cache`
   is the `wexec` development workaround. Seen again 2026-10-24 while extending
   `wllvm`: a cached failed closure made `./wbuild wllvm` report "(cached)"
-  after the import was fixed.
+  after the import was fixed. Again 2026-10-25: with a prototype missing in
+  `tools/wllvm_emit.w`, `./wbuild wllvm` kept reporting "(cached)" and "OK"
+  while an old `bin/wllvm` ran, so tests silently exercised stale code.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest

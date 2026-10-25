@@ -69,6 +69,12 @@ int main():
 	println(f"nan==nan {nan == nan} nan!=nan {nan != nan} nan<1 {nan < 1.0} nan>=1 {nan >= 1.0}")
 	println(f"inf {pinf} {ninf} nan bits {bits(nan)} inf-inf {bits(pinf - pinf)} {bits(nan + 1.0)}")
 	println(f"-0 bits {bits(-zero)} -0==0 {-zero == zero} 0*-1 {bits(zero * -1.0)}")
+	# NaN propagation: which operand's payload survives, and how a
+	# signaling NaN is quieted, is the target's rule (SSE: the first NaN
+	# operand; AArch64: a signaling NaN first).
+	float64 quiet_nan = float64_from_bits((0x7ff80000 << 32) + 5)
+	float64 signaling_nan = float64_from_bits((0x7ff00000 << 32) + 9)
+	println(f"nan pick {bits(quiet_nan + signaling_nan)} {bits(signaling_nan + quiet_nan)} {bits(quiet_nan * 2.0)} {bits(3.0 - signaling_nan)}")
 	println(f"compare {1.0 < 2.0} {2.0 <= 2.0} {3.0 > 2.0} {2.0 >= 3.0} {b == 0.5} {b != 0.5}")
 	float32 third = 1.0 / 3.0
 	float64 widened = third

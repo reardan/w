@@ -61,6 +61,9 @@ map[int, int] llvm_locals
 # Bindings owned by each function node, as a linked list over bindings.
 map[int, int] llvm_owned_first
 list[int] llvm_owned_next
+# Target: 0 x86-64 Linux (default), 1 AArch64 Linux. Set by the driver
+# before llvm_emit; the front end ran for the same architecture.
+int llvm_arm64
 
 
 void llvm_put(char* text):
@@ -204,12 +207,18 @@ int llvm_class_of(retained_type* t):
 	if ((float_kind == 1) || (float_kind == 2)): return llvm_class_word
 	if (t.fields.length > 0):
 		for i in range(t.fields.length):
+			# c_import's layout padding (__ci_bytes_N) is never accessed:
+			# record copies move whole records.
+			if (starts_with(llvm_type(t.fields[i].type).name, c"__ci_bytes_")): continue
 			int field = llvm_class(t.fields[i].type)
 			# fixed-array fields keep an inline header (see "arrays inside records")
 			if ((field == llvm_class_none) || (field == llvm_class_void)): return llvm_class_none
 		return llvm_class_struct
 	char* n = t.name
 	if (strcmp(n, c"void") == 0): return llvm_class_void
+	# A C bit-field reads and writes as a word (see "C bit-fields").
+	if (starts_with(n, c"__ci_bit_field_") && (t.origin >= 0) && ci_is_bit_field_access(t.origin)):
+		if (ci_bit_field_unit_size(t.origin) > 0): return llvm_class_word
 	list[char*] words = list[char*]{c"int", c"uint", c"char", c"byte", c"bool", c"constant", c"function", c"pointer", c"int8", c"int16", c"int32", c"int64", c"uint8", c"uint16", c"uint32", c"uint64"}
 	int found = 0
 	for w in words:
@@ -271,13 +280,19 @@ int llvm_is_buffer(int type):
 	return (t.pointer_level == 0) && ((t.kind == 7) || (t.kind == 8) || (t.kind == 9))
 
 
+# Any word type, for llvm_decays: the tail of a variadic call has no
+# declared type, and an array or slice there decays as to one.
+const int llvm_word_type = -2
+
+
 # An array, slice or slice value converted to a pointer (or cast to a
 # word integer) decays to its data pointer, the descriptor's first word
 # (type_decays_to_pointer, coerce_explicit).
 int llvm_decays(int from, int to):
-	if ((from < 0) || (to < 0)): return 0
+	if ((from < 0) || ((to < 0) && (to != llvm_word_type))): return 0
 	retained_type* f = llvm_type(from)
 	if ((f.pointer_level != 0) || ((f.kind != 6) && (f.kind != 7) && (f.kind != 9))): return 0
+	if (to == llvm_word_type): return 1
 	retained_type* t = llvm_type(to)
 	return (t.pointer_level > 0) || (t.kind == 0)
 
@@ -365,7 +380,70 @@ char* llvm_narrow_widen(char* bits, int narrow);
 char* llvm_narrow_bits(char* value, int narrow);
 
 
+# ---- C bit-fields --------------------------------------------------------
+# c_import gives each bit-field member its own access type, whose side table
+# (libs/extras/c_import/importer.w) holds the storage unit's size, the
+# field's bit offset in it, its width and signedness; a member access names
+# the unit's address. Reads and writes reproduce grammar/promote.w's
+# bit_field_promote and bit_field_assign_store on the zero-extended unit.
+
+void llvm_store_width(int width, char* value, char* address);
+
+
+# The type-table index of a bit-field access type, or -1.
+int llvm_bit_field(int type):
+	if (type < 0): return -1
+	retained_type* t = llvm_type(type)
+	if ((t.pointer_level != 0) || (t.origin < 0) || (starts_with(t.name, c"__ci_bit_field_") == 0)): return -1
+	if (ci_is_bit_field_access(t.origin) == 0): return -1
+	return t.origin
+
+
+char* llvm_load_unit(int size, char* address):
+	char* t = llvm_int_type(size)
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = load ")
+	llvm_put(t)
+	llvm_put(c", ptr ")
+	llvm_put(address)
+	llvm_put(c", align 1\x0a")
+	if (size == 8): return result
+	return llvm_convert_op(c"zext", t, result, c"i64")
+
+
+# The field's value as a word: sign-extended, or shifted down and masked.
+char* llvm_bit_field_read(int field, char* address):
+	int width = ci_bit_field_width(field)
+	int shift = ci_bit_field_bit_offset(field)
+	char* unit = llvm_load_unit(ci_bit_field_unit_size(field), address)
+	if (ci_bit_field_is_signed(field)):
+		if (64 - shift - width > 0): unit = llvm_instruction(c"shl", unit, llvm_number(64 - shift - width))
+		if (64 - width > 0): unit = llvm_instruction(c"ashr", unit, llvm_number(64 - width))
+		return unit
+	if (shift > 0): unit = llvm_instruction(c"lshr", unit, llvm_number(shift))
+	if (width < 64): unit = llvm_instruction(c"and", unit, llvm_number((1 << width) - 1))
+	return unit
+
+
+# Read-modify-write of the field's bits in its unit.
+void llvm_bit_field_write(int field, char* value, char* address):
+	int width = ci_bit_field_width(field)
+	int shift = ci_bit_field_bit_offset(field)
+	int size = ci_bit_field_unit_size(field)
+	if (width >= 64):
+		llvm_store_width(8, value, address)
+		return
+	int mask = ((1 << width) - 1) << shift
+	char* bits = llvm_instruction(c"and", llvm_instruction(c"shl", value, llvm_number(shift)), llvm_number(mask))
+	char* rest = llvm_instruction(c"and", llvm_load_unit(size, address), llvm_number(~mask))
+	llvm_store_width(size, llvm_instruction(c"or", rest, bits), address)
+
+
 char* llvm_load(int type, char* address):
+	int field = llvm_bit_field(type)
+	if (field >= 0): return llvm_bit_field_read(field, address)
 	int width = llvm_width(type)
 	char* t = llvm_int_type(width)
 	char* result = llvm_temp()
@@ -453,8 +531,12 @@ void llvm_trap_if(char* condition):
 
 
 # x64 W division faults with #DE (SIGFPE, like idiv): a guarded invalid
-# division divides by zero the same way instead of executing ud2.
+# division divides by zero the same way instead of executing ud2. AArch64
+# division does not fault, so there it is an ordinary trap.
 void llvm_divide_trap_if(char* condition):
+	if (llvm_arm64):
+		llvm_trap_if(condition)
+		return
 	int trap = llvm_label_new()
 	int valid = llvm_label_new()
 	llvm_cond_branch(condition, trap, valid)
@@ -571,34 +653,33 @@ char* llvm_float_operand(char* value, int got, int want):
 	return llvm_convert_op(c"fptrunc", c"double", x, c"float")
 
 
+char* llvm_float_select(char* condition, char* yes, char* no);
+
+
 # Convert a word between float kinds (0: signed integer word), as coerce()
-# does. Float to integer truncates with cvttss2si/cvttsd2si, whose
-# out-of-range result is the integer indefinite 0x8000000000000000, so the
-# x86 intrinsics (not fptosi, which is poison there) carry the conversion.
+# does. Float to integer truncates toward zero; fptosi is poison out of
+# range, so the saturating llvm.fptosi.sat carries the conversion. That is
+# AArch64's fcvtzs exactly (NaN gives 0). x86's cvttss2si/cvttsd2si instead
+# return the integer indefinite 0x8000000000000000 for NaN and for every
+# value outside the i64 range, which differs from saturation only at or
+# above 2^63 and for NaN: fcmp uge catches both.
 char* llvm_float_coerce(char* value, int got, int want):
 	if (got == want): return value
 	if (want != 0): return llvm_float_to_word(llvm_float_operand(value, got, want), want)
 	llvm_uses_float_conversion = 1
 	char* x = llvm_float_from_word(value, got)
-	char* vector = llvm_temp()
-	llvm_put(c"  ")
-	llvm_put(vector)
-	if (got == 2):
-		llvm_put(c" = insertelement <2 x double> undef, double ")
-		llvm_put(x)
-		llvm_put(c", i32 0\x0a")
-	else:
-		llvm_put(c" = insertelement <4 x float> undef, float ")
-		llvm_put(x)
-		llvm_put(c", i32 0\x0a")
+	char* type = llvm_float_type(got)
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
-	if (got == 2): llvm_put(c" = call i64 @llvm.x86.sse2.cvttsd2si64(<2 x double> ")
-	else: llvm_put(c" = call i64 @llvm.x86.sse.cvttss2si64(<4 x float> ")
-	llvm_put(vector)
+	if (got == 2): llvm_put(c" = call i64 @llvm.fptosi.sat.i64.f64(double ")
+	else: llvm_put(c" = call i64 @llvm.fptosi.sat.i64.f32(float ")
+	llvm_put(x)
 	llvm_put(c")\x0a")
-	return result
+	if (llvm_arm64): return result
+	# 0x43e0000000000000 is 2^63 (LLVM spells float constants as doubles).
+	char* high = llvm_op(c"fcmp uge", type, x, c"0x43E0000000000000")
+	return llvm_float_select(high, c"-9223372036854775808", result)
 
 
 char* llvm_float_select(char* condition, char* yes, char* no):
@@ -615,10 +696,13 @@ char* llvm_float_select(char* condition, char* yes, char* no):
 	return result
 
 
-# A float32 word's float16 bits (vcvtps2ph, nearest-even, exactly the
-# native conversion) or bfloat16 bits (code_generator/bfloat.w's integer
+# A float32 word's float16 bits (vcvtps2ph on x86-64 and fcvt on AArch64:
+# nearest-even, exactly the native conversions) or bfloat16 bits (code_generator/bfloat.w's integer
 # rounding: nearest-even, NaNs keep sign and payload and turn quiet).
 char* llvm_narrow_bits(char* value, int narrow):
+	if ((narrow == 1) && llvm_arm64):
+		char* half = llvm_convert_op(c"fptrunc", c"float", llvm_float_from_word(value, 1), c"half")
+		return llvm_convert_op(c"zext", c"i16", llvm_convert_op(c"bitcast", c"half", half, c"i16"), c"i64")
 	if (narrow == 1):
 		char* single = llvm_float_from_word(value, 1)
 		char* vector = llvm_temp()
@@ -659,10 +743,11 @@ char* llvm_narrow_bits(char* value, int narrow):
 	return llvm_convert_op(c"zext", c"i32", result, c"i64")
 
 
-# The float32 word of float16 (vcvtph2ps) or bfloat16 (shift) bits.
+# The float32 word of float16 (vcvtph2ps, fcvt) or bfloat16 (shift) bits.
 char* llvm_narrow_widen(char* bits, int narrow):
 	if (narrow == 2): return llvm_instruction(c"shl", bits, c"16")
 	char* half = llvm_convert_op(c"trunc", c"i64", bits, c"i16")
+	if (llvm_arm64): return llvm_float_to_word(llvm_convert_op(c"fpext", c"half", llvm_convert_op(c"bitcast", c"i16", half, c"half"), c"float"), 1)
 	char* vector = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(vector)
@@ -689,32 +774,49 @@ char* llvm_narrow_round(char* value, int narrow):
 	return llvm_narrow_widen(llvm_narrow_bits(value, narrow), narrow)
 
 
-# The word of an SSE arithmetic result. LLVM leaves a NaN result's sign and
-# payload unspecified (and constant folding picks 0x7ff8...), while SSE
-# returns the first NaN operand quieted, else the second, else the default
-# NaN 0xfff8.../0xffc00000 for an invalid operation. Spell that rule out so
-# folded and run-time results both match the native backend bit for bit.
+# The word of a hardware arithmetic result. LLVM leaves a NaN result's sign
+# and payload unspecified (and constant folding picks 0x7ff8...), so spell
+# out the native rule; folded and run-time results then both match the
+# native backend bit for bit. SSE returns the first NaN operand quieted,
+# else the second, else the default NaN 0xfff8.../0xffc00000 for an
+# invalid operation. AArch64 (FPCR.DN clear, as Linux runs it) prefers a
+# signaling NaN, the first operand's before the second's, then a quiet
+# NaN in the same order, quieting the one it returns, and its default NaN
+# is positive: 0x7ff8.../0x7fc00000.
 char* llvm_float_nan_result(char* x, char* y, char* result, int kind):
 	char* type = llvm_float_type(kind)
 	char* quiet = c"4194304"
 	char* default_nan = c"4290772992"
+	if (llvm_arm64): default_nan = c"2143289344"
 	if (kind == 2):
 		quiet = c"2251799813685248"
 		default_nan = c"-2251799813685248"
+		if (llvm_arm64): default_nan = c"9221120237041090560"
 	char* word = llvm_float_to_word(result, kind)
 	char* x_nan = llvm_op(c"fcmp uno", type, x, x)
 	char* y_nan = llvm_op(c"fcmp uno", type, y, y)
 	char* r_nan = llvm_op(c"fcmp uno", type, result, result)
-	char* x_quiet = llvm_instruction(c"or", llvm_float_to_word(x, kind), quiet)
-	char* y_quiet = llvm_instruction(c"or", llvm_float_to_word(y, kind), quiet)
+	char* x_bits = llvm_float_to_word(x, kind)
+	char* y_bits = llvm_float_to_word(y, kind)
+	char* x_quiet = llvm_instruction(c"or", x_bits, quiet)
+	char* y_quiet = llvm_instruction(c"or", y_bits, quiet)
 	word = llvm_float_select(r_nan, default_nan, word)
 	word = llvm_float_select(y_nan, y_quiet, word)
-	return llvm_float_select(x_nan, x_quiet, word)
+	word = llvm_float_select(x_nan, x_quiet, word)
+	if (llvm_arm64 == 0): return word
+	# A NaN whose quiet bit is clear is signaling.
+	char* y_signaling = llvm_op(c"and", c"i1", y_nan, llvm_op(c"icmp eq", c"i64", llvm_instruction(c"and", y_bits, quiet), c"0"))
+	char* x_signaling = llvm_op(c"and", c"i1", x_nan, llvm_op(c"icmp eq", c"i64", llvm_instruction(c"and", x_bits, quiet), c"0"))
+	word = llvm_float_select(y_signaling, y_quiet, word)
+	return llvm_float_select(x_signaling, x_quiet, word)
 
 
 # A binary operator with a float operand (grammar/binary_op.w): both sides
-# at the wider float kind. Float == is ucomis + sete, true when unordered,
-# and != false then; the ordered comparisons are false on NaN.
+# at the wider float kind. On x86 float == is ucomis + sete, true when
+# unordered, and != false then; AArch64's fcmp + cset eq/ne gives the IEEE
+# answers (== false, != true). The ordered comparisons are false on NaN on
+# both: < and <= swap their operands into seta/setae, which AArch64 reads
+# as gt/ge.
 # Returns the result word and sets *kind to the result's float kind (0 for
 # a comparison's bool).
 char* llvm_float_binary(int id, int op, char* a, int a_type, char* b, int b_type, int* result_kind):
@@ -728,6 +830,8 @@ char* llvm_float_binary(int id, int op, char* a, int a_type, char* b, int b_type
 	else if (op == '-'): instruction = c"fsub"
 	else if (op == '*'): instruction = c"fmul"
 	else if (op == '/'): instruction = c"fdiv"
+	else if ((op == 0x94) && llvm_arm64): instruction = c"fcmp oeq"
+	else if ((op == 0x95) && llvm_arm64): instruction = c"fcmp une"
 	else if (op == 0x94): instruction = c"fcmp ueq"
 	else if (op == 0x95): instruction = c"fcmp one"
 	else if (op == 0x9c): instruction = c"fcmp olt"
@@ -831,6 +935,10 @@ char* llvm_convert(int id, char* value, int from, int to):
 
 # Store value (already an i64 word, or a struct's address) into a place.
 void llvm_store(int id, int type, char* value, char* address):
+	int field = llvm_bit_field(type)
+	if (field >= 0):
+		llvm_bit_field_write(field, value, address)
+		return
 	int c = llvm_class(type)
 	if (c == llvm_class_struct):
 		llvm_memory_call(c"llvm.memcpy.p0.p0.i64", address, llvm_pointer(value), llvm_type(type).size)
@@ -843,11 +951,14 @@ void llvm_store(int id, int type, char* value, char* address):
 	llvm_store_width(llvm_width(type), value, address)
 
 
+char* llvm_import_address(int binding);
+
+
 int llvm_place(retained_node* node):
 	int op = node.op
 	if ((op == 'd') || (op == 'i') || (op == 'I') || (op == 'B') || (op == 'j') || (op == 134)): return 1
 	if (op == '.'): return node.high >= 0
-	if (op == 'v'): return (node.binding >= 0) && ((node.binding in llvm_locals) || (retained_bindings[node.binding].linkage in llvm_global_decls))
+	if (op == 'v'): return (node.binding >= 0) && ((node.binding in llvm_locals) || (retained_bindings[node.binding].linkage in llvm_global_decls) || (llvm_import_address(node.binding) != 0))
 	return 0
 
 
@@ -867,6 +978,8 @@ char* llvm_address(int group, int operand):
 			int linkage = retained_bindings[node.binding].linkage
 			if ((linkage in llvm_global_decls) && llvm_is_thread_local(linkage)): return llvm_tls_address(id, linkage)
 			if (linkage in llvm_global_decls): return llvm_global_symbol(linkage)
+			char* imported = llvm_import_address(node.binding)
+			if (imported != 0): return imported
 		llvm_error_at(id, c"reference to", node.binding_name)
 		return c"null"
 	if (op == 'd'): return llvm_pointer(llvm_value(group, node.left))
@@ -1226,14 +1339,15 @@ int llvm_is_thread_local(int linkage):
 	return llvm_thread_local(&declaration)
 
 
-# The calling thread's copy of a thread_local global: gs:[0] + offset.
+# The calling thread's copy of a thread_local global: gs:[0] + offset
+# (x86-64 only).
 char* llvm_tls_address(int id, int linkage):
 	if ((linkage in llvm_tls_offsets) == 0):
 		retained_node declaration
 		retained_node_load(llvm_global_decls[linkage], &declaration)
 		int type = retained_bindings[declaration.binding].type
 		int c = llvm_class(type)
-		if (((c != llvm_class_word) && (c != llvm_class_struct)) || (declaration.initializer != 0)):
+		if (((c != llvm_class_word) && (c != llvm_class_struct)) || (declaration.initializer != 0) || llvm_arm64):
 			llvm_error_at(id, c"thread_local global", declaration.name)
 			return c"null"
 		llvm_tls_offsets[linkage] = llvm_tls_size
@@ -1272,8 +1386,10 @@ void llvm_tls_finish():
 
 # Runtime functions the native backends write in assembly
 # (code_generator/x64_asm.w), as SysV twins in module asm. Returns the
-# stub a call of name with count arguments lowers to, or 0.
+# stub a call of name with count arguments lowers to, or 0 (always on
+# AArch64, which has no twins yet).
 char* llvm_runtime_stub(char* name, int count):
+	if (llvm_arm64): return 0
 	if (((strcmp(name, c"repl_setjmp") == 0) || (strcmp(name, c"setjmp") == 0)) && (count == 1)): return c"repl_setjmp"
 	if (((strcmp(name, c"repl_longjmp") == 0) || (strcmp(name, c"longjmp") == 0)) && (count == 2)): return c"repl_longjmp"
 	if ((strcmp(name, c"thread_create") == 0) && (count == 1)): return c"thread_create"
@@ -1534,6 +1650,312 @@ void llvm_owner_move(int group, int operand, int destination);
 char* llvm_owner_assign(int group, int id, retained_node* node);
 
 
+# ---- C imports ---------------------------------------------------------
+# An extern function or object (declared by hand or by c_import) has no W
+# body: the front end binds its symbol to a dynamic-registry import, a
+# function through its GOT slot (sym_got_vaddr), an object through the
+# address it was given (its COPY space, or for an array the slot holding
+# the library's address). wllvm declares the import under its library
+# name and calls it with the C ABI: each fixed parameter and the result
+# take the LLVM type of their W type (ptr, i8-i64, float, double), and a
+# variadic call passes its extra arguments as words, float32 promoted to
+# double. Internal W functions keep the i64 ABI. A module that uses an
+# import sets llvm_dynamic, and the driver links it against the libraries
+# the program names (llvm_link_libraries).
+string_builder* llvm_imports
+# binding -> import index, or -1 for a binding without one
+map[int, int] llvm_import_cache
+# Library names declared; extern aliases can name one import twice.
+map[char*, int] llvm_imports_declared
+int llvm_dynamic
+# The program's c_lib sonames, in declaration order, once each; kept after
+# llvm_emit returns for the driver's link.
+list[char*] llvm_link_libraries
+
+
+# The dynamic-registry import binding names, or -1.
+int llvm_import_of(int binding):
+	if (binding < 0): return -1
+	if (binding in llvm_import_cache): return llvm_import_cache[binding]
+	retained_binding* b = retained_bindings[binding]
+	int found = -1
+	int t = b.origin
+	if (t >= 0):
+		int function = load_int(table + t + 10) == 2
+		int got = sym_got_vaddr(t)
+		int address = sym_value_at(t)
+		for i in range(dyn_import_count):
+			if (found >= 0): break
+			if (function):
+				if ((got != 0) && (dyn_import_got_vaddr(i) == got)): found = i
+			else if ((dyn_import_got_vaddr(i) == address) && (strcmp(dyn_import_name(i), b.name) == 0)): found = i
+	llvm_import_cache[binding] = found
+	return found
+
+
+# An import's LLVM global name (quoted: library names are not W names).
+char* llvm_import_symbol(int import):
+	string_builder* text = string_new()
+	string_append(text, c"@\"")
+	string_append(text, dyn_import_name(import))
+	string_append(text, c"\"")
+	char* result = retained_intern(text.data)
+	string_free(text)
+	return result
+
+
+# The module uses an import: it links against every c_lib the program
+# names, as the native image lists each one as DT_NEEDED and the loader
+# resolves an import in any of them.
+void llvm_import_used():
+	if (llvm_dynamic): return
+	llvm_dynamic = 1
+	for i in range(dyn_lib_count):
+		char* soname = dyn_lib_name(i)
+		int seen = 0
+		for name in llvm_link_libraries:
+			if (strcmp(name, soname) == 0): seen = 1
+		if (seen == 0): llvm_link_libraries.push(strclone(soname))
+
+
+# A c_import enumerator or integer macro (SEEK_END, ENOENT): the front end
+# emits each as a word constant global with no W declaration.
+int llvm_c_constant(int binding, int* value):
+	retained_binding* b = retained_bindings[binding]
+	if ((ci_const_values == 0) || ((b.name in ci_const_values) == 0)): return 0
+	if ((b.origin < 0) || (load_int(table + b.origin + 10) != 1) || (llvm_import_of(binding) >= 0)): return 0
+	*value = ci_const_values[b.name]
+	return 1
+
+
+# The C ABI type of W type type, or 0 when it has none (records by value,
+# float16/bfloat16).
+char* llvm_c_type(int type):
+	if (type < 0): return c"i64"
+	retained_type* t = llvm_type(type)
+	int kind = llvm_float_kind_of(t)
+	if (kind == 1): return c"float"
+	if (kind == 2): return c"double"
+	if (kind == 3): return 0
+	if (llvm_class_of(t) != llvm_class_word): return 0
+	if (t.pointer_level > 0): return c"ptr"
+	return llvm_int_type(llvm_width(type))
+
+
+int llvm_is_void(int type):
+	return (type >= 0) && llvm_named(llvm_type(type), c"void")
+
+
+int llvm_c_zero_extends(int type):
+	return llvm_zero_extends(type) || llvm_is_bool(type)
+
+
+# An i8/i16 argument or result is extended to 32 bits by the caller, as
+# Clang's x86-64 and AArch64 C conventions expect.
+char* llvm_c_extension(int type, char* c_type):
+	if ((strcmp(c_type, c"i8") != 0) && (strcmp(c_type, c"i16") != 0)): return c""
+	if (llvm_c_zero_extends(type)): return c" zeroext"
+	return c" signext"
+
+
+# A word of W type type as a C value of c_type.
+char* llvm_c_argument(char* value, int type, char* c_type):
+	if (strcmp(c_type, c"ptr") == 0): return llvm_pointer(value)
+	if ((strcmp(c_type, c"float") == 0) || (strcmp(c_type, c"double") == 0)): return llvm_float_from_word(value, llvm_float_kind(type))
+	if (strcmp(c_type, c"i64") == 0): return value
+	return llvm_convert_op(c"trunc", c"i64", value, c_type)
+
+
+# A C result of c_type back as a word of W type type.
+char* llvm_c_result(char* value, int type, char* c_type):
+	if (strcmp(c_type, c"ptr") == 0): return llvm_address_value(value)
+	if ((strcmp(c_type, c"float") == 0) || (strcmp(c_type, c"double") == 0)): return llvm_float_to_word(value, llvm_float_kind(type))
+	if (strcmp(c_type, c"i64") == 0): return value
+	if (llvm_c_zero_extends(type)): return llvm_convert_op(c"zext", c_type, value, c"i64")
+	return llvm_convert_op(c"sext", c_type, value, c"i64")
+
+
+# The module defines these for LLVM's own use; an import of the same name
+# calls that definition instead of a second declaration.
+int llvm_import_is_memory_runtime(char* name):
+	return (strcmp(name, c"memset") == 0) || (strcmp(name, c"memcpy") == 0) || (strcmp(name, c"memmove") == 0)
+
+
+# A C ABI call of function import import, which binding names.
+char* llvm_import_call(int id, int import, int binding, list[char*] values, list[int] types):
+	retained_binding* b = retained_bindings[binding]
+	int fixed = b.parameters.length
+	int variadic = sym_variadic_fixed_args(b.origin) >= 0
+	if (variadic): fixed = sym_variadic_fixed_args(b.origin)
+	if ((values.length < fixed) || ((variadic == 0) && (values.length != fixed))):
+		llvm_error_at(id, c"call argument count", b.name)
+		return c"0"
+	char* return_type = c"void"
+	if (llvm_is_void(b.return_type) == 0): return_type = llvm_c_type(b.return_type)
+	if (return_type == 0):
+		llvm_error_at(id, c"C result type of", b.name)
+		return c"0"
+	# The fixed parameter list, shared by the declaration and a variadic
+	# call's function type.
+	string_builder* parameters = string_new()
+	for i in range(fixed):
+		char* c_type = llvm_c_type(b.parameters[i])
+		if (c_type == 0):
+			llvm_error_at(id, c"C parameter type of", b.name)
+			string_free(parameters)
+			return c"0"
+		if (i > 0): string_append(parameters, c", ")
+		string_append(parameters, c_type)
+	if (variadic):
+		if (fixed > 0): string_append(parameters, c", ")
+		string_append(parameters, c"...")
+	char* symbol = llvm_import_symbol(import)
+	char* name = dyn_import_name(import)
+	if (llvm_import_is_memory_runtime(name)): llvm_uses_memory = 1
+	else if ((name in llvm_imports_declared) == 0):
+		llvm_imports_declared[name] = 1
+		llvm_import_used()
+		string_append(llvm_imports, c"declare ")
+		if (dyn_import_get_binding(import) == 2): string_append(llvm_imports, c"extern_weak ")
+		string_append(llvm_imports, return_type)
+		string_append(llvm_imports, c" ")
+		string_append(llvm_imports, symbol)
+		string_append(llvm_imports, c"(")
+		string_append(llvm_imports, parameters.data)
+		string_append(llvm_imports, c")\x0a")
+	string_builder* arguments = string_new()
+	for i in range(values.length):
+		int type = types[i]
+		char* value = values[i]
+		if (i < fixed):
+			type = b.parameters[i]
+			value = llvm_convert(id, value, types[i], type)
+		else if (llvm_decays(type, llvm_word_type)):
+			# A fixed array or slice in the variadic tail passes its data
+			# pointer, like C (#229).
+			value = llvm_load(-1, llvm_pointer(value))
+			type = -1
+		char* c_type = llvm_c_type(type)
+		if (c_type == 0):
+			llvm_error_at(id, c"C argument type in a call to", b.name)
+			string_free(parameters)
+			string_free(arguments)
+			return c"0"
+		char* c_value = llvm_c_argument(value, type, c_type)
+		if (i >= fixed):
+			# Default argument promotions: a variadic float32 travels as a
+			# double, a narrower integer as its sign- or zero-extended word.
+			if (strcmp(c_type, c"float") == 0):
+				c_value = llvm_convert_op(c"fpext", c"float", c_value, c"double")
+				c_type = c"double"
+			else if ((strcmp(c_type, c"ptr") != 0) && (strcmp(c_type, c"double") != 0)):
+				c_value = value
+				c_type = c"i64"
+		if (i > 0): string_append(arguments, c", ")
+		string_append(arguments, c_type)
+		string_append(arguments, llvm_c_extension(type, c_type))
+		string_append(arguments, c" ")
+		string_append(arguments, c_value)
+	char* result = 0
+	llvm_put(c"  ")
+	if (strcmp(return_type, c"void") != 0):
+		result = llvm_temp()
+		llvm_put(result)
+		llvm_put(c" = ")
+	llvm_put(c"call ")
+	llvm_put(return_type)
+	if (variadic):
+		llvm_put(c" (")
+		llvm_put(parameters.data)
+		llvm_put(c")")
+	llvm_put(c" ")
+	llvm_put(symbol)
+	llvm_put(c"(")
+	llvm_put(arguments.data)
+	llvm_put(c")\x0a")
+	string_free(parameters)
+	string_free(arguments)
+	if (result == 0): return c"0"
+	return llvm_c_result(result, b.return_type, return_type)
+
+
+# A function import used as a value (a callback, a function-typed global)
+# is a W function: as natively, where the symbol names the import's ABI
+# shim, it takes and returns i64 words, and this per-binding thunk makes
+# the C ABI call. A variadic import's thunk passes the fixed parameters
+# only, as the native shim does.
+map[int, int] llvm_import_thunks
+string_builder* llvm_thunk_code
+
+
+char* llvm_import_thunk(int id, int binding, int import):
+	char* name = llvm_name(c"@wllvm.cthunk.", binding)
+	if (binding in llvm_import_thunks): return name
+	llvm_import_thunks[binding] = 1
+	retained_binding* b = retained_bindings[binding]
+	int fixed = b.parameters.length
+	if (sym_variadic_fixed_args(b.origin) >= 0): fixed = sym_variadic_fixed_args(b.origin)
+	string_builder* saved_out = llvm_out
+	int saved_register = llvm_register
+	llvm_out = string_new()
+	llvm_register = 0
+	list[char*] values = new list[char*]
+	list[int] types = new list[int]
+	llvm_put(c"define internal i64 ")
+	llvm_put(name)
+	llvm_put(c"(")
+	for i in range(fixed):
+		if (i > 0): llvm_put(c", ")
+		char* parameter = llvm_name(c"%a", i)
+		llvm_put(c"i64 ")
+		llvm_put(parameter)
+		values.push(parameter)
+		types.push(b.parameters[i])
+	llvm_put(c") {\x0aentry:\x0a")
+	char* result = llvm_import_call(id, import, binding, values, types)
+	llvm_put(c"  ret i64 ")
+	llvm_put(result)
+	llvm_put(c"\x0a}\x0a\x0a")
+	string_append(llvm_thunk_code, llvm_out.data)
+	string_free(llvm_out)
+	llvm_out = saved_out
+	llvm_register = saved_register
+	values.free()
+	types.free()
+	return name
+
+
+# The address of an imported object binding names, or 0 when it is not
+# one: the library's object, or for an array imported by address an
+# internal slot holding the library array's address, as natively.
+char* llvm_import_address(int binding):
+	int import = llvm_import_of(binding)
+	if (import < 0): return 0
+	if (load_int(table + retained_bindings[binding].origin + 10) == 2): return 0
+	char* symbol = llvm_import_symbol(import)
+	char* slot = llvm_name(c"@wllvm.import.", import)
+	int array = dyn_import_get_symtype(import) == 2
+	char* name = dyn_import_name(import)
+	if ((name in llvm_imports_declared) == 0):
+		llvm_imports_declared[name] = 1
+		llvm_import_used()
+		string_append(llvm_imports, symbol)
+		if (dyn_import_get_binding(import) == 2): string_append(llvm_imports, c" = extern_weak global ")
+		else: string_append(llvm_imports, c" = external global ")
+		if (array): string_append(llvm_imports, c"i8\x0a")
+		else:
+			string_append(llvm_imports, c"[")
+			string_append_int(llvm_imports, dyn_import_get_size(import))
+			string_append(llvm_imports, c" x i8]\x0a")
+		if (array):
+			string_append(llvm_imports, slot)
+			string_append(llvm_imports, c" = internal global ptr ")
+			string_append(llvm_imports, symbol)
+			string_append(llvm_imports, c"\x0a")
+	if (array): return slot
+	return symbol
+
+
 # ---- Generics ----------------------------------------------------------
 # A generic call ('G' explicit type arguments, 'W' inferred) names its
 # committed instantiation by mangled name (payload_text, e.g.
@@ -1653,7 +2075,11 @@ char* llvm_call(int group, int id, retained_node* node):
 				char* result = llvm_temp()
 				llvm_put(c"  ")
 				llvm_put(result)
-				if (values.length == 4): llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}\"(")
+				# The number, then up to six arguments: rax/rdi.. on x86-64,
+				# x8/x0.. with svc #0 on AArch64 (lib/arm64/syscalls.w).
+				if (llvm_arm64 && (values.length == 4)): llvm_put(c" = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},{x1},{x2},~{memory}\"(")
+				else if (llvm_arm64): llvm_put(c" = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},{x1},{x2},{x3},{x4},{x5},~{memory}\"(")
+				else if (values.length == 4): llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}\"(")
 				else: llvm_put(c" = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}\"(")
 				for i in range(values.length):
 					if (i > 0): llvm_put(c", ")
@@ -1680,13 +2106,23 @@ char* llvm_call(int group, int id, retained_node* node):
 				types.free()
 				operands.free()
 				return stub_result
-			if (node.binding >= 0):
+			int import = -1
+			if ((node.op != 'G') && (node.op != 'W')): import = llvm_import_of(node.binding)
+			# libm itself where the program links dynamically; inline where
+			# it cannot (AArch64 dynamic links are not covered).
+			if ((node.binding >= 0) && ((import < 0) || llvm_arm64)):
 				char* math = llvm_math_call(id, retained_bindings[node.binding], values, types)
 				if (math != 0):
 					values.free()
 					types.free()
 					operands.free()
 					return math
+			if (import >= 0):
+				char* imported = llvm_import_call(id, import, node.binding, values, types)
+				values.free()
+				types.free()
+				operands.free()
+				return imported
 			llvm_error_at(id, c"call to a function without a W body", callee_name)
 			values.free()
 			types.free()
@@ -1917,8 +2353,11 @@ char* llvm_value_inner(int group, int operand):
 				return c"0"
 			int value = 0
 			if (llvm_enum_constant(node.binding, &value)): return llvm_number(value)
+			if (llvm_c_constant(node.binding, &value)): return llvm_number(value)
 			int linkage = retained_bindings[node.binding].linkage
 			if (linkage in llvm_functions): return llvm_constant_address(llvm_function_symbol(linkage))
+			int import = llvm_import_of(node.binding)
+			if ((import >= 0) && (load_int(table + retained_bindings[node.binding].origin + 10) == 2)): return llvm_constant_address(llvm_import_thunk(id, node.binding, import))
 			llvm_error_at(id, c"reference to", node.binding_name)
 			return c"0"
 	if (llvm_place(&node)):
@@ -3376,6 +3815,10 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 	if ((callee.linkage in llvm_functions) == 0):
 		llvm_error_at(id, c"generator without a W body", callee.name)
 		return c"0"
+	# The entry thunk and gen_switch follow the x86-64 stack layout.
+	if (llvm_arm64):
+		llvm_error_at(id, c"AArch64 generator", callee.name)
+		return c"0"
 	list[char*] values = new list[char*]
 	int arg = node.left
 	while ((arg >= 0) && (llvm_failed == 0)):
@@ -3405,6 +3848,9 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 
 
 char* llvm_generator_switch(int id, list[char*] values):
+	if (llvm_arm64):
+		llvm_error(id, c"AArch64 generator switch")
+		return c"0"
 	llvm_uses_gen_switch = 1
 	char* result = llvm_temp()
 	llvm_put(c"  ")
@@ -3940,29 +4386,37 @@ void llvm_emit_global(int linkage):
 	string_free(text)
 
 
-# Freestanding x86-64 Linux entry: no C runtime. _start passes the initial
+# Freestanding Linux entry: no C runtime. _start passes the initial
 # stack's argc and argv to the W entry, then exits with its result.
 void llvm_emit_entry(int entry, int arguments):
 	string_append(llvm_code, c"module asm \".globl _start\"\x0amodule asm \"_start:\"\x0a")
-	string_append(llvm_code, c"module asm \"  xorl %ebp, %ebp\"\x0amodule asm \"  movq (%rsp), %rdi\"\x0a")
-	string_append(llvm_code, c"module asm \"  leaq 8(%rsp), %rsi\"\x0amodule asm \"  andq $-16, %rsp\"\x0a")
-	string_append(llvm_code, c"module asm \"  callq __wllvm_start\"\x0amodule asm \"  ud2\"\x0a\x0a")
+	if (llvm_arm64):
+		# The kernel enters with sp 16-byte aligned and argc at [sp].
+		string_append(llvm_code, c"module asm \"  mov x29, #0\"\x0amodule asm \"  mov x30, #0\"\x0a")
+		string_append(llvm_code, c"module asm \"  ldr x0, [sp]\"\x0amodule asm \"  add x1, sp, #8\"\x0a")
+		string_append(llvm_code, c"module asm \"  bl __wllvm_start\"\x0amodule asm \"  brk #0\"\x0a\x0a")
+	else:
+		string_append(llvm_code, c"module asm \"  xorl %ebp, %ebp\"\x0amodule asm \"  movq (%rsp), %rdi\"\x0a")
+		string_append(llvm_code, c"module asm \"  leaq 8(%rsp), %rsi\"\x0amodule asm \"  andq $-16, %rsp\"\x0a")
+		string_append(llvm_code, c"module asm \"  callq __wllvm_start\"\x0amodule asm \"  ud2\"\x0a\x0a")
 	string_append(llvm_code, c"define void @__wllvm_start(i64 %argc, i64 %argv) noreturn nounwind #1 {\x0aentry:\x0a")
 	llvm_tls_entry()
 	string_append(llvm_code, c"  %result = call i64 ")
 	string_append(llvm_code, llvm_function_label(entry))
 	if (arguments == 2): string_append(llvm_code, c"(i64 %argc, i64 %argv)\x0a")
 	else: string_append(llvm_code, c"()\x0a")
-	string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},~{rcx},~{r11},~{memory}\"(i64 231, i64 %result)\x0a")
+	# exit_group: 94 on AArch64, 231 on x86-64
+	if (llvm_arm64): string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"svc #0\", \"={x0},{x8},{x0},~{memory}\"(i64 94, i64 %result)\x0a")
+	else: string_append(llvm_code, c"  %exit = call i64 asm sideeffect \"syscall\", \"={rax},{rax},{rdi},~{rcx},~{r11},~{memory}\"(i64 231, i64 %result)\x0a")
 	string_append(llvm_code, c"  unreachable\x0a}\x0a\x0a")
 
 
 # LLVM lowers large copies and fills to these C names; without a C library
 # the module defines them, as byte loops LLVM must not turn back into calls.
 void llvm_emit_memory_runtime():
-	string_append(llvm_code, c"define ptr @memset(ptr %d, i32 %c, i64 %n) #0 {\x0aentry:\x0a  %b = trunc i32 %c to i8\x0a  br label %head\x0ahead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %body ]\x0a  %more = icmp ult i64 %i, %n\x0a  br i1 %more, label %body, label %done\x0abody:\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %b, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %head\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
-	string_append(llvm_code, c"define ptr @memcpy(ptr %d, ptr %s, i64 %n) #0 {\x0aentry:\x0a  br label %head\x0ahead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %body ]\x0a  %more = icmp ult i64 %i, %n\x0a  br i1 %more, label %body, label %done\x0abody:\x0a  %q = getelementptr i8, ptr %s, i64 %i\x0a  %v = load volatile i8, ptr %q\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %v, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %head\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
-	string_append(llvm_code, c"define ptr @memmove(ptr %d, ptr %s, i64 %n) #0 {\x0aentry:\x0a  %di = ptrtoint ptr %d to i64\x0a  %si = ptrtoint ptr %s to i64\x0a  %back = icmp ugt i64 %di, %si\x0a  br i1 %back, label %bhead, label %fhead\x0afhead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %fbody ]\x0a  %fmore = icmp ult i64 %i, %n\x0a  br i1 %fmore, label %fbody, label %done\x0afbody:\x0a  %q = getelementptr i8, ptr %s, i64 %i\x0a  %v = load volatile i8, ptr %q\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %v, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %fhead\x0abhead:\x0a  %k = phi i64 [ %n, %entry ], [ %k1, %bbody ]\x0a  %bmore = icmp ugt i64 %k, 0\x0a  br i1 %bmore, label %bbody, label %done\x0abbody:\x0a  %k1 = sub i64 %k, 1\x0a  %bq = getelementptr i8, ptr %s, i64 %k1\x0a  %bv = load volatile i8, ptr %bq\x0a  %bp = getelementptr i8, ptr %d, i64 %k1\x0a  store volatile i8 %bv, ptr %bp\x0a  br label %bhead\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
+	string_append(llvm_code, c"define hidden ptr @memset(ptr %d, i32 %c, i64 %n) #0 {\x0aentry:\x0a  %b = trunc i32 %c to i8\x0a  br label %head\x0ahead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %body ]\x0a  %more = icmp ult i64 %i, %n\x0a  br i1 %more, label %body, label %done\x0abody:\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %b, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %head\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
+	string_append(llvm_code, c"define hidden ptr @memcpy(ptr %d, ptr %s, i64 %n) #0 {\x0aentry:\x0a  br label %head\x0ahead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %body ]\x0a  %more = icmp ult i64 %i, %n\x0a  br i1 %more, label %body, label %done\x0abody:\x0a  %q = getelementptr i8, ptr %s, i64 %i\x0a  %v = load volatile i8, ptr %q\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %v, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %head\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
+	string_append(llvm_code, c"define hidden ptr @memmove(ptr %d, ptr %s, i64 %n) #0 {\x0aentry:\x0a  %di = ptrtoint ptr %d to i64\x0a  %si = ptrtoint ptr %s to i64\x0a  %back = icmp ugt i64 %di, %si\x0a  br i1 %back, label %bhead, label %fhead\x0afhead:\x0a  %i = phi i64 [ 0, %entry ], [ %j, %fbody ]\x0a  %fmore = icmp ult i64 %i, %n\x0a  br i1 %fmore, label %fbody, label %done\x0afbody:\x0a  %q = getelementptr i8, ptr %s, i64 %i\x0a  %v = load volatile i8, ptr %q\x0a  %p = getelementptr i8, ptr %d, i64 %i\x0a  store volatile i8 %v, ptr %p\x0a  %j = add i64 %i, 1\x0a  br label %fhead\x0abhead:\x0a  %k = phi i64 [ %n, %entry ], [ %k1, %bbody ]\x0a  %bmore = icmp ugt i64 %k, 0\x0a  br i1 %bmore, label %bbody, label %done\x0abbody:\x0a  %k1 = sub i64 %k, 1\x0a  %bq = getelementptr i8, ptr %s, i64 %k1\x0a  %bv = load volatile i8, ptr %bq\x0a  %bp = getelementptr i8, ptr %d, i64 %k1\x0a  store volatile i8 %bv, ptr %bp\x0a  br label %bhead\x0adone:\x0a  ret ptr %d\x0a}\x0a\x0a")
 	string_append(llvm_code, c"attributes #0 = { nounwind \"no-builtins\" \"frame-pointer\"=\"all\" }\x0a\x0a")
 
 
@@ -3991,6 +4445,11 @@ void llvm_free_tables():
 	llvm_meta_lines.free()
 	llvm_runtime_used.free()
 	llvm_tls_offsets.free()
+	string_free(llvm_imports)
+	string_free(llvm_thunk_code)
+	llvm_import_thunks.free()
+	llvm_import_cache.free()
+	llvm_imports_declared.free()
 	llvm_generator_thunks.free()
 
 
@@ -4018,6 +4477,13 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_tls_offsets = new map[int, int]
 	llvm_tls_size = 8
 	llvm_stubs = 0
+	llvm_imports = string_new()
+	llvm_import_cache = new map[int, int]
+	llvm_imports_declared = new map[char*, int]
+	llvm_dynamic = 0
+	llvm_link_libraries = new list[char*]
+	llvm_import_thunks = new map[int, int]
+	llvm_thunk_code = string_new()
 	llvm_uses_gen_switch = 0
 	llvm_generator_thunks = new map[int, int]
 	llvm_data = string_new()
@@ -4070,6 +4536,7 @@ int llvm_emit(char* filename, char* output_path):
 			llvm_owned_first[owner] = binding
 	int main_node = -1
 	int start_node = -1
+	int input_start = -1
 	for id in range(count):
 		int kind = retained_node_kind(id)
 		if ((kind != retained_function) && (kind != retained_declaration)): continue
@@ -4083,8 +4550,11 @@ int llvm_emit(char* filename, char* output_path):
 			if ((node.name in llvm_function_names) == 0): llvm_function_names[node.name] = linkage
 			if (strcmp(node.name, c"_main") == 0): start_node = id
 			if ((node.source == input) && (strcmp(node.name, c"main") == 0)): main_node = id
+			# A program can define the entry itself.
+			if ((node.source == input) && (strcmp(node.name, c"_main") == 0)): input_start = id
 	# A lib/testing.w program's main is the library's.
 	if ((main_node < 0) && (c"__w_run_tests" in llvm_function_names) && (c"main" in llvm_function_names)): main_node = llvm_functions[llvm_function_names[c"main"]]
+	if (main_node < 0): main_node = input_start
 	if (main_node < 0):
 		llvm_error(retained_sources[input].root, c"program without a main function")
 		llvm_free_tables()
@@ -4144,19 +4614,32 @@ int llvm_emit(char* filename, char* output_path):
 			llvm_out = llvm_code
 		if (llvm_uses_memory): llvm_emit_memory_runtime()
 		string_builder* module = string_new()
-		string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding x86-64 Linux\x0a")
-		string_append(module, c"target triple = \"x86_64-unknown-linux-gnu\"\x0a\x0a")
+		if (llvm_arm64):
+			string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding AArch64 Linux\x0a")
+			string_append(module, c"target triple = \"aarch64-unknown-linux-gnu\"\x0a\x0a")
+		else:
+			string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding x86-64 Linux\x0a")
+			string_append(module, c"target triple = \"x86_64-unknown-linux-gnu\"\x0a\x0a")
 		if (llvm_uses_trap): string_append(module, c"declare void @llvm.trap() cold noreturn nounwind\x0a")
 		if (llvm_uses_bits):
 			string_append(module, c"declare i32 @llvm.fshl.i32(i32, i32, i32)\x0adeclare i32 @llvm.fshr.i32(i32, i32, i32)\x0a")
 			string_append(module, c"declare i32 @llvm.ctpop.i32(i32)\x0adeclare i32 @llvm.ctlz.i32(i32, i1)\x0adeclare i32 @llvm.cttz.i32(i32, i1)\x0a")
 		llvm_math_declarations(module)
-		if (llvm_uses_float_conversion): string_append(module, c"declare i64 @llvm.x86.sse.cvttss2si64(<4 x float>)\x0adeclare i64 @llvm.x86.sse2.cvttsd2si64(<2 x double>)\x0a")
+		if (llvm_uses_float_conversion): string_append(module, c"declare i64 @llvm.fptosi.sat.i64.f32(float)\x0adeclare i64 @llvm.fptosi.sat.i64.f64(double)\x0a")
 		if (llvm_uses_memory): string_append(module, c"declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\x0adeclare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\x0a")
+		if (llvm_dynamic):
+			# C imports: the module links dynamically, keeping W's _start.
+			string_append(module, c"\x0a; C imports; link with: clang -nostartfiles")
+			for soname in llvm_link_libraries:
+				string_append(module, c" -l:")
+				string_append(module, soname)
+			string_append(module, c"\x0a")
+			string_append(module, llvm_imports.data)
 		string_append(module, c"\x0a")
 		string_append(module, llvm_data.data)
 		string_append(module, c"\x0a")
 		string_append(module, llvm_code.data)
+		string_append(module, llvm_thunk_code.data)
 		llvm_function_attributes(module)
 		llvm_debug_finish(module)
 		success = file_write_text(output_path, module.data)
