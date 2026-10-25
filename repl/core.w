@@ -233,17 +233,37 @@ int repl_thread_scan(int* ids):
 	return count
 
 
+# A joined thread can stay listed in /proc/self/task for a moment after
+# thread_join returns: the kernel clears its tid word before it removes
+# the task. Checks that find extra threads rescan a few times, 1ms apart,
+# so a thread that is only exiting is not reported as running. Allocates
+# nothing, so the fault handler can call it.
+const int repl_thread_settle_tries = 20
+
+
+void repl_thread_settle_pause():
+	int[2] ts
+	ts[0] = 0
+	ts[1] = 1000000
+	nanosleep(&ts[0], 0)
+
+
 # Number of live threads besides the main one (unknown counts as one).
 int repl_other_threads():
 	if (repl_threads_enabled == 0): return 0
 	int count = repl_thread_scan(repl_thread_ids)
+	int tries = 0
+	while ((count > 1) && (tries < repl_thread_settle_tries)):
+		repl_thread_settle_pause()
+		count = repl_thread_scan(repl_thread_ids)
+		tries = tries + 1
 	if (count < 1): return 1
 	return count - 1
 
 
 # 1 when a thread that was not live when the outermost entry started is
 # live now (or the answer is unknown).
-int repl_new_threads():
+int repl_new_threads_once():
 	int count = repl_thread_scan(repl_thread_ids)
 	if ((count < 0) || (repl_thread_snapshot_count < 0)): return 1
 	for i in range(count):
@@ -252,6 +272,16 @@ int repl_new_threads():
 			if (repl_thread_snapshot[k] == repl_thread_ids[i]): known = 1
 		if (known == 0): return 1
 	return 0
+
+
+int repl_new_threads():
+	int found = repl_new_threads_once()
+	int tries = 0
+	while ((found != 0) && (tries < repl_thread_settle_tries)):
+		repl_thread_settle_pause()
+		found = repl_new_threads_once()
+		tries = tries + 1
+	return found
 
 
 void repl_thread_snapshot_take():
