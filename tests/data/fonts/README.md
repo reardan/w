@@ -21,10 +21,16 @@ applies, so the files stay small.
 | `NotoSansKannada-subset.ttf` | `NotoSansKannada-Regular.ttf` 2.006 |
 | `NotoSansMalayalam-subset.ttf` | `NotoSansMalayalam-Regular.ttf` 2.104 |
 | `NotoSansThai-subset.ttf` | `NotoSansThai-Regular.ttf` 2.002 |
+| `NotoSansSinhala-subset.ttf` | `NotoSansSinhala-Regular.ttf` 2.001 (Debian fonts-noto-core) |
+| `NotoSerifTibetan-subset.ttf` | `NotoSerifTibetan-Regular.ttf` 2.001 (Debian fonts-noto-core) |
+| `NotoSansJavanese-subset.ttf` | `NotoSansJavanese-Regular.ttf` 2.000 (Debian fonts-noto-core) |
+| `NotoSansBalinese-subset.ttf` | `NotoSansBalinese-Regular.ttf` 2.002 (Debian fonts-noto-core) |
+| `NotoSansTaiTham-subset.ttf` | `NotoSansTaiTham-Regular.ttf` 2.001 (Debian fonts-noto-core) |
+| `NotoSansDevanagari-dev3-subset.ttf` | `NotoSansDevanagari-Regular.ttf` 2.001 (Debian fonts-noto-core), its `dev2` script renamed `dev3` and `deva` dropped |
 | `NotoSans-cff-subset.otf` | `NotoSans-Regular.otf` (unhinted OTF), CFF with subroutines |
 | `NotoSansJP-subset.otf` | noto-cjk `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`, CID-keyed CFF |
 
-The fonts are Copyright 2022-2024 The Noto Project Authors and licensed
+The fonts are Copyright 2015-2024 Google LLC / The Noto Project Authors and licensed
 under the SIL Open Font License 1.1 (`OFL.txt`); these Noto fonts
 declare no Reserved Font Names, so the subsets keep their names. Noto
 Sans CJK is Copyright 2014-2021 Adobe under the same license with the
@@ -56,6 +62,12 @@ pyftsubset NotoSansTelugu-Regular.ttf --text-file=telugu-lines.txt \
   --name-IDs='*' --layout-features=ccmp,locl,rvrn,nukt,akhn,rphf,rkrf,pref,blwf,abvf,half,pstf,vatu,cjct,init,pres,abvs,blws,psts,haln,rlig,rclt,calt,liga,clig,kern,mark,mkmk,curs,dist,abvm,blwm \
   --output-file=NotoSansTelugu-subset.ttf
 ```
+
+The six Universal Shaping Engine subsets (issue #825) were made the same
+way, keeping every layout feature the USE shaper applies (including
+`isol`, `init`, `medi`, `fina`); the `dev3` copy of Noto Sans Devanagari
+renames the `dev2` script record with fontTools before subsetting, so
+HarfBuzz and lib/ttf_use.w shape it with the USE shaper.
 
 The text is the matching lines of `tools/shape_golden_hb.py`; the two
 OTF subsets keep hinting and subroutines (no `--no-hinting`) so the CFF
