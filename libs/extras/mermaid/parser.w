@@ -149,7 +149,7 @@ void mm_attributes(mm_parser* p, int index):
 		if (mm_peek(p) == 0):
 			mm_error(p.doc, p.pos, c"unterminated entity attribute block")
 			return
-		if (n.attributes.length >= MM_MAX_ITEMS || p.doc.attribute_count >= 4096):
+		if (n.attributes.length >= MM_MAX_ITEMS || p.doc.attribute_count >= MM_MAX_GRAPH_ATTRIBUTES):
 			mm_error(p.doc, p.pos, c"attribute limit exceeded")
 			return
 		mm_attribute* a = new mm_attribute()
@@ -231,7 +231,7 @@ void mm_flow_statement(mm_parser* p):
 		for int l in lefts:
 			for int r in rights:
 				if (p.doc.error != 0): break
-				if (p.doc.edges.length >= MM_MAX_ITEMS):
+				if (p.doc.edges.length >= mm_edge_limit(p.doc)):
 					mm_error(p.doc, p.pos, c"edge limit exceeded")
 					break
 				mm_edge* e = new mm_edge()
@@ -267,7 +267,7 @@ void mm_statement(mm_parser* p):
 		mm_attributes(p, left)
 		return
 	while (mm_end(p) == 0 && p.doc.error == 0):
-		if (p.doc.edges.length >= MM_MAX_ITEMS):
+		if (p.doc.edges.length >= mm_edge_limit(p.doc)):
 			mm_error(p.doc, p.pos, c"edge limit exceeded")
 			return
 		mm_edge* e = new mm_edge()
@@ -631,6 +631,8 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	if (d.c4_shape_in_row == 0): d.c4_shape_in_row = envelope.c4_shape_in_row
 	if (d.c4_boundary_in_row == 0): d.c4_boundary_in_row = envelope.c4_boundary_in_row
 	if (d.layout_algorithm == 1 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force layout is only supported for graph diagrams")
+	# The force layout is quadratic per round; it keeps the general node budget.
+	if (d.layout_algorithm == 1 && d.nodes.length > MM_MAX_ITEMS): mm_error(d, 0, c"force layout node limit exceeded")
 	free(d.source)
 	d.source = envelope.source
 	envelope.source = 0

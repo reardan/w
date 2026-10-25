@@ -18,6 +18,7 @@ import libs.extras.mermaid.c4_render
 import libs.extras.mermaid.agentflow_render
 import libs.extras.mermaid.flow_shapes
 import libs.extras.mermaid.class_members
+import libs.extras.mermaid.routing
 
 # A comment holding a Markdown string or a <br> renders through the shared
 # label layout; plain comments stay in the attribute's single text run.
@@ -206,94 +207,6 @@ void mm_measure(mm_document* d, mm_scene* s):
 		mm_text_set_size(previous)
 		s.nodes.push(b)
 
-void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap):
-	# Longest-path ranks over a topological traversal. Break cycles at the
-	# first remaining node, deterministically, without repeatedly growing ranks.
-	list[int] incoming = new list[int]
-	list[int] done = new list[int]
-	for i in range(nodes.length):
-		int count = 0
-		for mm_edge* e in edges:
-			if (e.to_node == i && e.from_node != i): count = count + 1
-		incoming.push(count)
-		done.push(0)
-	int max_rank = 0
-	for step in range(nodes.length):
-		int index = -1
-		for i in range(nodes.length):
-			if (done[i] == 0 && incoming[i] == 0 && index < 0): index = i
-		if (index < 0):
-			for i in range(nodes.length):
-				if (done[i] == 0 && index < 0): index = i
-		done[index] = 1
-		mm_bounds* from = nodes[index]
-		if (from.rank < 0): from.rank = 0
-		if (from.rank > max_rank): max_rank = from.rank
-		for mm_edge* e in edges:
-			if (e.from_node == index && done[e.to_node] == 0):
-				mm_bounds* to = nodes[e.to_node]
-				# Longer links (flowchart `--->`, use case extra dashes) span extra ranks.
-				int step = 1 + e.extra_rank
-				if (e.min_length > step): step = e.min_length
-				if (to.rank < from.rank + step): to.rank = from.rank + step
-				incoming[e.to_node] = incoming[e.to_node] - 1
-	__w_list_free(cast(__w_list*, incoming))
-	__w_list_free(cast(__w_list*, done))
-	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
-	int reverse = strcmp(direction, c"RL") == 0 || strcmp(direction, c"BT") == 0
-	# Sum actual rank/lane sizes instead of multiplying the largest label by
-	# the whole graph. Dimensions stay bounded by total source + item padding,
-	# including on x86, and a single large circle no longer expands every row.
-	list[int] sizes = new list[int]
-	for rank in range(max_rank + 1): sizes.push(0)
-	for mm_bounds* b in nodes:
-		int rank = b.rank
-		if (reverse): rank = max_rank - rank
-		int size = b.h
-		if (horizontal): size = b.w
-		if (size > sizes[rank]): sizes[rank] = size
-	# Rank gaps start at the configured rank gap and grow to hold the edge labels drawn in them (beside the
-	# target's incoming segment in vertical layouts, above it horizontally).
-	list[int] gaps = new list[int]
-	for rank in range(max_rank + 1): gaps.push(rank_gap)
-	for mm_edge* e in edges:
-		if (e.label == 0 || e.label[0] == 0 || e.from_node == e.to_node): continue
-		int from_rank = nodes[e.from_node].rank
-		int to_rank = nodes[e.to_node].rank
-		if (reverse):
-			from_rank = max_rank - from_rank
-			to_rank = max_rank - to_rank
-		if (from_rank == to_rank): continue
-		int gap = to_rank
-		if (to_rank > from_rank): gap = to_rank - 1
-		mm_text_block* t = mm_text_layout(e.label, MM_TEXT_WRAP)
-		int need = t.height + 64
-		if (horizontal): need = t.width + 70
-		mm_text_block_free(t)
-		if (need > gaps[gap]): gaps[gap] = need
-	list[int] order = mm_layer_order(nodes, edges, max_rank)
-	for i in range(nodes.length):
-		mm_bounds* b = nodes[order[i]]
-		int lane = 60
-		for j in range(i):
-			mm_bounds* other = nodes[order[j]]
-			if (other.rank == b.rank):
-				if (horizontal): lane = lane + other.h + lane_gap
-				else: lane = lane + other.w + lane_gap
-		int rank = b.rank
-		if (reverse): rank = max_rank - rank
-		int offset = 60
-		for j in range(rank): offset = offset + sizes[j] + gaps[j]
-		if (horizontal):
-			b.x = offset
-			b.y = lane
-		else:
-			b.x = lane
-			b.y = offset
-	__w_list_free(cast(__w_list*, sizes))
-	__w_list_free(cast(__w_list*, gaps))
-	__w_list_free(cast(__w_list*, order))
-
 # Return the direct child of scope containing index, or -1 outside this scope.
 int mm_scope_child(mm_document* d, int index, int scope):
 	while (index >= 0):
@@ -312,6 +225,12 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 			if (n.group && mm_flow_collapsed(d, i) == 0): mm_layout_scope(d, s, i)
 			indices.push(i)
 			nodes.push(s.nodes[i])
+	# Scope-local index of each direct child; edges between nested nodes map to
+	# their scope children, and only edges joining two direct children get routes.
+	list[int] local = new list[int]
+	for i in range(d.nodes.length): local.push(-1)
+	for i in range(indices.length): local[indices[i]] = i
+	list[mm_edge_route*] routes = new list[mm_edge_route*]
 	for mm_edge* e in d.edges:
 		int a = mm_scope_child(d, e.from_node, scope)
 		int b = mm_scope_child(d, e.to_node, scope)
@@ -321,11 +240,15 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		mapped.label = e.label
 		mapped.min_length = e.min_length
 		mapped.extra_rank = e.extra_rank
-		for i in range(indices.length):
-			if (indices[i] == a): mapped.from_node = i
-			if (indices[i] == b): mapped.to_node = i
+		mapped.from_node = local[a]
+		mapped.to_node = local[b]
 		edges.push(mapped)
-	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d))
+		mm_edge_route* route = 0
+		if (a == e.from_node && b == e.to_node && d.layout_algorithm != 1): route = mm_edge_route_of(s.nodes[a], e, 1)
+		routes.push(route)
+	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d), routes)
+	__w_list_free(cast(__w_list*, local))
+	__w_list_free(cast(__w_list*, routes))
 	if (d.layout_algorithm == 1): mm_force_place(nodes, edges)
 	if (scope >= 0):
 		mm_bounds* box = s.nodes[scope]
@@ -408,15 +331,24 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 	p.points.push(y + dy * length - py * 9)
 
 
+# 1 when the generic renderer draws e between left/right node sides.
+int mm_edge_horizontal(mm_document* d, mm_edge* e):
+	char* direction = d.direction
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_AGENT): direction = mm_scope_direction(d, e.scope)
+	return strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
+
 void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	if (d.kind == MM_ARCHITECTURE):
 		mm_arch_edge(d, s, e)
 		return
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
-	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_AGENT): direction = mm_scope_direction(d, e.scope)
-	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
+	int horizontal = mm_edge_horizontal(d, e)
+	mm_edge_route* record = 0
+	if (e.from_node != e.to_node): record = mm_edge_route_of(a, e, 0)
+	int route_dx = 0
+	int route_dy = 0
+	int routed = mm_route_usable(record, a, b, horizontal, &route_dx, &route_dy)
 	int dx = 0
 	int dy = 1
 	int ax = a.x + a.w / 2
@@ -438,28 +370,20 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		dy = -1
 		ay = a.y
 		by = b.y + b.h
-	# Separate attachment points for several relationships to one entity.
-	# Small flow shapes retain their center ports.
-	if (d.kind == MM_ER && e.from_node != e.to_node):
-		int out_count = 0
-		int in_count = 0
-		int out_index = 0
-		int in_index = 0
-		int seen = 0
-		for mm_edge* other in d.edges:
-			if (other == e): seen = 1
-			if (other.from_node == e.from_node):
-				out_count = out_count + 1
-				if (seen == 0): out_index = out_index + 1
-			if (other.to_node == e.to_node):
-				in_count = in_count + 1
-				if (seen == 0): in_index = in_index + 1
+	# Port distribution from mm_render_ports: ER relationships spread along the
+	# entity side in the order of their far ends; parallel edges elsewhere
+	# shift apart by a common offset. Small flow shapes retain their center ports.
+	if (record != 0):
 		if (horizontal):
-			ay = a.y + a.h * (out_index + 1) / (out_count + 1)
-			by = b.y + b.h * (in_index + 1) / (in_count + 1)
+			if (record.from_count > 0): ay = a.y + a.h * (record.from_slot + 1) / (record.from_count + 1)
+			if (record.to_count > 0): by = b.y + b.h * (record.to_slot + 1) / (record.to_count + 1)
+			ay = ay + record.offset
+			by = by + record.offset
 		else:
-			ax = a.x + a.w * (out_index + 1) / (out_count + 1)
-			bx = b.x + b.w * (in_index + 1) / (in_count + 1)
+			if (record.from_count > 0): ax = a.x + a.w * (record.from_slot + 1) / (record.from_count + 1)
+			if (record.to_count > 0): bx = b.x + b.w * (record.to_slot + 1) / (record.to_count + 1)
+			ax = ax + record.offset
+			bx = bx + record.offset
 	mm_node* from_node = d.nodes[e.from_node]
 	mm_node* to_node = d.nodes[e.to_node]
 	if (from_node.shape == 28):
@@ -489,9 +413,16 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	if (d.kind == MM_USECASE && e.arrow): dashed = 1
 	int curve = d.edge_curve
 	if (d.kind == MM_FLOW && e.curve != 0): d.edge_curve = e.curve - 1
+	int leg_x = ax
+	int leg_y = ay
 	if (d.kind == MM_AGENT && e.curve != 0 && e.from_node != e.to_node): mm_agent_edge_path(s, e.curve, ax, ay, mx, my, bx, by, horizontal, dashed)
+	else if (routed):
+		int bend = mm_route_draw(d, s, record, route_dx, route_dy, ax, ay, bx, by, horizontal, dashed, &leg_x, &leg_y)
+		if (horizontal): mx = bend
+		else: my = bend
 	else: mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, dashed, e.from_node == e.to_node)
 	d.edge_curve = curve
+	if (s.path_only): return
 	if (d.kind == MM_FLOW):
 		mm_flow_link_stroke(s, e, path_start)
 		int end_dx = 0 - dx
@@ -526,8 +457,24 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	if (e.label[0] != 0):
 		mm_text_block* t = mm_text_layout(e.label, MM_TEXT_WRAP)
 		if (e.from_node == e.to_node): mm_text_draw(s, t, mx + 8, my - 6 - t.height, 0)
-		else if (horizontal): mm_text_draw(s, t, (ax + mx) / 2, ay - 6 - t.height, 1)
-		else: mm_text_draw(s, t, bx + 8, (my + by) / 2 - t.height / 2, 0)
+		else:
+			int lx = bx + 8
+			int ly = (my + by) / 2 - t.height / 2
+			if (horizontal):
+				lx = (leg_x + mx) / 2
+				ly = leg_y - 6 - t.height
+			# Labels move off nodes and earlier labels; edge-only redraws (canvas
+			# hit tests and highlights) reuse the spot chosen by the full render.
+			if (s.labels != 0):
+				mm_label_place(s.labels, t.width, t.height, horizontal, horizontal, &lx, &ly)
+				if (record != 0):
+					record.placed = 1
+					record.label_x = lx - a.x
+					record.label_y = ly - a.y
+			else if (record != 0 && record.placed):
+				lx = a.x + record.label_x
+				ly = a.y + record.label_y
+			mm_text_draw(s, t, lx, ly, horizontal)
 		mm_text_block_free(t)
 
 void mm_render_groups(mm_document* d, mm_scene* s, int scope):
@@ -715,8 +662,132 @@ void mm_render_node(mm_document* d, mm_scene* s, int i):
 	mm_style_node(d, s, n, style_start)
 
 # Rebuild primitives from existing bounds; pointer-motion previews skip parsing and layout.
+# Port slots for every drawn edge, stored on its geometry record. ER ends on
+# one entity side are ordered by the cross-axis position of their far end (the
+# first or last route channel when routed), so neighboring relationships do
+# not cross at the entity, and parallel relationships take adjacent slots.
+# Other families keep side-center ports and spread only parallel edges.
+void mm_render_ports(mm_document* d, mm_scene* s):
+	list[mm_edge_route*] records = new list[mm_edge_route*]
+	list[int] group = new list[int]
+	list[int] key = new list[int]
+	list[int] end = new list[int]
+	list[int] pair = new list[int]
+	int count = d.nodes.length
+	for mm_edge* e in d.edges:
+		int from = mm_flow_visible_node(d, e.from_node)
+		int to = mm_flow_visible_node(d, e.to_node)
+		if (from == to || (d.kind == MM_FLOW && e.stroke == 2)): continue
+		mm_bounds* a = s.nodes[from]
+		mm_bounds* b = s.nodes[to]
+		mm_edge_route* r = mm_edge_route_of(a, e, 1)
+		r.from_slot = 0
+		r.from_count = 0
+		r.to_slot = 0
+		r.to_count = 0
+		r.offset = 0
+		int horizontal = mm_edge_horizontal(d, e)
+		int side = 1
+		int far_from = b.x + b.w / 2
+		int far_to = a.x + a.w / 2
+		if (horizontal):
+			side = 3
+			far_from = b.y + b.h / 2
+			far_to = a.y + a.h / 2
+			if (b.x < a.x): side = 2
+		else if (b.y < a.y): side = 0
+		int tx = 0
+		int ty = 0
+		if (from == e.from_node && to == e.to_node && mm_route_usable(r, a, b, horizontal, &tx, &ty) && r.lanes.length > 0):
+			int shift = tx
+			if (horizontal): shift = ty
+			far_from = r.lanes[0] + shift
+			far_to = r.lanes[r.lanes.length - 1] + shift
+		int low = from
+		int high = to
+		if (high < low):
+			low = to
+			high = from
+		for which in range(2):
+			records.push(r)
+			end.push(which)
+			if (which == 0):
+				group.push(from * 4 + side)
+				key.push(far_from)
+			else:
+				group.push(to * 4 + (side ^ 1))
+				key.push(far_to)
+			pair.push(low * count + high)
+	list[int] order = new list[int]
+	list[int] scratch = new list[int]
+	for i in range(records.length):
+		order.push(i)
+		scratch.push(0)
+	mm_layout_sort(order, 0, order.length, key, scratch)
+	mm_layout_sort(order, 0, order.length, group, scratch)
+	int at = 0
+	while (at < order.length):
+		int stop = at
+		int mixed = 0
+		while (stop < order.length && group[order[stop]] == group[order[at]]):
+			if (end[order[stop]] != end[order[at]]): mixed = 1
+			stop = stop + 1
+		# Elsewhere only a side where edges both leave and arrive is spread, so
+		# a back edge never runs on top of a forward edge into the same port.
+		if (d.kind == MM_ER || mixed):
+			for i in range(at, stop):
+				mm_edge_route* r = records[order[i]]
+				if (end[order[i]] == 0):
+					r.from_slot = i - at
+					r.from_count = stop - at
+				else:
+					r.to_slot = i - at
+					r.to_count = stop - at
+		at = stop
+	if (d.kind != MM_ER):
+		for i in range(order.length): order[i] = i
+		mm_layout_sort(order, 0, order.length, pair, scratch)
+		at = 0
+		while (at < order.length):
+			int stop = at
+			while (stop < order.length && pair[order[stop]] == pair[order[at]]): stop = stop + 1
+			# Two entries (both ends) per edge; offsets step 16px around the axis.
+			int edges = (stop - at) / 2
+			int index = 0
+			for i in range(at, stop):
+				if (end[order[i]] != 0): continue
+				mm_edge_route* r = records[order[i]]
+				if (edges > 1): r.offset = (index * 2 - (edges - 1)) * 8
+				index = index + 1
+			at = stop
+	__w_list_free(cast(__w_list*, records))
+	__w_list_free(cast(__w_list*, group))
+	__w_list_free(cast(__w_list*, key))
+	__w_list_free(cast(__w_list*, end))
+	__w_list_free(cast(__w_list*, pair))
+	__w_list_free(cast(__w_list*, order))
+	__w_list_free(cast(__w_list*, scratch))
+
+# Occupied areas for label placement: every drawn leaf node box.
+mm_label_grid* mm_render_label_grid(mm_document* d, mm_scene* s):
+	int width = 0
+	int height = 0
+	for mm_bounds* b in s.nodes:
+		if (b.x + b.w > width): width = b.x + b.w
+		if (b.y + b.h > height): height = b.y + b.h
+	mm_label_grid* g = mm_label_grid_new(width + 400, height + 400)
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		mm_bounds* b = s.nodes[i]
+		if (n.group || b.w <= 0 || mm_flow_visible_node(d, i) != i): continue
+		mm_label_grid_add(g, b.x, b.y, b.x + b.w, b.y + b.h)
+	return g
+
 void mm_render_graph(mm_document* d, mm_scene* s):
 	mm_render_groups(d, s, -1)
+	if (d.kind != MM_ARCHITECTURE):
+		mm_render_ports(d, s)
+		s.labels = mm_render_label_grid(d, s)
 	for mm_edge* e in d.edges:
 		int start = s.items.length
 		int from = mm_flow_visible_node(d, e.from_node)
@@ -731,6 +802,8 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 			e.from_node = original_from
 			e.to_node = original_to
 		mm_style_edge(d, s, e, start)
+	mm_label_grid_free(s.labels)
+	s.labels = 0
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group || mm_flow_visible_node(d, i) != i): continue

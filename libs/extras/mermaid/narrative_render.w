@@ -210,7 +210,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		int stereotype_width = strlen(node.annotation) * 8 + 52 + gap
 		if (node.annotation[0] != 0 && stereotype_width > width): width = stereotype_width
 		if (width < box_width + gap): width = box_width + gap
-		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0))
+		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0, 0))
 	# Charge each message's width to one lane, not every lane. A single long
 	# label with 1024 participants therefore cannot overflow 32-bit geometry.
 	for mm_narrative_event* event in d.narrative:
@@ -391,7 +391,7 @@ void mm_n_journey_scene(mm_document* d, mm_scene* s):
 		number[0] = cast(char, '0' + event.value)
 		number[1] = 0
 		mm_text(s, cx - 4, y - 7, number)
-		s.nodes.push(new mm_bounds(x, 100, w - 20, 50, 0))
+		s.nodes.push(new mm_bounds(x, 100, w - 20, 50, 0, 0))
 		previous_x = cx
 		previous_y = y
 		x = x + w + 20
@@ -490,7 +490,7 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 		mm_line(s, x - 15, axis, x + width + 35, axis, 0)
 		mm_draw(s, MM_CIRCLE, cx - 5, axis - 5, cx + 5, axis + 5, 1, c"")
 		mm_line(s, cx, 145 + extra, cx, axis, 0)
-		s.nodes.push(new mm_bounds(x, 100, width, 45 + extra, 0))
+		s.nodes.push(new mm_bounds(x, 100, width, 45 + extra, 0, 0))
 		int y = axis + 40
 		for i in range(index + 1, next):
 			mm_narrative_event* event = d.narrative[i]
@@ -861,7 +861,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		if ((task.value & 1) != 0): role = MM_ROLE_TASK_DONE
 		if ((task.value & 4) != 0): role = MM_ROLE_TASK_CRIT
 		mm_style_role(s, task_start, role, i)
-		s.nodes.push(new mm_bounds(x, y, w, bar, 0))
+		s.nodes.push(new mm_bounds(x, y, w, bar, 0, 0))
 	__w_list_free(cast(__w_list*, rows))
 	__w_list_free(cast(__w_list*, row_y))
 	mm_line(s, left, 100, left + width, 100, 0)
