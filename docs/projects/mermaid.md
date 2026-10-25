@@ -38,7 +38,7 @@ bin/wmermaid_editor examples/mermaid/states.mmd
 ```
 
 `write` preserves the original bytes, including comments and CRLF. It is not a
-formatter. `edit INPUT START END REPLACEMENT_FILE OUTPUT` replaces the half-open
+formatter; `format` is (see "Canonical serialization and formatting" below). `edit INPUT START END REPLACEMENT_FILE OUTPUT` replaces the half-open
 UTF-8 byte range `[START, END)` and writes the result; replacement text is read
 literally from the file. Invalid intermediate syntax is allowed in source edits
 and writes. Run `check` to validate, or `svg` to validate and export. Neither
@@ -54,9 +54,9 @@ until a 500 ms pause or editing boundary. **Previous/Next diagram**
 select a Mermaid fence while keeping the complete Markdown source editable.
 The dynamic path field supports paths beyond the former 127-byte limit.
 
-Graphical editing covers flowcharts, ER, class (`classDiagram`), state
+Graphical editing covers flowcharts, agentflow, ER, class (`classDiagram`), state
 (`stateDiagram`, `stateDiagram-v2`), requirement, use case, architecture,
-block, C4, swimlane, mindmap and treeView diagrams. Clicking a node or group
+block, C4, swimlane, mindmap, treeView and kanban diagrams. Clicking a node or group
 selects it and populates the inspector. **Apply** changes its displayed label
 (or, with a connection selected, the connection label); **Delete** removes the
 node and its incident connections, or a group with its members. Clicking a
@@ -110,10 +110,36 @@ would still declare the node there (an edge written inside a subgraph).
 | Requirement | requirements and elements | none | refused (labels are identifiers) | its block and relations | `requirement ID {}`, `A - traces -> B` | relation keyword; properties add/remove/set |
 | Use case | actors, use cases, boundaries | `systemBoundary` move, rename, delete, into/out, add in | in place | its statements | `ID(label)`, `A --> B` | label (`-- "label" -->`); kind `-->`, `---`, `..>` |
 | Architecture | services, junctions, groups | group move, rename, delete, ungroup, into/out (` in group`), add in | in place | its statements | `service ID(server)[label]`, `A:R --> L:B` | none (edit sides in source) |
-| Block | structural (no positions) | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
-| C4 | structural (no positions) | boundary rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
-| Swimlane | structural (no positions) | lane rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
-| Mindmap / treeView | structural (outline) | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+| Agentflow | nodes and `flow` containers | `flow` move, rename, delete, ungroup, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; kind `-->`, `---`, `-.->`, `-.-`, `==>`, `--x` |
+| Block | cell order (a move swaps source items); resize sets the column span `ID:N` | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| C4 | cards and boundaries | boundary move, rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
+| Swimlane | steps and lanes | lane move, rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| Mindmap / treeView | sibling order; a drop on another node moves the branch under it | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+| Kanban | card order in a column; cards move between columns (drop, Left/Right, **Previous**/**Next**) | n/a | in place (metadata kept) | the card or column with its cards | **Add child** (a card), **Add sibling** | **Up** / **Down** reorder |
+
+C4 and swimlane geometry is stored like a flowchart's: the family's own
+layout runs first, then the saved `@w-position` and `@w-size` records
+apply (a boundary or lane carries its members and grows to keep them).
+Block, mindmap, treeView and kanban layouts are their source order, as in
+upstream Mermaid, so a move never stores coordinates: dragging shows the
+item following the pointer and the drop reorders the source. A block
+dropped on another cell of its composite takes that cell's place (adjacent
+items swap one validated splice at a time; a composite `block:id ... end`
+moves as whole lines), arrows move it one cell (Up/Down by a row of the
+composite's `columns`), and the resize handle or Alt+Left/Right sets its
+column span (`ID:N`, which must fit the columns). Outline nodes move among
+their siblings with the arrows or a drop on a sibling; a drop on another
+node moves the branch under it as its last child, re-indented under that
+node. A kanban card dropped on a column becomes its last card, dropped on a
+card lands before it, and Left/Right move it to the neighbouring column.
+
+GitGraph, event modeling and the other families stay source-edited on
+purpose: a gitGraph is a command script whose commits, branches and lanes
+come from executing it in order, so moving or deleting a commit would
+rewrite history semantics rather than a diagram element; event-modeling
+columns are its numbered time frames and its lanes are typed by entity
+kind, so a position is the model itself; data charts, sequence-like and
+grammar families have no node-aligned scene.
 
 Drag a node or group to reposition it; edges follow live. Release commits one
 undo step, while Escape restores the starting position. Small pointer jitter
@@ -147,7 +173,13 @@ connectors (ER: cardinalities), each replacing only the operator, and
 requirement selected, the compartment row adds a member, attribute
 (`type name [keys]`) or property line inside the body block and removes the
 last one; `mm_editor_member_set`/`mm_editor_attribute_set` rewrite a line in
-place. Outline families use **Add child**, **Add sibling**, **Up** and
+place. The **Line** row (Ctrl+P, then Ctrl+P again for the next line, or
+**<** / **>**) shows one existing line (an ER attribute as
+`type name [keys] ["comment"]`) and edits it in place as you type
+(`mm_editor_line_set`): each keystroke that leaves a valid line is a
+validated splice, a typing run within 500 ms is one undo step
+(`mm_editor_coalesce`; a saved state stays a stop), and an invalid
+intermediate text is not applied. Outline families use **Add child**, **Add sibling**, **Up** and
 **Down** with the label field's text.
 **SVG** writes `CURRENT_FILE.svg` using the saved manual positions too.
 
@@ -158,12 +190,13 @@ place. Outline families use **Add child**, **Add sibling**, **Up** and
 | Ctrl+D / Ctrl+E / Ctrl+L / Ctrl+R | Focus canvas / source / path / label |
 | Ctrl+Enter, with label focus | Apply the selected node's label |
 | Ctrl+N | Start adding a new node/entity |
+| Ctrl+P | Edit the selected class member, property or attribute line; again: the next line |
 | Tab / Shift+Tab, with canvas focus | Select next / previous node or group |
 | Space, with canvas focus | Toggle the focused item in the selection; Tab then keeps the selection |
 | Ctrl+A, with canvas focus | Select every node and group |
 | Shift/Ctrl+click, Shift+drag on the background | Toggle a node / rubber-band select |
 | Arrows / Shift+arrows, with canvas focus | Move the selection 1 / 10 pixels |
-| Alt+arrows / Alt+Shift+arrows, with canvas focus | Resize the selected node or group 1 / 10 pixels |
+| Alt+arrows / Alt+Shift+arrows, with canvas focus | Resize the selected node or group 1 / 10 pixels (a block: Alt+Left/Right change its column span) |
 | Delete, with canvas focus | Delete the selection or the selected connection |
 | Ctrl+G, with canvas focus | Ungroup the selected group |
 | Escape | Cancel a drag, placement, connection or close prompt |
@@ -294,13 +327,44 @@ destinations. `save_guard_test` (x86, x64 and a win64 twin under wine) injects
 a writer at each stage (`mm_save_race_hook`) and checks that nothing is
 overwritten and no temp or claim file is left behind.
 
-`--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg
-and canonical operations (default 0). Read/write/edit preserve the complete source;
-check/svg operate on the selected diagram. `canonical INPUT OUTPUT` emits a
-standalone flowchart or ER diagram from its semantic model, including groups,
-styles, attributes and relationships. It deliberately replaces comments and
-formatting. Unsupported families, themes/force configuration, or unrepresentable
-model values fail explicitly. Lossless `write` behavior is unchanged.
+`--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg,
+canonical and format operations (default 0). Read/write/edit preserve the complete
+source; check/svg/canonical/format operate on the selected diagram.
+
+### Canonical serialization and formatting
+
+```sh
+bin/wmermaid format INPUT              # canonical source on stdout
+bin/wmermaid format INPUT -o OUTPUT    # ... written durably to OUTPUT
+bin/wmermaid format --check INPUT      # exit 1 if INPUT is not canonical
+bin/wmermaid canonical INPUT OUTPUT    # same as format INPUT -o OUTPUT
+```
+
+`format` rebuilds the selected diagram from its semantic model: frontmatter
+(title, theme, themeVariables, layout, look, spacing and family keys), the
+family header, accessibility lines, declarations, relationships, class
+definitions and styles, in one consistent layout (one statement per line,
+explicit quoted labels, nested blocks indented). It works for all 33 families.
+Comments, position-hint comments, blank lines and the original spelling of
+equivalent syntax are dropped; Markdown around a fence is not written, so
+formatting a `.md` input yields the standalone diagram. `--check` compares the
+selected diagram's own text (inside its fence, frontmatter included) with the
+canonical form and writes nothing. A parse error, or a model with no exact
+canonical source, fails with a diagnostic and leaves OUTPUT untouched. The
+lossless `write`/`mm_save` path is unchanged and stays the save default.
+
+The serializer never approximates: every emitted text is reparsed and compared
+with the original model (`mm_document_diff`, semantic fields only, in index
+order: node/edge/event order, labels, shapes, styles, configuration), and a
+remaining difference makes the result null. One serializer file per family group
+(`serialize_flow.w`, `serialize_uml.w`, `serialize_narrative.w`,
+`serialize_data.w`, `serialize_c4.w`, ...) is dispatched from `serialize.w`;
+`serialize_common.w` holds frontmatter, quoting and style helpers, and
+`serialize_equal.w` the model comparison. `serialize_roundtrip_test` formats every
+`examples/mermaid` diagram and every parsing-corpus manifest entry, asserts that
+the reparsed model is equal and that formatting is idempotent, and keeps a
+known-failure list with reasons (currently empty) that fails both when a listed
+family starts passing and when an unlisted one fails.
 
 For a reproducible native preview on a headless Linux host with Xvfb:
 
@@ -514,8 +578,11 @@ mm_document_free(doc)
   document is unchanged. Fields are inspectable; edit source and reparse to keep
   the model and lossless writer consistent. `mm_write` always returns original bytes.
   `mm_parse_selected(bytes, length, index)` selects a zero-based Markdown diagram.
-- `serialize`: `mm_serialize(doc)` returns canonical standalone flow/ER source from
-  the model, or null if the model cannot be represented without dropping semantics.
+- `serialize`: `mm_serialize(doc)` returns canonical standalone source for any
+  family from the model, or null if the model cannot be represented without
+  dropping semantics; `mm_serialize_explain(doc, &diff)` also returns the first
+  model difference. `mm_format(bytes, length)` parses and serializes in one call.
+  `mm_document_equal(a, b)` / `mm_document_diff(a, b)` compare semantic models.
 - `render`: `mm_render(doc)` returns an owned display list, or null for a failed
   parse; `mm_svg(scene)` returns owned escaped XML. `mm_scene_free` releases it.
 - `io`: `mm_read(path)` returns an owned document, or null for I/O/budget failure;
@@ -574,7 +641,7 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Extend canonical serialization beyond flow/ER and graphical editing beyond
+4. Extend graphical editing beyond
    flow/ER/class/state (requirement, use-case and the other graph families),
    and into namespaces, composite states and notes; add group movement, multi-selection, resize and richer edge/attribute inspectors.
    Use editor commands to keep source/history synchronized; mutating the AST

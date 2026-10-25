@@ -112,7 +112,9 @@ void test_block_rename_delete_item_connect_and_add():
 	char* source = c"block\ncolumns 3\nsource[Source] parser[\"Native parser\"]:2\nspace scene[(\"Display list\")]\nparser --> scene\n"
 	mm_editor* e = mm_editor_new(c"bin/unused.mmd", source)
 	asserts(c"parses", e.document.error == 0)
-	assert_equal(0, mm_editor_can_move(e, ef_find(e, c"parser")))
+	# Block cells move by source order (edit_layout_test), never by coordinates.
+	assert_equal(1, mm_editor_can_move(e, ef_find(e, c"parser")))
+	assert_equal(0, mm_position_supported(e.document, ef_find(e, c"parser")))
 	assert_equal(1, mm_editor_set_label(e, ef_find(e, c"source"), c"Input"))
 	asserts(c"label in place", index_of(e.document.source, c"source[Input] parser") >= 0)
 	assert_equal(1, mm_editor_delete_node(e, ef_find(e, c"source")))
@@ -128,11 +130,11 @@ void test_block_rename_delete_item_connect_and_add():
 	ef_undo_all(e, source)
 	mm_editor_free(e)
 
-void test_c4_and_swimlane_structural_edits():
+void test_c4_and_swimlane_structural_and_geometry_edits():
 	char* source = c"C4Context\nPerson(user, \"User\", \"Authors diagrams\")\nSystem(app, \"Editor\")\nRel(user, app, \"Edits\")\n"
 	mm_editor* e = mm_editor_new(c"bin/unused.mmd", source)
 	asserts(c"C4 parses", e.document.error == 0)
-	assert_equal(0, mm_editor_can_move(e, ef_find(e, c"user")))
+	assert_equal(1, mm_editor_can_move(e, ef_find(e, c"user")))
 	assert_equal(1, mm_editor_set_label(e, ef_find(e, c"app"), c"Desktop editor"))
 	assert_equal(1, mm_editor_add_graph_node(e, c"store", c"File system"))
 	assert_equal(1, mm_editor_connect(e, c"app", c"store"))

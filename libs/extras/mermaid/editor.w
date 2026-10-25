@@ -319,10 +319,20 @@ int mm_editor_hit(mm_editor* e, int x, int y):
 # update only rebuilds primitives, so edges follow their current node bounds.
 int mm_editor_can_move(mm_editor* e, int index):
 	if (e.scene == 0 || index < 0 || index >= e.scene.nodes.length): return 0
-	return mm_position_supported(e.document, index)
+	if (e.scene.nodes.length != e.document.nodes.length): return 0
+	return mm_position_supported(e.document, index) || mm_slot_movable(e.document, index)
 
 int mm_editor_can_resize(mm_editor* e, int index):
-	return mm_editor_can_move(e, index)
+	if (e.scene == 0 || index < 0 || index >= e.scene.nodes.length): return 0
+	if (e.scene.nodes.length != e.document.nodes.length): return 0
+	return mm_position_supported(e.document, index) || mm_slot_resizable(e.document, index)
+
+# Source-order families preview a gesture as a ghost (the selection outline
+# follows the pointer) and commit it as a reorder; geometry families redraw.
+void mm_editor_preview_refresh(mm_editor* e):
+	if (mm_slot_family(e.document.kind)): return
+	mm_positions_fit_groups(e.document, e.scene)
+	mm_render_graph_refresh(e.document, e.scene)
 
 void mm_editor_snapshot(mm_editor* e):
 	while (e.move_snapshot.length > 0): e.move_snapshot.pop()
@@ -382,8 +392,7 @@ int mm_editor_move_preview_delta(mm_editor* e, int dx, int dy):
 	if (primary.x == e.move_start_x + dx && primary.y == e.move_start_y + dy): return 1
 	mm_editor_restore(e)
 	for int index in e.move_set: mm_position_translate(e.document, e.scene, index, dx, dy)
-	mm_positions_fit_groups(e.document, e.scene)
-	mm_render_graph_refresh(e.document, e.scene)
+	mm_editor_preview_refresh(e)
 	return 1
 
 int mm_editor_move_preview(mm_editor* e, int x, int y):
@@ -401,7 +410,7 @@ void mm_editor_move_cancel(mm_editor* e):
 		if (b.x != e.move_snapshot[i * 4] || b.y != e.move_snapshot[i * 4 + 1] || b.w != e.move_snapshot[i * 4 + 2] || b.h != e.move_snapshot[i * 4 + 3]): same = 0
 	if (same): return
 	mm_editor_restore(e)
-	mm_render_graph_refresh(e.document, e.scene)
+	if (mm_slot_family(e.document.kind) == 0): mm_render_graph_refresh(e.document, e.scene)
 
 # Per node: 1 when it currently carries a valid record of the given kind.
 list[int] mm_editor_recorded(mm_editor* e, int kind):
@@ -421,6 +430,10 @@ list[int] mm_editor_recorded(mm_editor* e, int kind):
 
 int mm_editor_move_commit(mm_editor* e):
 	if (e.moving != 1 || mm_editor_can_move(e, e.move_index) == 0): return 0
+	# Source-order families commit through mm_editor_slot_* (edit_slots.w).
+	if (mm_position_supported(e.document, e.move_index) == 0):
+		mm_editor_move_cancel(e)
+		return 0
 	mm_bounds* primary = e.scene.nodes[e.move_index]
 	int dx = primary.x - e.move_start_x
 	int dy = primary.y - e.move_start_y
@@ -494,12 +507,14 @@ int mm_editor_resize_preview(mm_editor* e, int w, int h):
 	mm_editor_restore(e)
 	b.w = w
 	b.h = h
-	mm_positions_fit_groups(e.document, e.scene)
-	mm_render_graph_refresh(e.document, e.scene)
+	mm_editor_preview_refresh(e)
 	return 1
 
 int mm_editor_resize_commit(mm_editor* e):
 	if (e.moving != 2 || mm_editor_can_resize(e, e.move_index) == 0): return 0
+	if (mm_position_supported(e.document, e.move_index) == 0):
+		mm_editor_move_cancel(e)
+		return 0
 	mm_bounds* b = e.scene.nodes[e.move_index]
 	if (b.w == e.move_start_x && b.h == e.move_start_y):
 		mm_editor_move_cancel(e)
@@ -575,7 +590,7 @@ int mm_editor_has_positions(mm_editor* e):
 # metadata-looking text and other diagrams remain byte-for-byte intact.
 int mm_editor_reset_positions(mm_editor* e):
 	mm_editor_move_cancel(e)
-	if (e.document.error != 0 || mm_graph_edit_family(e.document.kind) == 0): return 0
+	if (e.document.error != 0 || mm_geometry_family(e.document.kind) == 0): return 0
 	if (mm_editor_has_positions(e) == 0): return 1
 	mm_document* d = e.document
 	string_builder* source = string_new()
@@ -594,6 +609,18 @@ int mm_editor_reset_positions(mm_editor* e):
 	int ok = mm_editor_change(e, source.data)
 	string_free(source)
 	return ok
+
+# Merge the latest history step into the one before it, so a run of
+# inspector field edits (typing) is one undo step. A saved state, the
+# history's first entry and an open transaction stay undo stops.
+int mm_editor_coalesce(mm_editor* e):
+	if (e.position < 2 || e.position + 1 != e.history.length || e.transaction >= 0): return 0
+	if (strcmp(e.history[e.position - 1], e.saved_source) == 0): return 0
+	free(e.history[e.position - 1])
+	e.history[e.position - 1] = e.history[e.position]
+	e.history.pop()
+	e.position = e.position - 1
+	return 1
 
 void mm_editor_free(mm_editor* e):
 	mm_scene_free(e.scene)

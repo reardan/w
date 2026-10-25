@@ -130,6 +130,18 @@ int main(int argc, int argv):
 	ui_textbox_state member_text
 	ui_textbox_init(&group_id)
 	ui_textbox_init(&member_text)
+	# The selected compartment line, edited in place (Ctrl+P focuses it and
+	# then steps through the lines). A typing run is one undo step.
+	ui_textbox_state line_text
+	ui_textbox_init(&line_text)
+	int line_index = 0
+	int line_node = -1
+	int line_resync = 1
+	int line_focus_id = -1
+	int focus_line = 0
+	int line_position = -1
+	int line_group = -1
+	int line_time = 0
 	gfx_window* win = gfx_window_open(c"W Mermaid", 1280, 800)
 	if (win == 0):
 		mm_editor_free(e)
@@ -199,6 +211,7 @@ int main(int argc, int argv):
 			if (ui_rect_contains(canvas_area, ctx.input.press_x, ctx.input.press_y) == 0): mm_canvas_cancel(&canvas, e)
 		int now = time_monotonic_ms()
 		if (ctx.input.mouse_pressed || ctx.nav_count > 0): last_source_time = 0
+		if (ctx.input.mouse_pressed): line_time = 0
 		int old_selection = canvas.node
 		int old_edge = canvas.edge
 		int disk_reload = 0
@@ -236,6 +249,13 @@ int main(int argc, int argv):
 					int redo = key == 'y' || (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0
 					changed = mm_canvas_undo(&canvas, e, redo)
 					wm_selection_fields(&canvas, e, &node_id, &node_label)
+					line_resync = 1
+				else if (key == 'p'):
+					# Focus the compartment line field; again: the next line.
+					mm_canvas_cancel(&canvas, e)
+					if (line_focus_id > 0 && ctx.focus == line_focus_id): line_index = line_index + 1
+					line_resync = 1
+					focus_line = 1
 				else if (key == 'l'):
 					mm_canvas_cancel(&canvas, e)
 					ctx.focus = ctx.next_id
@@ -334,11 +354,13 @@ int main(int argc, int argv):
 		if (ui_button(&ctx, c"Undo")):
 			if (mm_canvas_undo(&canvas, e, 0)): mm_canvas_source_sync(&area, e.document.source)
 			wm_selection_fields(&canvas, e, &node_id, &node_label)
+			line_resync = 1
 		ui_same_line(&ctx)
 		ui_disable(&ctx, closing || e.position + 1 >= e.history.length)
 		if (ui_button(&ctx, c"Redo")):
 			if (mm_canvas_undo(&canvas, e, 1)): mm_canvas_source_sync(&area, e.document.source)
 			wm_selection_fields(&canvas, e, &node_id, &node_label)
+			line_resync = 1
 		ui_disable(&ctx, closing)
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Fit")): fit = 1
@@ -556,6 +578,24 @@ int main(int argc, int argv):
 					mm_canvas_reset(&canvas, e)
 					mm_canvas_source_sync(&area, e.document.source)
 					status = c"Moved after its next sibling."
+			if (e.document.kind == MM_KANBAN):
+				# Cards move between columns (also Left/Right on the canvas).
+				ui_disable(&ctx, closing || at < 0 || e.document.error != 0 || e.document.nodes[at].parent < 0)
+				ui_label(&ctx, c"Column")
+				ui_same_line(&ctx)
+				for k in range(2):
+					char* name = c"Previous"
+					int delta = -1
+					if (k == 1):
+						name = c"Next"
+						delta = 1
+					if (k == 1): ui_same_line(&ctx)
+					if (ui_button(&ctx, name)):
+						if (mm_editor_slot_column(e, at, delta)):
+							mm_canvas_reset(&canvas, e)
+							mm_canvas_source_sync(&area, e.document.source)
+							status = c"Card moved to another column. Ctrl+Z to undo."
+						else: status = c"No column there, or the card spans several lines."
 			ui_disable(&ctx, closing)
 		else:
 			ui_label(&ctx, c"Group")
@@ -666,6 +706,62 @@ int main(int argc, int argv):
 					status = c"Removed. Ctrl+Z to undo."
 				else: status = c"That line cannot be removed here; use source editing."
 			ui_disable(&ctx, closing)
+			# Line row: choose a compartment line and edit it in place.
+			int count = mm_editor_line_count(e, canvas.node)
+			if (line_node != canvas.node):
+				line_node = canvas.node
+				line_index = 0
+				line_resync = 1
+			if (count > 0 && line_index >= count):
+				line_index = 0
+				line_resync = 1
+			ui_label(&ctx, c"Line")
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || count < 2)
+			if (ui_button(&ctx, c"<")):
+				line_index = (line_index + count - 1) % count
+				line_resync = 1
+			ui_same_line(&ctx)
+			if (ui_button(&ctx, c">")):
+				line_index = (line_index + 1) % count
+				line_resync = 1
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing || count == 0)
+			if (focus_line):
+				ctx.focus = ctx.next_id
+				focus_line = 0
+			line_focus_id = ctx.next_id
+			if (ctx.focus != line_focus_id || line_resync):
+				char* current = mm_editor_line_text(e, canvas.node, line_index)
+				if (current == 0): ui_textbox_set(&line_text, c"")
+				else:
+					ui_textbox_set(&line_text, current)
+					free(current)
+				line_text.caret = line_text.length
+				line_resync = 0
+			char* typed_before = strclone(&line_text.text[0])
+			ui_textbox(&ctx, left.w - 200.0, &line_text)
+			if (count > 0 && strcmp(typed_before, &line_text.text[0]) != 0):
+				int keep = line_position == e.position && line_group == line_index && now - line_time < 500
+				int position_before = e.position
+				if (mm_editor_line_set(e, canvas.node, line_index, &line_text.text[0])):
+					if (keep && e.position != position_before): mm_editor_coalesce(e)
+					line_position = e.position
+					line_group = line_index
+					line_time = now
+					mm_canvas_source_sync(&area, e.document.source)
+					status = c"Line updated in place; one typing run is one undo step."
+				else: status = c"Not applied yet: keep the line valid (ER: type name [keys] [\"comment\"])."
+			free(typed_before)
+			ui_same_line(&ctx)
+			string_builder* which = string_new()
+			if (count > 0):
+				string_append_int(which, line_index + 1)
+				string_append(which, c"/")
+				string_append_int(which, count)
+			ui_label(&ctx, which.data)
+			string_free(which)
+			ui_disable(&ctx, closing)
 		ui_region_pop(&ctx)
 		float32 source_y = left.y + 338.0
 		ui_draw_text(&renderer, left.x, source_y, c"Source  (Ctrl+E)", 2, theme.text_muted)
@@ -719,10 +815,12 @@ int main(int argc, int argv):
 			ui_draw_text(&renderer, 12.0, height - 62.0, diagnostic, 2, theme.error)
 			free(diagnostic)
 		else: ui_draw_text(&renderer, 12.0, height - 62.0, status, 2, theme.text_muted)
-		char* help = c"Ctrl+D canvas: Tab selects, Space/Shift+click add, Ctrl+A all, arrows move (Shift: 10), Alt+arrows resize, Delete removes, Ctrl+G ungroups."
+		char* help = c"Ctrl+D canvas: Tab selects, Space/Shift+click add, Ctrl+A all, arrows move (Shift: 10), Alt+arrows resize, Delete removes, Ctrl+G ungroups, Ctrl+P edits a member line."
 		if (external != MM_DISK_SAME): help = c"Changed on disk: Ctrl+Shift+R reloads it (discarding edits), Ctrl+K keeps your version."
-		if (mm_canvas_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView."
-		else if (mm_outline_family(e.document.kind)): help = c"Ctrl+D canvas: Tab selects, Delete removes the subtree; Add child / Add sibling / Up / Down edit the outline."
+		if (mm_canvas_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView, kanban, agentflow."
+		else if (e.document.kind == MM_KANBAN): help = c"Ctrl+D canvas: Tab selects, Up/Down reorder a card, Left/Right move it to another column, drag onto a column or card; Delete removes."
+		else if (mm_outline_family(e.document.kind)): help = c"Ctrl+D canvas: Tab selects, arrows or a drag reorder among siblings (drag onto another node to move under it); Delete removes the subtree."
+		else if (e.document.kind == MM_BLOCK): help = c"Ctrl+D canvas: Tab selects, arrows or a drag move a block to another cell, Alt+Left/Right change its column span, Delete removes."
 		ui_draw_text(&renderer, 12.0, height - 38.0, help, 2, theme.text_muted)
 		ui_clip_pop(&renderer)
 		ui_disable(&ctx, 0)

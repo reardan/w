@@ -436,11 +436,38 @@ void mm_wf_draw(mm_document* d, mm_scene* s, mm_wf_router* r, mm_edge* e, list[i
 	__w_list_free(cast(__w_list*, xs))
 	__w_list_free(cast(__w_list*, ys))
 
-mm_scene* mm_workflow_render(mm_document* d):
+int mm_workflow_horizontal(mm_document* d):
+	return strcmp(d.direction, c"LR") == 0 || strcmp(d.direction, c"RL") == 0 || d.kind == MM_EVENT_MODEL
+
+int mm_workflow_reverse(mm_document* d):
+	return strcmp(d.direction, c"RL") == 0 || strcmp(d.direction, c"BT") == 0
+
+# The lane header band: wide enough for every top-level lane title.
+int mm_workflow_header(mm_document* d, int horizontal):
+	int header = 80
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		if (n.group && horizontal && n.parent < 0 && mm_text_width(n.label, 0) + 40 > header): header = mm_text_width(n.label, 0) + 40
+	return header
+
+# Lanes are top-level groups; event lanes group automation, command / read
+# model and event lanes in that order, each in order of first appearance.
+list[int] mm_workflow_lanes(mm_document* d):
+	int event = d.kind == MM_EVENT_MODEL
+	list[int] lanes = new list[int]
+	for kind in range(3):
+		for i in range(d.nodes.length):
+			mm_node* n = d.nodes[i]
+			if (n.group == 0 || n.parent >= 0): continue
+			if ((event && n.value_y == kind) || (event == 0 && kind == 0)): lanes.push(i)
+	return lanes
+
+# Layout only: ranks, lanes, stacking and cluster frames into s.nodes.
+mm_scene* mm_workflow_layout(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
 	int event = d.kind == MM_EVENT_MODEL
-	int horizontal = strcmp(d.direction, c"LR") == 0 || strcmp(d.direction, c"RL") == 0 || event
-	int reverse = strcmp(d.direction, c"RL") == 0 || strcmp(d.direction, c"BT") == 0
+	int horizontal = mm_workflow_horizontal(d)
+	int reverse = mm_workflow_reverse(d)
 	list[int] done = new list[int]
 	list[int] incoming = new list[int]
 	list[int] path = new list[int]
@@ -493,26 +520,17 @@ mm_scene* mm_workflow_render(mm_document* d):
 	__w_list_free(cast(__w_list*, incoming))
 	list[int] sizes = new list[int]
 	for i in range(max_rank + 1): sizes.push(0)
-	int header = 80
+	int header = mm_workflow_header(d, horizontal)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
-		if (n.group):
-			if (horizontal && n.parent < 0 && mm_text_width(n.label, 0) + 40 > header): header = mm_text_width(n.label, 0) + 40
-			continue
+		if (n.group): continue
 		int size = b.h
 		if (horizontal): size = b.w
 		if (size > sizes[b.rank]): sizes[b.rank] = size
 	int major = 40
 	for int size in sizes: major = major + size + 100
-	# Lanes are top-level groups; event lanes group automation, command / read
-	# model and event lanes in that order, each in order of first appearance.
-	list[int] lanes = new list[int]
-	for kind in range(3):
-		for i in range(d.nodes.length):
-			mm_node* n = d.nodes[i]
-			if (n.group == 0 || n.parent >= 0): continue
-			if ((event && n.value_y == kind) || (event == 0 && kind == 0)): lanes.push(i)
+	list[int] lanes = mm_workflow_lanes(d)
 	int lane_offset = 40
 	list[int] stacked = new list[int]
 	for int lane in lanes:
@@ -573,12 +591,6 @@ mm_scene* mm_workflow_render(mm_document* d):
 			box.w = minor
 			box.h = major + header
 		lane_offset = lane_offset + minor + 20
-		int style_start = s.items.length
-		mm_draw(s, MM_BOX, box.x, box.y, box.x + box.w, box.y + box.h, 0, c"")
-		mm_text(s, box.x + 16, box.y + 16, group.label)
-		if (horizontal): mm_line(s, box.x + header, box.y, box.x + header, box.y + box.h, 0)
-		else: mm_line(s, box.x, box.y + header, box.x + box.w, box.y + header, 0)
-		mm_style_node(d, s, group, style_start)
 	__w_list_free(cast(__w_list*, stacked))
 	__w_list_free(cast(__w_list*, lanes))
 	__w_list_free(cast(__w_list*, path))
@@ -617,6 +629,27 @@ mm_scene* mm_workflow_render(mm_document* d):
 				box.w = 0
 				box.h = 0
 		cluster = cluster - 1
+	__w_list_free(cast(__w_list*, sizes))
+	return s
+
+# Draw lanes, cluster frames, routed links and steps from the (possibly
+# moved) bounds.
+void mm_workflow_draw(mm_document* d, mm_scene* s):
+	int event = d.kind == MM_EVENT_MODEL
+	int horizontal = mm_workflow_horizontal(d)
+	int reverse = mm_workflow_reverse(d)
+	int header = mm_workflow_header(d, horizontal)
+	list[int] lanes = mm_workflow_lanes(d)
+	for int lane in lanes:
+		mm_node* group = d.nodes[lane]
+		mm_bounds* box = s.nodes[lane]
+		int style_start = s.items.length
+		mm_draw(s, MM_BOX, box.x, box.y, box.x + box.w, box.y + box.h, 0, c"")
+		mm_text(s, box.x + 16, box.y + 16, group.label)
+		if (horizontal): mm_line(s, box.x + header, box.y, box.x + header, box.y + box.h, 0)
+		else: mm_line(s, box.x, box.y + header, box.x + box.w, box.y + header, 0)
+		mm_style_node(d, s, group, style_start)
+	__w_list_free(cast(__w_list*, lanes))
 	for i in range(d.nodes.length):
 		mm_node* group = d.nodes[i]
 		mm_bounds* box = s.nodes[i]
@@ -698,7 +731,10 @@ mm_scene* mm_workflow_render(mm_document* d):
 			int label_y = b.y + mm_shape_label_y(n.shape, b.h, 16)
 			mm_text(s, b.x + (b.w - mm_text_width(n.label, 0)) / 2, label_y, n.label)
 		mm_style_node(d, s, n, style_start)
-	__w_list_free(cast(__w_list*, sizes))
 	if (s.width < 240): s.width = 240
 	if (s.height < 160): s.height = 160
+
+mm_scene* mm_workflow_render(mm_document* d):
+	mm_scene* s = mm_workflow_layout(d)
+	mm_workflow_draw(d, s)
 	return s

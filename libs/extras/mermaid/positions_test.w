@@ -186,7 +186,10 @@ void test_mermaid_move_groups_nested_and_resets_stale_gestures():
 	mm_editor_change(e, c"pie\n\"A\" : 1\n")
 	assert_equal(0, mm_editor_can_move(e, 0))
 	mm_editor_change(e, c"mindmap\n  root\n    child\n")
-	assert_equal(0, mm_editor_can_move(e, 1))
+	# Outline nodes move by reordering their source, never by coordinates.
+	assert_equal(0, mm_position_supported(e.document, 1))
+	assert_equal(0, mm_editor_can_move(e, 0))
+	assert_equal(1, mm_editor_can_move(e, 1))
 	mm_editor_free(e)
 
 void test_mermaid_position_comments_cannot_execute_accessibility_text():
