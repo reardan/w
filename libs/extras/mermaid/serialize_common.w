@@ -55,6 +55,20 @@ void mm_serialize_quote(mm_serializer* out, char* text):
 		string_append_char(out.text, c)
 	string_append_char(out.text, '"')
 
+# A flowchart label in quotes; a Markdown string ("`...`") may span lines.
+void mm_serialize_flow_label(mm_serializer* out, char* text):
+	if (text == 0):
+		out.failed = 1
+		return
+	int length = strlen(text)
+	int markdown = length >= 2 && text[0] == '`' && text[length - 1] == '`'
+	string_append_char(out.text, '"')
+	for i in range(length):
+		int c = text[i] & 255
+		if (c == '"' || (c < 32 && (markdown == 0 || c != 10))): out.failed = 1
+		string_append_char(out.text, c)
+	string_append_char(out.text, '"')
+
 # Whole text is an identifier the shared mm_identifier reads unquoted.
 int mm_serialize_is_id(char* text):
 	if (text == 0 || text[0] == 0): return 0
@@ -501,7 +515,9 @@ void mm_serialize_yaml_level(mm_serializer* out, list[mm_serialize_pair*] pairs,
 # themeCSS (families without a classDef statement).
 void mm_serialize_frontmatter(mm_serializer* out, mm_document* d, int css_classes):
 	list[mm_serialize_pair*] pairs = new list[mm_serialize_pair*]
-	if (d.title[0] != 0): mm_serialize_pair_add(pairs, c"title", d.title)
+	# Data charts and railroad grammars carry their own title statement.
+	int own_title = (d.data != 0 && strcmp(d.title, d.data.title) == 0) || (d.railroad != 0 && strcmp(d.title, d.railroad.title) == 0)
+	if (d.title[0] != 0 && own_title == 0): mm_serialize_pair_add(pairs, c"title", d.title)
 	if (d.theme != 0):
 		char* name = mm_serialize_theme_id_name(d.theme)
 		if (name == 0): out.failed = 1

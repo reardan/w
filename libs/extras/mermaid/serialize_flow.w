@@ -9,20 +9,6 @@ import libs.extras.mermaid.serialize_common
 void mm_serialize_repeat(mm_serializer* out, int c, int count):
 	for i in range(count): string_append_char(out.text, c)
 
-# A flowchart label in quotes; a Markdown string ("`...`") may span lines.
-void mm_serialize_flow_label(mm_serializer* out, char* text):
-	if (text == 0):
-		out.failed = 1
-		return
-	int length = strlen(text)
-	int markdown = length >= 2 && text[0] == '`' && text[length - 1] == '`'
-	string_append_char(out.text, '"')
-	for i in range(length):
-		int c = text[i] & 255
-		if (c == '"' || (c < 32 && (markdown == 0 || c != 10))): out.failed = 1
-		string_append_char(out.text, c)
-	string_append_char(out.text, '"')
-
 void mm_serialize_shape(mm_serializer* out, mm_node* n):
 	char* open = c"["
 	char* close = c"]"
