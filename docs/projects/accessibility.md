@@ -8,7 +8,8 @@ companion. The existing GL window content view becomes the parent of real
 chrome and document content without coupling the bridge to HTML or layout. The opt-in
 `graphics.ui.accessibility_web` adapter exposes snapshots through browser ARIA, and
 `graphics.ui.accessibility_atspi` publishes them to Linux AT-SPI 2 (Orca) over a
-pure-W D-Bus client. The immediate-mode widgets produce snapshots automatically
+pure-W D-Bus client, and `graphics.ui.accessibility_uia` to Windows UI
+Automation (Narrator, NVDA, JAWS) as COM providers written in W. The immediate-mode widgets produce snapshots automatically
 and route Tab/Shift-Tab, Space/Return and assistive actions themselves.
 
 ## macOS setup and lifecycle
@@ -281,6 +282,137 @@ inside Orca (its own table commands, flat review) and braille were not
 exercised. Not yet provided: text attributes and text selection, row
 headers, multi-selection policy, and a peer-to-peer application bus.
 
+## Windows UI Automation
+
+`graphics.ui.accessibility_uia` (win64 only) publishes snapshots as server-side
+UI Automation providers. The COM objects are written in W: each interface is a
+two-word `{vtable, element}` object whose vtable holds `win_callback` thunks,
+so there is no C helper, ATL or type library. It links `uiautomationcore`,
+`oleaut32`, `ole32` and `user32`, all part of Windows.
+
+1. `ui_uia_bridge* b = ui_access_uia_open(win.hwnd)` initialises COM on the
+   calling thread as a single-threaded apartment. Pass 0 for a tree hosted by
+   no window (tests and embedding), and give its screen position with
+   `ui_access_uia_set_origin(b, x, y)`.
+2. Set `gfx_win32_getobject = ui_access_uia_wm_getobject` (the optional
+   `WM_GETOBJECT` hook in `graphics/window_win32.w`; nothing changes while it is
+   unset). It answers `UiaRootObjectId` with `UiaReturnRawElementProvider` and
+   leaves every other object id, MSAA's included, to `DefWindowProcW`.
+   `ui_access_uia_getobject(b, hwnd, wparam, lparam)` is the same for an
+   explicit bridge.
+3. `ui_access_uia_publish(b, tree)` copies the snapshot and, when
+   `UiaClientsAreListening`, raises what changed for elements a client has
+   already seen: Name, Value, ToggleState, IsSelected, ExpandCollapseState and
+   IsEnabled property changes, `StructureChanged` (ChildrenInvalidated) when a
+   node's children differ, and `AutomationFocusChanged` for a new focus.
+4. Once per frame, after pumping messages, call
+   `ui_access_uia_dispatch(b, tree)`. It applies queued actions through
+   `ui_access_dispatch`. Accepted focus requests also move `tree.focused_id`.
+   `ui_access_uia_close(b)` releases the window's providers.
+
+UI Automation calls the providers on the thread that opened the bridge while it
+pumps messages (`ProviderOptions_UseComThreading`). Queries are answered from
+the published copy. Invoke, Toggle, SetValue, Select, Expand/Collapse and
+SetFocus are queued (64 at most), as in the other bridges, and publishing drops
+the queue. Each node id keeps one COM object across publications, so client
+identity is stable. Once a node is gone, its object answers
+`UIA_E_ELEMENTNOTAVAILABLE` from every method and is disconnected
+(`UiaDisconnectProvider`). It is freed with its last reference.
+
+What is mapped:
+
+- Every node implements IUnknown (identity: the Simple interface),
+  IRawElementProviderSimple and IRawElementProviderFragment. The root adds
+  IRawElementProviderFragmentRoot (hit testing with
+  ElementProviderFromPoint, and GetFocus) and is hosted by the window
+  (`UiaHostProviderFromHwnd`).
+- Roles map to control types:
+  - document → Document (the root → Pane)
+  - group → Group
+  - text, heading and cell → Text (headings report HeadingLevel)
+  - link → Hyperlink
+  - button → Button
+  - switch → Button with Toggle, localized type "toggle switch"
+  - checkbox → CheckBox
+  - textbox → Edit
+  - image → Image
+  - list → List, list item → ListItem
+  - table → Table, row → DataItem
+  - radio → RadioButton
+  - combobox → ComboBox
+  - tab list → Tab, tab → TabItem
+  - progress → ProgressBar
+  - dialog → Window with IsDialog
+- Patterns:
+  - Invoke: activatable nodes with no other pattern.
+  - Toggle: checkboxes and switches.
+  - Value: textboxes; comboboxes, read-only unless they accept SET_VALUE.
+  - SelectionItem: tabs, list items, rows and radio buttons, single
+    selection. Select activates.
+  - ExpandCollapse: comboboxes, and activatable nodes with the expanded
+    state.
+  - RangeValue: progress, read-only 0..100, from the value's leading number.
+- Properties: Name, HelpText and FullDescription, AutomationId (the node id),
+  FrameworkId `W`, IsEnabled, IsKeyboardFocusable, HasKeyboardFocus,
+  IsOffscreen (hidden), IsDialog, HeadingLevel, plus the patterns' own state
+  properties.
+- Runtime ids are `[UiaAppendRuntimeId, id]` under a window. An unhosted tree
+  uses `[process id, id]`, because UIA cannot append to a window that does not
+  exist.
+
+`graphics_ui_accessibility_uia_test` (win64, run under wine by the CI win64 leg,
+never skipped) drives the bridge in-process with wine 9's `uiautomationcore`
+as the client:
+
+- **Through wine's client API:**
+  - `UiaNodeFromProvider`.
+  - `UiaGetPropertyValue`: control type, name, framework, enabled, focus,
+    focusable, help text.
+  - `UiaGetRuntimeId`.
+  - `UiaNavigate`, with a true condition and a cache request, to the first
+    child.
+  - `UiaAddEvent`, which receives the focus-changed event a republication
+    raises.
+- **Through the provider vtables, where wine cannot help:**
+  - Navigation in every direction, and QueryInterface identity.
+  - Pattern discovery by role, and every pattern read.
+  - Screen bounds, and ElementProviderFromPoint with real double arguments.
+  - GetFocus and FragmentRoot.
+  - The actions, which arrive at the application callback with UTF-16 →
+    UTF-8 values.
+  - Retained providers of removed nodes failing with
+    `UIA_E_ELEMENTNOTAVAILABLE`.
+  - `WM_GETOBJECT` declining non-UIA object ids.
+
+Wine could not exercise the following:
+
+- Its flat pattern functions (`InvokePattern_Invoke`, `TogglePattern_Toggle`,
+  `ValuePattern_SetValue`, ...) are stubs, so patterns are driven through the
+  vtables instead.
+- Property-changed event registration is unimplemented, and
+  `UiaRaiseAutomationPropertyChangedEvent` and
+  `UiaRaiseStructureChangedEvent` are stubs. Its FIXME trace shows the bridge
+  raising them with the right payload (for example Name `"A"` → `"B"`), but
+  delivery is untested.
+- Wine maps a provider's failure HRESULT to the reserved not-supported value,
+  rather than propagating `UIA_E_ELEMENTNOTAVAILABLE` to the client.
+- CI's wine has no display driver. So `WM_GETOBJECT` →
+  `UiaReturnRawElementProvider`, the hosted root (`UiaHostProviderFromHwnd`,
+  the window-based runtime id, `ClientToScreen` bounds) and cross-process
+  clients are only built, not run.
+
+Narrator, NVDA, JAWS, Accessibility Insights and Inspect on real Windows have
+not been run against the bridge. That is the qualification still owed.
+
+Not yet provided:
+
+- The Text pattern (caret, selection, text ranges).
+- Selection, Grid and Table container patterns.
+- LiveSetting and notification events.
+- MSAA (`IAccessible`) for legacy clients. `WM_GETOBJECT` for OBJID_CLIENT
+  falls through to the default proxy.
+- Embedded fragment roots.
+
 ## Focus and contrast
 
 `ui_access_move_focus(tree, reverse)` proposes insertion-order traversal,
@@ -300,8 +432,8 @@ Disabled controls, arbitrary application backgrounds, and the illustrative ocean
 theme are outside this default-theme assertion. These checks do not substitute
 for testing a rendered application's complete contrast and focus appearance.
 
-Windows UI Automation is the remaining platform bridge of #465. The web ARIA
-mirror and the AT-SPI bridge are initial adapters, with screen-reader
+Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
+and UI Automation bridges are initial adapters, with screen-reader
 qualification and richer semantics (text ranges, table relations, incremental
 updates) still open. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
