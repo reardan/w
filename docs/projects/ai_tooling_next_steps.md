@@ -1527,3 +1527,12 @@ code; `<name>_test` targets in the same tree do rebuild on the same edit.
 Only `--no-cache` (or compiling with `bin/wv2` by hand) refreshes it.
 Direction: give source-owned `binary=`/`target=` compile steps the same
 `bin/wv2 deps` closure inputs that conventional test targets get.
+
+Likely cause (2026-10-25, corpus gaps for #818/#820/#821): after one
+`./wbuild wmermaid` whose compile failed on an error in an imported module,
+`bin/.wexec_deps_cache` held `X x86 tools/wmermaid.w` with no `F` closure
+lines, keyed on the root file's hash; since `tools/wmermaid.w` itself never
+changed, that failed (empty) closure was reused and no later import edit
+invalidated the target. Deleting `bin/.wexec_deps_cache` restored an `R`
+entry with the full closure and correct rebuilds. Direction: never cache a
+failed `deps` result, or key it on the inputs that made it fail.

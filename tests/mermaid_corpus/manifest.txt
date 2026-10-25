@@ -13,7 +13,7 @@ agentflow/agentflow_008.mmd	supported	ok
 agentflow/agentflow_009.mmd	supported	ok
 agentflow/agentflow_010.mmd	supported	ok
 agentflow/agentflow_011.mmd	supported	ok
-agentflow/agentflow_012.mmd	unsupported	error 3:1: supported native layouts: dagre, force
+agentflow/agentflow_012.mmd	partial	ok	layout: elk is accepted and drawn with the native layered layout (no ELK engine)
 architecture/architecture_001.mmd	supported	ok
 architecture/architecture_002.mmd	supported	ok
 architecture/architecture_003.mmd	supported	ok
@@ -25,7 +25,7 @@ block/block_002.mmd	supported	ok
 block/block_003.mmd	supported	ok
 block/block_004.mmd	supported	ok
 block/block_005.mmd	supported	ok
-block/block_006.mmd	unsupported	error 4:15: expected entity or node identifier
+block/block_006.mmd	supported	ok
 block/block_007.mmd	supported	ok
 block/block_008.mmd	supported	ok
 block/block_009.mmd	supported	ok
@@ -37,18 +37,18 @@ block/block_014.mmd	supported	ok
 block/block_015.mmd	supported	ok
 block/block_016.mmd	supported	ok
 block/block_017.mmd	supported	ok
-block/block_018.mmd	unsupported	error 8:28: expected block arrow direction right, left, up, down, x or y
+block/block_018.mmd	supported	ok
 block/block_019.mmd	supported	ok
 block/block_020.mmd	supported	ok
 block/block_021.mmd	supported	ok
-block/block_022.mmd	unsupported	error 3:4: expected entity or node identifier
+block/block_022.mmd	supported	ok
 block/block_023.mmd	supported	ok
 block/block_024.mmd	supported	ok
 block/block_025.mmd	supported	ok
 block/block_026.mmd	supported	ok
 block/block_027.mmd	supported	ok
 block/block_028.mmd	supported	ok
-block/block_029.mmd	unsupported	error 3:21: style property requires colon
+block/block_029.mmd	unsupported	error 3:21: style property requires colon	documented misuse (fill#969): upstream drops the malformed declaration silently, the native style parser diagnoses it
 block/block_030.mmd	supported	ok
 c4/c4_001.mmd	supported	ok
 c4/c4_002.mmd	supported	ok
@@ -119,8 +119,8 @@ er/entityRelationshipDiagram_019.mmd	supported	ok
 er/entityRelationshipDiagram_020.mmd	supported	ok
 er/entityRelationshipDiagram_021.mmd	supported	ok
 er/entityRelationshipDiagram_022.mmd	supported	ok
-er/entityRelationshipDiagram_023.mmd	unsupported	error 13:12: expected ER cardinality marker
-er/entityRelationshipDiagram_024.mmd	unsupported	error 13:12: expected ER cardinality marker
+er/entityRelationshipDiagram_023.mmd	supported	ok
+er/entityRelationshipDiagram_024.mmd	supported	ok
 er/entityRelationshipDiagram_025.mmd	supported	ok
 eventmodeling/eventmodeling_001.mmd	supported	ok
 eventmodeling/eventmodeling_002.mmd	supported	ok
@@ -143,7 +143,7 @@ flowchart/examples_005.mmd	supported	ok
 sequence/examples_006.mmd	supported	ok
 sequence/examples_007.mmd	supported	ok
 sequence/examples_008.mmd	supported	ok
-gitgraph/examples_009.mmd	unsupported	error 2:20: expected commit property colon
+gitgraph/examples_009.mmd	supported	ok
 flowchart/flowchart_001.mmd	supported	ok
 flowchart/flowchart_002.mmd	supported	ok
 flowchart/flowchart_003.mmd	supported	ok
@@ -232,7 +232,7 @@ flowchart/flowchart_085.mmd	supported	ok
 flowchart/flowchart_086.mmd	supported	ok
 flowchart/flowchart_087.mmd	supported	ok
 flowchart/flowchart_088.mmd	supported	ok
-flowchart/flowchart_089.mmd	unsupported	error 3:41: style property requires colon
+flowchart/flowchart_089.mmd	partial	ok	CSS animation and stroke-dashoffset are accepted but the dashed edge is drawn static
 flowchart/flowchart_090.mmd	supported	ok
 flowchart/flowchart_091.mmd	supported	ok
 flowchart/flowchart_092.mmd	supported	ok
@@ -255,8 +255,8 @@ flowchart/flowchart_108.mmd	supported	ok
 flowchart/flowchart_109.mmd	supported	ok
 flowchart/flowchart_110.mmd	supported	ok
 flowchart/flowchart_111.mmd	supported	ok
-flowchart/flowchart_112.mmd	partial	ok	Font Awesome fa: label prefixes render as literal text
-flowchart/flowchart_113.mmd	partial	ok	Font Awesome fa:/fab: label prefixes render as literal text
+flowchart/flowchart_112.mmd	supported	ok
+flowchart/flowchart_113.mmd	supported	ok
 flowchart/flowchart_114.mmd	supported	ok
 gantt/gantt_001.mmd	supported	ok
 gantt/gantt_002.mmd	supported	ok
@@ -268,7 +268,7 @@ gantt/gantt_007.mmd	supported	ok
 gantt/gantt_008.mmd	supported	ok
 gantt/gantt_009.mmd	supported	ok
 gantt/gantt_010.mmd	supported	ok
-gantt/gantt_011.mmd	unsupported	error 8:19: unterminated quoted configuration value
+gantt/gantt_011.mmd	unsupported	error 8:1: themeCSS supports .class { property: value; } rules	the multi-line quoted YAML is read; themeCSS uses selectors beyond the .class subset and the dates precede 1970
 gitgraph/gitgraph_001.mmd	supported	ok
 gitgraph/gitgraph_002.mmd	supported	ok
 gitgraph/gitgraph_003.mmd	supported	ok
@@ -283,7 +283,7 @@ gitgraph/gitgraph_011.mmd	supported	ok
 gitgraph/gitgraph_012.mmd	supported	ok
 gitgraph/gitgraph_013.mmd	supported	ok
 gitgraph/gitgraph_014.mmd	supported	ok
-gitgraph/gitgraph_015.mmd	unsupported	error 27:27: empty or duplicate commit id
+gitgraph/gitgraph_015.mmd	partial	ok	repeated commit id: upstream stops drawing the earlier commit; both are drawn here
 gitgraph/gitgraph_016.mmd	supported	ok
 gitgraph/gitgraph_017.mmd	supported	ok
 gitgraph/gitgraph_018.mmd	supported	ok
@@ -353,11 +353,11 @@ requirement/requirementDiagram_001.mmd	supported	ok
 requirement/requirementDiagram_002.mmd	supported	ok
 requirement/requirementDiagram_003.mmd	supported	ok
 requirement/requirementDiagram_004.mmd	supported	ok
-requirement/requirementDiagram_005.mmd	unsupported	error 51:11: unsupported requirement property
-requirement/requirementDiagram_006.mmd	unsupported	error 3:11: expected requirement relationship
+requirement/requirementDiagram_005.mmd	supported	ok
+requirement/requirementDiagram_006.mmd	supported	ok
 requirement/requirementDiagram_007.mmd	supported	ok
 requirement/requirementDiagram_008.mmd	supported	ok
-requirement/requirementDiagram_009.mmd	unsupported	error 3:21: expected requirement property block
+requirement/requirementDiagram_009.mmd	supported	ok
 sankey/sankey_001.mmd	supported	ok
 sankey/sankey_002.mmd	supported	ok
 sankey/sankey_003.mmd	supported	ok
@@ -467,7 +467,7 @@ treeview/treeView_003.mmd	supported	ok
 treeview/treeView_004.mmd	supported	ok
 treeview/treeView_005.mmd	supported	ok
 treeview/treeView_006.mmd	supported	ok
-treeview/treeView_007.mmd	unsupported	error 9:1: invalid frontmatter key
+treeview/treeView_007.mmd	supported	ok
 treeview/treeView_008.mmd	supported	ok
 treeview/treeView_009.mmd	supported	ok
 treeview/treeView_010.mmd	supported	ok

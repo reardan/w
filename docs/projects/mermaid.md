@@ -54,51 +54,101 @@ until a 500 ms pause or editing boundary. **Previous/Next diagram**
 select a Mermaid fence while keeping the complete Markdown source editable.
 The dynamic path field supports paths beyond the former 127-byte limit.
 
-For flowcharts, ER, class (`classDiagram`) and state (`stateDiagram`,
-`stateDiagram-v2`) diagrams, clicking a node selects it and populates the
-inspector. **Apply** changes its displayed label; **Delete** removes the node
-and its incident connections. Clicking a connection selects it for deletion.
-Edits preserve unrelated source, comments, styles, configuration and other
-Markdown fences; deleting edges also updates indexed `linkStyle` assignments.
-Each graphical operation is one undo step, and failed edits leave the document
-unchanged. Group containers remain source-edited.
+Graphical editing covers flowcharts, ER, class (`classDiagram`), state
+(`stateDiagram`, `stateDiagram-v2`), requirement, use case, architecture,
+block, C4, swimlane, mindmap and treeView diagrams. Clicking a node or group
+selects it and populates the inspector. **Apply** changes its displayed label
+(or, with a connection selected, the connection label); **Delete** removes the
+node and its incident connections, or a group with its members. Clicking a
+connection selects it. Edits preserve unrelated source, comments, styles,
+configuration and other Markdown fences; deleting edges also updates indexed
+`linkStyle` assignments. Each graphical operation is one undo step, and failed
+edits leave the document unchanged.
 
 Every graphical edit is a source splice validated by reparsing: the result must
 keep every other node (label, shape, members, annotation, attributes, scope,
 styles), every other edge in order, the notes, class definitions, direction,
 title and accessibility text, or nothing changes. `mm_editor_edit_reason`
 returns the reason an operation is unavailable (empty when it is available).
-
-| Family | Select / drag / Auto layout | Rename | Delete node | Delete connection | Add / Link to |
-| --- | --- | --- | --- | --- | --- |
-| Flowchart | top-level nodes | appends `ID[label]` keeping the shape | removes it from chains, `style`/`class`/`linkStyle` targets | yes | `ID["label"]`, `A --> B` |
-| ER | top-level entities | appends `ID[label]` | removes its relationships; attributes stay with survivors | yes | `ID["label"]`, a default `\|\|--\|{` relationship |
-| Class | top-level classes | appends `class ID["label"]` | removes its declaration/body, `<<annotation>> ID`, `ID : member` lines, relationships, `note for ID`, `style`/`cssClass` targets | yes | `class ID["label"]`, association `A --> B` |
-| State | top-level states | appends `ID : label` (plain states only) | removes its declarations, descriptions, transitions, `note ... of ID`, `style`/`class` targets; a `[*]` left without transitions goes too | yes | `ID : label`, `A --> B` (`[*] --> A`, `A --> [*]` from start/end) |
+Flowchart, ER, class and state edits first try the family's dedicated
+rewrites below; every family then falls back to a generic engine
+(`libs/extras/mermaid/edit_engine.w`) that proposes a few minimal candidate
+splices (whole statements, single items within a row, a relation row reduced
+to the declarations of its surviving endpoints, an in-place label, a label
+inserted after the id) and commits the first one that validates. Commands that
+touch several items (deleting a selection, a group with its members) run in an
+`mm_editor_begin`/`mm_editor_commit` transaction, so they are one undo step and
+roll back together.
 
 A class or state whose only mention was a removed relationship is redeclared in
 place (`class Leg~T~`, or a bare state `Idle`), so deleting a connection never
-deletes its endpoints. Namespaces, composite states and nodes inside them
-are edited in source; so is any deletion that would reach inside a namespace or
-composite body, and class deletions in diagrams with lollipop `()--`
-interfaces, whose synthetic identities are positional. Start, end, choice,
-fork and join states have no editable label. Notes are not selectable on the
-canvas; they follow their node and are deleted with it.
+deletes its endpoints. Class deletions in diagrams with lollipop `()--`
+interfaces stay source-edited, since their synthetic identities are positional;
+so do synthetic containers (a block's root, concurrent state regions). Start,
+end, choice, fork and join states have no editable label. Notes are not
+selectable on the canvas; they follow their node and are deleted with it.
 
-Drag a top-level node to reposition it; edges follow live. Release commits one
+Groups (flowchart and swimlane `subgraph`, class `namespace`, composite
+`state X { }`, use-case `systemBoundary`, C4 `*_Boundary`, architecture
+`group`) are edited like nodes. Selecting a group and dragging or nudging it
+moves its members with it; a member keeps its offset inside the group, and a
+group grows to fit members moved or resized inside it. **Ungroup** (Ctrl+G)
+removes only the opener and closer (or architecture ` in group` suffixes), so
+the members join the parent scope. With a group id in the **Group** field,
+**Into** moves the selected node into that group, **Out** moves it to the top
+level and **Add in** adds a new node inside the group; the move carries a
+declaration with its label and shape, or adds a bare mention before the
+group's closer, and is refused when another statement inside the old group
+would still declare the node there (an edge written inside a subgraph).
+
+| Family | Move / resize | Groups | Rename | Delete | Add / Link to | Inspector |
+| --- | --- | --- | --- | --- | --- | --- |
+| Flowchart | nodes and subgraphs | subgraph move, rename, delete, ungroup, into/out, add in | in place, else `ID[label]` | chains, `style`/`class`/`linkStyle` targets | `ID["label"]`, `A --> B` | label; kind `-->`, `---`, `-.->`, `==>`, `--o`, `--x`, `<-->` |
+| ER | entities | none | in place, else `ID[label]` | relationships; attributes stay with survivors | `ID["label"]`, `\|\|--\|{` | label; cardinality (1 to 1, 1 to 1+, 1 to 0+, 1+ to 1+; `mm_editor_er_cardinality` takes any pair); attributes add/remove/set |
+| Class | classes and namespaces | namespace move, rename, delete, ungroup, into/out, add in | in place, else `class ID["label"]` | declaration/body, annotations, member lines, relationships, notes | `class ID["label"]`, `A --> B` | label; kind `-->`, `--`, `..>`, `..`, `<\|--`, `*--`, `o--`, `..\|>`; members add/remove/set |
+| State | states and composites | composite move, rename (`ID : label`), delete, into/out, add in | `ID : label` | transitions, descriptions, notes, orphaned `[*]` | `ID : label`, `A --> B`, `[*]` | transition label |
+| Requirement | requirements and elements | none | refused (labels are identifiers) | its block and relations | `requirement ID {}`, `A - traces -> B` | relation keyword; properties add/remove/set |
+| Use case | actors, use cases, boundaries | `systemBoundary` move, rename, delete, into/out, add in | in place | its statements | `ID(label)`, `A --> B` | label (`-- "label" -->`); kind `-->`, `---`, `..>` |
+| Architecture | services, junctions, groups | group move, rename, delete, ungroup, into/out (` in group`), add in | in place | its statements | `service ID(server)[label]`, `A:R --> L:B` | none (edit sides in source) |
+| Block | structural (no positions) | none | in place | the item, keeping the rest of its row | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| C4 | structural (no positions) | boundary rename, delete, into/out, add in | in place | its statements | `System(ID, "label")`, `Rel(A, B, "Uses")` | relation label |
+| Swimlane | structural (no positions) | lane rename, delete, into/out, add in | in place | its statements | `ID["label"]`, `A --> B` | label; flowchart kinds |
+| Mindmap / treeView | structural (outline) | n/a | in place (glyphs and `##` notes kept) | the subtree (the mindmap root is refused) | **Add child**, **Add sibling** | **Up** / **Down** reorder among siblings |
+
+Drag a node or group to reposition it; edges follow live. Release commits one
 undo step, while Escape restores the starting position. Small pointer jitter
 selects without moving. **Move here** followed by a destination click provides
-a non-drag alternative. Arrow keys move the selected node by one layout pixel,
+a non-drag alternative. Arrow keys move the selection by one layout pixel,
 or ten with Shift. Background dragging pans the view. Wheel zoom stays anchored
 under the pointer, **Fit** centers the diagram, and edits retain the camera.
-**Auto layout** clears the selected diagram's saved positions in one undoable
-action and fits the result. The source/canvas divider is resizable. Nested nodes can be selected and relabelled
-or deleted, but moving them or their containing groups is not yet supported.
+**Auto layout** clears the selected diagram's saved positions and sizes in one
+undoable action and fits the result. The source/canvas divider is resizable.
 
-**Add** creates a flowchart node, ER entity, class or state from the inspector
-fields. **Link to** then a destination click adds a flowchart arrow, a default
-ER relationship, a class association or a state transition; edit relationship
-kind, cardinality and labels in source.
+Shift-, Ctrl- or Cmd-click toggles a node in the selection, and a Shift-drag
+from the background draws a rubber band that adds what it touches. From the
+keyboard, Space toggles the focused item and keeps extending while Tab moves
+the focus, and Ctrl+A selects every node and group. Dragging any selected
+item, or an arrow key, moves the whole selection as one undo step (a member
+whose group is also selected rides with the group); Delete removes the whole
+selection as one step. A plain click on a selected item selects just it.
+
+A single selected node or group shows a handle at its bottom-right corner;
+dragging it, or Alt+arrows, resizes it. The size is stored next to positions
+as a standalone `%% @w-size "ID" W H` comment (minimum 8, maximum 20000
+layout pixels) that the renderer, SVG export and reopen apply after layout,
+like `%% @w-position`; for a group the size is a minimum that still grows to
+fit its members.
+
+**Add** creates a node from the inspector fields with the family's template
+(table above). **Link to** then a destination click adds the family's default
+connection. With a connection selected, the **Kind** row offers the family's
+connectors (ER: cardinalities), each replacing only the operator, and
+**Apply** edits, adds or (empty) removes its label. With a class, entity or
+requirement selected, the compartment row adds a member, attribute
+(`type name [keys]`) or property line inside the body block and removes the
+last one; `mm_editor_member_set`/`mm_editor_attribute_set` rewrite a line in
+place. Outline families use **Add child**, **Add sibling**, **Up** and
+**Down** with the label field's text.
 **SVG** writes `CURRENT_FILE.svg` using the saved manual positions too.
 
 | Shortcut | Action |
@@ -108,9 +158,14 @@ kind, cardinality and labels in source.
 | Ctrl+D / Ctrl+E / Ctrl+L / Ctrl+R | Focus canvas / source / path / label |
 | Ctrl+Enter, with label focus | Apply the selected node's label |
 | Ctrl+N | Start adding a new node/entity |
-| Tab / Shift+Tab, with canvas focus | Select next / previous node |
-| Arrows / Shift+arrows, with canvas focus | Move selected node 1 / 10 pixels |
-| Delete, with canvas focus | Delete selected node or connection |
+| Tab / Shift+Tab, with canvas focus | Select next / previous node or group |
+| Space, with canvas focus | Toggle the focused item in the selection; Tab then keeps the selection |
+| Ctrl+A, with canvas focus | Select every node and group |
+| Shift/Ctrl+click, Shift+drag on the background | Toggle a node / rubber-band select |
+| Arrows / Shift+arrows, with canvas focus | Move the selection 1 / 10 pixels |
+| Alt+arrows / Alt+Shift+arrows, with canvas focus | Resize the selected node or group 1 / 10 pixels |
+| Delete, with canvas focus | Delete the selection or the selected connection |
+| Ctrl+G, with canvas focus | Ungroup the selected group |
 | Escape | Cancel a drag, placement, connection or close prompt |
 | Ctrl+0 / Ctrl+plus / Ctrl+minus | Fit / zoom in / zoom out |
 | Ctrl+Q | Close with the unsaved-change prompt |
@@ -134,7 +189,7 @@ diagram's title), described by its family, node/group/edge counts, any
 | Item | Role | Name | Description | States / actions |
 | --- | --- | --- | --- | --- |
 | Node | list item | its label (its id when unlabeled) | `node B in Shop, 1 outgoing, 1 incoming, movable` | focusable, selected; focus and select (activate) select it |
-| Group | group | its label | `group S containing 3 items` | focusable; readable, not selectable (as with Tab) |
+| Group | group | its label | `group S containing 3 items` | focusable, selected; focus and select select it (as with Tab) |
 | Edge | list item | `Alpha to Beta: pays` | `edge from Alpha to Beta, label pays, dashed` | focusable, selected; focus and select select it |
 
 Bounds are window coordinates of the node boxes (an edge spans its endpoint
@@ -143,7 +198,9 @@ selected item is the focused accessible object, so Tab/Shift+Tab, arrows and
 Delete produce focus, selection, state and children-changed events that a
 screen reader announces. Assistive focus or selection (Orca, AT-SPI
 `GrabFocus`/`SelectChild`, UIA `SetFocus`/`SelectionItem.Select`) selects the
-item on the next frame and moves keyboard focus to the canvas. The status line
+item on the next frame and moves keyboard focus to the canvas. With a
+multi-selection every member carries the selected state and the focused item
+is the focused object; assistive select replaces the selection. The status line
 is a text object. Families whose scene does not line up with document nodes
 (pie, sequence, Gantt, ...) expose the canvas summary only. At most 2,048
 items are listed; the summary says when more exist.
@@ -339,9 +396,17 @@ system; SVG uses a matching sans-serif face, and graph labels are measured with
 the native preview's per-glyph widths.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
-breaking, stable barycentric crossing-reduction sweeps and orthogonal connectors.
-It is not upstream Dagre/ELK: complex cycles,
-parallel edges and long labels may overlap and need future routing work.
+breaking and rank promotion, dummy-node chains for edges spanning several
+ranks, barycenter sweeps with adjacent transposition and sifting (keeping the
+order with the fewest crossings),
+neighbor-aligned coordinates, channel routing between ranks and orthogonal
+connectors by default. Edges never pass through unrelated node boxes (unless a
+persisted position moves one endpoint, which drops that edge's channel route),
+ER relationships spread along entity sides in the order of their far ends,
+parallel flow edges take distinct ports in the same order, drawn crossings
+equal the rank-to-rank crossings of the chosen order, and edge labels move off
+nodes and earlier labels. It is not upstream Dagre/ELK; see [Layered layout and routing](mermaid_layout.md)
+for the algorithm, budgets and measured before/after quality.
 
 Node styles/classes and a bounded frontmatter theme subset are implemented;
 see [Styles and themes](mermaid_styling.md). Remaining gaps include
@@ -357,9 +422,10 @@ The native extension `config.layout: force` selects deterministic force-directed
 placement for flow, ER, class, state, requirement, C4, architecture, use-case and
 agentflow graphs. Each group is laid out independently and sized around its
 children. Fixed iteration budgets and a final collision pass keep sibling boxes
-disjoint and repeated exports reproducible. Dense edge routing and labels can
-still overlap. Unsupported layout names and force layout on other families are
-diagnosed rather than silently ignored.
+disjoint and repeated exports reproducible. Force layout keeps direct
+connectors (no channel routes) and the general 1,024-node budget because each
+round is quadratic. Unsupported layout names and force layout on other families
+are diagnosed rather than silently ignored.
 
 ```mermaid
 ---
@@ -388,7 +454,7 @@ This is subset coverage, not a claim of upstream rendering or syntax parity.
 | State transitions | `-->`, optional `: label`, cycles/self transitions, scope-local `[*]` initial and final nodes |
 | State structures | Nested `state ID { ... }`, transitions to/from composites, `<<choice>>`, `<<fork>>`, `<<join>>` |
 | Direction | Top-level and group-local `direction TB`, `TD`, `BT`, `LR`, `RL`; children inherit their containing group's direction |
-| Output and editing | Shared native/SVG geometry, lossless read/write and source edits, editor preview/history/save and top-level canvas editing (select, drag, rename, delete, add, link) for both families |
+| Output and editing | Shared native/SVG geometry, lossless read/write and source edits, editor preview/history/save and canvas editing (select, drag, resize, rename, delete, add, link, member edits) for both families, including namespaces and composite states |
 
 Groups reserve space for their children before the containing graph is laid out.
 Namespaces render as labeled containers; composite states render with their own
@@ -491,21 +557,34 @@ mm_document_free(doc)
   an owned location/message string.
 - `editor`: UI-independent source history, diagram selection, structured flowchart
   additions, hit testing, dirty state, disk polling (`mm_editor_poll`), Keep mine,
-  reload, compare-and-swap save (`mm_editor_save_checked`) and gesture state.
+  reload, compare-and-swap save (`mm_editor_save_checked`) and gesture state:
+  set moves (`mm_editor_move_begin_set`, `mm_editor_move_nodes`), resizing
+  (`mm_editor_resize_node`) and `mm_editor_begin`/`commit`/`rollback`
+  transactions that make several commands one undo step.
 - `save_guard`: disk fingerprints and comparison, and the compare-and-swap save.
-- `edit_commands`: transactional label/delete commands for flowchart, ER, class
-  and state diagrams, `mm_editor_edit_reason`, ER/class/state additions
-  (`mm_editor_add_graph_node`) and connections (`mm_editor_connect`).
-- `positions`: bounded source position hints applied before rendering connections.
-- `canvas`: display-independent selection, movement, navigation and connection state.
+- `edit_commands`: transactional label/delete commands for every graphically
+  editable family, `mm_editor_edit_reason`, additions (`mm_editor_add_graph_node`,
+  `mm_editor_add_node_in`), connections (`mm_editor_connect`), group commands
+  (`mm_editor_ungroup`, `mm_editor_reparent`, `mm_editor_delete_nodes`) and
+  inspector commands (`mm_editor_edge_label`, `mm_editor_edge_kind`,
+  `mm_editor_er_cardinality`, `mm_editor_attribute_*`, `mm_editor_member_*`).
+- `edit_engine`: the generic validated splice engine those commands fall back to.
+- `edit_outline`: mindmap/treeView rename, delete, add child/sibling and reorder.
+- `positions`: bounded source position and size hints (`@w-position`, `@w-size`)
+  applied after layout, outermost group first, before rendering connections.
+- `canvas`: display-independent selection (single, multi-selection, rubber band),
+  movement, resizing, navigation and connection state.
 - `graphics.mermaid`: `mm_ui_render` draws a scene into a clipped viewport with
   zoom and pan using an existing `ui_renderer`.
 - `graphics.mermaid_access`: `mm_access_canvas` adds the canvas semantics to a
   snapshot; `mm_access_apply` applies assistive focus/select requests.
 
-The shared source limit is 1 MiB. Graph documents permit at most 1,024 nodes and
-1,024 edges; graph attributes/members have 1,024-per-node and 4,096-document
-budgets. Common graph/container nesting is capped at 32 levels. Some families
+The shared source limit is 1 MiB. Flowchart and ER documents permit at most
+4,096 nodes and 8,192 edges (ER attributes: 1,024 per entity, 16,384 per
+document); the other graph documents keep 1,024 nodes and 1,024 edges, and
+attributes/members have 1,024-per-node and 4,096-document budgets. Force layout
+is limited to 1,024 nodes. The measurements behind these budgets are in
+[Layered layout and routing](mermaid_layout.md). Common graph/container nesting is capped at 32 levels. Some families
 have different limits: hierarchy depth, data values/entries, railroad expressions
 and metadata budgets are specified in their linked references. Parsing rejects
 invalid UTF-8, embedded NUL and non-whitespace ASCII controls. Source bytes remain
@@ -578,5 +657,9 @@ The #706 follow-up tests add canonical model serialization, selected Markdown
 edits, stale-file save guards, native concave-polygon filling, force-layout
 repeatability/collision checks, layered crossing reduction, extended shapes/link
 styles, vertical GitGraph lane bounds, and the semantic cases described in each
-family reference. Native and SVG consume the same display lists; geometry tests
+family reference. `routing_test` measures dense flowchart and crowded ER
+stress fixtures (no edge through an unrelated node, no collinear overlaps of
+unrelated edges, no overlapping labels or ER ports, bounded crossings),
+manual positions overriding layout routes, and the raised flowchart/ER
+budgets at 2,000 nodes. Native and SVG consume the same display lists; geometry tests
 do not claim browser pixel parity or additional desktop-platform qualification.

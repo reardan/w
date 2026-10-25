@@ -154,19 +154,21 @@ void test_mermaid_positions_title_gutter_and_styles_survive_refresh():
 	free(restored)
 	mm_editor_free(e)
 
-void test_mermaid_move_rejects_groups_and_resets_stale_gestures():
-	mm_editor* e = mm_editor_new(c"unused.mmd", c"flowchart TD\nsubgraph Group\nA\nend\nB\n%% @w-position A 500 600\n%% @w-position Group 500 600\n")
+void test_mermaid_move_groups_nested_and_resets_stale_gestures():
+	mm_editor* e = mm_editor_new(c"unused.mmd", c"flowchart TD\nsubgraph Group\nA\nend\nB\n%% @w-position A 500 600\n")
 	asserts(c"group parses", e.document.error == 0)
 	int group = mm_find_node(e.document, c"Group")
 	int nested = mm_find_node(e.document, c"A")
 	int top = mm_find_node(e.document, c"B")
-	assert_equal(0, mm_editor_can_move(e, group))
-	assert_equal(0, mm_editor_can_move(e, nested))
+	assert_equal(1, mm_editor_can_move(e, group))
+	assert_equal(1, mm_editor_can_move(e, nested))
 	assert_equal(0, mm_editor_move_begin(e, -1))
 	assert_equal(0, mm_editor_move_begin(e, 100))
-	assert_equal(0, mm_editor_move_begin(e, group))
-	assert_equal(0, mm_editor_move_begin(e, nested))
-	asserts(c"nested metadata ignored", e.scene.nodes[nested].x != 500)
+	# A nested record places the member; its group grows to keep enclosing it.
+	assert_equal(500, e.scene.nodes[nested].x)
+	assert_equal(600, e.scene.nodes[nested].y)
+	mm_bounds* box = e.scene.nodes[group]
+	asserts(c"group encloses moved member", box.x + box.w >= 500 + e.scene.nodes[nested].w && box.y + box.h >= 600 + e.scene.nodes[nested].h)
 	assert_equal(1, mm_editor_move_begin(e, top))
 	assert_equal(1, mm_editor_move_preview(e, 400, 500))
 	assert_equal(1, mm_editor_change(e, c"flowchart LR\nDifferent\n"))
@@ -179,10 +181,12 @@ void test_mermaid_move_rejects_groups_and_resets_stale_gestures():
 	assert_equal(0, e.moving)
 	assert_equal(0, mm_editor_move_commit(e))
 	mm_editor_change(e, c"classDiagram\nnamespace N {\nclass A\n}\n")
-	assert_equal(0, mm_editor_can_move(e, mm_find_node(e.document, c"N")))
-	assert_equal(0, mm_editor_can_move(e, mm_find_node(e.document, c"A")))
+	assert_equal(1, mm_editor_can_move(e, mm_find_node(e.document, c"N")))
+	assert_equal(1, mm_editor_can_move(e, mm_find_node(e.document, c"A")))
 	mm_editor_change(e, c"pie\n\"A\" : 1\n")
 	assert_equal(0, mm_editor_can_move(e, 0))
+	mm_editor_change(e, c"mindmap\n  root\n    child\n")
+	assert_equal(0, mm_editor_can_move(e, 1))
 	mm_editor_free(e)
 
 void test_mermaid_position_comments_cannot_execute_accessibility_text():
@@ -275,8 +279,20 @@ void test_mermaid_class_and_state_positions_persist_and_reset():
 		assert_strings_equal(sources[i], e.document.source)
 		mm_editor_free(e)
 	mm_editor* e = mm_editor_new(c"unused.mmd", c"stateDiagram-v2\nstate Outer {\n[*] --> Inner\n}\n")
-	assert_equal(0, mm_editor_can_move(e, mm_find_node(e.document, c"Outer")))
-	assert_equal(0, mm_editor_can_move(e, mm_find_node(e.document, c"Inner")))
+	# Composite states and their members move; a composite carries its members.
+	int outer = mm_find_node(e.document, c"Outer")
+	int inner = mm_find_node(e.document, c"Inner")
+	assert_equal(1, mm_editor_can_move(e, outer))
+	assert_equal(1, mm_editor_can_move(e, inner))
+	int dx = e.scene.nodes[inner].x - e.scene.nodes[outer].x
+	int dy = e.scene.nodes[inner].y - e.scene.nodes[outer].y
+	assert_equal(1, mm_editor_move_node(e, outer, 700, 500))
+	outer = mm_find_node(e.document, c"Outer")
+	inner = mm_find_node(e.document, c"Inner")
+	assert_equal(700, e.scene.nodes[outer].x)
+	assert_equal(700 + dx, e.scene.nodes[inner].x)
+	assert_equal(500 + dy, e.scene.nodes[inner].y)
+	asserts(c"one group record", index_of(e.document.source, c"%% @w-position \"Outer\" 700 500\n") >= 0 && index_of(e.document.source, c"\"Inner\"") < 0)
 	mm_editor_free(e)
 	__w_list_free(cast(__w_list*, sources))
 	__w_list_free(cast(__w_list*, ids))

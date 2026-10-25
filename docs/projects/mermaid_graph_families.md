@@ -14,7 +14,11 @@ positioned diagnostic and suppresses the preview.
   against declarations. Requirement fields render in compartments with type
   annotations. Containment uses a circle-plus endpoint and other relationships
   use labelled dashed dependency arrows. Node styles/classes and link styles are
-  supported; rich Markdown and broader configuration remain incomplete.
+  supported, including `name:::class` on a definition or as its own
+  statement. `direction TB|BT|LR|RL` sets the layout direction. Keywords are
+  case-insensitive as in upstream's lexer (`docRef`, `verifyMethod: Test`,
+  `Satisfies`); members keep their written spelling. Rich Markdown and
+  broader configuration remain incomplete.
 - **Mindmaps:** a single indentation-based tree with plain text, `[square]`,
   `(rounded)`, `((circle))`, `)cloud(`, `))bang((` and `{{hexagon}}` labels. A
   dedicated subtree-height layout keeps sibling branches separate. Nesting is
@@ -28,8 +32,9 @@ positioned diagnostic and suppresses the preview.
   of the shallower one; a second unindented node is still a second root and
   fails. Nodes are filled per branch (the root's child they descend from) as
   upstream's section colours, or per depth with `config: mindmap: colorBy:
-  depth`; themes repaint them from `cScale0`–`cScale11`. Other `mindmap`
-  keys (`padding`, `maxNodeWidth`) are ignored and recorded.
+  depth`; themes repaint them from `cScale0`–`cScale11`. Labels wrap at
+  `mindmap.maxNodeWidth` (default 200px, measured per glyph) and nodes grow
+  by the extra lines. `padding` is ignored and recorded.
 - **Kanban:** indentation-based columns and cards, explicit or generated IDs,
   assigned/ticket/priority metadata, validated priorities. Columns contain their
   cards and metadata in a dedicated column layout. Frontmatter
@@ -43,9 +48,11 @@ positioned diagnostic and suppresses the preview.
   the column title, above the header rule. A `label:` key replaces the
   bracket title on columns and cards. A repeated ID (upstream's own example
   reuses `id3`) keeps both items: the repeat gets a generated internal ID and
-  records the written one as its `id` property. Other `kanban` settings
-  (`sectionWidth`, …) and rendering cards without their metadata are not yet
-  supported; unknown `kanban` settings and metadata keys are diagnosed.
+  records the written one as its `id` property. Column and card titles
+  wrap at `kanban.sectionWidth` (default 200px, measured per glyph), and
+  boxes grow by the extra lines. Other `kanban` settings and rendering cards
+  without their metadata are not yet supported; unknown `kanban` settings
+  and metadata keys are diagnosed.
 
 Tests cover semantic structures, geometry, lossless writing, forward references,
 errors, and every byte-prefix of representative inputs. Tests run on x86 and
@@ -65,7 +72,7 @@ x64, including the guard allocator's leak checks.
   (`highlightBg` / `highlightStroke`). `config: treeView: showIcons: true` adds folder icons
   for directories (a trailing `/` or children) and file icons otherwise;
   `filenameIcons: { Dockerfile: docker }` maps whole names (extension maps
-  need dotted YAML keys, which the frontmatter reader does not accept yet).
+  are dotted YAML keys such as `.ts:`, or `ts:`; the longest suffix wins).
   `rowIndent` and `lineThickness` change the row indent and connector width,
   and `themeVariables: treeView:` `labelColor`, `lineColor`,
   `descriptionColor`, `iconColor`, `highlightBg` and `highlightStroke`
@@ -91,9 +98,19 @@ x64, including the guard allocator's leak checks.
   the central Confusion ellipse (15% of the field). Each domain shows its bold
   name, decision model and practice, then its quoted items as pill badges;
   Confusion shows at most three badges plus "+N more". Transitions are
-  quadratic curves between domain centres bowed by 15% of their length, with
-  the label at the control point; self-loops are skipped as upstream. Dense
-  transition routing and the `seed`/theme configuration remain open.
+  quadratic curves bowed by 15% of their chord, as upstream, but routed for
+  dense diagrams (issue #817): each domain's name, model, practice and badges
+  form a keep-out block; a transition runs on a line offset 8px left of its
+  direction (16px further per earlier transition between the same domains
+  in the same direction) from where that line leaves the source block to
+  where it enters the target's, bowing to the same side (+15% per repeat),
+  so reverse and repeated transitions nest instead of coinciding and arrows
+  never land on domain text. A curve that would enter a third domain's block
+  or run alongside an earlier transition tries 30%/60% larger and then a
+  smaller opposite bow. Labels sit beside the curve's midpoint and move
+  along/across it until they overlap no block and no other label. Self-loops
+  are skipped as upstream. Link-link crossings are reduced, not minimized;
+  the `seed`/theme configuration remains open.
 - **Wardley:** anchors/components at validated visibility/evolution
   coordinates, a title, forward-resolved links and labelled evolution stages.
   Coordinates use bounded thousandths. `size [width, height]` (100–4000
@@ -135,19 +152,30 @@ x64, including the guard allocator's leak checks.
   xmark → cross, info, warn/exclamation/alert → warning triangle,
   search/magnif → magnifier, code/terminal → `</>`, bulb/idea → bulb,
   link/chain, envelope/mail, calendar, lock/key, globe/earth/web, brain,
-  flag. Any other name draws a round badge with its first letter
+  flag, ban, spinner, camera, truck, twitter/bird, phone/mobile, trash,
+  pencil/edit, plus, minus, play, bell. Flowchart labels use the same table
+  for Font Awesome prefixes (`fa:fa-ban`, `fab:`/`fas:`/`far:`/`fal:`/`fak:`,
+  matched as upstream's `fa[bklrs]?:fa-[\w-]+`): each reference becomes a
+  pictogram in its place in the line instead of text. Any other name draws a round badge with its first letter
   (`logos:react` → `R`). No icon font or pack is downloaded or bundled.
 
 - **GitGraph:** commit IDs, normal/reverse/highlight shapes, tags, branch
   creation, checkout/switch and merge commits with two parents. Branch heads
   determine commit ancestry; a dedicated time/lane layout shows history.
-  Duplicate IDs/branches, unknown checkouts, empty/self/same-head merges fail.
+  `commit "text"` and `commit msg: "text"` keep the message as `msg`
+  metadata (upstream does not draw it either). A repeated commit id is
+  accepted as upstream's commit map does: the id is rebound to the newer
+  commit, so later cherry-picks resolve to it, and the older commit keeps
+  its label under an internal `<id>~N` id. Upstream then stops drawing the
+  older commit; it stays drawn here. A merge with an existing custom id,
+  duplicate branches, unknown checkouts and empty/self/same-head merges fail.
   The layout supports LR, TB and BT. `branch name order: N` sorts explicitly
   ordered branches after unspecified branches, with stable ties. `cherry-pick
   id: "source"` creates a new commit on the current branch and retains source
   metadata without introducing false merge ancestry. Merge picks require an
   immediate `parent: "id"`; tags are supported. Missing/same-branch source
-  commits and invalid merge parents are diagnosed. Custom branch configuration
+  commits and invalid merge parents are diagnosed. Commit spacing and lane
+  sizes come from measured label widths. Custom branch configuration
   remains unsupported.
 - **Block:** source-ordered grids, up to 64 columns, column spans, empty spaces,
   nested composites (up to 32 levels) and labelled solid links. Node shapes:
@@ -156,13 +184,18 @@ x64, including the guard allocator's leak checks.
   `> ]`, rhombus `{ }`, hexagon `{{ }}`, parallelograms `[/ /]`/`[\ \]` and
   trapezoids `[/ \]`/`[\ /]`. Block arrows `id<["label"]>(dir)` accept
   `right`, `left`, `up`, `down`, `x` (both horizontal) and `y` (both
-  vertical) and take spans like other blocks. `style`, `classDef`, `class`
+  vertical) and take spans like other blocks; a comma-separated list such
+  as `(x, down)` draws one arrow with a head per listed direction around a
+  central square. `block:id:2` spans a composite over two parent columns.
+  `A-- "X" -->B` (also `==` and `-.` openings) labels a link like
+  `A-->|X|B`. `style`, `classDef`, `class`
   and inline `:::class` use the shared style subset (fill, stroke, color,
   stroke-width) on blocks and composites, and `linkStyle` on links; styling
   an undeclared block fails. Span overflow and malformed blocks fail
   explicitly. Column widths grow by actual content, so one large label does
   not multiply across every column. Dotted/thick links and block-arrow
-  geometry beyond the six directions remain unsupported.
+  geometry other than the six directions and their combinations remain
+  unsupported.
 
 - **Architecture:** services, nested groups, junctions, all sixteen
   source/target port pairs, arrowheads at either end, and explicit
@@ -289,6 +322,18 @@ x64, including the guard allocator's leak checks.
   step stays in the lane that first declares it; naming it inside a nested
   sub-lane of that lane moves it there. The layout aligns graph ranks across
   full-length lanes rather than treating lanes as ordinary clustered graphs.
+  Links are routed orthogonally (issue #817): rank columns never overlap, so
+  the gap after each column is a free channel. A link leaves its step's far
+  side into the channel after the source column, runs along a clear track
+  (the target's or source's centre line when nothing lies between the two
+  channels, else the nearest line just past a blocking step or a nested
+  lane's title band) to the channel before the target column and enters
+  the target's near side; backward links and same-rank links use the same
+  scheme, so no link segment crosses a step box in any direction.
+  Unrelated links sharing a channel or track are offset in 8px slots, and a
+  label takes the first position along its segment that overlaps no step
+  and no earlier label. Link-link crossings are not minimized and steps are
+  not reordered to avoid them.
 - **Event modeling:** compact/relaxed timeframe and resetframe declarations with
   1–3 digit identifiers, all five entity types, namespace-derived lanes
   (ordered UI/automation, command/read model, events as upstream), inferred

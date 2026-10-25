@@ -51,12 +51,44 @@ void mm_block_arrow_direction(mm_parser* p, mm_node* n):
 	if (mm_match(p, c"(") == 0):
 		mm_error(p.doc, p.pos, c"expected block arrow direction right, left, up, down, x or y")
 		return
-	int at = p.pos
-	char* direction = mm_identifier(p)
-	mm_space(p)
-	if (mm_in_words(direction, c"|right|left|up|down|x|y|") == 0 || mm_match(p, c")") == 0): mm_error(p.doc, at, c"expected block arrow direction right, left, up, down, x or y")
+	# A comma-separated list (`(x, down)`) points the arrow several ways, as
+	# upstream's dirList does; x is left and right, y is up and down.
+	int heads = 0
+	int count = 0
+	char* single = strclone(c"")
+	while (p.doc.error == 0):
+		int at = p.pos
+		char* direction = mm_identifier(p)
+		mm_space(p)
+		if (mm_in_words(direction, c"|right|left|up|down|x|y|") == 0): mm_error(p.doc, at, c"expected block arrow direction right, left, up, down, x or y")
+		if (strcmp(direction, c"right") == 0 || strcmp(direction, c"x") == 0): heads = heads | 1
+		if (strcmp(direction, c"left") == 0 || strcmp(direction, c"x") == 0): heads = heads | 2
+		if (strcmp(direction, c"up") == 0 || strcmp(direction, c"y") == 0): heads = heads | 4
+		if (strcmp(direction, c"down") == 0 || strcmp(direction, c"y") == 0): heads = heads | 8
+		free(single)
+		single = direction
+		count = count + 1
+		if (count > 6): mm_error(p.doc, at, c"expected block arrow direction right, left, up, down, x or y")
+		if (mm_match(p, c",") == 0): break
+		mm_space(p)
+	if (p.doc.error == 0 && mm_match(p, c")") == 0): mm_error(p.doc, p.pos, c"expected block arrow direction right, left, up, down, x or y")
 	free(n.direction)
-	n.direction = direction
+	# One direction keeps its spelling; a list is stored as the canonical
+	# head set joined with commas (right,left,up,down order).
+	if (count == 1): n.direction = single
+	else:
+		free(single)
+		string_builder* joined = string_new()
+		list[char*] names = list[char*]{c"right", c"left", c"up", c"down"}
+		for i in range(4):
+			if ((heads & (1 << i)) != 0):
+				if (joined.length != 0): string_append_char(joined, ',')
+				string_append(joined, names[i])
+		__w_list_free(cast(__w_list*, names))
+		if (strcmp(joined.data, c"right,left") == 0): n.direction = strclone(c"x")
+		else if (strcmp(joined.data, c"up,down") == 0): n.direction = strclone(c"y")
+		else: n.direction = strclone(joined.data)
+		string_free(joined)
 
 int mm_block_node(mm_parser* p, int parent):
 	char* id = mm_identifier(p)
@@ -164,6 +196,11 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 			n.parent = parent
 			free(n.label)
 			n.label = strclone(c"")
+			# `block:id:2` spans two of the parent's columns (value_x holds
+			# the composite's own column count, so the span is value_y).
+			n.value_y = 1
+			mm_space(p)
+			if (mm_match(p, c":")): n.value_y = mm_small_positive(p)
 			mm_separators(p)
 			mm_block_body(p, index, depth + 1)
 		else if (mm_keyword(p, c"space")):
@@ -183,6 +220,18 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 		else:
 			int from = mm_block_node(p, parent)
 			mm_space(p)
+			# `A-- "X" -->B`: an opening `--`, `==` or `-.`, a quoted label,
+			# then the link itself, as upstream's START_LINK LINK_LABEL.
+			char* inline_label = 0
+			int opening = p.pos
+			if (mm_match(p, c"--") || mm_match(p, c"==") || mm_match(p, c"-.")):
+				if (mm_peek(p) == 32 || mm_peek(p) == 9 || mm_peek(p) == '"'):
+					mm_space(p)
+					if (mm_peek(p) == '"'):
+						inline_label = mm_quoted(p)
+						mm_space(p)
+					else: p.pos = opening
+				else: p.pos = opening
 			int dashed = 0
 			int arrow = mm_match(p, c"-->")
 			if (arrow == 0 && mm_match(p, c"-.->")):
@@ -198,10 +247,14 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 			else if (line == 0 && mm_match(p, c"===")):
 				line = 1
 				dashed = 2
+			if (inline_label != 0 && line == 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"expected link after link label")
 			if (line && p.doc.error == 0):
 				char* label = strclone(c"")
+				if (inline_label != 0):
+					free(label)
+					label = strclone(inline_label)
 				mm_space(p)
-				if (mm_match(p, c"|")):
+				if (inline_label == 0 && mm_match(p, c"|")):
 					free(label)
 					label = mm_until(p, '|')
 				int to = mm_block_node(p, parent)
@@ -215,6 +268,7 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 					e.dashed = dashed
 					p.doc.edges.push(e)
 				free(label)
+			if (inline_label != 0): free(inline_label)
 		mm_separators(p)
 	if (depth > 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"unterminated composite block")
 
@@ -229,9 +283,11 @@ void mm_blocks_parse(mm_parser* p):
 	mm_block_body(p, root, 0)
 	for mm_node* n in p.doc.nodes:
 		if (n.declared == 0 && n.shape != -1): mm_error(p.doc, p.pos, c"style references undeclared block")
-		if (n.parent >= 0 && n.group == 0):
+		if (n.parent >= 0):
 			mm_node* parent = p.doc.nodes[n.parent]
-			if (parent.value_x > 0 && n.value_x > parent.value_x): mm_error(p.doc, p.pos, c"block span exceeds parent columns")
+			int span = n.value_x
+			if (n.group): span = n.value_y
+			if (parent.value_x > 0 && span > parent.value_x): mm_error(p.doc, p.pos, c"block span exceeds parent columns")
 
 void mm_blocks_measure(mm_document* d, mm_scene* s, int parent):
 	mm_node* group = d.nodes[parent]
@@ -252,16 +308,17 @@ void mm_blocks_measure(mm_document* d, mm_scene* s, int parent):
 		mm_bounds* b = s.nodes[i]
 		if (n.group): mm_blocks_measure(d, s, i)
 		else:
-			b.w = strlen(n.label) * 8 + 40
+			b.w = mm_text_width(n.label, 0) + 40
 			b.h = 60
 			if (n.shape == 2 || n.shape == MM_BLOCK_DOUBLE_CIRCLE): b.h = b.w
 			if (n.shape == 3 || n.shape == 23): b.w = b.w + 40
 			if (n.shape == 3): b.h = 80
 			if (n.shape == MM_BLOCK_ARROW):
 				b.w = b.w + 60
-				if (strcmp(n.direction, c"up") == 0 || strcmp(n.direction, c"down") == 0 || strcmp(n.direction, c"y") == 0): b.h = 100
+				if (index_of(n.direction, c"up") >= 0 || index_of(n.direction, c"down") >= 0 || strcmp(n.direction, c"y") == 0): b.h = 100
 		int span = n.value_x
-		if (n.group || span == 0): span = 1
+		if (n.group): span = n.value_y
+		if (span <= 0): span = 1
 		if (span > columns): span = columns
 		if (col + span > columns):
 			col = 0
@@ -314,7 +371,45 @@ void mm_blocks_polygon(mm_scene* s, mm_bounds* b, list[int] points):
 	mm_primitive* polygon = s.items[s.items.length - 1]
 	polygon.points = points
 
+# A multi-headed arrow (`(x, down)`, stored "right,left,down"): a central
+# square with one shaft and head per listed direction, traced clockwise.
+list[int] mm_blocks_multi_arrow_points(char* direction, int x, int y, int w, int h):
+	int size = w
+	if (h < size): size = h
+	int t = size / 6
+	int hw = size / 3
+	int hl = size / 3
+	int cx = x + w / 2
+	int cy = y + h / 2
+	list[int] points = new list[int]
+	points.push(cx - t)
+	points.push(cy - t)
+	if (index_of(direction, c"up") >= 0):
+		list[int] arm = list[int]{cx - t, y + hl, cx - hw, y + hl, cx, y, cx + hw, y + hl, cx + t, y + hl}
+		for int value in arm: points.push(value)
+		__w_list_free(cast(__w_list*, arm))
+	points.push(cx + t)
+	points.push(cy - t)
+	if (index_of(direction, c"right") >= 0):
+		list[int] arm = list[int]{x + w - hl, cy - t, x + w - hl, cy - hw, x + w, cy, x + w - hl, cy + hw, x + w - hl, cy + t}
+		for int value in arm: points.push(value)
+		__w_list_free(cast(__w_list*, arm))
+	points.push(cx + t)
+	points.push(cy + t)
+	if (index_of(direction, c"down") >= 0):
+		list[int] arm = list[int]{cx + t, y + h - hl, cx + hw, y + h - hl, cx, y + h, cx - hw, y + h - hl, cx - t, y + h - hl}
+		for int value in arm: points.push(value)
+		__w_list_free(cast(__w_list*, arm))
+	points.push(cx - t)
+	points.push(cy + t)
+	if (index_of(direction, c"left") >= 0):
+		list[int] arm = list[int]{x + hl, cy + t, x + hl, cy + hw, x, cy, x + hl, cy - hw, x + hl, cy - t}
+		for int value in arm: points.push(value)
+		__w_list_free(cast(__w_list*, arm))
+	return points
+
 list[int] mm_blocks_arrow_points(char* direction, int x, int y, int w, int h):
+	if (index_of(direction, c",") >= 0): return mm_blocks_multi_arrow_points(direction, x, y, w, h)
 	if (strcmp(direction, c"left") == 0):
 		int head = h / 2
 		return list[int]{x + w, y + h / 4, x + head, y + h / 4, x + head, y, x, y + h / 2, x + head, y + h, x + head, y + h * 3 / 4, x + w, y + h * 3 / 4}
@@ -405,7 +500,7 @@ mm_scene* mm_blocks_render(mm_document* d):
 		if (n.shape == -1): continue
 		int style_start = s.items.length
 		mm_blocks_shape(s, n, b)
-		if (n.group == 0): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + (b.h - 16) / 2, n.label)
+		if (n.group == 0): mm_text(s, b.x + (b.w - mm_text_width(n.label, 0)) / 2, b.y + (b.h - 16) / 2, n.label)
 		mm_style_node(d, s, n, style_start)
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]

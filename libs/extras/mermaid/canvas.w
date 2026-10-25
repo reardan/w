@@ -18,6 +18,21 @@ struct mm_canvas:
 	int start_y
 	int move_here
 	int connect_from
+	# Multi-selection: every selected node, `node` among them when set.
+	# Empty means only `node` (if any) is selected.
+	list[int] selection
+	# Sticky extend (keyboard Space): the next selection change adds.
+	int extend
+	# Rubber band (gesture 3) corners in viewport pixels.
+	float32 band_x
+	float32 band_y
+	int band_additive
+
+# Gestures: 1 pan, 2 move node or selection, 3 rubber band, 4 resize.
+# Press modifier bits (callers map shift/ctrl to MM_CANVAS_EXTEND).
+const int MM_CANVAS_EXTEND = 1
+# Resize handle half-size in viewport pixels (bottom-right corner).
+const int MM_CANVAS_HANDLE = 6
 
 void mm_canvas_init(mm_canvas* c):
 	c.zoom = 1.0
@@ -29,6 +44,81 @@ void mm_canvas_init(mm_canvas* c):
 	c.dragged = 0
 	c.move_here = 0
 	c.connect_from = -1
+	c.selection = new list[int]
+	c.extend = 0
+	c.band_x = 0.0
+	c.band_y = 0.0
+	c.band_additive = 0
+
+void mm_canvas_clear_selection(mm_canvas* c):
+	if (c.selection == 0): c.selection = new list[int]
+	while (c.selection.length > 0): c.selection.pop()
+
+# With an empty `selection`, `node` alone is selected; otherwise exactly
+# the listed nodes are, and `node` is the focused one (possibly unselected
+# while Space-extending).
+int mm_canvas_selected(mm_canvas* c, int index):
+	if (index < 0): return 0
+	if (c.selection == 0 || c.selection.length == 0): return index == c.node
+	for int i in c.selection:
+		if (i == index): return 1
+	return 0
+
+# The selected node indices, ascending, as a new list (caller frees).
+list[int] mm_canvas_selected_nodes(mm_canvas* c, mm_editor* e):
+	list[int] result = new list[int]
+	for i in range(e.document.nodes.length):
+		if (mm_canvas_selected(c, i)): result.push(i)
+	return result
+
+int mm_canvas_selection_count(mm_canvas* c, mm_editor* e):
+	list[int] all = mm_canvas_selected_nodes(c, e)
+	int count = all.length
+	__w_list_free(cast(__w_list*, all))
+	return count
+
+# The one selected node, or -1 when none or several are selected.
+int mm_canvas_single(mm_canvas* c, mm_editor* e):
+	list[int] all = mm_canvas_selected_nodes(c, e)
+	int one = -1
+	if (all.length == 1): one = all[0]
+	__w_list_free(cast(__w_list*, all))
+	return one
+
+# A node the canvas may select: real (not a synthetic '@' container) in a
+# family the canvas edits.
+int mm_canvas_selectable(mm_editor* e, int index):
+	if (e.scene == 0 || index < 0 || index >= e.document.nodes.length): return 0
+	if (mm_canvas_edit_family(e.document.kind) == 0): return 0
+	if (e.scene.nodes.length != e.document.nodes.length): return 0
+	if (e.document.nodes[index].group && e.document.nodes[index].id[0] == '@'): return 0
+	return mm_flow_visible_node(e.document, index) == index
+
+# Toggle membership (shift/ctrl-click); focus follows the toggled node.
+void mm_canvas_toggle_node(mm_canvas* c, mm_editor* e, int index):
+	if (mm_canvas_selectable(e, index) == 0): return
+	if (c.selection == 0): c.selection = new list[int]
+	if (c.selection.length == 0 && c.node >= 0 && c.node < e.document.nodes.length): c.selection.push(c.node)
+	int found = -1
+	for i in range(c.selection.length):
+		if (c.selection[i] == index): found = i
+	c.edge = -1
+	c.node = index
+	if (found < 0):
+		c.selection.push(index)
+		return
+	for i in range(found, c.selection.length - 1): c.selection[i] = c.selection[i + 1]
+	c.selection.pop()
+	if (c.selection.length == 0): c.node = -1
+
+void mm_canvas_select_all(mm_canvas* c, mm_editor* e):
+	mm_canvas_clear_selection(c)
+	c.edge = -1
+	c.extend = 0
+	for i in range(e.document.nodes.length):
+		if (mm_canvas_selectable(e, i)):
+			c.selection.push(i)
+			c.node = i
 
 void mm_canvas_cancel(mm_canvas* c, mm_editor* e):
 	mm_editor_move_cancel(e)
@@ -46,6 +136,8 @@ void mm_canvas_reset(mm_canvas* c, mm_editor* e):
 	mm_canvas_cancel(c, e)
 	c.node = -1
 	c.edge = -1
+	c.extend = 0
+	mm_canvas_clear_selection(c)
 
 void mm_canvas_zoom(mm_canvas* c, float32 factor, float32 x, float32 y):
 	float32 next = c.zoom * factor
@@ -115,32 +207,69 @@ int mm_canvas_bound_y(mm_editor* e, int y):
 	if (y > 100000 + top): return 100000 + top
 	return y
 
-# Returns 1 only when a click mode committed a source change.
-int mm_canvas_press(mm_canvas* c, mm_editor* e, float32 x, float32 y):
+# The bottom-right resize handle of the primary node, in viewport pixels.
+int mm_canvas_on_handle(mm_canvas* c, mm_editor* e, float32 x, float32 y):
+	if (c.node < 0 || mm_canvas_single(c, e) != c.node || mm_editor_can_resize(e, c.node) == 0): return 0
+	mm_bounds* b = e.scene.nodes[c.node]
+	float32 hx = c.pan_x + cast(float32, b.x + b.w) * c.zoom
+	float32 hy = c.pan_y + cast(float32, b.y + b.h) * c.zoom
+	float32 size = cast(float32, MM_CANVAS_HANDLE)
+	return x >= hx - size && x <= hx + size && y >= hy - size && y <= hy + size
+
+# Returns 1 only when a click mode committed a source change. `mods`
+# carries MM_CANVAS_EXTEND for shift/ctrl-click (toggle, rubber band).
+int mm_canvas_press_mods(mm_canvas* c, mm_editor* e, float32 x, float32 y, int mods):
 	int wx = cast(int, (x - c.pan_x) / c.zoom)
 	int wy = cast(int, (y - c.pan_y) / c.zoom)
+	int extend = (mods & MM_CANVAS_EXTEND) != 0 || c.extend
 	if (c.move_here && mm_editor_can_move(e, c.node)):
 		int ok = mm_editor_move_node(e, c.node, mm_canvas_bound_x(wx), mm_canvas_bound_y(e, wy))
 		c.move_here = 0
 		return ok
-	int hit = mm_editor_hit(e, wx, wy)
-	if (c.connect_from >= 0 && hit >= 0):
-		int ok = 0
-		if (e.document.kind == MM_ER): ok = mm_editor_add_relationship(e, e.document.nodes[c.connect_from].id, e.document.nodes[hit].id, c"relates", 1, 3, 0)
-		else: ok = mm_editor_connect(e, e.document.nodes[c.connect_from].id, e.document.nodes[hit].id)
-		c.connect_from = -1
-		c.node = hit
-		c.edge = -1
-		return ok
-	c.node = hit
-	c.edge = -1
-	if (hit < 0): c.edge = mm_canvas_hit_edge(c, e, x, y)
 	c.press_x = x
 	c.press_y = y
 	c.start_pan_x = c.pan_x
 	c.start_pan_y = c.pan_y
 	c.dragged = 0
 	c.gesture = 0
+	if (extend == 0 && c.connect_from < 0 && mm_canvas_on_handle(c, e, x, y)):
+		c.gesture = 4
+		c.start_x = e.scene.nodes[c.node].w
+		c.start_y = e.scene.nodes[c.node].h
+		return 0
+	int hit = mm_editor_hit(e, wx, wy)
+	if (c.connect_from >= 0 && hit >= 0):
+		int ok = 0
+		if (e.document.kind == MM_ER): ok = mm_editor_add_relationship(e, e.document.nodes[c.connect_from].id, e.document.nodes[hit].id, c"relates", 1, 3, 0)
+		else: ok = mm_editor_connect(e, e.document.nodes[c.connect_from].id, e.document.nodes[hit].id)
+		c.connect_from = -1
+		mm_canvas_clear_selection(c)
+		c.node = hit
+		c.edge = -1
+		return ok
+	if (extend):
+		c.extend = 0
+		if (hit >= 0):
+			mm_canvas_toggle_node(c, e, hit)
+			return 0
+		# Shift/ctrl on the background: rubber band adding to the selection.
+		c.gesture = 3
+		c.band_x = x
+		c.band_y = y
+		c.band_additive = 1
+		return 0
+	# Pressing a member of a multi-selection drags the whole set.
+	if (hit >= 0 && mm_canvas_selection_count(c, e) > 1 && mm_canvas_selected(c, hit)):
+		c.node = hit
+		c.edge = -1
+		c.gesture = 2
+		c.start_x = e.scene.nodes[hit].x
+		c.start_y = e.scene.nodes[hit].y
+		return 0
+	mm_canvas_clear_selection(c)
+	c.node = hit
+	c.edge = -1
+	if (hit < 0): c.edge = mm_canvas_hit_edge(c, e, x, y)
 	if (hit >= 0):
 		if (mm_editor_can_move(e, hit)):
 			c.gesture = 2
@@ -149,6 +278,45 @@ int mm_canvas_press(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 	else if (c.edge < 0): c.gesture = 1
 	return 0
 
+int mm_canvas_press(mm_canvas* c, mm_editor* e, float32 x, float32 y):
+	return mm_canvas_press_mods(c, e, x, y, 0)
+
+# Nodes whose bounds intersect the band (scene coordinates).
+void mm_canvas_band_select(mm_canvas* c, mm_editor* e, float32 x, float32 y):
+	float32 x0 = (c.band_x - c.pan_x) / c.zoom
+	float32 y0 = (c.band_y - c.pan_y) / c.zoom
+	float32 x1 = (x - c.pan_x) / c.zoom
+	float32 y1 = (y - c.pan_y) / c.zoom
+	if (x1 < x0):
+		float32 t = x0
+		x0 = x1
+		x1 = t
+	if (y1 < y0):
+		float32 t = y0
+		y0 = y1
+		y1 = t
+	if (c.band_additive == 0):
+		mm_canvas_clear_selection(c)
+		c.node = -1
+	for i in range(e.document.nodes.length):
+		if (mm_canvas_selectable(e, i) == 0 || mm_canvas_selected(c, i)): continue
+		mm_bounds* b = e.scene.nodes[i]
+		if (b.w <= 0 || b.h <= 0): continue
+		if (cast(float32, b.x + b.w) < x0 || cast(float32, b.x) > x1 || cast(float32, b.y + b.h) < y0 || cast(float32, b.y) > y1): continue
+		mm_canvas_toggle_node(c, e, i)
+
+# The selection to move with the primary node; 0 when any member is fixed.
+list[int] mm_canvas_move_set(mm_canvas* c, mm_editor* e):
+	list[int] all = mm_canvas_selected_nodes(c, e)
+	for int i in all:
+		if (mm_editor_can_move(e, i) == 0):
+			__w_list_free(cast(__w_list*, all))
+			return 0
+	if (all.length == 0):
+		__w_list_free(cast(__w_list*, all))
+		return 0
+	return all
+
 void mm_canvas_motion(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 	if (c.gesture == 0): return
 	float32 dx = x - c.press_x
@@ -156,46 +324,122 @@ void mm_canvas_motion(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 	if (c.dragged == 0):
 		if (dx * dx + dy * dy < 25.0): return
 		c.dragged = 1
-		if (c.gesture == 2 && mm_editor_move_begin(e, c.node) == 0):
+		if (c.gesture == 2):
+			int began = 0
+			if (mm_canvas_selection_count(c, e) > 1):
+				list[int] set = mm_canvas_move_set(c, e)
+				if (set != 0):
+					# The primary node leads so previews and commits track it.
+					list[int] ordered = list[int]{c.node}
+					for int i in set:
+						if (i != c.node): ordered.push(i)
+					began = mm_editor_move_begin_set(e, ordered)
+					if (began && e.move_index != c.node):
+						e.move_index = c.node
+						e.move_start_x = e.scene.nodes[c.node].x
+						e.move_start_y = e.scene.nodes[c.node].y
+					__w_list_free(cast(__w_list*, ordered))
+					__w_list_free(cast(__w_list*, set))
+			else: began = mm_editor_move_begin(e, c.node)
+			if (began == 0):
+				c.gesture = 0
+				return
+		if (c.gesture == 4 && mm_editor_resize_begin(e, c.node) == 0):
 			c.gesture = 0
 			return
 	if (c.gesture == 1):
 		c.pan_x = c.start_pan_x + dx
 		c.pan_y = c.start_pan_y + dy
+	else if (c.gesture == 3):
+		c.start_x = cast(int, x)
+		c.start_y = cast(int, y)
+	else if (c.gesture == 4):
+		int w = c.start_x + cast(int, dx / c.zoom)
+		int h = c.start_y + cast(int, dy / c.zoom)
+		if (w < MM_SIZE_MIN): w = MM_SIZE_MIN
+		if (h < MM_SIZE_MIN): h = MM_SIZE_MIN
+		mm_editor_resize_preview(e, w, h)
+	else if (e.move_set.length > 1 || mm_canvas_selection_count(c, e) > 1):
+		mm_editor_move_preview_delta(e, cast(int, dx / c.zoom), cast(int, dy / c.zoom))
 	else:
 		mm_editor_move_preview(e, mm_canvas_bound_x(c.start_x + cast(int, dx / c.zoom)), mm_canvas_bound_y(e, c.start_y + cast(int, dy / c.zoom)))
 
 int mm_canvas_release(mm_canvas* c, mm_editor* e):
 	int changed = 0
 	if (c.gesture == 2 && c.dragged): changed = mm_editor_move_commit(e)
+	# A click (no drag) on a member of a multi-selection selects just it.
+	if (c.gesture == 2 && c.dragged == 0 && c.selection != 0 && c.selection.length > 0): mm_canvas_clear_selection(c)
+	if (c.gesture == 4 && c.dragged): changed = mm_editor_resize_commit(e)
+	if (c.gesture == 3):
+		if (c.dragged): mm_canvas_band_select(c, e, cast(float32, c.start_x), cast(float32, c.start_y))
 	c.gesture = 0
 	c.dragged = 0
 	return changed
 
 int mm_canvas_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
-	if (mm_editor_can_move(e, c.node) == 0): return 0
-	mm_bounds* b = e.scene.nodes[c.node]
-	return mm_editor_move_node(e, c.node, mm_canvas_bound_x(b.x + dx), mm_canvas_bound_y(e, b.y + dy))
+	if (mm_canvas_selection_count(c, e) > 1):
+		list[int] set = mm_canvas_move_set(c, e)
+		if (set == 0): return 0
+		int ok = mm_editor_move_nodes(e, set, dx, dy)
+		__w_list_free(cast(__w_list*, set))
+		return ok
+	int one = mm_canvas_single(c, e)
+	if (mm_editor_can_move(e, one) == 0): return 0
+	mm_bounds* b = e.scene.nodes[one]
+	return mm_editor_move_node(e, one, mm_canvas_bound_x(b.x + dx), mm_canvas_bound_y(e, b.y + dy))
 
+# Keyboard resize of the single selected node (Alt+arrows).
+int mm_canvas_grow(mm_canvas* c, mm_editor* e, int dw, int dh):
+	int one = mm_canvas_single(c, e)
+	if (mm_editor_can_resize(e, one) == 0): return 0
+	mm_bounds* b = e.scene.nodes[one]
+	int w = b.w + dw
+	int h = b.h + dh
+	if (w < MM_SIZE_MIN): w = MM_SIZE_MIN
+	if (h < MM_SIZE_MIN): h = MM_SIZE_MIN
+	return mm_editor_resize_node(e, one, w, h)
+
+# Tab order covers nodes and groups (not synthetic containers). With
+# sticky extend (Space), the selection is kept and the focus moves.
 void mm_canvas_cycle(mm_canvas* c, mm_editor* e, int reverse):
 	# Switching the visible selection always exits an armed click operation.
 	mm_canvas_cancel(c, e)
 	if (e.scene == 0 || e.document.nodes.length == 0): return
-	if (mm_graph_edit_family(e.document.kind) == 0): return
+	if (mm_canvas_edit_family(e.document.kind) == 0): return
 	int count = e.document.nodes.length
 	int next = c.node
 	if (reverse && next < 0): next = 0
 	for i in range(count):
 		if (reverse): next = (next + count - 1) % count
 		else: next = (next + 1) % count
-		if (e.document.nodes[next].group == 0):
+		if (mm_canvas_selectable(e, next)):
+			# A listed selection survives focus moves; a single one follows focus.
+			if (c.selection == 0 || c.selection.length == 0 || c.extend == 0): mm_canvas_clear_selection(c)
 			c.node = next
 			c.edge = -1
 			return
 
+# Space: toggle the focused node into the multi-selection and keep
+# extending; the next Tab moves focus without dropping the set.
+void mm_canvas_toggle_focused(mm_canvas* c, mm_editor* e):
+	if (c.node < 0 || mm_canvas_selectable(e, c.node) == 0): return
+	if (c.selection == 0): c.selection = new list[int]
+	c.extend = 1
+	if (c.selection.length == 0):
+		c.selection.push(c.node)
+		return
+	int focus = c.node
+	mm_canvas_toggle_node(c, e, focus)
+	# Focus stays put while the node leaves the set.
+	c.node = focus
+
 int mm_canvas_delete(mm_canvas* c, mm_editor* e):
 	int ok = 0
-	if (c.node >= 0): ok = mm_editor_delete_node(e, c.node)
+	if (mm_canvas_selection_count(c, e) > 1):
+		list[int] all = mm_canvas_selected_nodes(c, e)
+		ok = mm_editor_delete_nodes(e, all)
+		__w_list_free(cast(__w_list*, all))
+	else if (mm_canvas_single(c, e) >= 0): ok = mm_editor_delete_node(e, mm_canvas_single(c, e))
 	else if (c.edge >= 0): ok = mm_editor_delete_edge(e, c.edge)
 	if (ok): mm_canvas_reset(c, e)
 	return ok

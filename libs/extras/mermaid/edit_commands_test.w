@@ -90,17 +90,17 @@ void test_graphical_er_delete_entity_attributes_and_relationships():
 void test_graphical_edits_reject_invalid_input_without_history_or_source_changes():
 	char* source = c"flowchart LR\nsubgraph G[Group]\nA --> B\nend\n"
 	mm_editor* e = mm_editor_new(c"unused.mmd", source)
-	assert_equal(0, mm_editor_delete_node(e, mm_find_node(e.document, c"G")))
+	assert_equal(0, mm_editor_delete_node(e, 7))
 	assert_equal(0, mm_editor_delete_edge(e, 3))
 	assert_equal(0, mm_editor_set_label(e, mm_find_node(e.document, c"A"), c"bad\" ]\nX --> Y"))
 	assert_equal(0, mm_editor_set_label(e, mm_find_node(e.document, c"A"), c"bad\nline"))
 	assert_equal(0, e.position)
 	assert_strings_equal(source, e.document.source)
-	asserts(c"actionable group reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, 0), c"source pane") >= 0)
+	asserts(c"actionable selection reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, 7), c"Select a node") >= 0)
 	mm_editor_free(e)
 	e = mm_editor_new(c"unused.mmd", c"pie\n\"A\" : 10\n")
 	assert_equal(0, mm_editor_delete_node(e, 0))
-	asserts(c"family reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, 0), c"flowcharts, ER, class and state") >= 0)
+	asserts(c"family reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, 0), c"flowchart, ER, class, state") >= 0)
 	mm_editor_free(e)
 	e = mm_editor_new(c"unused.mmd", c"flowchart LR\nA[\n")
 	assert_equal(0, mm_editor_delete_node(e, 0))
@@ -273,16 +273,32 @@ void test_graphical_state_rename_add_and_connect_pseudo_states():
 	assert_strings_equal(source, e.document.source)
 	mm_editor_free(e)
 
-void test_graphical_uml_groups_interfaces_and_nested_bodies_are_refused():
+void test_graphical_uml_groups_and_nested_bodies_edit_and_interfaces_are_refused():
 	char* source = c"stateDiagram-v2\nA --> B\nstate Comp {\n[*] --> Inner\nInner --> A\n}\n"
 	mm_editor* e = mm_editor_new(c"unused.mmd", source)
 	asserts(c"composite parses", e.document.error == 0)
-	asserts(c"composite reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, mm_find_node(e.document, c"Comp")), c"composite states") >= 0)
-	asserts(c"nested reason", index_of(mm_editor_edit_reason(e, MM_EDIT_LABEL, mm_find_node(e.document, c"Inner")), c"inside composite") >= 0)
-	assert_equal(0, mm_editor_delete_node(e, mm_find_node(e.document, c"Comp")))
-	assert_equal(0, mm_editor_delete_node(e, mm_find_node(e.document, c"A")))
+	assert_strings_equal(c"", mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, mm_find_node(e.document, c"Comp")))
+	assert_strings_equal(c"", mm_editor_edit_reason(e, MM_EDIT_LABEL, mm_find_node(e.document, c"Inner")))
+	# A is named by the statement that alone declares B: B keeps a bare
+	# declaration in its place.
+	assert_equal(1, mm_editor_delete_node(e, mm_find_node(e.document, c"A")))
+	assert_strings_equal(c"stateDiagram-v2\nB\nstate Comp {\n[*] --> Inner\n}\n", e.document.source)
+	assert_equal(1, mm_editor_undo(e, 0))
 	assert_strings_equal(source, e.document.source)
-	assert_equal(0, e.position)
+	# Nested rename keeps the state inside its composite.
+	assert_equal(1, mm_editor_set_label(e, mm_find_node(e.document, c"Inner"), c"Checking"))
+	int inner = mm_find_node(e.document, c"Inner")
+	assert_strings_equal(c"Checking", e.document.nodes[inner].label)
+	assert_equal(mm_find_node(e.document, c"Comp"), e.document.nodes[inner].parent)
+	assert_equal(1, mm_editor_undo(e, 0))
+	# Deleting a nested state takes its transitions and the orphaned start state.
+	assert_equal(1, mm_editor_delete_node(e, mm_find_node(e.document, c"Inner")))
+	assert_strings_equal(c"stateDiagram-v2\nA --> B\nstate Comp {\n}\n", e.document.source)
+	assert_equal(1, mm_editor_undo(e, 0))
+	# Deleting the composite removes its body.
+	assert_equal(1, mm_editor_delete_node(e, mm_find_node(e.document, c"Comp")))
+	assert_strings_equal(c"stateDiagram-v2\nA --> B\n", e.document.source)
+	assert_equal(1, mm_editor_undo(e, 0))
 	assert_equal(1, mm_editor_delete_node(e, mm_find_node(e.document, c"B")))
 	assert_strings_equal(c"stateDiagram-v2\nA\nstate Comp {\n[*] --> Inner\nInner --> A\n}\n", e.document.source)
 	assert_equal(-1, e.document.nodes[mm_find_node(e.document, c"A")].parent)
@@ -300,9 +316,8 @@ void test_graphical_uml_groups_interfaces_and_nested_bodies_are_refused():
 	mm_editor_free(e)
 	e = mm_editor_new(c"unused.mmd", c"classDiagram\nnamespace Shapes {\nclass Square\n}\nSquare --> Circle\nfoo ()-- Bar\n")
 	asserts(c"namespace parses", e.document.error == 0)
-	asserts(c"namespace reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, mm_find_node(e.document, c"Shapes")), c"namespaces") >= 0)
-	asserts(c"nested class reason", index_of(mm_editor_edit_reason(e, MM_EDIT_EDGE_DELETE, 0), c"inside namespaces") >= 0)
 	asserts(c"interface reason", index_of(mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, mm_find_node(e.document, c"Circle")), c"lollipop") >= 0)
+	asserts(c"interface edge reason", index_of(mm_editor_edit_reason(e, MM_EDIT_EDGE_DELETE, 0), c"lollipop") >= 0)
 	assert_equal(0, mm_editor_delete_node(e, mm_find_node(e.document, c"Circle")))
 	assert_equal(0, mm_editor_connect(e, c"Shapes", c"Circle"))
 	assert_equal(1, mm_editor_set_label(e, mm_find_node(e.document, c"Circle"), c"Round"))

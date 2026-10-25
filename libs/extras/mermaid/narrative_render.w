@@ -58,7 +58,7 @@ void mm_n_participant_symbol(mm_scene* s, mm_node* node, mm_bounds* bounds, int 
 		mm_ellipse(s, x, top + 6, 18, 6)
 		mm_ellipse(s, x, top + 36, 18, 6)
 	if (shape >= 2 && shape <= 5):
-		mm_text(s, x - strlen(node.label) * 4, 101 + shift, node.label)
+		mm_text(s, x - mm_text_width(node.label, 0) / 2, 101 + shift, node.label)
 		return
 	if (shape == 6):
 		mm_draw(s, MM_BOX, bounds.x + 6, bounds.y - 6, bounds.x + bounds.w + 6, bounds.y + bounds.h - 6, 0, c"")
@@ -73,7 +73,7 @@ void mm_n_participant_symbol(mm_scene* s, mm_node* node, mm_bounds* bounds, int 
 		mm_line(s, bounds.x + r, bounds.y + bounds.h, bounds.x + bounds.w - r, bounds.y + bounds.h, 0)
 		mm_ellipse(s, bounds.x + r, bounds.y + bounds.h / 2, r, bounds.h / 2)
 		mm_ellipse(s, bounds.x + bounds.w - r, bounds.y + bounds.h / 2, r, bounds.h / 2)
-	mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
+	mm_text(s, x - mm_text_width(node.label, 0) / 2, 83 + shift, node.label)
 
 # Participant `link`/`links` menus, listed in a box under the lifeline. Each
 # entry is an SVG link when its URL scheme is safe (mm_link_safe).
@@ -81,7 +81,7 @@ void mm_n_link_menu(mm_scene* s, mm_node* node, mm_bounds* bounds, int y):
 	if (node.metadata.length == 0): return
 	int width = bounds.w
 	for mm_property* link in node.metadata:
-		int needed = strlen(link.key) * 8 + 24
+		int needed = mm_text_width(link.key, 0) + 24
 		if (needed > width): width = needed
 	int x = bounds.x + bounds.w / 2 - width / 2
 	mm_draw(s, MM_BOX, x, y, x + width, y + 8 + node.metadata.length * 22, 0, c"")
@@ -125,7 +125,7 @@ void mm_n_message_text(mm_scene* s, int x, int y, char* label, int wrap):
 	mm_text_block_free(b)
 
 int mm_n_text_width(char* label, int wrap):
-	if (wrap <= 0 && mm_text_rich(label) == 0): return strlen(label) * 8
+	if (wrap <= 0 && mm_text_rich(label) == 0): return mm_text_width(label, 0)
 	if (wrap < 0): wrap = 0
 	mm_text_block* b = mm_text_layout(label, wrap)
 	int width = b.width
@@ -151,7 +151,7 @@ void mm_n_actor_box(mm_document* d, mm_scene* s, mm_node* node, mm_bounds* bound
 		mm_line(s, x - 16, 84 + shift, x + 16, 84 + shift, 0)
 		mm_line(s, x, 98 + shift, x - 12, 110 + shift, 0)
 		mm_line(s, x, 98 + shift, x + 12, 110 + shift, 0)
-		mm_text(s, x - strlen(node.label) * 4, 115 + shift, node.label)
+		mm_text(s, x - mm_text_width(node.label, 0) / 2, 115 + shift, node.label)
 		return
 	mm_draw(s, MM_BOX, bounds.x, top, bounds.x + bounds.w, top + bounds.h, 0, c"")
 	int middle = top + bounds.h / 2
@@ -160,10 +160,10 @@ void mm_n_actor_box(mm_document* d, mm_scene* s, mm_node* node, mm_bounds* bound
 		string_builder* stereotype = string_from(c"<<")
 		string_append(stereotype, node.annotation)
 		string_append(stereotype, c">>")
-		mm_text(s, x - stereotype.length * 4, middle - 22, stereotype.data)
+		mm_text(s, x - mm_text_width(stereotype.data, 0) / 2, middle - 22, stereotype.data)
 		string_free(stereotype)
-		mm_text(s, x - strlen(node.label) * 4, middle - 2, node.label)
-	else: mm_text(s, x - strlen(node.label) * 4, middle - 9, node.label)
+		mm_text(s, x - mm_text_width(node.label, 0) / 2, middle - 2, node.label)
+	else: mm_text(s, x - mm_text_width(node.label, 0) / 2, middle - 9, node.label)
 
 # Message label: optional sequence number, then the text.
 char* mm_n_message_label(mm_narrative_event* event, int ordinal, int numbered):
@@ -206,11 +206,11 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 	list[int] rows = mm_n_rows(d, wrap, numbered)
 	int bottom = rows[d.narrative.length] + 10
 	for mm_node* node in d.nodes:
-		int width = strlen(node.label) * 8 + 20 + gap
-		int stereotype_width = strlen(node.annotation) * 8 + 52 + gap
+		int width = mm_text_width(node.label, 0) + 20 + gap
+		int stereotype_width = mm_text_width(node.annotation, 0) + 52 + gap
 		if (node.annotation[0] != 0 && stereotype_width > width): width = stereotype_width
 		if (width < box_width + gap): width = box_width + gap
-		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0))
+		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0, 0))
 	# Charge each message's width to one lane, not every lane. A single long
 	# label with 1024 participants therefore cannot overflow 32-bit geometry.
 	for mm_narrative_event* event in d.narrative:
@@ -232,7 +232,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		mm_primitive* outline = s.items[s.items.length - 1]
 		outline.style.mask = MM_STYLE_FILL
 		outline.style.fill = box.value
-		if (box.label[0] != 0): mm_text(s, (first.x + last.x + last.w) / 2 - strlen(box.label) * 4, 44, box.label)
+		if (box.label[0] != 0): mm_text(s, (first.x + last.x + last.w) / 2 - mm_text_width(box.label, 0) / 2, 44, box.label)
 	# Fragment outlines precede lifelines and events so opaque primitives never hide them.
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
@@ -341,7 +341,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				if (label_x < 10): label_x = 10
 				mm_n_message_text(s, label_x, y - 23, label, wrap)
 			if (d.kind == MM_ZENUML):
-				int comment_x = (x + to) / 2 - strlen(label) * 4
+				int comment_x = (x + to) / 2 - mm_text_width(label, 0) / 2
 				if (x == to): comment_x = x + 8
 				if (comment_x < 10): comment_x = 10
 				mm_n_zen_comment_draw(s, event, comment_x, y - 25)
@@ -408,7 +408,7 @@ void mm_n_journey_scene(mm_document* d, mm_scene* s):
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
 		int w = mm_n_text_width(event.label, 0) + 40
-		int actors_width = strlen(event.detail) * 8 + 30
+		int actors_width = mm_text_width(event.detail, 0) + 30
 		if (actors_width > w): w = actors_width
 		if (w < 180): w = 180
 		if (strcmp(event.section, section) != 0):
@@ -436,7 +436,7 @@ void mm_n_journey_scene(mm_document* d, mm_scene* s):
 		mm_line(s, cx, 155, cx, 350, 1)
 		if (previous_x >= 0): mm_line(s, previous_x, previous_y, cx, y, 0)
 		mm_n_face(s, cx, y, event.value)
-		s.nodes.push(new mm_bounds(x, 100, w - 20, 50, 0))
+		s.nodes.push(new mm_bounds(x, 100, w - 20, 50, 0, 0))
 		previous_x = cx
 		previous_y = y
 		x = x + w + 20
@@ -478,22 +478,61 @@ list[char*] mm_n_label_lines(char* text):
 	lines.push(mm_n_part(text, start, i))
 	return lines
 
+# Widest display line in measured pixels.
 int mm_n_lines_width(list[char*] lines):
 	int width = 0
 	for char* line in lines:
-		if (strlen(line) > width): width = strlen(line)
+		if (mm_text_width(line, 0) > width): width = mm_text_width(line, 0)
+	return width
+
+# Widest single word of the display lines, in measured pixels.
+int mm_n_longest_word(list[char*] lines):
+	int width = 0
+	for char* line in lines:
+		int start = 0
+		int length = strlen(line)
+		for i in range(length + 1):
+			if (i < length && line[i] != ' '): continue
+			int word = mm_text_width_range(line, start, i, 0)
+			if (word > width): width = word
+			start = i + 1
 	return width
 
 void mm_n_lines_free(list[char*] lines):
 	for char* line in lines: free(line)
 	__w_list_free(cast(__w_list*, lines))
 
+# Greedy word wrap of display lines at max px, as upstream's timeline text
+# wraps inside its section width; a word wider than max stays whole. Takes
+# ownership of lines and returns the wrapped list.
+list[char*] mm_n_wrap_lines(list[char*] lines, int max):
+	list[char*] out = new list[char*]
+	for char* line in lines:
+		int length = strlen(line)
+		int line_start = -1
+		int line_end = 0
+		int i = 0
+		while (i < length):
+			while (i < length && line[i] == ' '): i = i + 1
+			if (i >= length): break
+			int word_start = i
+			while (i < length && line[i] != ' '): i = i + 1
+			if (line_start < 0): line_start = word_start
+			else if (mm_text_width_range(line, line_start, i, 0) > max):
+				out.push(mm_n_part(line, line_start, line_end))
+				line_start = word_start
+			line_end = i
+		if (line_start < 0): out.push(strclone(c""))
+		else: out.push(mm_n_part(line, line_start, line_end))
+	mm_n_lines_free(lines)
+	return out
+
 void mm_n_lines_draw(mm_scene* s, int x, int y, list[char*] lines):
 	for i in range(lines.length): mm_text(s, x, y + i * 18, lines[i])
 
 # Timeline labels: `<br>` lines as before, Markdown strings via the rich layout.
-void mm_n_timeline_text(mm_scene* s, int x, int y, char* label, list[char*] lines):
-	if (mm_text_is_markdown(label)): mm_label(s, x, y, label, 0, 0)
+void mm_n_timeline_text(mm_scene* s, int x, int y, char* label, list[char*] lines, int wrap):
+	if (mm_text_is_markdown(label)): mm_label(s, x, y, label, wrap, 0)
 	else: mm_n_lines_draw(s, x, y, lines)
 
 # Upstream's multicolour default: a light colour per section (or per period
@@ -534,7 +573,7 @@ void mm_n_timeline_vertical(mm_document* d, mm_scene* s, list[int] series):
 	for mm_narrative_event* event in d.narrative:
 		if (event.kind != MM_N_PERIOD): continue
 		list[char*] lines = mm_n_label_lines(event.label)
-		int needed = mm_n_lines_width(lines) * 8 + 40
+		int needed = mm_n_lines_width(lines) + 40
 		if (needed > period_width): period_width = needed
 		mm_n_lines_free(lines)
 	int axis = 60 + period_width + 40
@@ -561,27 +600,48 @@ void mm_n_timeline_vertical(mm_document* d, mm_scene* s, list[int] series):
 			next = next + 1
 		mm_draw(s, MM_BOX, 60, y, 60 + period_width, y + height, 1, c"")
 		mm_n_timeline_paint(d, s, series[index])
-		mm_n_timeline_text(s, 75, y + 15, period.label, period_lines)
+		mm_n_timeline_text(s, 75, y + 15, period.label, period_lines, 0)
 		mm_n_lines_free(period_lines)
 		int cy = y + height / 2
 		mm_line(s, 60 + period_width, cy, axis, cy, 0)
 		mm_draw(s, MM_CIRCLE, axis - 5, cy - 5, axis + 5, cy + 5, 1, c"")
-		s.nodes.push(new mm_bounds(60, y, period_width, height, 0))
+		s.nodes.push(new mm_bounds(60, y, period_width, height, 0, 0))
 		int x = axis + 40
 		for i in range(index + 1, next):
 			mm_narrative_event* event = d.narrative[i]
 			list[char*] lines = mm_n_label_lines(event.label)
-			int width = mm_n_lines_width(lines) * 8 + 40
+			int width = mm_n_lines_width(lines) + 40
 			if (width < 120): width = 120
 			mm_line(s, x - 40, cy, x, cy, 0)
 			mm_draw(s, MM_BOX, x, y, x + width, y + height, 0, c"")
 			mm_n_timeline_paint(d, s, series[i])
-			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines)
+			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines, 0)
 			mm_n_lines_free(lines)
 			x = x + width + 35
 		y = y + height + 35
 		index = next
 	mm_line(s, axis, top - 15, axis, y, 0)
+
+# Horizontal timelines: every period column is at least timeline.width
+# (default 170) wide, widened only for a word that would not fit, and
+# period and event text wraps inside it (issue #817), growing event boxes
+# downwards; every period header shares the tallest header's height, so
+# the axis stays straight.
+int mm_n_timeline_column(mm_document* d, int index, int min_width):
+	int width = min_width
+	int next = index
+	while (next < d.narrative.length):
+		mm_narrative_event* event = d.narrative[next]
+		if (next > index && event.kind == MM_N_PERIOD): break
+		list[char*] lines = mm_n_label_lines(event.label)
+		int needed = mm_n_longest_word(lines) + 40
+		mm_n_lines_free(lines)
+		if (needed > width): width = needed
+		next = next + 1
+	return width
+
+list[char*] mm_n_timeline_lines(char* label, int width):
+	return mm_n_wrap_lines(mm_n_label_lines(label), width - 30)
 
 void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 	list[int] series = mm_n_timeline_series(d)
@@ -590,11 +650,12 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 		mm_n_timeline_vertical(d, s, series)
 		__w_list_free(cast(__w_list*, series))
 		return
-	# Every period header shares the tallest header's height, so the axis stays straight.
+	int min_width = mm_config_number(d, c"timeline.width", 170)
 	int header_lines = 1
-	for mm_narrative_event* event in d.narrative:
+	for i in range(d.narrative.length):
+		mm_narrative_event* event = d.narrative[i]
 		if (event.kind != MM_N_PERIOD): continue
-		list[char*] lines = mm_n_label_lines(event.label)
+		list[char*] lines = mm_n_timeline_lines(event.label, mm_n_timeline_column(d, i, min_width))
 		if (lines.length > header_lines): header_lines = lines.length
 		mm_n_lines_free(lines)
 	int extra = (header_lines - 1) * 18
@@ -602,42 +663,36 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 	int x = 60
 	int index = 0
 	char* section = c""
-	int min_width = mm_config_number(d, c"timeline.width", 170)
 	while (index < d.narrative.length):
 		mm_narrative_event* period = d.narrative[index]
-		list[char*] period_lines = mm_n_label_lines(period.label)
+		int width = mm_n_timeline_column(d, index, min_width)
+		list[char*] period_lines = mm_n_timeline_lines(period.label, width)
 		int next = index + 1
-		int width = mm_n_lines_width(period_lines) * 8 + 40
 		while (next < d.narrative.length):
 			mm_narrative_event* event = d.narrative[next]
 			if (event.kind == MM_N_PERIOD): break
-			list[char*] lines = mm_n_label_lines(event.label)
-			int needed = mm_n_lines_width(lines) * 8 + 40
-			mm_n_lines_free(lines)
-			if (needed > width): width = needed
 			next = next + 1
-		if (width < min_width): width = min_width
 		if (strcmp(period.section, section) != 0):
 			mm_text(s, x, 60, period.section)
 			section = period.section
 		mm_draw(s, MM_BOX, x, 100, x + width, 145 + extra, 1, c"")
 		mm_n_timeline_paint(d, s, series[index])
-		mm_n_timeline_text(s, x + 15, 115, period.label, period_lines)
+		mm_n_timeline_text(s, x + 15, 115, period.label, period_lines, width - 30)
 		mm_n_lines_free(period_lines)
 		int cx = x + width / 2
 		mm_line(s, x - 15, axis, x + width + 35, axis, 0)
 		mm_draw(s, MM_CIRCLE, cx - 5, axis - 5, cx + 5, axis + 5, 1, c"")
 		mm_line(s, cx, 145 + extra, cx, axis, 0)
-		s.nodes.push(new mm_bounds(x, 100, width, 45 + extra, 0))
+		s.nodes.push(new mm_bounds(x, 100, width, 45 + extra, 0, 0))
 		int y = axis + 40
 		for i in range(index + 1, next):
 			mm_narrative_event* event = d.narrative[i]
-			list[char*] lines = mm_n_label_lines(event.label)
+			list[char*] lines = mm_n_timeline_lines(event.label, width)
 			int height = 45 + (lines.length - 1) * 18
 			mm_line(s, cx, y - 40, cx, y, 0)
 			mm_draw(s, MM_BOX, x, y, x + width, y + height, 0, c"")
 			mm_n_timeline_paint(d, s, series[i])
-			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines)
+			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines, width - 30)
 			mm_n_lines_free(lines)
 			y = y + height + 35
 		x = x + width + 50
@@ -1032,8 +1087,8 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		if (task.start < earliest): earliest = task.start
 		if (task.end > latest): latest = task.end
 		if ((task.value & 16) != 0): continue
-		int needed = strlen(task.label) * 8 + 90
-		if (compact): needed = strlen(task.section) * 8 + 90
+		int needed = mm_text_width(task.label, 0) + 90
+		if (compact): needed = mm_text_width(task.section, 0) + 90
 		if (needed > left): left = needed
 	# Rows: one per task, or packed per section in compact mode (a task takes
 	# the first row whose last task ended by its start). Configured
@@ -1093,7 +1148,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 	int width = span * unit
 	if (g.minutes): width = 800
 	char* sample = mm_n_axis_label(g, earliest)
-	int label_width = strlen(sample) * 8 + 24
+	int label_width = mm_text_width(sample, 0) + 24
 	free(sample)
 	if (label_width < 120): label_width = 120
 	int height = y - pitch + bar + 80
@@ -1116,8 +1171,10 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		mm_line(s, x, 95, x, height, 1)
 		mm_style_role(s, s.items.length - 1, MM_ROLE_GRID, 0)
 		char* date = mm_n_axis_label(g, value)
-		if (top_labels): mm_text(s, x, 70, date)
-		if (bottom_labels): mm_text(s, x, height + 8, date)
+		# Tick labels center on their tick, as upstream's axis text.
+		int date_x = x - mm_text_width(date, 0) / 2
+		if (top_labels): mm_text(s, date_x, 70, date)
+		if (bottom_labels): mm_text(s, date_x, height + 8, date)
 		free(date)
 	__w_list_free(cast(__w_list*, ticks))
 	section = c""
@@ -1130,7 +1187,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 			mm_line(s, x, 95, x, height, 0)
 			mm_n_paint(s, -1, 0x7c3aed)
 			mm_text(s, x + 6, height - 24, task.label)
-			s.nodes.push(new mm_bounds(x, 95, 0, height - 95, 0))
+			s.nodes.push(new mm_bounds(x, 95, 0, height - 95, 0, 0))
 			continue
 		if (strcmp(task.section, section) != 0):
 			if (compact): mm_text(s, 30, y + bar / 2 - 6, task.section)
@@ -1138,10 +1195,14 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 			section = task.section
 		int w = mm_n_axis_x(axis, task.end) - x
 		int middle = y + bar / 2
-		# Compact rows hold several tasks, so their labels sit on the bars.
+		# Compact rows hold several tasks, so their labels sit on the bars:
+		# centered inside when the measured text fits, else just past the
+		# bar's end, as upstream's taskText / taskTextOutsideRight.
+		int text_width = mm_text_width(task.label, 0)
 		if (compact == 0): mm_text(s, 30, middle - 6, task.label)
 		else if ((task.value & 8) != 0): mm_text(s, x + w / 2 + 18, middle - 6, task.label)
-		else: mm_text(s, x + 4, middle - 6, task.label)
+		else if (text_width + 8 <= w): mm_text(s, x + (w - text_width) / 2, middle - 6, task.label)
+		else: mm_text(s, x + w + 6, middle - 6, task.label)
 		int task_start = s.items.length
 		if ((task.value & 8) != 0):
 			x = x + w / 2
@@ -1162,7 +1223,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		if ((task.value & 1) != 0): role = MM_ROLE_TASK_DONE
 		if ((task.value & 4) != 0): role = MM_ROLE_TASK_CRIT
 		mm_style_role(s, task_start, role, i)
-		s.nodes.push(new mm_bounds(x, y, w, bar, 0))
+		s.nodes.push(new mm_bounds(x, y, w, bar, 0, 0))
 	__w_list_free(cast(__w_list*, row_y))
 	mm_line(s, left, 100, left + width, 100, 0)
 	if (g.today >= earliest && g.today <= latest):

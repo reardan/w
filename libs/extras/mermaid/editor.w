@@ -23,6 +23,12 @@ struct mm_editor:
 	int polls
 	int save_status
 	char* recovery_path
+	# Set moves and resizes: the moved roots and every node's bounds at the
+	# gesture start (x, y, w, h per scene node); moving 2 means resizing.
+	list[int] move_set
+	list[int] move_snapshot
+	# History index of an open transaction (mm_editor_begin), else -1.
+	int transaction
 
 void mm_editor_move_cancel(mm_editor* e);
 
@@ -34,6 +40,9 @@ mm_editor* mm_editor_new(char* path, char* source):
 	if (path == 0 || source == 0 || strlen(source) > MM_MAX_SOURCE): return 0
 	mm_editor* e = new mm_editor()
 	e.move_index = -1
+	e.transaction = -1
+	e.move_set = new list[int]
+	e.move_snapshot = new list[int]
 	e.path = strclone(path)
 	e.saved_source = strclone(source)
 	e.disk_present = mm_editor_path_present(path)
@@ -89,6 +98,7 @@ int mm_editor_change(mm_editor* e, char* source):
 		free(e.history[0])
 		for i in range(1, e.history.length): e.history[i - 1] = e.history[i]
 		e.history.pop()
+		if (e.transaction > 0): e.transaction = e.transaction - 1
 	e.history.push(copy)
 	e.position = e.history.length - 1
 	mm_editor_load(e, copy)
@@ -283,13 +293,27 @@ int mm_editor_add_edge(mm_editor* e, char* from_id, char* to_id):
 	return ok
 
 # Hit testing uses scene coordinates; callers reverse preview zoom and pan.
+# A node wins over the groups drawn around it; among groups the innermost.
 int mm_editor_hit(mm_editor* e, int x, int y):
-	if (e.scene == 0 || mm_graph_edit_family(e.document.kind) == 0): return -1
+	if (e.scene == 0 || e.document.error != 0 || mm_canvas_edit_family(e.document.kind) == 0): return -1
+	if (e.scene.nodes.length != e.document.nodes.length): return -1
 	int hit = -1
+	int group = -1
+	int group_depth = -1
 	for i in range(e.scene.nodes.length):
 		mm_bounds* b = e.scene.nodes[i]
-		if (e.document.nodes[i].group == 0 && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h): hit = i
-	return hit
+		if (b.w <= 0 || b.h <= 0 || mm_flow_visible_node(e.document, i) != i): continue
+		if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h): continue
+		# Synthetic containers (a block root, concurrent state regions) are not targets.
+		if (e.document.nodes[i].group && e.document.nodes[i].id[0] == '@'): continue
+		if (e.document.nodes[i].group == 0 || mm_flow_collapsed(e.document, i)): hit = i
+		else:
+			int depth = mm_position_depth(e.document, i)
+			if (depth >= group_depth):
+				group = i
+				group_depth = depth
+	if (hit >= 0): return hit
+	return group
 
 # Canvas gestures retain the parsed document and measured layout. A pointer
 # update only rebuilds primitives, so edges follow their current node bounds.
@@ -297,50 +321,136 @@ int mm_editor_can_move(mm_editor* e, int index):
 	if (e.scene == 0 || index < 0 || index >= e.scene.nodes.length): return 0
 	return mm_position_supported(e.document, index)
 
+int mm_editor_can_resize(mm_editor* e, int index):
+	return mm_editor_can_move(e, index)
+
+void mm_editor_snapshot(mm_editor* e):
+	while (e.move_snapshot.length > 0): e.move_snapshot.pop()
+	for mm_bounds* b in e.scene.nodes:
+		e.move_snapshot.push(b.x)
+		e.move_snapshot.push(b.y)
+		e.move_snapshot.push(b.w)
+		e.move_snapshot.push(b.h)
+
+void mm_editor_restore(mm_editor* e):
+	if (e.move_snapshot.length != e.scene.nodes.length * 4): return
+	for i in range(e.scene.nodes.length):
+		mm_bounds* b = e.scene.nodes[i]
+		b.x = e.move_snapshot[i * 4]
+		b.y = e.move_snapshot[i * 4 + 1]
+		b.w = e.move_snapshot[i * 4 + 2]
+		b.h = e.move_snapshot[i * 4 + 3]
+
+# A set move: indices whose ancestor group is also moved ride along with it.
+int mm_editor_move_begin_set(mm_editor* e, list[int] indices):
+	mm_editor_move_cancel(e)
+	if (indices == 0 || indices.length == 0): return 0
+	for int index in indices:
+		if (mm_editor_can_move(e, index) == 0): return 0
+	while (e.move_set.length > 0): e.move_set.pop()
+	for int index in indices:
+		int carried = 0
+		for int other in indices:
+			if (other != index && mm_position_within(e.document, index, other)): carried = 1
+		for int other in e.move_set:
+			if (other == index): carried = 1
+		if (carried == 0): e.move_set.push(index)
+	mm_editor_snapshot(e)
+	e.moving = 1
+	e.move_index = e.move_set[0]
+	e.move_start_x = e.scene.nodes[e.move_index].x
+	e.move_start_y = e.scene.nodes[e.move_index].y
+	return 1
+
 int mm_editor_move_begin(mm_editor* e, int index):
 	if (mm_editor_can_move(e, index) == 0): return 0
-	mm_editor_move_cancel(e)
-	e.moving = 1
-	e.move_index = index
-	e.move_start_x = e.scene.nodes[index].x
-	e.move_start_y = e.scene.nodes[index].y
+	list[int] one = list[int]{index}
+	int ok = mm_editor_move_begin_set(e, one)
+	__w_list_free(cast(__w_list*, one))
+	return ok
+
+# Offset every moved root (and its members) from its gesture-start bounds.
+int mm_editor_move_preview_delta(mm_editor* e, int dx, int dy):
+	if (e.moving != 1): return 0
+	int offset = mm_position_title_offset(e.document)
+	for int index in e.move_set:
+		if (mm_editor_can_move(e, index) == 0): return 0
+		int x = e.move_snapshot[index * 4] + dx
+		int y = e.move_snapshot[index * 4 + 1] + dy
+		if (x < 0 || x > MM_POSITION_LIMIT || y < offset || y > MM_POSITION_LIMIT + offset): return 0
+	mm_bounds* primary = e.scene.nodes[e.move_index]
+	if (primary.x == e.move_start_x + dx && primary.y == e.move_start_y + dy): return 1
+	mm_editor_restore(e)
+	for int index in e.move_set: mm_position_translate(e.document, e.scene, index, dx, dy)
+	mm_positions_fit_groups(e.document, e.scene)
+	mm_render_graph_refresh(e.document, e.scene)
 	return 1
 
 int mm_editor_move_preview(mm_editor* e, int x, int y):
-	if (e.moving == 0 || mm_editor_can_move(e, e.move_index) == 0): return 0
-	int offset = mm_position_title_offset(e.document)
-	if (x < 0 || x > MM_POSITION_LIMIT || y < offset || y > MM_POSITION_LIMIT + offset): return 0
-	mm_bounds* b = e.scene.nodes[e.move_index]
-	if (b.x == x && b.y == y): return 1
-	b.x = x
-	b.y = y
-	mm_render_graph_refresh(e.document, e.scene)
-	return 1
+	if (e.moving != 1 || mm_editor_can_move(e, e.move_index) == 0): return 0
+	return mm_editor_move_preview_delta(e, x - e.move_start_x, y - e.move_start_y)
 
 void mm_editor_move_cancel(mm_editor* e):
 	if (e.moving == 0): return
-	int index = e.move_index
 	e.moving = 0
 	e.move_index = -1
-	if (mm_editor_can_move(e, index) == 0): return
-	mm_bounds* b = e.scene.nodes[index]
-	if (b.x == e.move_start_x && b.y == e.move_start_y): return
-	b.x = e.move_start_x
-	b.y = e.move_start_y
+	if (e.scene == 0 || e.move_snapshot.length != e.scene.nodes.length * 4): return
+	int same = 1
+	for i in range(e.scene.nodes.length):
+		mm_bounds* b = e.scene.nodes[i]
+		if (b.x != e.move_snapshot[i * 4] || b.y != e.move_snapshot[i * 4 + 1] || b.w != e.move_snapshot[i * 4 + 2] || b.h != e.move_snapshot[i * 4 + 3]): same = 0
+	if (same): return
+	mm_editor_restore(e)
 	mm_render_graph_refresh(e.document, e.scene)
 
+# Per node: 1 when it currently carries a valid record of the given kind.
+list[int] mm_editor_recorded(mm_editor* e, int kind):
+	list[int] marks = new list[int]
+	for i in range(e.document.nodes.length): marks.push(0)
+	mm_document* d = e.document
+	int at = d.source_start
+	while (at < d.source_end):
+		int end = mm_position_line_end(d, at)
+		int record_kind = 0
+		int x = 0
+		int y = 0
+		int index = mm_geometry_record(d, at, end, &record_kind, &x, &y)
+		if (index >= 0 && record_kind == kind): marks[index] = 1
+		at = end + 1
+	return marks
+
 int mm_editor_move_commit(mm_editor* e):
-	if (e.moving == 0 || mm_editor_can_move(e, e.move_index) == 0): return 0
-	mm_bounds* b = e.scene.nodes[e.move_index]
-	if (b.x == e.move_start_x && b.y == e.move_start_y):
+	if (e.moving != 1 || mm_editor_can_move(e, e.move_index) == 0): return 0
+	mm_bounds* primary = e.scene.nodes[e.move_index]
+	int dx = primary.x - e.move_start_x
+	int dy = primary.y - e.move_start_y
+	if (dx == 0 && dy == 0):
 		mm_editor_move_cancel(e)
 		return 1
-	char* source = mm_position_source(e.document, e.move_index, b.x, b.y - mm_position_title_offset(e.document))
-	if (source == 0):
-		mm_editor_move_cancel(e)
-		return 0
-	if (strlen(source) > MM_MAX_SOURCE):
-		free(source)
+	int offset = mm_position_title_offset(e.document)
+	# Roots get records; positioned members of moved groups keep their place
+	# inside the group by shifting their own records by the same offset.
+	list[int] recorded = mm_editor_recorded(e, MM_GEOMETRY_POSITION)
+	list[int] indices = new list[int]
+	list[int] xs = new list[int]
+	list[int] ys = new list[int]
+	for i in range(e.document.nodes.length):
+		int root = 0
+		int member = 0
+		for int index in e.move_set:
+			if (index == i): root = 1
+			else if (recorded[i] && mm_position_within(e.document, i, index)): member = 1
+		if (root == 0 && member == 0): continue
+		indices.push(i)
+		xs.push(e.move_snapshot[i * 4] + dx)
+		ys.push(e.move_snapshot[i * 4 + 1] + dy - offset)
+	char* source = mm_geometry_source(e.document, MM_GEOMETRY_POSITION, indices, xs, ys)
+	__w_list_free(cast(__w_list*, recorded))
+	__w_list_free(cast(__w_list*, indices))
+	__w_list_free(cast(__w_list*, xs))
+	__w_list_free(cast(__w_list*, ys))
+	if (source == 0 || strlen(source) > MM_MAX_SOURCE):
+		if (source != 0): free(source)
 		mm_editor_move_cancel(e)
 		return 0
 	# Only now create one undo snapshot; preview frames never enter history.
@@ -358,6 +468,93 @@ int mm_editor_move_node(mm_editor* e, int index, int x, int y):
 		return 0
 	return mm_editor_move_commit(e)
 
+int mm_editor_move_nodes(mm_editor* e, list[int] indices, int dx, int dy):
+	if (mm_editor_move_begin_set(e, indices) == 0): return 0
+	if (mm_editor_move_preview_delta(e, dx, dy) == 0):
+		mm_editor_move_cancel(e)
+		return 0
+	return mm_editor_move_commit(e)
+
+# Resizing previews like a move; the commit writes one @w-size record.
+int mm_editor_resize_begin(mm_editor* e, int index):
+	mm_editor_move_cancel(e)
+	if (mm_editor_can_resize(e, index) == 0): return 0
+	mm_editor_snapshot(e)
+	e.moving = 2
+	e.move_index = index
+	e.move_start_x = e.scene.nodes[index].w
+	e.move_start_y = e.scene.nodes[index].h
+	return 1
+
+int mm_editor_resize_preview(mm_editor* e, int w, int h):
+	if (e.moving != 2 || mm_editor_can_resize(e, e.move_index) == 0): return 0
+	if (w < MM_SIZE_MIN || h < MM_SIZE_MIN || w > MM_SIZE_LIMIT || h > MM_SIZE_LIMIT): return 0
+	mm_bounds* b = e.scene.nodes[e.move_index]
+	if (b.w == w && b.h == h): return 1
+	mm_editor_restore(e)
+	b.w = w
+	b.h = h
+	mm_positions_fit_groups(e.document, e.scene)
+	mm_render_graph_refresh(e.document, e.scene)
+	return 1
+
+int mm_editor_resize_commit(mm_editor* e):
+	if (e.moving != 2 || mm_editor_can_resize(e, e.move_index) == 0): return 0
+	mm_bounds* b = e.scene.nodes[e.move_index]
+	if (b.w == e.move_start_x && b.h == e.move_start_y):
+		mm_editor_move_cancel(e)
+		return 1
+	list[int] indices = list[int]{e.move_index}
+	list[int] ws = list[int]{b.w}
+	list[int] hs = list[int]{b.h}
+	char* source = mm_geometry_source(e.document, MM_GEOMETRY_SIZE, indices, ws, hs)
+	__w_list_free(cast(__w_list*, indices))
+	__w_list_free(cast(__w_list*, ws))
+	__w_list_free(cast(__w_list*, hs))
+	if (source == 0 || strlen(source) > MM_MAX_SOURCE):
+		if (source != 0): free(source)
+		mm_editor_move_cancel(e)
+		return 0
+	e.moving = 0
+	e.move_index = -1
+	int ok = mm_editor_change(e, source)
+	free(source)
+	return ok
+
+int mm_editor_resize_node(mm_editor* e, int index, int w, int h):
+	if (mm_editor_resize_begin(e, index) == 0): return 0
+	if (mm_editor_resize_preview(e, w, h) == 0):
+		mm_editor_move_cancel(e)
+		return 0
+	return mm_editor_resize_commit(e)
+
+# Several commands as one undo step. A begin inside an open transaction
+# joins it; a rollback restores the source at the begin and drops the
+# partial steps, leaving no history entry.
+void mm_editor_begin(mm_editor* e):
+	mm_editor_move_cancel(e)
+	if (e.transaction < 0): e.transaction = e.position
+
+void mm_editor_commit(mm_editor* e):
+	int mark = e.transaction
+	e.transaction = -1
+	if (mark < 0 || e.position <= mark + 1): return
+	char* last = e.history[e.position]
+	for i in range(mark + 1, e.position): free(e.history[i])
+	e.history[mark + 1] = last
+	while (e.history.length > mark + 2): e.history.pop()
+	e.position = mark + 1
+
+void mm_editor_rollback(mm_editor* e):
+	int mark = e.transaction
+	e.transaction = -1
+	if (mark < 0 || mark >= e.history.length || e.position == mark): return
+	while (e.history.length > mark + 1):
+		free(e.history[e.history.length - 1])
+		e.history.pop()
+	e.position = mark
+	mm_editor_load(e, e.history[mark])
+
 # Only standalone comments that currently affect layout enable Auto layout.
 int mm_editor_has_positions(mm_editor* e):
 	mm_document* d = e.document
@@ -368,9 +565,10 @@ int mm_editor_has_positions(mm_editor* e):
 		int before = start - 1
 		while (before >= d.source_start && mm_position_space(d.source[before])): before = before - 1
 		if (before >= d.source_start && d.source[before] != 10): continue
+		int kind = 0
 		int x = 0
 		int y = 0
-		if (mm_position_record(d, start, end, &x, &y) >= 0): return 1
+		if (mm_geometry_record(d, start, end, &kind, &x, &y) >= 0): return 1
 	return 0
 
 # Restore automatic layout in one undoable edit. Malformed hints, inaccessible
@@ -387,9 +585,10 @@ int mm_editor_reset_positions(mm_editor* e):
 		int end = mm_position_line_end(d, at)
 		int after = end
 		if (after < d.source_end): after = after + 1
+		int kind = 0
 		int x = 0
 		int y = 0
-		if (mm_position_record(d, at, end, &x, &y) < 0): string_append_bytes(source, d.source + at, after - at)
+		if (mm_geometry_record(d, at, end, &kind, &x, &y) < 0): string_append_bytes(source, d.source + at, after - at)
 		at = after
 	string_append_bytes(source, d.source + d.source_end, d.length - d.source_end)
 	int ok = mm_editor_change(e, source.data)
@@ -405,4 +604,6 @@ void mm_editor_free(mm_editor* e):
 	free(e.recovery_path)
 	for char* text in e.history: free(text)
 	__w_list_free(cast(__w_list*, e.history))
+	__w_list_free(cast(__w_list*, e.move_set))
+	__w_list_free(cast(__w_list*, e.move_snapshot))
 	free(e)

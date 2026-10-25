@@ -209,6 +209,21 @@ void mm_style_property(mm_document* d, mm_style* style, char* key, char* value, 
 			mask = 1 << i
 			if (i == 12): mask = MM_STYLE_RADIUS
 	__w_list_free(cast(__w_list*, keys))
+	# CSS motion properties (the documented edge-animation classDef) are
+	# validated and accepted, but the native scene is static, so they are not
+	# stored: a dashed edge draws its dash pattern without moving it.
+	if (mask == 0 && (strcmp(key, c"stroke-dashoffset") == 0 || strcmp(key, c"animation") == 0 || strcmp(key, c"animation-duration") == 0 || strcmp(key, c"animation-name") == 0 || strcmp(key, c"animation-timing-function") == 0 || strcmp(key, c"animation-iteration-count") == 0 || strcmp(key, c"animation-direction") == 0 || strcmp(key, c"animation-delay") == 0)):
+		int ok = strlen(value) > 0 && strlen(value) <= 128
+		for i in range(strlen(value)):
+			int c = value[i] & 255
+			if (isalnum(c) == 0 && c != ' ' && c != '-' && c != '.' && c != '_' && c != '%'): ok = 0
+		if (ok && key[0] == 's'):
+			int at = 0
+			if (value[0] == '-'): at = 1
+			int number = mm_style_pixels(value, at, strlen(value), 6)
+			if (number < 0 || number > 100000): ok = 0
+		if (ok == 0): mm_error(d, offset, c"stroke-dashoffset takes a length; animation properties take CSS keywords, names and times")
+		return
 	if (mask == 0):
 		mm_error(d, offset, c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry")
 		return
@@ -295,8 +310,37 @@ mm_style mm_style_parse(mm_parser* p):
 		char* key = mm_style_trim(p.doc.source, start, p.pos)
 		if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"style property requires colon")
 		start = p.pos
-		while (mm_end(p) == 0 && mm_peek(p) != ','): p.pos = p.pos + 1
+		while (mm_end(p) == 0 && mm_peek(p) != ','):
+			# `\,` keeps a comma inside a value (`stroke-dasharray: 9\,5`).
+			if (mm_peek(p) == '\\' && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] == ','): p.pos = p.pos + 1
+			p.pos = p.pos + 1
+		if (strcmp(key, c"stroke-dasharray") == 0):
+			# Upstream splits declarations at every comma, so the documented
+			# `stroke-dasharray: 9,5,...` leaves a stray `5` that the browser
+			# drops; the bare lengths that follow are kept as dash lengths.
+			while (mm_peek(p) == ',' && p.doc.error == 0):
+				int next = p.pos + 1
+				while (next < p.doc.length && (p.doc.source[next] == 32 || p.doc.source[next] == 9)): next = next + 1
+				int digits = next
+				while (digits < p.doc.length && p.doc.source[digits] >= '0' && p.doc.source[digits] <= '9'): digits = digits + 1
+				if (digits == next): break
+				if (digits + 1 < p.doc.length && p.doc.source[digits] == 'p' && p.doc.source[digits + 1] == 'x'): digits = digits + 2
+				int after = digits
+				while (after < p.doc.length && (p.doc.source[after] == 32 || p.doc.source[after] == 9)): after = after + 1
+				if (after < p.doc.length && p.doc.source[after] != ',' && p.doc.source[after] != ';' && p.doc.source[after] != 10 && p.doc.source[after] != 13): break
+				p.pos = digits
 		char* value = mm_style_trim(p.doc.source, start, p.pos)
+		if (strcmp(key, c"stroke-dasharray") == 0):
+			# CSS separates dash lengths with commas or spaces.
+			int write = 0
+			for i in range(strlen(value)):
+				int c = value[i]
+				if (c == '\\' && value[i + 1] == ','): continue
+				if (c == ','): c = ' '
+				if (c == ' ' && write > 0 && value[write - 1] == ' '): continue
+				value[write] = c
+				write = write + 1
+			value[write] = 0
 		mm_style_property(p.doc, &style, key, value, start)
 		free(key)
 		free(value)
@@ -403,6 +447,33 @@ int mm_style_links(mm_parser* p):
 	free(targets)
 	return 1
 
+# Index of the flowchart edge whose explicit ID (`e1@-->`) is name, or -1.
+int mm_style_edge_named(mm_document* d, char* name):
+	if (d.kind != MM_FLOW): return -1
+	for i in range(d.edges.length):
+		mm_edge* e = d.edges[i]
+		if (e.id != 0 && strcmp(e.id, name) == 0): return i
+	return -1
+
+# `class e1 animate` names an edge ID: the classes are kept as an edge
+# `class` property and resolved after parsing (classDef may come later).
+void mm_style_edge_assign(mm_parser* p, mm_edge* e, char* classes):
+	int start = 0
+	for i in range(strlen(classes) + 1):
+		if (classes[i] == 0 || classes[i] == ','):
+			char* name = mm_style_trim(classes, start, i)
+			if (mm_style_name(name) == 0): mm_error(p.doc, p.pos, c"invalid style class name")
+			free(name)
+			start = i + 1
+	if (e.metadata == 0): e.metadata = new list[mm_property*]
+	if (e.metadata.length >= 16):
+		mm_error(p.doc, p.pos, c"edge class assignment limit exceeded")
+		return
+	mm_property* property = new mm_property()
+	property.key = strclone(c"class")
+	property.value = strclone(classes)
+	e.metadata.push(property)
+
 int mm_style_statement(mm_parser* p):
 	if (mm_style_links(p)): return 1
 	int kind = 0
@@ -448,6 +519,7 @@ int mm_style_statement(mm_parser* p):
 						definition.name = strclone(name)
 						p.doc.style_definitions.push(definition)
 				if (definition != 0): mm_style_merge(&definition.style, &style)
+			else if (kind == 3 && mm_style_edge_named(p.doc, name) >= 0): mm_style_edge_assign(p, p.doc.edges[mm_style_edge_named(p.doc, name)], classes)
 			else:
 				int index = mm_add_node(p.doc, name, p.pos)
 				if (index >= 0):
@@ -462,7 +534,29 @@ int mm_style_statement(mm_parser* p):
 	free(classes)
 	return 1
 
+# Edge class assignments, in order, over the edge's own linkStyle-free style.
+void mm_style_edge_classes(mm_document* d):
+	if (d.kind != MM_FLOW): return
+	for mm_edge* e in d.edges:
+		if (e.metadata == 0): continue
+		for mm_property* property in e.metadata:
+			if (strcmp(property.key, c"class") != 0): continue
+			int start = 0
+			int length = strlen(property.value)
+			for i in range(length + 1):
+				if (i == length || property.value[i] == ','):
+					char* name = mm_style_trim(property.value, start, i)
+					mm_style_class* definition = mm_style_find(d, name)
+					if (definition == 0): mm_error(d, 0, c"assigned style class has no classDef")
+					else:
+						mm_style merged = definition.style
+						mm_style_merge(&merged, &e.style)
+						e.style = merged
+					free(name)
+					start = i + 1
+
 void mm_style_validate(mm_document* d):
+	mm_style_edge_classes(d)
 	# Mindmap and TreeView classes name stylesheet (themeCSS) classes, and use
 	# case and class-diagram classes need no classDef upstream (`:::name` and
 	# cssClass may name external CSS): unknown names stay CSS class names.

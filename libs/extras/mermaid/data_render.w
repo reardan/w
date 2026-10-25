@@ -1,6 +1,7 @@
 # Family-specific geometry shared by SVG and the native desktop preview.
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.style_render
+import libs.extras.mermaid.text
 
 char* mm_data_format(int value):
 	string_builder* s = string_new()
@@ -73,39 +74,189 @@ mm_primitive* mm_data_disc(mm_scene* s, int cx, int cy, int r):
 		mm_data_vertex(s, p, cx + cast(int, fcos(angle) * cast(float, r)), cy + cast(int, fsin(angle) * cast(float, r)))
 	return p
 
+# Pie geometry. Wedges wide enough (0.55 radians of chord) carry their
+# percentage inside, as upstream's textPosition labels. Narrower wedges get
+# an outside label beside the pie on the side their middle points to,
+# joined to the rim by a two-segment leader (issue #817). Each side's
+# labels keep their angular order and are pushed apart to one label pitch,
+# first downwards and then, where the stack overruns the bottom, back
+# upwards, so no two overlap and leaders on one side never cross.
+const int MM_DATA_PIE_CX = 250
+const int MM_DATA_PIE_CY = 260
+const int MM_DATA_PIE_R = 180
+const int MM_DATA_PIE_LABEL_GAP = 18
+# Leader elbow radius and the label column's offset from the center.
+const int MM_DATA_PIE_ELBOW = 194
+const int MM_DATA_PIE_COLUMN = 214
+
+# Resolve one side's label tops (desired, in angular order) in place:
+# overlapping neighbours merge into clusters centered on their members'
+# desired positions (one pitch apart), then the stack shifts into
+# [low, high] when it overruns, preferring low.
+void mm_data_pie_spread(list[int] tops, int low, int high):
+	int n = tops.length
+	if (n == 0): return
+	list[int] starts = new list[int]
+	list[int] counts = new list[int]
+	list[int] firsts = new list[int]
+	for k in range(n):
+		starts.push(k)
+		counts.push(1)
+		firsts.push(tops[k])
+		while (starts.length >= 2):
+			int last = starts.length - 1
+			int before = last - 1
+			if (firsts[before] + counts[before] * MM_DATA_PIE_LABEL_GAP <= firsts[last]): break
+			int merged = counts[before] + counts[last]
+			int first = (counts[before] * firsts[before] + counts[last] * (firsts[last] - counts[before] * MM_DATA_PIE_LABEL_GAP)) / merged
+			counts[before] = merged
+			firsts[before] = first
+			starts.pop()
+			counts.pop()
+			firsts.pop()
+	for c in range(starts.length):
+		for j in range(counts[c]): tops[starts[c] + j] = firsts[c] + j * MM_DATA_PIE_LABEL_GAP
+	if (tops[n - 1] > high):
+		int up = tops[n - 1] - high
+		for k in range(n): tops[k] = tops[k] - up
+	if (tops[0] < low):
+		int down = low - tops[0]
+		for k in range(n): tops[k] = tops[k] + down
+	# Clamping one end can re-merge clusters: restore the minimum pitch.
+	for k in range(1, n):
+		if (tops[k] < tops[k - 1] + MM_DATA_PIE_LABEL_GAP): tops[k] = tops[k - 1] + MM_DATA_PIE_LABEL_GAP
+	__w_list_free(cast(__w_list*, starts))
+	__w_list_free(cast(__w_list*, counts))
+	__w_list_free(cast(__w_list*, firsts))
+
+char* mm_data_pie_percent(int percent):
+	char* number = mm_data_format(percent)
+	string_builder* text = string_from(number)
+	string_append_char(text, '%')
+	free(number)
+	char* result = text.data
+	free(text)
+	return result
+
+# Draw one side's outside labels; returns the widest label's right edge.
+int mm_data_pie_side(mm_scene* s, list[int] slices, list[float] angles, list[int] tops, list[int] percents, int right):
+	int edge = 0
+	for k in range(slices.length):
+		float middle = angles[k]
+		int rx = MM_DATA_PIE_CX + cast(int, fcos(middle) * cast(float, MM_DATA_PIE_R))
+		int ry = MM_DATA_PIE_CY + cast(int, fsin(middle) * cast(float, MM_DATA_PIE_R))
+		int ex = MM_DATA_PIE_CX + cast(int, fcos(middle) * cast(float, MM_DATA_PIE_ELBOW))
+		int ey = MM_DATA_PIE_CY + cast(int, fsin(middle) * cast(float, MM_DATA_PIE_ELBOW))
+		int ty = tops[k] + MM_TEXT_LINE / 2
+		# Labels hug a circle just outside the pie; above or below it they
+		# keep a small offset from the vertical center line.
+		int dy = ty - MM_DATA_PIE_CY
+		int dx = 16
+		if (dy > 0 - MM_DATA_PIE_COLUMN && dy < MM_DATA_PIE_COLUMN): dx = cast(int, fsqrt(cast(float, MM_DATA_PIE_COLUMN * MM_DATA_PIE_COLUMN - dy * dy)))
+		if (dx < 16): dx = 16
+		int column = MM_DATA_PIE_CX - dx
+		if (right): column = MM_DATA_PIE_CX + dx
+		mm_line(s, rx, ry, ex, ey, 0)
+		mm_line(s, ex, ey, column, ty, 0)
+		char* text = mm_data_format(percents[k])
+		int width = mm_text_width(text, 0)
+		int x = column + 4
+		if (right == 0): x = column - 4 - width
+		mm_text(s, x, tops[k], text)
+		if (x + width > edge): edge = x + width
+		free(text)
+	return edge
+
 void mm_data_pie_render(mm_document* d, mm_scene* s):
 	float sum = 0.0
 	for mm_data_item* item in d.data.items: sum = sum + cast(float, item.a)
+	int cx = MM_DATA_PIE_CX
+	int cy = MM_DATA_PIE_CY
 	float angle = -1.5707963
+	# Outside labels per side: slice, middle angle, desired top, percent.
+	list[int] right_slices = new list[int]
+	list[float] right_angles = new list[float]
+	list[int] right_tops = new list[int]
+	list[int] right_percents = new list[int]
+	list[int] left_slices = new list[int]
+	list[float] left_angles = new list[float]
+	list[int] left_tops = new list[int]
+	list[int] left_percents = new list[int]
 	int row = 0
 	for mm_data_item* item in d.data.items:
 		float sweep = cast(float, item.a) / sum * 6.2831853
 		int steps = cast(int, sweep * 180.0 / 3.14159265 / 4.0) + 1
 		int start = s.items.length
 		mm_primitive* slice = mm_data_polygon(s)
-		mm_data_vertex(s, slice, 250, 260)
+		mm_data_vertex(s, slice, cx, cy)
 		for j in range(steps + 1):
 			float end = angle + sweep * cast(float, j) / cast(float, steps)
-			int x = 250 + cast(int, fcos(end) * 180.0)
-			int y = 260 + cast(int, fsin(end) * 180.0)
+			int x = cx + cast(int, fcos(end) * cast(float, MM_DATA_PIE_R))
+			int y = cy + cast(int, fsin(end) * cast(float, MM_DATA_PIE_R))
 			mm_data_vertex(s, slice, x, y)
-		mm_draw(s, MM_BOX, 472, 80 + row * 26, 488, 96 + row * 26, 0, c"")
 		mm_data_series_paint(s, start, row)
 		float middle = angle + sweep / 2.0
-		int lx = 250 + cast(int, fcos(middle) * 125.0)
-		int ly = 260 + cast(int, fsin(middle) * 125.0)
 		int percent = cast(int, cast(float, item.a) / sum * 100000.0)
-		# Dense slices retain their names and percentages in separate legend rows.
-		# A 0.55 radian wedge has enough chord width for a percentage label.
 		if (sweep >= 0.55):
-			mm_data_value_text(s, lx - 16, ly - 8, percent)
+			int lx = cx + cast(int, fcos(middle) * 125.0)
+			int ly = cy + cast(int, fsin(middle) * 125.0)
+			char* text = mm_data_format(percent)
+			mm_text(s, lx - mm_text_width(text, 0) / 2, ly - 8, text)
+			free(text)
 			mm_primitive* label = s.items[s.items.length - 1]
 			label.style.mask = 4
 			label.style.text = 0xffffff
-		mm_text(s, 500, 80 + row * 26, item.label)
-		char* percentage = mm_data_format(percent)
+		else:
+			int top = cy + cast(int, fsin(middle) * cast(float, MM_DATA_PIE_COLUMN)) - MM_TEXT_LINE / 2
+			# Angles run clockwise from the top: right side top-down in order,
+			# left side bottom-up, so the left lists are reversed afterwards.
+			if (fcos(middle) >= 0.0):
+				right_slices.push(row)
+				right_angles.push(middle)
+				right_tops.push(top)
+				right_percents.push(percent)
+			else:
+				left_slices.push(row)
+				left_angles.push(middle)
+				left_tops.push(top)
+				left_percents.push(percent)
+		angle = angle + sweep
+		row = row + 1
+	# Right-side angles in (-pi/2, pi/2) increase downwards; left-side ones in
+	# (pi/2, 3pi/2) increase upwards, so reverse those to top-down order.
+	int count = left_slices.length
+	for k in range(count / 2):
+		int other = count - 1 - k
+		int slice_swap = left_slices[k]
+		left_slices[k] = left_slices[other]
+		left_slices[other] = slice_swap
+		float angle_swap = left_angles[k]
+		left_angles[k] = left_angles[other]
+		left_angles[other] = angle_swap
+		int top_swap = left_tops[k]
+		left_tops[k] = left_tops[other]
+		left_tops[other] = top_swap
+		int percent_swap = left_percents[k]
+		left_percents[k] = left_percents[other]
+		left_percents[other] = percent_swap
+	int low = cy - MM_DATA_PIE_COLUMN - 160
+	int high = cy + MM_DATA_PIE_COLUMN + 160
+	mm_data_pie_spread(right_tops, low, high)
+	mm_data_pie_spread(left_tops, low, high)
+	int edge = mm_data_pie_side(s, right_slices, right_angles, right_tops, right_percents, 1)
+	mm_data_pie_side(s, left_slices, left_angles, left_tops, left_percents, 0)
+	# The legend moves right of any outside labels on the right side.
+	int legend = 472
+	if (edge + 24 > legend): legend = edge + 24
+	row = 0
+	for mm_data_item* item in d.data.items:
+		int start = s.items.length
+		mm_draw(s, MM_BOX, legend, 80 + row * 26, legend + 16, 96 + row * 26, 0, c"")
+		mm_data_series_paint(s, start, row)
+		mm_text(s, legend + 28, 80 + row * 26, item.label)
+		int percent = cast(int, cast(float, item.a) / sum * 100000.0)
+		char* percentage = mm_data_pie_percent(percent)
 		string_builder* label = string_from(percentage)
-		string_append_char(label, '%')
 		free(percentage)
 		if (d.data.show_data):
 			char* value = mm_data_format(item.a)
@@ -113,11 +264,24 @@ void mm_data_pie_render(mm_document* d, mm_scene* s):
 			string_append(label, value)
 			string_append_char(label, ')')
 			free(value)
-		mm_text(s, 520 + strlen(item.label) * 8, 80 + row * 26, label.data)
+		mm_text(s, legend + 40 + mm_text_width(item.label, 0), 80 + row * 26, label.data)
 		string_free(label)
-		angle = angle + sweep
 		row = row + 1
-	mm_text(s, 170, 470, c"Slice labels: percent")
+	# The caption stays clear of leaders running to bottom labels.
+	int caption = 470
+	for int top in right_tops:
+		if (top + 40 > caption): caption = top + 40
+	for int top in left_tops:
+		if (top + 40 > caption): caption = top + 40
+	mm_text(s, 170, caption, c"Slice labels: percent")
+	__w_list_free(cast(__w_list*, right_slices))
+	__w_list_free(cast(__w_list*, right_angles))
+	__w_list_free(cast(__w_list*, right_tops))
+	__w_list_free(cast(__w_list*, right_percents))
+	__w_list_free(cast(__w_list*, left_slices))
+	__w_list_free(cast(__w_list*, left_angles))
+	__w_list_free(cast(__w_list*, left_tops))
+	__w_list_free(cast(__w_list*, left_percents))
 
 void mm_data_quadrant_render(mm_document* d, mm_scene* s):
 	mm_data_chart* c = d.data
@@ -125,9 +289,10 @@ void mm_data_quadrant_render(mm_document* d, mm_scene* s):
 	mm_line(s, 420, 80, 420, 580, 0)
 	mm_line(s, 120, 330, 720, 330, 0)
 	mm_text(s, 120, 610, c.x_label)
-	mm_text(s, 720 - strlen(c.x_end) * 8, 610, c.x_end)
-	mm_text(s, 10, 560, c.y_label)
-	mm_text(s, 10, 80, c.y_end)
+	mm_text(s, 720 - mm_text_width(c.x_end, 0), 610, c.x_end)
+	# Y-axis labels right-align against the plot from measured widths.
+	mm_text(s, 110 - mm_text_width(c.y_label, 0), 560, c.y_label)
+	mm_text(s, 110 - mm_text_width(c.y_end, 0), 80, c.y_end)
 	for mm_data_item* item in c.items:
 		if (item.kind == 9): continue
 		if (item.kind == 8):
@@ -135,7 +300,8 @@ void mm_data_quadrant_render(mm_document* d, mm_scene* s):
 			int y = 100
 			if (item.a == 1 || item.a == 4): x = 440
 			if (item.a == 3 || item.a == 4): y = 350
-			mm_text(s, x, y, item.label)
+			# Quadrant titles wrap inside their 300px quadrant.
+			mm_label(s, x, y, item.label, 260, 0)
 		else:
 			int x = 120 + item.values[0] * 600 / 1000
 			int y = 580 - item.values[1] * 500 / 1000
@@ -147,7 +313,11 @@ void mm_data_quadrant_render(mm_document* d, mm_scene* s):
 			if ((point.style.mask & 1) == 0):
 				point.style.mask = point.style.mask | 1
 				point.style.fill = d.palette.stroke
-			mm_text(s, x + radius + 4, y - 18, item.label)
+			# A point label that would leave the plot sits left of its point.
+			int label_x = x + radius + 4
+			int label_width = mm_text_width(item.label, 0)
+			if (label_x + label_width > 720 && x - radius - 4 - label_width >= 120): label_x = x - radius - 4 - label_width
+			mm_text(s, label_x, y - 18, item.label)
 
 int mm_data_x_position(mm_data_chart* c, int index, int count, int width):
 	if (c.x_numeric && count > 1): return index * width / (count - 1)
@@ -202,18 +372,38 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 	for tick in range(6):
 		int value = c.low + cast(int, cast(float, c.high - c.low) * cast(float, tick) / 5.0)
 		if (horizontal):
-			if (y_labels): mm_data_value_text(s, left + tick * extent / 5 - 16, top + width + 24, value)
+			if (y_labels):
+				char* number = mm_data_format(value)
+				mm_text(s, left + tick * extent / 5 - mm_text_width(number, 0) / 2, top + width + 24, number)
+				free(number)
 			if (y_ticks): mm_line(s, left + tick * extent / 5, top, left + tick * extent / 5, top + width, 1)
 		else:
-			if (y_labels): mm_data_value_text(s, 20, top + extent - tick * extent / 5 - 8, value)
+			# Value labels right-align against the axis from measured widths.
+			if (y_labels):
+				char* number = mm_data_format(value)
+				mm_text(s, left - 10 - mm_text_width(number, 0), top + extent - tick * extent / 5 - 8, number)
+				free(number)
 			if (y_ticks): mm_line(s, left, top + extent - tick * extent / 5, left + width, top + extent - tick * extent / 5, 1)
+	# Category labels: right-aligned beside a horizontal chart's axis; under a
+	# vertical one centered on their band and wrapped to its width when the
+	# widest would run into a neighbour, which moves the axis title and the
+	# legend down by the extra lines.
 	int category = 0
+	int band_width = width
+	if (count > 0): band_width = width / count - 8
+	if (band_width < 24): band_width = 24
+	int wrap = 0
+	for mm_data_item* item in c.items:
+		if (item.kind == 1 && mm_text_width(item.label, 0) > band_width): wrap = band_width
+	int label_extra = 0
 	for mm_data_item* item in c.items:
 		if (item.kind != 1): continue
 		int position = mm_data_x_position(c, category, count, width)
 		if (x_labels):
-			if (horizontal): mm_text(s, 10, top + position - 8, item.label)
-			else: mm_text(s, left + position - strlen(item.label) * 4, top + extent + 20, item.label)
+			if (horizontal): mm_text(s, left - 10 - mm_text_width(item.label, 0), top + position - 8, item.label)
+			else:
+				int height = mm_label(s, left + position, top + extent + 20, item.label, wrap, 1)
+				if (height - MM_TEXT_LINE > label_extra): label_extra = height - MM_TEXT_LINE
 		category = category + 1
 	if (category == 0 && x_labels):
 		for i in range(count):
@@ -222,8 +412,10 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 			if (c.x_numeric):
 				value = c.x_low
 				if (count > 1): value = c.x_low + cast(int, cast(float, c.x_high - c.x_low) * cast(float, i) / cast(float, count - 1))
-			if (horizontal): mm_data_value_text(s, 50, top + position - 8, value)
-			else: mm_data_value_text(s, left + position - 4, top + extent + 20, value)
+			char* number = mm_data_format(value)
+			if (horizontal): mm_text(s, left - 10 - mm_text_width(number, 0), top + position - 8, number)
+			else: mm_text(s, left + position - mm_text_width(number, 0) / 2, top + extent + 20, number)
+			free(number)
 	int bar_index = 0
 	int series_index = 0
 	for mm_data_item* item in c.items:
@@ -265,7 +457,7 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 			last_y = y
 		if (item.kind == 3): bar_index = bar_index + 1
 		if (item.label[0] != 0 && legend):
-			int legend_y = top + extent + 80
+			int legend_y = top + extent + 80 + label_extra
 			if (horizontal): legend_y = top + width + 80
 			if (item.kind == 3): mm_draw(s, MM_BOX, left, legend_y + series_index * 24, left + 24, legend_y + series_index * 24 + 14, 0, c"")
 			else: mm_line(s, left, legend_y + series_index * 24 + 7, left + 24, legend_y + series_index * 24 + 7, series_index % 2)
@@ -276,7 +468,7 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 		if (y_title): mm_text(s, left, top + width + 52, c.y_label)
 		if (x_title): mm_text(s, 10, 44, c.x_label)
 	else:
-		if (x_title): mm_text(s, left, top + extent + 52, c.x_label)
+		if (x_title): mm_text(s, left, top + extent + 52 + label_extra, c.x_label)
 		if (y_title): mm_text(s, 20, 44, c.y_label)
 
 int mm_data_radar_x(int cx, float angle, int radius):
@@ -325,7 +517,7 @@ void mm_data_radar_render(mm_document* d, mm_scene* s):
 		float angle = cast(float, i) * 6.2831853 / cast(float, count) - 1.5707963
 		mm_data_item* axis = axes[i]
 		mm_line(s, cx, cy, mm_data_radar_x(cx, angle, axis_radius), mm_data_radar_y(cy, angle, axis_radius), 0)
-		mm_text(s, mm_data_radar_x(cx, angle, label_radius) - strlen(axis.label) * 4, mm_data_radar_y(cy, angle, label_radius) - 8, axis.label)
+		mm_text(s, mm_data_radar_x(cx, angle, label_radius) - mm_text_width(axis.label, 0) / 2, mm_data_radar_y(cy, angle, label_radius) - 8, axis.label)
 	int series = 0
 	list[int] px = new list[int]
 	list[int] py = new list[int]
@@ -473,7 +665,7 @@ void mm_data_tree_render_level(mm_data_chart* c, mm_scene* s, int parent, int x,
 			box.style.stroke = mm_data_series_color(box.series)
 			box.style.fill = mm_theme_adjust(box.style.stroke, 0, 0, box.tint + 15)
 			# Labels in tiny cells go to a legend rather than crossing boundaries.
-			if (ww > strlen(item.label) * 8 + 12 && hh > 26): mm_text(s, xx + 6, yy + 6, item.label)
+			if (ww > mm_text_width(item.label, 0) + 12 && hh > 26): mm_text(s, xx + 6, yy + 6, item.label)
 			# classDef and style rules resolved at validation outrank the theme.
 			mm_data_style_apply(s, style_start, &item.style)
 			if (item.kind == 5):
@@ -494,7 +686,7 @@ void mm_data_tree_render(mm_document* d, mm_scene* s):
 	int row = 0
 	for mm_data_item* item in d.data.items:
 		mm_text(s, 980 + item.depth * 3, 80 + row * 24, item.label)
-		if (item.kind != 5): mm_data_value_text(s, 1000 + item.depth * 3 + strlen(item.label) * 8, 80 + row * 24, item.a)
+		if (item.kind != 5): mm_data_value_text(s, 1000 + item.depth * 3 + mm_text_width(item.label, 0), 80 + row * 24, item.a)
 		row = row + 1
 
 void mm_data_packet_render(mm_document* d, mm_scene* s):
@@ -520,9 +712,9 @@ void mm_data_packet_render(mm_document* d, mm_scene* s):
 			mm_data_style_apply(s, style_start, &item.style)
 			mm_data_value_text(s, x + 2, y - 20, left_bit * 1000)
 			if (last != first): mm_data_value_text(s, right - 24, y - 20, right_bit * 1000)
-			if (strlen(item.label) * 8 < right - x - 4):
+			if (mm_text_width(item.label, 0) < right - x - 4):
 				int label_start = s.items.length
-				mm_text(s, x + (right - x - strlen(item.label) * 8) / 2, y + 22, item.label)
+				mm_text(s, x + (right - x - mm_text_width(item.label, 0)) / 2, y + 22, item.label)
 				mm_data_style_apply(s, label_start, &item.style)
 			else:
 				# Bit-width geometry remains proportional; narrow field labels use a key.
@@ -565,7 +757,7 @@ void mm_data_venn_texts(mm_document* d, mm_scene* s, int parent, int x, int y):
 	for mm_data_item* item in d.data.items:
 		if (item.kind != 10 || item.parent != parent): continue
 		int start = s.items.length
-		mm_text(s, x - strlen(item.label) * 4, y, item.label)
+		mm_text(s, x - mm_text_width(item.label, 0) / 2, y, item.label)
 		mm_data_style_apply(s, start, &item.style)
 		y = y + 20
 
@@ -971,7 +1163,7 @@ void mm_data_venn_render(mm_document* d, mm_scene* s):
 		disc.style.fill_opacity = 10
 		int ty = y - radius + 55
 		if (count == 3 && pairs == 3 && i == 2): ty = y + 110
-		mm_text(s, x - strlen(item.label) * 4, ty, item.label)
+		mm_text(s, x - mm_text_width(item.label, 0) / 2, ty, item.label)
 		mm_data_style_apply(s, start, &item.style)
 		mm_data_venn_texts(d, s, ids[i], x, ty + 22)
 	for item_index in range(d.data.items.length):
@@ -995,7 +1187,7 @@ void mm_data_venn_render(mm_document* d, mm_scene* s):
 			x = (left + right) / 2
 		int start = s.items.length
 		if (item.style.mask & MM_STYLE_FILL): mm_data_venn_region(s, item, xs, ys, radii, x, y)
-		mm_text(s, x - strlen(item.label) * 4, y - 8, item.label)
+		mm_text(s, x - mm_text_width(item.label, 0) / 2, y - 8, item.label)
 		mm_data_style_apply(s, start, &item.style)
 		mm_data_venn_texts(d, s, item_index, x, y + 14)
 	__w_list_free(cast(__w_list*, ids))
@@ -1008,12 +1200,11 @@ struct mm_data_flow_node:
 	float incoming
 	float outgoing
 	float total
-	float in_used
-	float out_used
 	int rank
 	int x
 	int y
 	int height
+	int order
 
 int mm_data_text_lines(char* text):
 	int count = 1
@@ -1066,6 +1257,150 @@ void mm_data_fill(mm_primitive* p, int color):
 	p.style.mask = p.style.mask | MM_STYLE_FILL | MM_STYLE_STROKE
 	p.style.fill = color
 	p.style.stroke = color
+
+# Global node ordering (issue #817). Each column starts from the weighted
+# predecessor order above, then alternating barycenter sweeps (forward by
+# weighted source centers, backward by weighted target centers, as
+# d3-sankey's relaxation) reorder the columns; the order with the fewest
+# value-weighted ribbon crossings wins, the initial one on ties, so the
+# result is deterministic and never worse than the single forward pass.
+const int MM_DATA_SANKEY_SWEEPS = 8
+const int MM_DATA_SANKEY_RELAX_LIMIT = 4000
+
+# Stack one column top-down in node.order.
+void mm_data_sankey_place(mm_document* d, list[mm_data_flow_node*] nodes, int rank, float scale, int padding):
+	list[int] ordered = new list[int]
+	for i in range(nodes.length):
+		if (nodes[i].rank == rank): ordered.push(-1)
+	for i in range(nodes.length):
+		mm_data_flow_node* node = nodes[i]
+		if (node.rank == rank && node.order >= 0 && node.order < ordered.length): ordered[node.order] = i
+	int y = 100
+	for int i in ordered:
+		if (i < 0): continue
+		mm_data_flow_node* node = nodes[i]
+		mm_node* named = d.nodes[i]
+		y = y + (mm_data_text_lines(named.label) - 1) * 18
+		node.y = y
+		node.height = cast(int, node.total * scale)
+		if (node.height < 1): node.height = 1
+		y = y + node.height + padding
+	__w_list_free(cast(__w_list*, ordered))
+
+float mm_data_sankey_mid(mm_data_flow_node* node):
+	return cast(float, node.y) + cast(float, node.height) / 2.0
+
+# Weighted center of a node's neighbours: sources (forward) or targets.
+float mm_data_sankey_key(mm_document* d, list[mm_data_flow_node*] nodes, int index, int forward):
+	float center = 0.0
+	float total = 0.0
+	for mm_data_item* flow in d.data.items:
+		int other = -1
+		if (forward && flow.b == index): other = flow.parent
+		if (forward == 0 && flow.parent == index): other = flow.b
+		if (other < 0): continue
+		center = center + mm_data_sankey_mid(nodes[other]) * cast(float, flow.a)
+		total = total + cast(float, flow.a)
+	if (total == 0.0): return mm_data_sankey_mid(nodes[index])
+	return center / total
+
+# Stable reorder of one column by neighbour centers.
+void mm_data_sankey_sweep_rank(mm_document* d, list[mm_data_flow_node*] nodes, int rank, int forward, float scale, int padding):
+	list[int] ordered = new list[int]
+	list[float] keys = new list[float]
+	for i in range(nodes.length):
+		if (nodes[i].rank == rank):
+			ordered.push(-1)
+			keys.push(0.0)
+	for i in range(nodes.length):
+		mm_data_flow_node* node = nodes[i]
+		if (node.rank == rank && node.order >= 0 && node.order < ordered.length): ordered[node.order] = i
+	for k in range(ordered.length):
+		if (ordered[k] >= 0): keys[k] = mm_data_sankey_key(d, nodes, ordered[k], forward)
+	for i in range(1, ordered.length):
+		int id = ordered[i]
+		float key = keys[i]
+		int j = i
+		while (j > 0 && keys[j - 1] > key):
+			ordered[j] = ordered[j - 1]
+			keys[j] = keys[j - 1]
+			j = j - 1
+		ordered[j] = id
+		keys[j] = key
+	for k in range(ordered.length):
+		if (ordered[k] >= 0): nodes[ordered[k]].order = k
+	mm_data_sankey_place(d, nodes, rank, scale, padding)
+	__w_list_free(cast(__w_list*, ordered))
+	__w_list_free(cast(__w_list*, keys))
+
+# Value-weighted crossings between ribbons spanning the same pair of
+# columns with distinct endpoints (ribbons sharing an endpoint never cross:
+# their slots follow the opposite end's order, see mm_data_sankey_slots).
+float mm_data_sankey_crossings(mm_document* d, list[mm_data_flow_node*] nodes):
+	float total = 0.0
+	int count = d.data.items.length
+	for i in range(count):
+		mm_data_item* a = d.data.items[i]
+		mm_data_flow_node* au = nodes[a.parent]
+		mm_data_flow_node* av = nodes[a.b]
+		for j in range(i + 1, count):
+			mm_data_item* b = d.data.items[j]
+			if (a.parent == b.parent || a.b == b.b): continue
+			mm_data_flow_node* bu = nodes[b.parent]
+			mm_data_flow_node* bv = nodes[b.b]
+			if (au.rank != bu.rank || av.rank != bv.rank): continue
+			if ((au.order < bu.order) != (av.order < bv.order)): total = total + cast(float, a.a) * cast(float, b.a)
+	return total
+
+void mm_data_sankey_relax(mm_document* d, list[mm_data_flow_node*] nodes, int ranks, float scale, int padding):
+	if (ranks < 2 || d.data.items.length > MM_DATA_SANKEY_RELAX_LIMIT): return
+	list[int] best = new list[int]
+	for mm_data_flow_node* node in nodes: best.push(node.order)
+	float best_crossings = mm_data_sankey_crossings(d, nodes)
+	for sweep in range(MM_DATA_SANKEY_SWEEPS):
+		if (best_crossings == 0.0): break
+		if (sweep % 2 == 0):
+			for rank in range(1, ranks): mm_data_sankey_sweep_rank(d, nodes, rank, 1, scale, padding)
+		else:
+			int rank = ranks - 2
+			while (rank >= 0):
+				mm_data_sankey_sweep_rank(d, nodes, rank, 0, scale, padding)
+				rank = rank - 1
+		float crossings = mm_data_sankey_crossings(d, nodes)
+		if (crossings < best_crossings):
+			best_crossings = crossings
+			for i in range(nodes.length): best[i] = nodes[i].order
+	for i in range(nodes.length): nodes[i].order = best[i]
+	for rank in range(ranks): mm_data_sankey_place(d, nodes, rank, scale, padding)
+	__w_list_free(cast(__w_list*, best))
+
+# Ribbon offsets inside each node: outgoing ribbons stack in the vertical
+# order of their targets and incoming ones in that of their sources, as
+# d3-sankey's link breadths, so ribbons sharing a node never cross.
+void mm_data_sankey_slots(mm_document* d, list[mm_data_flow_node*] nodes, list[float] out_offset, list[float] in_offset):
+	int count = d.data.items.length
+	for i in range(count):
+		out_offset.push(0.0)
+		in_offset.push(0.0)
+	for i in range(count):
+		mm_data_item* item = d.data.items[i]
+		float target = mm_data_sankey_mid(nodes[item.b])
+		float source = mm_data_sankey_mid(nodes[item.parent])
+		float out_used = 0.0
+		float in_used = 0.0
+		for j in range(count):
+			if (j == i): continue
+			# Past the relaxation bound slots keep source order (linear work).
+			if (count > MM_DATA_SANKEY_RELAX_LIMIT && j > i): break
+			mm_data_item* other = d.data.items[j]
+			if (other.parent == item.parent):
+				float y = mm_data_sankey_mid(nodes[other.b])
+				if (count > MM_DATA_SANKEY_RELAX_LIMIT || y < target || (y == target && j < i)): out_used = out_used + cast(float, other.a)
+			if (other.b == item.b):
+				float y = mm_data_sankey_mid(nodes[other.parent])
+				if (count > MM_DATA_SANKEY_RELAX_LIMIT || y < source || (y == source && j < i)): in_used = in_used + cast(float, other.a)
+		out_offset[i] = out_used
+		in_offset[i] = in_used
 
 void mm_data_sankey_render(mm_document* d, mm_scene* s):
 	list[mm_data_flow_node*] nodes = new list[mm_data_flow_node*]
@@ -1182,24 +1517,25 @@ void mm_data_sankey_render(mm_document* d, mm_scene* s):
 				ordered[j] = ordered[j - 1]
 				j = j - 1
 			ordered[j] = node_id
-		int y = 100
-		for int i in ordered:
-			mm_data_flow_node* node = nodes[i]
-			mm_node* named = d.nodes[i]
-			y = y + (mm_data_text_lines(named.label) - 1) * 18
-			node.x = 80 + rank * pitch
-			node.y = y
-			node.height = cast(int, node.total * scale)
-			if (node.height < 1): node.height = 1
-			y = y + node.height + padding
+		for k in range(ordered.length): nodes[ordered[k]].order = k
+		mm_data_sankey_place(d, nodes, rank, scale, padding)
 		__w_list_free(cast(__w_list*, ordered))
+	mm_data_sankey_relax(d, nodes, ranks, scale, padding)
+	for mm_data_flow_node* node in nodes: node.x = 80 + node.rank * pitch
+	list[float] out_offset = new list[float]
+	list[float] in_offset = new list[float]
+	mm_data_sankey_slots(d, nodes, out_offset, in_offset)
+	int item_index = 0
 	for mm_data_item* item in d.data.items:
 		mm_data_flow_node* from = nodes[item.parent]
 		mm_data_flow_node* to = nodes[item.b]
-		int ay = from.y + cast(int, from.out_used * scale)
-		int by = to.y + cast(int, to.in_used * scale)
-		int ah = from.y + cast(int, (from.out_used + cast(float, item.a)) * scale)
-		int bh = to.y + cast(int, (to.in_used + cast(float, item.a)) * scale)
+		float out_used = out_offset[item_index]
+		float in_used = in_offset[item_index]
+		item_index = item_index + 1
+		int ay = from.y + cast(int, out_used * scale)
+		int by = to.y + cast(int, in_used * scale)
+		int ah = from.y + cast(int, (out_used + cast(float, item.a)) * scale)
+		int bh = to.y + cast(int, (in_used + cast(float, item.a)) * scale)
 		mm_primitive* ribbon = mm_data_polygon(s)
 		for j in range(17):
 			float t = cast(float, j) / 16.0
@@ -1224,11 +1560,9 @@ void mm_data_sankey_render(mm_document* d, mm_scene* s):
 			if (prefix != 0): string_append(text, prefix)
 			string_append(text, number)
 			if (suffix != 0): string_append(text, suffix)
-			mm_text(s, (from.x + to.x) / 2, (ay + by + ah + bh) / 4, text.data)
+			mm_text(s, (from.x + node_width + to.x) / 2 - mm_text_width(text.data, 0) / 2, (ay + by + ah + bh) / 4 - MM_TEXT_LINE / 2, text.data)
 			string_free(text)
 			free(number)
-		from.out_used = from.out_used + cast(float, item.a)
-		to.in_used = to.in_used + cast(float, item.a)
 	for i in range(nodes.length):
 		mm_data_flow_node* node = nodes[i]
 		mm_node* named = d.nodes[i]
@@ -1241,6 +1575,8 @@ void mm_data_sankey_render(mm_document* d, mm_scene* s):
 		mm_data_multiline_text(s, node.x, node.y - 24 - (mm_data_text_lines(named.label) - 1) * 18, named.label)
 	for mm_data_flow_node* node in nodes: free(node)
 	__w_list_free(cast(__w_list*, nodes))
+	__w_list_free(cast(__w_list*, out_offset))
+	__w_list_free(cast(__w_list*, in_offset))
 
 # Centered labels can extend left/up from a small chart. Translate the complete
 # display list so native clipping and SVG viewBox retain those labels equally.

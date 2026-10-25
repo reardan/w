@@ -1,7 +1,8 @@
 # wbuild: binary=mermaid_editor_ui_driver arch=x64 tag=tests
 # Real X11/XTest editor workflows; run through the opt-in Xvfb target:
 # the pointer/keyboard flowchart workflow, keyboard-only edit/undo/redo
-# chains in each graphically editable family, and external-change
+# chains in each graphically editable family, group editing and
+# multi-selection (Space, Ctrl+A, rubber band), and external-change
 # detection with refused saves, Keep mine, reload and deletion.
 import tools.host_tools
 import lib.str
@@ -202,6 +203,84 @@ void mu_families(char* work):
 	mu_family(work, c"class.mmd", c"classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat\n", c"Animal")
 	mu_family(work, c"state.mmd", c"stateDiagram-v2\nIdle --> Running : start\nRunning --> Done : finish\n", c"Idle")
 
+# Group editing from the keyboard: Tab selects the subgraph itself, arrows
+# move it with its member, Ctrl+R renames it, Ctrl+G ungroups it (members
+# stay), Delete removes it with its member, and every state undoes exactly.
+void mu_groups(char* work):
+	char* path = path_join(work, c"groups.mmd")
+	char* source = c"flowchart LR\nsubgraph G[Group]\n  A[Alpha]\nend\nA --> B[Beta]\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right", c"Shift_L")
+	char* moved = mu_saved_change(source, c"group: keyboard move was not saved")
+	ht_require(contains(moved, c"@w-position \"G\""), c"group: move did not store the group's position")
+	mu_key(c"r", c"Control_L")
+	mu_key(c"a", c"Control_L")
+	mu_type(c"Team")
+	mu_key(c"Return", c"Control_L")
+	char* renamed = mu_saved_change(moved, c"group: rename was not saved")
+	ht_require(contains(renamed, c"subgraph G[Team]") && contains(renamed, c"A[Alpha]"), c"group: rename changed the wrong text")
+	mu_key(c"d", c"Control_L")
+	mu_key(c"g", c"Control_L")
+	char* ungrouped = mu_saved_change(renamed, c"group: Ctrl+G changed nothing")
+	ht_require(!contains(ungrouped, c"subgraph") && !contains(ungrouped, c"\nend\n") && contains(ungrouped, c"A[Alpha]"), c"group: ungroup lost or kept the wrong lines")
+	mu_undo(renamed, c"group: undo of ungroup")
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Delete")
+	char* removed = mu_saved_change(renamed, c"group: Delete changed nothing")
+	ht_require(!contains(removed, c"subgraph") && !contains(removed, c"Alpha") && contains(removed, c"B[Beta]"), c"group: Delete did not remove exactly the group and its member")
+	mu_undo(renamed, c"group: undo of the deletion")
+	mu_undo(moved, c"group: undo of the rename")
+	mu_undo(source, c"group: undo of the move")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+
+# Multi-selection: Space extends a Tab selection, arrows move every selected
+# node in one undo step, Delete removes them together, Ctrl+A selects all,
+# and a Shift+drag rubber band selects what it covers.
+void mu_multiselect(char* work):
+	char* path = path_join(work, c"multi.mmd")
+	char* source = c"flowchart LR\nA[Alpha] --> B[Beta]\nB --> C[Gamma]\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"space")
+	mu_key(c"Tab")
+	mu_key(c"space")
+	mu_key(c"Right", c"Shift_L")
+	char* moved = mu_saved_change(source, c"multi: set move was not saved")
+	ht_require(contains(moved, c"@w-position \"A\"") && contains(moved, c"@w-position \"B\"") && !contains(moved, c"@w-position \"C\""), c"multi: arrows did not move exactly the selected nodes")
+	mu_key(c"Delete")
+	char* removed = mu_saved_change(moved, c"multi: Delete changed nothing")
+	ht_require(!contains(removed, c"Alpha") && !contains(removed, c"Beta") && contains(removed, c"C[Gamma]"), c"multi: Delete did not remove exactly the selection")
+	mu_undo(moved, c"multi: deleting the selection was not one undo step")
+	mu_undo(source, c"multi: the set move was not one undo step")
+	mu_canvas()
+	mu_key(c"a", c"Control_L")
+	mu_key(c"Down", c"Shift_L")
+	char* all = mu_saved_change(source, c"multi: Ctrl+A move was not saved")
+	ht_require(contains(all, c"@w-position \"A\"") && contains(all, c"@w-position \"B\"") && contains(all, c"@w-position \"C\""), c"multi: Ctrl+A did not select every node")
+	mu_undo(source, c"multi: undo of the select-all move")
+	mu_key(c"d", c"Control_L")
+	mu_raw(c"Shift_L", 1)
+	mu_flush()
+	mu_move(1250.0, 700.0)
+	mu_button(1)
+	for step in range(1, 9): mu_move(1250.0 - 98.0 * cast(float, step), 700.0 - 70.0 * cast(float, step))
+	mu_button(0)
+	mu_raw(c"Shift_L", 0)
+	mu_flush()
+	mu_key(c"Left")
+	char* banded = mu_saved_change(source, c"multi: rubber band move was not saved")
+	ht_require(contains(banded, c"@w-position \"A\"") && contains(banded, c"@w-position \"B\"") && contains(banded, c"@w-position \"C\""), c"multi: rubber band did not select every node")
+	mu_undo(source, c"multi: undo of the rubber band move")
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+
 # External changes: a save over a changed file is refused, Keep mine makes
 # the next save replace exactly that version, Reload from disk adopts it,
 # and a deleted file is only recreated after Keep mine.
@@ -309,7 +388,7 @@ void mu_flowchart(char* work):
 	mu_type(c"Renamed")
 	mu_key(c"Return", c"Control_L")
 	mu_save()
-	mu_wait(c"[\"Renamed\"]", 2, c"inspector did not replace entire label")
+	mu_wait(c"A[Renamed]", 2, c"inspector did not replace entire label")
 	char* renamed = ht_read(mu_path).data
 	ht_require(contains(renamed, c"%% keep this comment") && contains(renamed, c"Beta"), c"rename changed unrelated source")
 	mu_key(c"r", c"Control_L")
@@ -341,6 +420,8 @@ int main():
 	char* work = ht_temp()
 	mu_flowchart(work)
 	mu_families(work)
+	mu_groups(work)
+	mu_multiselect(work)
 	mu_conflicts(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()

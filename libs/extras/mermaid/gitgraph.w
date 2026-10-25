@@ -107,6 +107,25 @@ void mm_git_cherry(mm_parser* p, int current, int ordinal):
 	free(parent)
 	free(tag)
 
+# A repeated custom commit id rebinds the id to the newer commit (later
+# cherry-pick and parent references resolve to it, as upstream's commit map
+# does). The older commit keeps its label and ancestry under an internal
+# `<id>~<n>` id; unlike upstream, which then stops drawing it, it is drawn.
+void mm_git_rebind(mm_document* d, int index):
+	mm_node* old = d.nodes[index]
+	int suffix = 1
+	while (suffix <= MM_MAX_ITEMS + 1):
+		string_builder* id = string_from(old.id)
+		string_append_char(id, '~')
+		string_append_int(id, suffix)
+		if (mm_find_node(d, id.data) < 0):
+			free(old.id)
+			old.id = strclone(id.data)
+			string_free(id)
+			return
+		string_free(id)
+		suffix = suffix + 1
+
 # Unspecified orders precede specified orders; equal values retain source order.
 int mm_git_lane(mm_document* d, mm_node* branch):
 	int lane = 0
@@ -178,14 +197,21 @@ void mm_git_body(mm_parser* p):
 			string_free(generated)
 			char* tag = strclone(c"")
 			int shape = merge * 3
+			int custom = 0
+			char* message = strclone(c"")
 			list[char*] keys = new list[char*]
 			while (mm_end(p) == 0 && p.doc.error == 0):
-				char* key = mm_identifier(p)
+				char* key
+				# A bare string is the commit message (`commit "text"` is
+				# `commit msg: "text"` upstream).
+				int bare = merge == 0 && mm_peek(p) == '"'
+				if (bare): key = strclone(c"msg")
+				else: key = mm_identifier(p)
 				for char* prior in keys:
 					if (strcmp(prior, key) == 0): mm_error(p.doc, p.pos, c"duplicate commit property")
 				keys.push(strclone(key))
 				mm_space(p)
-				if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"expected commit property colon")
+				if (bare == 0 && mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"expected commit property colon")
 				mm_space(p)
 				char* value
 				if (mm_peek(p) == '"'): value = mm_quoted(p)
@@ -193,6 +219,10 @@ void mm_git_body(mm_parser* p):
 				if (strcmp(key, c"id") == 0):
 					free(id)
 					id = strclone(value)
+					custom = 1
+				else if (merge == 0 && strcmp(key, c"msg") == 0):
+					free(message)
+					message = strclone(value)
 				else if (strcmp(key, c"tag") == 0):
 					free(tag)
 					tag = strclone(value)
@@ -206,8 +236,26 @@ void mm_git_body(mm_parser* p):
 				free(value)
 			for char* key in keys: free(key)
 			__w_list_free(cast(__w_list*, keys))
-			if (id[0] == 0 || mm_find_node(p.doc, id) >= 0): mm_error(p.doc, p.pos, c"empty or duplicate commit id")
-			int index = mm_add_node(p.doc, id, p.pos)
+			int existing = -1
+			if (id[0] != 0): existing = mm_find_node(p.doc, id)
+			# Upstream rejects a merge whose custom id exists, but a repeated
+			# commit id only logs a warning and rebinds the id to the newer
+			# commit; generated ids never collide there.
+			if (id[0] == 0 || (existing >= 0 && (merge || p.doc.nodes[existing].group))): mm_error(p.doc, p.pos, c"empty or duplicate commit id")
+			else if (existing >= 0 && custom): mm_git_rebind(p.doc, existing)
+			else if (existing >= 0):
+				int suffix = 1
+				while (mm_find_node(p.doc, id) >= 0 && suffix < MM_MAX_ITEMS + 2):
+					string_builder* unique = string_from(c"commit-")
+					string_append_int(unique, ordinal)
+					string_append_char(unique, '-')
+					string_append_int(unique, suffix)
+					free(id)
+					id = strclone(unique.data)
+					string_free(unique)
+					suffix = suffix + 1
+			int index = -1
+			if (p.doc.error == 0): index = mm_add_node(p.doc, id, p.pos)
 			free(id)
 			if (index >= 0 && p.doc.error == 0):
 				mm_node* n = p.doc.nodes[index]
@@ -217,6 +265,11 @@ void mm_git_body(mm_parser* p):
 				n.shape = shape
 				free(n.annotation)
 				n.annotation = strclone(tag)
+				if (message[0] != 0):
+					mm_property* note = new mm_property()
+					note.key = strclone(c"msg")
+					note.value = strclone(message)
+					n.metadata.push(note)
 				mm_git_parent(p, branch.value_x, index)
 				if (merge && other >= 0):
 					mm_node* merged = p.doc.nodes[other]
@@ -226,6 +279,7 @@ void mm_git_body(mm_parser* p):
 				branch.value_x = index
 				ordinal = ordinal + 1
 			free(tag)
+			free(message)
 		else: mm_error(p.doc, p.pos, c"unsupported GitGraph command")
 		free(command)
 		if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported GitGraph syntax")
@@ -238,7 +292,7 @@ mm_scene* mm_git_render(mm_document* d):
 	int time = 200
 	int label_width = 120
 	for mm_node* n in d.nodes:
-		if (n.group && strlen(n.label) * 8 + 40 > label_width): label_width = strlen(n.label) * 8 + 40
+		if (n.group && mm_text_width(n.label, 0) + 40 > label_width): label_width = mm_text_width(n.label, 0) + 40
 	list[int] lane_sizes = new list[int]
 	for mm_node* n in d.nodes:
 		if (n.group): lane_sizes.push(130)
@@ -246,8 +300,8 @@ mm_scene* mm_git_render(mm_document* d):
 		mm_node* branch = n
 		if (n.group == 0): branch = d.nodes[n.parent]
 		int lane = mm_git_lane(d, branch)
-		int width = strlen(n.label) * 8 + 60
-		if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+		int width = mm_text_width(n.label, 0) + 60
+		if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 		if (width > lane_sizes[lane]): lane_sizes[lane] = width
 	if (vertical): label_width = 100
 	time = label_width + 60
@@ -261,8 +315,8 @@ mm_scene* mm_git_render(mm_document* d):
 		if (n.group == 0):
 			for mm_edge* e in d.edges:
 				if (e.to_node == i && e.from_node < i && generation[e.from_node] + 1 > depth): depth = generation[e.from_node] + 1
-			int width = strlen(n.label) * 8 + 60
-			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+			int width = mm_text_width(n.label, 0) + 60
+			if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 			if (width < 100): width = 100
 			while (columns.length <= depth): columns.push(0)
 			if (width > columns[depth]): columns[depth] = width
@@ -286,8 +340,8 @@ mm_scene* mm_git_render(mm_document* d):
 			if (b.x + columns[generation[i]] > time): time = b.x + columns[generation[i]]
 		else:
 			b.x = time
-			int width = strlen(n.label) * 8 + 60
-			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+			int width = mm_text_width(n.label, 0) + 60
+			if (mm_text_width(n.annotation, 0) + 60 > width): width = mm_text_width(n.annotation, 0) + 60
 			if (width < 100): width = 100
 			time = time + width
 	__w_list_free(cast(__w_list*, lane_sizes))
