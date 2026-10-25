@@ -562,16 +562,28 @@ void mm_serialize_frontmatter(mm_serializer* out, mm_document* d, int css_classe
 			free(pair.value)
 			free(pair)
 		__w_list_free(cast(__w_list*, theme))
+	# Flowchart spacing keys select the default palette; the use case and
+	# architecture sections set the same spacing without one.
+	char* node_key = c"config.flowchart.nodeSpacing"
+	char* rank_key = c"config.flowchart.rankSpacing"
+	if (d.theme == 0 && d.kind == MM_USECASE):
+		node_key = c"config.usecase.nodeSpacing"
+		rank_key = c"config.usecase.rankSpacing"
+	else if (d.theme == 0 && d.kind == MM_ARCHITECTURE):
+		node_key = c"config.architecture.nodeSeparation"
+		rank_key = 0
 	if (d.config_mask & 1):
 		string_builder* spacing = string_new()
 		string_append_int(spacing, d.node_spacing)
-		mm_serialize_pair_add(pairs, c"config.flowchart.nodeSpacing", spacing.data)
+		mm_serialize_pair_add(pairs, node_key, spacing.data)
 		string_free(spacing)
 	if (d.config_mask & 2):
-		string_builder* spacing = string_new()
-		string_append_int(spacing, d.rank_spacing)
-		mm_serialize_pair_add(pairs, c"config.flowchart.rankSpacing", spacing.data)
-		string_free(spacing)
+		if (rank_key == 0): out.failed = 1
+		else:
+			string_builder* spacing = string_new()
+			string_append_int(spacing, d.rank_spacing)
+			mm_serialize_pair_add(pairs, rank_key, spacing.data)
+			string_free(spacing)
 	if (d.config_mask < 0 || d.config_mask > 3): out.failed = 1
 	if (d.edge_curve == 1): mm_serialize_pair_add(pairs, c"config.flowchart.curve", c"linear")
 	else if (d.edge_curve == 2): mm_serialize_pair_add(pairs, c"config.flowchart.curve", c"basis")
