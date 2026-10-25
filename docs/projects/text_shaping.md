@@ -83,12 +83,42 @@ drawing, where a nonspacing mark now takes no advance and sits on its base
 (centred on it when it comes from a fallback face); opt in to shaping
 explicitly when laying out document runs.
 
-The host must split paragraphs by bidi direction, script and font, choose
-fallbacks and line breaks, and assemble the resulting runs into visual order.
-The paragraph bidi API described below supplies directional runs and their
-visual order for either an unwrapped paragraph or caller-selected wrapped
-lines. `AUTO` direction guesses one run's direction from its first strong
-character; it is not paragraph bidi.
+## Paragraph itemization
+
+`graphics.ui.itemize` turns one UTF-8 paragraph into shaped runs, each with one
+bidi level, script and face, using only the portable engines, so it works on
+every target. `ui_paragraph_shape(text, length, strike, direction)` returns an
+owned `ui_paragraph` (check `status` as for a run; free it with
+`ui_paragraph_free`). Its `items` are in logical order, each with a byte
+range, level, script, face, strike, shaped run and `x`, and `visual_items`
+lists them left to right. `advance` is the total width and `ascent`/`descent`
+are the line's extent over every face used.
+
+- **Bidi**: the levels come from the portable UAX #9 engine for the unwrapped
+  paragraph (`AUTO` direction takes the first strong character).
+- **Script**: resolved the way HarfBuzz and ICU itemize (UAX #24 practice).
+  Common, Inherited and Unknown characters take the script before them, and a
+  leading run of them takes the first real script after it. A closing paired
+  bracket takes its opener's script, which then resumes. A run of only shared
+  characters shapes with a guessed script.
+- **Face**: chosen per grapheme. A grapheme keeps the previous grapheme's face
+  when that face covers all of it. Otherwise it takes the first face that does,
+  out of the strike's face, the `ui_font_add_fallback` chain and the default
+  Regular. If none does, it takes the face that supplies its base character in
+  codepoint text. Controls and default-ignorables count as covered, so a
+  combining mark stays with its base whenever that face has the mark, and
+  faces change only at grapheme boundaries. Every face shapes at the strike's
+  ppem.
+
+`ui_paragraph_caret_x` and `ui_paragraph_offset_from_x` map byte offsets to x
+across the whole paragraph. An offset at a run boundary belongs to the run
+that starts there. `ui_paragraph_draw` draws every run on one baseline.
+`ui_paragraph_fit(p, text, max_width)` is a width-fit helper for simple
+wrapping: it returns the last break after a space whose prefix fits, measured
+from the shaped glyphs without reshaping. Real line breaking (UAX #14), per-line
+bidi reordering of wrapped lines (`ui_bidi_reorder_line` below) and reshaping
+each line stay with the host, as do contextual forms across a run boundary: an
+Arabic word split between two faces does not join across the split.
 
 The embedded faces cover Latin, Greek and Cyrillic, and no larger fallback face
 is bundled: a Noto set covering the world's scripts is tens of megabytes, which
@@ -96,8 +126,9 @@ the compiler tree and wasm builds should not carry. Load a face with coverage
 for the required script using `ui_font_face_load_ttf` or
 `ui_font_face_load_bytes` (TrueType `glyf` or CFF `OTTO` outlines, including
 CID-keyed CJK fonts), register it with `ui_font_add_fallback` for codepoint
-text, create its strike, and shape that run. A shaped run does not fall back
-inside itself: missing coverage produces the selected face's `.notdef` glyph.
+text, create its strike, and shape that run (or let `graphics.ui.itemize` pick
+faces per grapheme). A single shaped run does not fall back inside itself:
+missing coverage produces the selected face's `.notdef` glyph.
 Color glyphs and hinting remain outside the rasterizer; CFF hint operators are
 read and skipped, as the rasterizer draws unhinted outlines at every size.
 
@@ -125,6 +156,11 @@ initialization are not synchronized.
   clusters, an in-memory GSUB `fi` ligature, Arabic and Devanagari runs, engine
   selection, carets and headless rendering through both engines, skipping the
   native one visibly when HarfBuzz is unavailable.
+- `./wbuild graphics_ui_itemize_test` itemizes Latin, Hebrew, Arabic, digits and
+  Devanagari over the embedded face with the Noto subsets as fallbacks. It checks
+  run splits, visual order, face choice, marks staying with their base, bracket
+  and leading-punctuation scripts, carets across runs, drawing, fitting, and
+  empty, invalid and oversized input.
 
 The native adapter uses the published HarfBuzz contracts for
 [buffers and clusters](https://harfbuzz.github.io/harfbuzz-hb-buffer.html),

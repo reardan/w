@@ -646,12 +646,14 @@ current state:
 				golden-tested against HarfBuzz 15
 			graphics.ui.shape / graphics.ui.bidi: portable engines with
 				optional HarfBuzz/FriBidi; shaped-run grapheme carets
+			graphics.ui.itemize: paragraph bidi/script/face runs,
+				paragraph carets, drawing and a space-break fit helper
 			IME: X11 XIM, Win64 IMM, web composition, opt-in Cocoa
 				NSTextInputClient bridge (graphics.ime_cocoa)
 		missing:
 			hinting; color glyphs; Indic reordering beyond Devanagari,
-				Myanmar/Khmer/USE shapers; paragraph script/font
-				segmentation; a bundled fallback face (by decision:
+				Myanmar/Khmer/USE shapers; UAX #14 line breaking;
+				a bundled fallback face (by decision:
 				hosts load Noto faces); Mac qualification of the
 				Cocoa IME bridge with real input methods
 

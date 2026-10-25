@@ -28,7 +28,7 @@ scan/color modes. Consult each linked document before accepting a wider input
 contract.
 
 These issue tracks remain broader than the delivered APIs. Paragraph
-script/font segmentation, hinting and Indic reordering beyond Devanagari remain
+line breaking, hinting and Indic reordering beyond Devanagari remain
 open text work after [#459](https://github.com/reardan/w/issues/459). Windows UI Automation and
 screen-reader qualification remain
 [#465](https://github.com/reardan/w/issues/465). Broader JavaScript syntax,

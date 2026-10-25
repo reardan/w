@@ -108,6 +108,7 @@ Feed the original logical slices to the shaper; scalar reordering maps are not
 glyph or caret positions. The host still selects scripts/fonts and line breaks.
 `ui_shaped_caret_x` and `ui_shaped_offset_from_x` place grapheme carets over a
 shaped run. Ordinary widget drawing still uses codepoint lookup and pair
-kerning, with combining marks placed on their base. Script/font segmentation of
-a paragraph remains the host's job. See [shaping](text_shaping.md) for font
+kerning, with combining marks placed on their base. `graphics.ui.itemize` splits a
+paragraph into bidi, script and face runs and shapes them; line breaking
+remains the host's job. See [shaping](text_shaping.md) for font
 coverage, optional dependencies and explicit limits.
