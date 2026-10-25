@@ -169,6 +169,39 @@ void test_pointer_level():
 	assert_equal(first_pointer+3, type_lookup_pointer(c"char", 2))
 
 
+# type_lookup_pointer's same-name chains (#714) keep the linear scan's
+# answers: the oldest record at the level wins, later same-name records
+# are reachable, an in-place level change is seen, and a truncation
+# forgets the discarded records.
+void test_pointer_lookup_chains():
+	push_basic_types()
+	assert_equal(-1, type_lookup_pointer(c"chain_t", 0))
+	int base = type_push_size(c"chain_t", 8)
+	int deep = type_push_pointer(c"chain_t", 4, 3)
+	int again = type_push_size(c"chain_t", 8)
+	int one = type_push_pointer(c"chain_t", 4, 1)
+	assert_equal(base, type_lookup_pointer(c"chain_t", 0))
+	assert_equal(base, type_lookup(c"chain_t"))
+	assert_equal(deep, type_lookup_pointer(c"chain_t", 3))
+	assert_equal(one, type_lookup_pointer(c"chain_t", 1))
+	assert_equal(-1, type_lookup_pointer(c"chain_t", 2))
+	assert_equal(-1, type_lookup_pointer(c"no_such_chain_t", 0))
+	# Records pushed after a lookup join the chain lazily
+	int two = type_push_pointer(c"chain_t", 4, 2)
+	assert_equal(two, type_lookup_pointer(c"chain_t", 2))
+	# The level is read live: a redefined record answers at level 0, but
+	# the older base still wins there
+	type_reset_for_redefinition(deep, 8)
+	assert_equal(base, type_lookup_pointer(c"chain_t", 0))
+	assert_equal(-1, type_lookup_pointer(c"chain_t", 3))
+	type_table_truncate(again)
+	assert_equal(-1, type_lookup_pointer(c"chain_t", 1))
+	assert_equal(-1, type_lookup_pointer(c"chain_t", 2))
+	int replaced = type_push_pointer(c"chain_t", 4, 2)
+	assert_equal(replaced, type_lookup_pointer(c"chain_t", 2))
+	assert_equal(again, replaced)
+
+
 # The former wildcards: 'int' no longer converts to or from pointers and
 # 'function' values only convert through a signature match or a cast.
 # Only 'constant' (3) stays compatible with everything until typed

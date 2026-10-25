@@ -7,6 +7,7 @@ status -- to the one-shot command it stands in for:
 	bin/wbuildd check ...    vs  bin/wv2 check ...
 	bin/wbuildd deps ...     vs  bin/wv2 deps ...
 	bin/wbuildd symbols ...  vs  bin/wv2 symbols ...
+	bin/wbuildd defhash ...  vs  bin/wv2 defhash ...
 	bin/wbuildd changed ...  vs  bin/wtest changed ...
 
 The client runs with --require-daemon, so a silent fallback to the
@@ -24,7 +25,10 @@ invalidation: a stale memo would still answer with the pre-edit bytes.
 Lifecycle is covered too: start (with the test_changed prewarm pointed
 at the scratch manifest), status, stop, and the fallback path once the
 daemon is gone. The daemon runs with --idle-timeout-ms, so a failed
-run cannot leave it behind.
+run cannot leave it behind. The save-time defhash index (issue #485)
+is covered by wbt_defhash_index: a file saved outside bin/ is rehashed
+without being asked for, and 'changed --defhash' served with the index
+still matches the one-shot selection.
 */
 # wbuild: tool=tools/wbuildd.w
 # wbuild: tool=tools/test_map.w
@@ -247,6 +251,8 @@ void wbt_compare_all():
 	wbt_compare(c"bin/wv2", wbt_args2(c"deps x64 ", c"a.w"), 0)
 	wbt_compare(c"bin/wv2", wbt_args2(c"deps ", c"c.w"), 0)
 	wbt_compare(c"bin/wv2", wbt_args2(c"symbols --json ", c"a.w"), 0)
+	wbt_compare(c"bin/wv2", wbt_args2(c"defhash ", c"a.w"), 0)
+	wbt_compare(c"bin/wv2", wbt_args2(c"defhash ", c"c.w"), 0)
 	char* manifest_flag = strjoin(c"changed -f ", wbt_path(c"manifest.json"))
 	wbt_compare(c"bin/wtest", strjoin(manifest_flag, strjoin(c" ", wbt_path(c"helper.w"))), 0)
 	wbt_compare(c"bin/wtest", strjoin(manifest_flag, strjoin(c" ", wbt_path(c"b.w"))), 0)
@@ -317,6 +323,17 @@ char* wbt_shadow_dir(char* top):
 	return dir
 
 
+# The save-time defhash case needs a file outside bin/, which is where
+# the daemon rehashes saves (bin/ holds build outputs and scratch).
+char* wbt_saved_dir():
+	string_builder* p = string_new()
+	string_append(p, c"wbuildd_defhash_")
+	string_append_int(p, getpid())
+	char* dir = p.data
+	free(p)
+	return dir
+
+
 void wbt_cleanup():
 	char* names = c"a.w b.w c.w d.w helper.w manifest.json log d.sock a b g1.w g2.w g3.w gh.w gh.w.tmp e.w s.w"
 	for char* name in wbt_words(names): unlink(wbt_path(name))
@@ -329,6 +346,9 @@ void wbt_cleanup():
 		char* dir = wbt_shadow_dir(top)
 		unlink(strjoin(dir, c"/m.w"))
 		rmdir(dir)
+	char* saved_dir = wbt_saved_dir()
+	unlink(strjoin(saved_dir, c"/m.w"))
+	rmdir(saved_dir)
 
 
 char* wbt_status_string(char* key):
@@ -500,6 +520,53 @@ void wbt_graph_invalidation():
 	wbt_compare_all()
 
 
+# The resident defhash index (issue #485). A .w file saved outside bin/
+# gets its defhash answer computed in the background, unasked, and is
+# then answered from the memo; 'changed --defhash' hands the index to
+# bin/wtest and still prints the one-shot selection. Another target of
+# a parallel './wbuild tests' can drop the whole memo between the save
+# and the query, so that part is retried.
+void wbt_defhash_index():
+	char* dir = wbt_saved_dir()
+	char* saved = strjoin(dir, c"/m.w")
+	char* defhash_saved = strjoin(c"defhash ", saved)
+	assert_equal(0, mkdir(dir, 493))
+	int served = 0
+	for attempt in range(10):
+		int rehashes = wbt_status_int(c"defhash_rehashes")
+		string_builder* text = string_new()
+		string_append(text, c"int saved_")
+		string_append_int(text, attempt)
+		string_append(text, c"():\n\treturn 0\n")
+		assert1(file_write_text(saved, text.data))
+		string_free(text)
+		wbt_wait_refresh_idle()
+		assert1(wbt_status_int(c"defhash_rehashes") > rehashes)
+		process_result* affected = wbt_client_run(strjoin(c"affected ", saved))
+		int indexed = has_line(affected.stdout_text, defhash_saved)
+		process_result_free(affected)
+		if (indexed == 0): continue
+		int hits = wbt_status_int(c"hits")
+		wbt_compare(c"bin/wv2", defhash_saved, 0)
+		if (wbt_status_int(c"hits") > hits):
+			served = 1
+			break
+	assert1(served)
+	assert1(wbt_status_int(c"defhash_indexed") > 0)
+
+	# 'changed --defhash' compares a tracked file with HEAD, so it uses
+	# one: the daemon's record for it stands in for the worktree side.
+	char* tracked = c"lib/sha256.w"
+	char* changed_defhash = strjoin(c"changed --defhash -f ", strjoin(wbt_path(c"manifest.json"), strjoin(c" ", tracked)))
+	wbt_compare(c"bin/wv2", strjoin(c"defhash ", tracked), 0)
+	int handed = wbt_status_int(c"defhash_index_served")
+	wbt_compare(c"bin/wtest", changed_defhash, 0)
+	assert1(wbt_status_int(c"defhash_index_served") > handed)
+	wbt_compare(c"bin/wtest", strjoin(c"changed --verbose --defhash -f ", strjoin(wbt_path(c"manifest.json"), strjoin(c" ", saved))), 0)
+	unlink(saved)
+	rmdir(dir)
+
+
 void test_wbuildd_matches_one_shot():
 	wbt_cleanup()
 	assert_equal(0, mkdir(wbt_dir(), 493))
@@ -578,6 +645,7 @@ void test_wbuildd_matches_one_shot():
 	wbt_compare_all()
 
 	wbt_graph_invalidation()
+	wbt_defhash_index()
 
 	wbt_wait_prewarm_idle()
 	assert1(wbt_status_int(c"prewarm_runs") >= 1)

@@ -14,7 +14,7 @@ cookies/cache and content isolation remain in the application repository.
 | Content decoding | `libs.standard.web.content_decode`; [decoding](browser_network.md#content-decoding) | Bounded chunk collection and explicit completion, identity and registered gzip/deflate, separate input/output caps, validated concatenated gzip members |
 | Images | `graphics.image.png`, `.jpeg`, `graphics.ui.render`; [images](images.md) | Bounded PNG and baseline JPEG into owned RGBA; texture updates, alpha, scaling, clipping, queued lifetime and native readback probes |
 | Text / input | `graphics.ui.bidi`, `graphics.ui.shape`, `graphics.ui.grapheme`, `graphics.event`; [UI dependencies](browser_ui.md) | Portable UAX #9 paragraph bidi (FriBidi optional) with independent wrapped-line reordering, portable OpenType run shaping (HarfBuzz optional) with grapheme carets, TrueType and CFF outlines, grapheme-safe editing, X11 Unicode commits, Windows Unicode/IMM, web preedit and an opt-in macOS NSTextInputClient bridge |
-| Accessibility | `graphics.ui.accessibility`, `.accessibility_web`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in web ARIA and macOS NSAccessibility bridges, and default-theme contrast checks |
+| Accessibility | `graphics.ui.accessibility`, `.accessibility_web`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in web ARIA, macOS NSAccessibility and Linux AT-SPI bridges, automatic widget semantics and keyboard focus routing, and default-theme contrast checks |
 
 The support contracts are intentionally specific. HTML does not implement every
 WHATWG tree algorithm; CSS does not validate every selector/property
@@ -29,8 +29,8 @@ contract.
 
 These issue tracks remain broader than the delivered APIs. Paragraph
 script/font segmentation, hinting and Indic reordering beyond Devanagari remain
-open text work after [#459](https://github.com/reardan/w/issues/459). Linux AT-SPI, Windows UI
-Automation, automatic widget metadata and widget-wide keyboard routing remain
+open text work after [#459](https://github.com/reardan/w/issues/459). Windows UI Automation and
+screen-reader qualification remain
 [#465](https://github.com/reardan/w/issues/465). Broader JavaScript syntax,
 standard built-ins and full early-error/runtime conformance remain
 [#492](https://github.com/reardan/w/issues/492). The macOS accessibility helper
@@ -84,9 +84,9 @@ fix and acceptance audit. Remaining work continues in its existing tracks:
 
 - [#459](https://github.com/reardan/w/issues/459): portable shaping/bidi,
   script/font segmentation, shaped carets, Cocoa IME and native input qualification.
-- [#465](https://github.com/reardan/w/issues/465): AT-SPI/UI Automation,
-  automatic widget semantics, keyboard routing and native assistive-technology
-  qualification. The reusable page-content snapshot API is already delivered.
+- [#465](https://github.com/reardan/w/issues/465): Windows UI Automation and
+  native assistive-technology qualification. The snapshot API, web/macOS/AT-SPI
+  bridges, automatic widget semantics and keyboard routing are delivered.
 - [#492](https://github.com/reardan/w/issues/492): broader JavaScript syntax,
   standard-library and runtime conformance beyond the embedding subset.
 - The application repository: dependency-pin upgrades, DOM/layout integration,

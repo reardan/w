@@ -524,8 +524,9 @@ editing and Windows support have since advanced as recorded above.
   today (§1) and not proposed here; the wasm/WebGL2 web target running
   in a mobile browser is the only "mobile" story in scope.
 - **Accessibility depth** (screen readers, semantic roles, platform
-  a11y APIs). §2 point 5 stands: this starts from zero and needs its
-  own design once there is a widget tree to attach semantics to.
+  a11y APIs). Since delivered separately (#465, [accessibility](accessibility.md)):
+  widget focus routing and focus ring, automatic widget semantics, and web,
+  macOS and Linux AT-SPI bridges; Windows UI Automation remains open.
 - **A general animation/transition system.** Flat, static widget
   states only for v1 — matches "minimal" and avoids a whole extra
   design axis (easing, timelines) before the base widgets exist.

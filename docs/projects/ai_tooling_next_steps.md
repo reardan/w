@@ -132,7 +132,11 @@ suggesting that it behaves like pointer arithmetic.
   local evaluation in debugger regression tests. The same failure occurs
   for `p counts[8]` on a local map in
   `tests/ast_map_default_expression_fixture.w` (`counts.length` evaluates
-  correctly); include container indexing in that coverage.
+  correctly); include container indexing in that coverage. The debugger
+  part is fixed (2026-10-24, #713 follow-up): REPL items that start with a
+  statement keyword such as `return` are no longer scanned as generic
+  definitions, so `p values[0]` evaluates; the nested-descriptor trap is
+  still open (#701).
 
 - **Multi-file `w check` shares one compilation unit, so two root
   programs cannot be checked in one invocation.** Observed 2026-08-07
@@ -289,7 +293,9 @@ suggesting that it behaves like pointer arithmetic.
   dependent roots cached as failures because their root/compiler hashes were
   unchanged, dropping HTTP and wexec targets from selection and failing seven
   `wtest_map_test` assertions. Remove those failed records to retry; `--no-cache`
-  is the `wexec` development workaround.
+  is the `wexec` development workaround. Seen again 2026-10-24 while extending
+  `wllvm`: a cached failed closure made `./wbuild wllvm` report "(cached)"
+  after the import was fixed.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest

@@ -54,11 +54,37 @@ int main(void) {
         WAccessNode *disabled = [view.accessibilityChildren[0] accessibilityChildren][0];
         assert(!disabled.isAccessibilityEnabled);
         assert(![disabled accessibilityPerformPress]);
+        // Widget roles from graphics.ui.widgets: radio, switch, combobox,
+        // tab list/tab, progress bar and dialog.
+        w_access_begin(handle);
+        assert(w_access_add(handle, 1, 0, 1, 0, 0));
+        assert(w_access_add(handle, 2, 1, 21, 64, 2));
+        assert(w_access_add(handle, 3, 2, 15, 66, 3));
+        assert(w_access_add(handle, 4, 2, 16, 64, 10));
+        assert(w_access_add(handle, 5, 2, 17, 72, 3));
+        assert(w_access_add(handle, 6, 2, 18, 0, 0));
+        assert(w_access_add(handle, 7, 6, 19, 68, 3));
+        assert(w_access_add(handle, 8, 2, 20, 0, 0));
+        assert(w_access_commit(handle, 4));
+        WAccessNode *dialog = [view.accessibilityChildren[0] accessibilityChildren][0];
+        NSArray *widgets = dialog.accessibilityChildren;
+        assert([dialog.accessibilitySubrole isEqualToString:NSAccessibilityDialogSubrole]);
+        assert([[widgets[0] accessibilityRole] isEqualToString:NSAccessibilityRadioButtonRole]);
+        assert([[widgets[0] accessibilityValue] isEqual:@YES]);
+        assert([[widgets[1] accessibilityRole] isEqualToString:NSAccessibilityCheckBoxRole]);
+        assert([[widgets[1] accessibilityValue] isEqual:@NO]);
+        assert([[widgets[2] accessibilityRole] isEqualToString:NSAccessibilityPopUpButtonRole]);
+        assert([widgets[2] isAccessibilityExpanded]);
+        assert([[widgets[3] accessibilityRole] isEqualToString:NSAccessibilityTabGroupRole]);
+        assert([[[widgets[3] accessibilityChildren][0] accessibilityValue] isEqual:@YES]);
+        assert([[widgets[4] accessibilityRole] isEqualToString:NSAccessibilityProgressIndicatorRole]);
+        assert([widgets[1] accessibilityPerformPress]);
+        assert(w_access_next(handle, metadata, bytes, 32) == 1 && metadata[0] == 4 && metadata[1] == 8);
         // A malformed staging tree leaves the currently published tree intact.
         w_access_begin(handle);
         assert(!w_access_add(handle, 4, 999, 6, 0, 1));
         assert(!w_access_commit(handle, 0));
-        assert([view.accessibilityChildren[0] accessibilityChildren][0] == disabled);
+        assert([view.accessibilityChildren[0] accessibilityChildren][0] == dialog);
         w_access_close(handle);
         assert(view.accessibilityChildren.count == 0);
         assert(!disabled.isAccessibilityEnabled);

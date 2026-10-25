@@ -85,16 +85,26 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 	ui_rect r = ui_layout_next(ctx, w, row_h)
 	int changed = 0
 	int opened = 0
+	int was_open = open[0]
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_COMBOBOX, r, 0)
+	if (node != 0):
+		node.actions = UI_ACCESS_ACTIVATE
+		if (open[0]): node.states = node.states | UI_ACCESS_EXPANDED | UI_ACCESS_FOCUSABLE
+		if ((selected[0] >= 0) && (selected[0] < item_count)): ui_access_set_value(ctx, node, items[selected[0]], strlen(items[selected[0]]))
 
 	if (open[0] == 0):
-		if (ui_click_behavior(ctx, id, r)):
+		ui_focus_stop(ctx, id, r, 0)
+		if (ui_activate_behavior(ctx, id, r)):
 			open[0] = 1
 			opened = 1
 			ui_textbox_init(query)
 			# As in ui_dropdown_multi: the opening press lies outside the
 			# surface and must not close it on the frame it opened.
 			ctx.input.mouse_pressed = 0
-	else: ctx.hot = id
+	else:
+		ctx.hot = id
+		if (ui_access_take_activation(ctx, id)):
+			open[0] = 0
 
 	# The filter's id, reserved open or closed.
 	int filter_id = ctx.next_id
@@ -111,6 +121,16 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 			if (ui_dropdown_matches(items[i], &query.text[0])):
 				ui_rect row = ui_rect_new(lo.bounds.x, y, inner_w, row_h)
 				if (ctx.input.mouse_pressed && ui_rect_contains(row, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+					pick = i
+				# Matches are options after the filter in Tab order;
+				# Space/Return picks the focused one.
+				int option = ui_access_aux_id(ctx)
+				ui_access_node* item = ui_access_widget(ctx, option, UI_ACCESS_LIST_ITEM, row, items[i])
+				if (item != 0):
+					item.actions = UI_ACCESS_ACTIVATE
+					if (i == selected[0]): item.states = item.states | UI_ACCESS_SELECTED
+				if (ui_focus_stop(ctx, option, row, 0) && ui_focus_take_activation(ctx)): pick = i
+				if (ui_access_take_activation(ctx, option)):
 					pick = i
 				if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
 					ui_draw_rrect(ctx.rndr, row, cast(float32, ctx.theme.radius_small), ctx.theme.widget_hot)
@@ -136,7 +156,9 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 			# live again this frame and must not also act on it.
 			ctx.input.mouse_pressed = 0
 	else: ctx.next_id = ctx.next_id + 1
-	if ((open[0] == 0) && (ctx.focus == filter_id)): ctx.focus = 0
+	# Keyboard focus inside the closed list returns to the header.
+	if (open[0] == 0):
+		if ((ctx.focus == filter_id) || (was_open && (ctx.focus > ui_access_root_id))): ctx.focus = id
 
 	char* text = c""
 	if ((selected[0] >= 0) && (selected[0] < item_count)): text = items[selected[0]]

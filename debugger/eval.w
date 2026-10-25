@@ -67,32 +67,64 @@ void dbg_eval_copy(int from, int to, int n):
 	for i in range(n): dst[i] = src[i]
 
 
-# Checked programs (#713): run the checker over the stopped function once
-# per eval, when a visible local has a checked type, so the entry may read
-# exactly the checked locals that are definitely initialized -- and, for
-# borrows, still live -- at the stop. Returns 1 when the probe ran, 0 when
-# the stop is not in an analyzed function of the current frame (the caller
-# then hides every checked local).
+# Checked programs (#713): run the checker over the selected frame's
+# function once per eval, when a visible local has a checked type, so the
+# entry may read exactly the checked locals that are definitely initialized
+# -- and, for borrows, still live -- at the stop. An outer frame is
+# suspended inside a call its statement makes, so it is probed in call
+# mode (compiler/safe_session.w): the statement's moves and exclusive loans
+# count. Returns 1 when the probe ran, 0 when the frame is not stopped in an
+# analyzed function (the caller then hides every checked local).
 int dbg_eval_probe(int stop_addr):
 	int rel = stop_addr - code_offset
 	int checked = 0
 	for i in range(debug_local_count):
 		if (dbg_local_visible(i, rel) && safe_session_type_checked(dbg_local_type(i), 0)): checked = 1
 	if (checked == 0): return 0
-	# An outer frame is stopped inside a call its statement makes, after
-	# the statement's moves; only the innermost frame has a known state.
-	if ((dbg_fr_sel > 0) && (dbg_fr_sel < dbg_fr_count)): return 0
 	int entry = dbg_find_line(rel)
 	if (entry < 0): return 0
 	int line = dbg_line_line(entry)
 	int function = safe_session_find_function(dbg_function_name(stop_addr), dbg_file_name(dbg_line_file(entry)), line)
 	if (function < 0): return 0
-	safe_session_probe(function, line)
+	safe_session_probe(function, line, (dbg_fr_sel > 0) && (dbg_fr_sel < dbg_fr_count))
 	return 1
 
 
-# Present local i to the entry's checker. A checked owner or borrow that
-# the probe found usable becomes a read-only shared borrow; any other
+# The read-only view spelling of checked type: "ref T*" for owners and
+# references, "optref T*" for optional ones, "ref T[]" for inline slices;
+# 0 when it has none (lifetime labels, aggregates, unspellable targets).
+# Sets *view to the view's type.
+char* dbg_eval_view_spelling(int type, int* view):
+	int bare = type_unqualified(type)
+	int kind = type_get_kind(bare)
+	if (type_record(bare).safe_lifetime != 0): return 0
+	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_slicemut)):
+		int element = type_record(bare).alias_target
+		char* item = safe_session_spell(element)
+		if (item == 0): return 0
+		*view = type_get_safe_slice(element, 0, 2)
+		char* prefixed = strjoin(c"ref ", item)
+		char* result = strjoin(prefixed, c"[]")
+		free(prefixed)
+		free(item)
+		return result
+	int optional = (kind == type_kind_optref) || (kind == type_kind_optrefmut) || (kind == type_kind_optown)
+	if ((((kind < type_kind_own) || (kind > type_kind_refmut)) && (optional == 0)) || (type_get_pointer_level(bare) != 1)): return 0
+	char* target = safe_session_spell(type_safe_target(bare))
+	if (target == 0): return 0
+	char* result = 0
+	if (optional):
+		*view = type_get_safe(type_safe_target(bare), 6)
+		result = strjoin(c"optref ", target)
+	else:
+		*view = type_get_safe(type_safe_target(bare), 2)
+		result = strjoin(c"ref ", target)
+	free(target)
+	return result
+
+
+# Present local i to the entry's checker. A checked owner, borrow or slice
+# that the probe found usable becomes a read-only shared view; any other
 # checked local is hidden with the reason a reference reports. Plain
 # locals pass by value when their type can be spelled.
 void dbg_eval_present(int i, int probed):
@@ -103,15 +135,12 @@ void dbg_eval_present(int i, int probed):
 		if (spelling != 0): safe_session_view(name, type, spelling)
 		return;
 	if (probed == 0):
-		safe_session_hide(name, c"safe: checked locals are only available in the innermost frame of an analyzed function at a debugger stop")
+		safe_session_hide(name, c"safe: checked locals are only available in analyzed functions at a debugger stop")
 		return;
-	int bare = type_unqualified(type)
-	int kind = type_get_kind(bare)
-	char* target = 0
-	if ((kind >= type_kind_own) && (kind <= type_kind_refmut) && (type_record(bare).safe_lifetime == 0) && (type_get_pointer_level(bare) == 1)):
-		target = safe_session_spell(type_safe_target(bare))
-	if (target == 0):
-		safe_session_hide(name, c"safe: only checked owner and reference pointers without lifetime labels can be viewed at a debugger stop")
+	int view = -1
+	char* spelling = dbg_eval_view_spelling(type, &view)
+	if (spelling == 0):
+		safe_session_hide(name, c"safe: only checked owners, references, optional references and slices without lifetime labels can be viewed at a debugger stop")
 		return;
 	# Parameters are unique in their function; locals match by declaration
 	# line too, so a shadowed outer declaration is never mistaken for one.
@@ -119,11 +148,14 @@ void dbg_eval_present(int i, int probed):
 	if (dbg_local_kind(i) != 'A'):
 		int entry = dbg_find_line(dbg_local_decl(i))
 		if (entry >= 0): line = dbg_line_line(entry)
-	if (safe_session_probe_alive(name, line)):
-		safe_session_view(name, type_get_safe(type_safe_target(bare), 2), strjoin(c"ref ", target))
-		free(target)
+	int state = safe_session_probe_state(name, line)
+	if (state == 1):
+		safe_session_view(name, view, spelling)
 		return;
-	free(target)
+	free(spelling)
+	if (state == 2):
+		safe_session_hide(name, c"safe: this checked local is lent exclusively to the call this frame is suspended in")
+		return;
 	safe_session_hide(name, c"safe: this checked local is not definitely initialized and live at this debugger stop")
 
 

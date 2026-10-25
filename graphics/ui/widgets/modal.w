@@ -43,6 +43,14 @@ float32 ui_modal_title_height():
 	return 44.0
 
 
+# Hand focus back to what held it before the dialog opened. While the
+# dialog was open nothing outside it could take focus, so whatever
+# holds it now belongs to the dialog.
+void ui_modal_release_focus(ui_context* ctx, int id):
+	if (ui_popup_registered(ctx, id) == 0): return
+	ctx.focus = ctx.focus_before_modal
+
+
 # Open a modal dialog: a scrim over the whole window, a centered
 # elevated surface, and a title row. Returns 1 while open, with the
 # layout region set to the dialog's body — issue body widgets and then
@@ -56,8 +64,14 @@ int ui_modal_begin(ui_context* ctx, char* title, float32 w, float32 h, int32* op
 		# dialog from inside its own body (a Close button), which
 		# leaves the popup registered until the next frame gets here.
 		# Without this the whole page stays inert forever.
+		ui_modal_release_focus(ctx, id)
 		ui_popup_dismiss(ctx, id)
 		return 0
+	# Opening takes keyboard focus off the page (Tab then enters the
+	# dialog); closing hands it back.
+	if (ui_popup_registered(ctx, id) == 0):
+		ctx.focus_before_modal = ctx.focus
+		ctx.focus = id
 	ui_popup_open(ctx, id)
 
 	float32 vw = cast(float32, ctx.rndr.vp_w)
@@ -79,6 +93,7 @@ int ui_modal_begin(ui_context* ctx, char* title, float32 w, float32 h, int32* op
 			open[0] = 0
 			ctx.input.mouse_pressed = 0
 	if (open[0] == 0):
+		ui_modal_release_focus(ctx, id)
 		ui_popup_dismiss(ctx, id)
 		return 0
 
@@ -90,6 +105,13 @@ int ui_modal_begin(ui_context* ctx, char* title, float32 w, float32 h, int32* op
 	ui_render_rect(ctx.rndr, window, scrim)
 	ui_draw_shadow(ctx.rndr, surface, ctx.theme.shadow)
 	ui_draw_rrect(ctx.rndr, surface, cast(float32, ctx.theme.radius), ctx.theme.surface)
+	# The dialog groups its body semantically; ui_popup_end restores
+	# the outer parent. It holds focus until Tab moves into the body.
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_DIALOG, surface, title)
+	if (node != 0):
+		node.states = node.states | UI_ACCESS_FOCUSABLE
+		node.actions = UI_ACCESS_FOCUS
+		ctx.access_parent = id
 
 	float32 pad = cast(float32, ctx.theme.pad)
 	float32 title_h = ui_modal_title_height()

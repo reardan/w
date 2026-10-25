@@ -16,6 +16,7 @@ import graphics.ui.widgets.context
 void ui_label(ui_context* ctx, char* text):
 	int scale = ctx.theme.text_scale
 	ui_rect r = ui_layout_next(ctx, cast(float32, ui_text_width(text, scale)), cast(float32, ctx.theme.widget_height))
+	ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, r, text)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
 
@@ -24,19 +25,25 @@ void ui_label(ui_context* ctx, char* text):
 void ui_title(ui_context* ctx, char* text):
 	int scale = 3
 	ui_rect r = ui_layout_next(ctx, cast(float32, ui_text_width(text, scale)), cast(float32, ctx.theme.widget_height))
+	ui_access_node* n = ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_HEADING, r, text)
+	if (n != 0): n.heading_level = 1
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
 
 
-# Returns 1 on the frame the button is clicked. A filled accent pill:
-# on_accent label ink, the hover shade while hot or pressed.
+# Returns 1 on the frame the button is clicked, or activated with
+# Space/Return while focused. A filled accent pill: on_accent label
+# ink, the hover shade while hot or pressed.
 int ui_button(ui_context* ctx, char* label):
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
 	int scale = ctx.theme.text_scale
 	float32 w = cast(float32, ui_text_width(label, scale) + ctx.theme.pad * 3)
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
-	int clicked = ui_click_behavior(ctx, id, r)
+	ui_access_node* n = ui_access_widget(ctx, id, UI_ACCESS_BUTTON, r, label)
+	if (n != 0): n.actions = UI_ACCESS_ACTIVATE
+	ui_focus_stop(ctx, id, r, 0)
+	int clicked = ui_activate_behavior(ctx, id, r)
 	ui_color fill = ctx.theme.accent
 	ui_color ink = ctx.theme.on_accent
 	if (ctx.disabled):

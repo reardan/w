@@ -28,6 +28,26 @@ int debug_file_count
 int debug_file_capacity
 int debug_last_file
 
+# Process-lifetime copies of source paths, by content (the value is the
+# copy's address). A copy is never freed or rewritten, so a caller holding
+# one can be recognised by address alone: no other string can ever sit at
+# that address. The registry above stores these copies, and the compiler
+# points its global filename at one when it opens a file
+# (compile_attempt), so the per-statement lookup below is a pointer
+# compare instead of a strcmp of the full absolute path -- whose cost
+# made every self-compile instruction count grow with the checkout path
+# (#714). Strings that are not such copies still compare by content.
+map[char*, int] debug_source_copies
+
+
+# The process-lifetime copy of path (see debug_source_copies).
+char* debug_source_intern(char* path):
+	if (debug_source_copies == 0): debug_source_copies = new map[char*, int]
+	if (path in debug_source_copies): return cast(char*, debug_source_copies[path])
+	char* copy = strclone(path)
+	debug_source_copies[copy] = cast(int, copy)
+	return copy
+
 
 # The file registry is also used for declaration locations (symbol/type
 # tables), which can be recorded before the first debug_line_note().
@@ -42,27 +62,40 @@ char* debug_file_name(int index):
 	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
 
+# Registry index of the process-lifetime copy at address copy, or -1.
+int debug_file_registered(char* copy):
+	int i = 0
+	while (i < debug_file_count):
+		if (cast(char*, load_ptr(debug_files + i * __word_size__)) == copy):
+			debug_last_file = i
+			return i
+		i = i + 1
+	return -1
+
+
 int debug_line_file_index_of(char* source):
 	debug_files_ensure()
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
 		char* last = cast(char*, load_ptr(debug_files + debug_last_file * __word_size__))
+		if (last == source): return debug_last_file
 		if (strcmp(last, source) == 0):
 			return debug_last_file
-	int i = 0
-	while (i < debug_file_count):
-		char* name = cast(char*, load_ptr(debug_files + i * __word_size__))
-		if (strcmp(name, source) == 0):
-			debug_last_file = i
-			return i
-		i = i + 1
+	# Every registered name is a process-lifetime copy, so a copy matches
+	# by address, and any other string through its copy, found by content.
+	int found = debug_file_registered(source)
+	if (found >= 0): return found
+	char* copy = debug_source_intern(source)
+	if (copy != source):
+		found = debug_file_registered(copy)
+		if (found >= 0): return found
 	# Large import closures must retain distinct source locations. Returning
 	# file zero here silently corrupts diagnostics, debugging and coverage.
 	if (debug_file_count >= debug_file_capacity):
 		int old_size = debug_file_capacity * __word_size__
 		debug_file_capacity = debug_file_capacity * 2
 		debug_files = realloc(debug_files, old_size, debug_file_capacity * __word_size__)
-	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(source)))
+	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, copy))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
 	return debug_last_file

@@ -111,8 +111,12 @@ a borrowed wrapper. `ref[a] T[]` infers the element of a checked slice or fixed
 array, then performs the ordinary checked descriptor conversion. Concrete
 parameters and opaque shapes are checked against the specialized signature.
 A parameter used only in an opaque shape or return type still needs explicit
-type arguments. Generic struct applications, raw container shapes and generic
-struct constructors retain their existing inference restrictions.
+type arguments. A `Name[T, U]*` parameter (optionally checked-qualified, as in
+`ref[a] WSafeMutex[T]*`) binds each bare type parameter from the argument's
+generic struct instance in both emitters; composite type arguments of the
+application stay opaque and are checked by the specialized signature. Raw
+container shapes and generic struct constructors retain their existing
+inference restrictions.
 
 Definitions must precede inferred calls. Forward generic calls still require
 explicit arguments and cannot return aggregates. The streaming emitter retains

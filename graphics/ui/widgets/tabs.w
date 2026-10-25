@@ -22,6 +22,7 @@ cap, and each tab is clipped to its own rect, so a long filename
 truncates instead of spilling into its neighbour.
 */
 import lib.lib
+import graphics.event
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.font
@@ -56,6 +57,7 @@ struct ui_tab_state:
 	float32 content_w      # total width of the walk, for clamping
 	ui_rect strip
 	int32* active          # the caller's selected-tab index, held for the walk
+	int32 access_saved_parent # semantic parent outside the tab list
 
 
 void ui_tab_init(ui_tab_state* st):
@@ -65,6 +67,7 @@ void ui_tab_init(ui_tab_state* st):
 	st.pen_x = 0.0
 	st.content_w = 0.0
 	st.active = 0
+	st.access_saved_parent = 0
 
 
 # Open the strip: draw its base and start the walk.
@@ -74,6 +77,9 @@ void ui_tabs_begin(ui_context* ctx, ui_rect area, ui_tab_state* st, int32* activ
 	st.closed = 0 - 1
 	st.walk_index = 0
 	st.pen_x = 0.0
+	st.access_saved_parent = ctx.access_parent
+	int list_id = ui_access_aux_id(ctx)
+	if (ui_access_widget(ctx, list_id, UI_ACCESS_TAB_LIST, area, c"") != 0): ctx.access_parent = list_id
 
 	ui_render_rect(ctx.rndr, area, ctx.theme.widget)
 	# A hairline under the strip, the separator the table header uses.
@@ -98,13 +104,14 @@ float32 ui_tab_width(ui_context* ctx, char* label, int closable):
 	return w
 
 
-# One tab. Returns 1 on the frame it becomes the active tab.
+# One tab. Returns 1 on the frame it becomes the active tab. Every tab
+# is a focus stop: Space/Return selects it, Delete closes a closable
+# one, and keyboard focus scrolls it into view.
 int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 	int index = st.walk_index
 	st.walk_index = st.walk_index + 1
 	float32 w = ui_tab_width(ctx, label, closable)
 	ui_rect tab = ui_rect_new(st.strip.x + st.pen_x - st.offset_x, st.strip.y, w, st.strip.h)
-	st.pen_x = st.pen_x + w
 
 	# Ids are taken for every tab, on screen or not, so a widget issued
 	# after the strip does not shift as the strip scrolls — the same
@@ -113,6 +120,24 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 	ctx.next_id = ctx.next_id + 1
 	int close_id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
+
+	if ((ctx.focus == id) && ctx.focus_visible):
+		if (tab.x < st.strip.x): st.offset_x = st.offset_x - (st.strip.x - tab.x)
+		else if (tab.x + tab.w > st.strip.x + st.strip.w): st.offset_x = st.offset_x + (tab.x + tab.w - st.strip.x - st.strip.w)
+		tab.x = st.strip.x + st.pen_x - st.offset_x
+	st.pen_x = st.pen_x + w
+
+	int is_active = 0
+	if (st.active != 0):
+		if (st.active[0] == index): is_active = 1
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TAB, tab, label)
+	if (node != 0):
+		node.actions = UI_ACCESS_ACTIVATE
+		if (is_active): node.states = node.states | UI_ACCESS_SELECTED
+	if (ui_focus_stop(ctx, id, tab, 0) && closable && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
+		for k in range(ctx.nav_count):
+			if (ctx.navs[k] == GFX_NAV_DELETE): st.closed = index
+	if (st.closed == index): return 0
 
 	if (tab.x + tab.w <= st.strip.x): return 0
 	if (tab.x >= st.strip.x + st.strip.w): return 0
@@ -128,7 +153,7 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 
 	int became_active = 0
 	if (close_hit == 0):
-		if (ui_click_behavior(ctx, id, tab)):
+		if (ui_activate_behavior(ctx, id, tab)):
 			if (st.active != 0):
 				if (st.active[0] != index):
 					st.active[0] = index
@@ -190,4 +215,5 @@ int ui_tabs_end(ui_context* ctx, ui_tab_state* st):
 	if (st.offset_x < 0.0): st.offset_x = 0.0
 	ui_clip_pop(ctx.rndr)
 	ui_region_claim(ctx, st.strip)
+	ctx.access_parent = st.access_saved_parent
 	return st.closed

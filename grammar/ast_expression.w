@@ -1574,12 +1574,16 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 	# Invert only the admitted borrowed record/slice wrapper. The
 	# final concrete signature still checks access and lifetime effects.
 	int[10] borrowed_shapes
+	# An opaque 'Name[T]*' parameter binds T from its argument's instance.
+	int[10] applications
 	generic_type_ast* parameter = syntax.parameters
 	int count = 0
 	while (parameter != 0):
 		int kind = ast_expression_generic_shape(tree, def, parameter, &data)
 		if ((kind == -3) || (count == 10)): return -1
 		borrowed_shapes[count] = 0
+		applications[count] = 0
+		if ((kind == -2) && (parameter.application == 1)): applications[count] = cast(int, parameter)
 		if ((parameter.safety == 2) || (parameter.safety == 3)):
 			if ((kind >= 0) && (parameter.stars == 0)):
 				borrowed_shapes[count] = 1
@@ -1666,6 +1670,8 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 				inferred = type_unqualified(inferred)
 				if ((bound >= 0) && (bound != inferred)): return -1
 				types[kind] = inferred
+		else if (applications[count]):
+			if (generic_infer_bind_application(def, cast(generic_type_ast*, applications[count]), got, cast(char*, &types[0])) == 0): return -1
 		else if (kind == -1):
 			int want = shapes[count]
 			if (ast_expression_data_value(want) == 0): return -1

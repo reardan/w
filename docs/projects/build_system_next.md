@@ -304,6 +304,10 @@ content-addressed remote store:
   remotely, and pulls outputs back would formalize the existing habit
   — no execution API, no workers, just ssh. Full farm-style RE is not
   worth it at this repo's scale.
+  **Status:** implemented as `wexec --remote=<host>` (issue #487;
+  wexec.md "Remote execution"). It uses a content-addressed upload
+  instead of rsync, and outputs come back as WBUN1 bundles that fill the
+  local stamps and the shared cache.
 
 ## Direction 4 — the grammar + version-control integrated build
 
@@ -409,6 +413,15 @@ Effect: by the time `./wbuild test_changed` is typed, the analysis is
 already done — selection and cache lookup are index reads, and the
 "nearly instant build" experience is real for the common case (edit →
 exact test set → mostly cached → run the few truly affected binaries).
+
+*Status (issue #485):* the watcher is `bin/wbuildd`'s inotify watch.
+A `.w` file saved outside `bin/` has its `bin/wv2 defhash` answer
+recomputed in the background, and `bin/wbuildd changed --defhash` hands
+those answers to `bin/wtest` (`--defhash-index`), which uses them for
+the worktree side of its comparison while the file's content digest
+still matches. The HEAD side is still computed per run, and selection
+still goes through `bin/wtest`'s closure cache; see
+`docs/projects/wbuildd.md` §8, "Save-time defhash index".
 
 ### 4d. Incremental codegen — flagged as research, probably skip
 

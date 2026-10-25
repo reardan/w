@@ -32,11 +32,16 @@ char* safe_owner_drop_helper(int element):
 	char* source = debug_file_name(type_decl_file_index(element))
 	char* name = type_get_name(element)
 	char* helper = 0
+	# The helper's parameter points at this record, except that every
+	# WSafeGuard[T] instance shares one helper over its mutex's lock word.
+	int pointee = element
 	# Dropping an unjoined checked thread handle waits for its child.
 	if (ends_with(source, c"/lib/safe_thread.w")):
 		if (strcmp(name, c"WSafeThread") == 0): helper = c"__w_safe_thread_drop"
 		# Dropping a lock guard releases its mutex.
-		else if (strcmp(name, c"WSafeGuard") == 0): helper = c"__w_safe_guard_drop"
+		else if (starts_with(name, c"WSafeGuard$")):
+			helper = c"__w_safe_guard_drop"
+			pointee = type_lookup(c"wmutex")
 	else if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
 	else if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
 	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
@@ -52,7 +57,7 @@ char* safe_owner_drop_helper(int element):
 	int parameter = type_unqualified(sym_param_type(symbol, 0))
 	if ((type_safe_kind(parameter) != 0) || (type_get_pointer_level(parameter) != 1)):
 		error(c"safe: audited destructor signature differs from its contract")
-	if (type_unqualified(type_lookup_previous_pointer(parameter)) != element):
+	if ((pointee < 0) || (type_unqualified(type_lookup_previous_pointer(parameter)) != pointee)):
 		error(c"safe: audited destructor signature differs from its contract")
 	return helper
 

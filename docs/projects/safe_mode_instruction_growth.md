@@ -186,3 +186,77 @@ Recommended follow-ups, none of which are in this change:
   with every checked type, with a keyed lookup.
 - Then refresh both `self` rows together, from a short path, with this
   table cited in the commit message.
+
+## Follow-up: keyed type lookup and path-independent line tables (2026-10-24)
+
+This change implements the first two follow-ups above and attacks two of the
+retention hotspots. Compiler output is unchanged. `verify` and `verify_x64`
+reach their fixpoints. Old and new `bin/wv2` produce byte-identical
+executables for 72 compiles: `w.w`, `repl.w`, `compiler/type_table_test.w`
+and 21 tests, each for x86, x64 and arm64. `repl.w` fails to compile for
+arm64 with both compilers, identically. The old and new x64 compilers
+also agree.
+
+- **`type_lookup_pointer`** (`compiler/type_table.w`) no longer compares
+  every record's name. The lazily filled `type_name_index`, which already
+  served `type_lookup`, now also keeps a chain of same-name records in index
+  order. A lookup walks only the records with that name and reads each
+  pointer level from the live record. It is filled and invalidated with the
+  name index, through truncation, `push_basic_types` and temporary-name
+  relocation, so it returns the oldest match, as the linear scan did.
+  `test_pointer_lookup_chains` covers duplicates, lazy appends, in-place
+  redefinition and truncation. Inclusive cost: about 857M Ir to about 120M.
+- **Debug line files** (`code_generator/dwarf.w`). Every registered file
+  name is now a copy that lives for the whole process, interned by content.
+  `compile_attempt` points `filename` at that copy, so each statement's
+  lookup is a pointer compare. Strings that are not copies still match by
+  content, through the intern map instead of a `strcmp` over every file.
+  Registration order is unchanged. Inclusive cost: 893M Ir to 25M.
+- **Retained file names** (`grammar/retained_ast.w`). Binding and type notes
+  interned `debug_file_name(index)` by hashing and comparing the full path.
+  They now intern each index once (`retained_intern_file`). The cache is
+  freed with the interned copies.
+- **`retained_intern`** keeps each slot's length. A probe whose hash matches
+  compares lengths, then whole words (`retained_text_equal`), instead of
+  calling `strcmp`. Cost: 431M Ir in `strcmp` to 80M.
+  `retained_words_differ` skips equal runs four words at a time: 269M to
+  226M.
+
+### Measurements
+
+Each `self` command (`bin/wv2 --quiet w.w`, and `bin/wv2_64 x64` for x64)
+ran under callgrind 3.22.0 at two checkout paths that differ by 64
+characters (84/85 and 148/149 characters). Each figure is the median of
+three runs.
+
+Repeated runs are not exactly deterministic. The runtime hash seed comes
+from `getrandom`, which changes probe lengths in every string-keyed map.
+Here that varied a run by 3–100M Ir, mostly in `__w_hash_table_slot` and
+`__w_hash_key_equal`. The deterministic-run claim in Method above did not
+hold for these binaries.
+
+| Row | Before, short path | Before, long path | After, short path | After, long path |
+| --- | ---: | ---: | ---: | ---: |
+| x86 kIr | 19,369,934 | 20,135,642 | 16,601,109 | 16,658,284 |
+| x64 kIr | 10,224,331 | 10,400,847 | 9,225,898 | 9,260,784 |
+
+- **x86:** −2.77G Ir (−14.3%) at the short path.
+- **x64:** −1.00G Ir (−9.8%).
+- **Path sensitivity:** per extra path character, x86 falls from about 12.0M
+  to 0.9M Ir (0.06% to 0.005% of the total), and x64 from 2.8M to 0.5M.
+
+The remaining path-dependent work is small:
+
+- `retained_source_find` hashes a path after `retained_source_begin`
+  clears its per-index cache.
+- `retained_parse_name` interns the file name of each loop.
+- Some `filename` values are not copies, so the content fast path still
+  compares them, for example `retained_sources[].path` while `compiler/safe.w`
+  checks a function.
+
+These are within run-to-run noise at this path difference.
+
+`tests/bench/baseline.txt` is not refreshed here. That remains the owner's
+decision, as discussed above. A refresh no longer depends much on the
+checkout path, but run-to-run hash-seed noise of up to about 0.6% means a
+refresh should take the median of several runs.

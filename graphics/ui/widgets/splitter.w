@@ -16,6 +16,7 @@ calling it again on one of the rects it returned.
 `vertical` names the divider, not the split: a vertical divider puts
 pane a left of pane b, a horizontal one puts a above b.
 */
+import graphics.event
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
@@ -114,6 +115,21 @@ void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, u
 					if (vertical == 0):
 						divider = ui_rect_new(area.x, area.y + st.pos, area.w, handle)
 				else: st.drag_id = 0
+
+	# Keyboard: the divider is a focus stop; the arrows along its axis
+	# move it a notch, Home/End to either limit.
+	if (ui_focus_stop(ctx, id, divider, 0) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
+		float32 notch = cast(float32, ctx.theme.unit) * 2.0
+		for k in range(ctx.nav_count):
+			int nav = ctx.navs[k]
+			if ((vertical && (nav == GFX_NAV_LEFT)) || ((vertical == 0) && (nav == GFX_NAV_UP))): st.pos = st.pos - notch
+			else if ((vertical && (nav == GFX_NAV_RIGHT)) || ((vertical == 0) && (nav == GFX_NAV_DOWN))): st.pos = st.pos + notch
+			else if (nav == GFX_NAV_HOME): st.pos = min_pos
+			else if (nav == GFX_NAV_END): st.pos = max_pos
+		if (st.pos < min_pos): st.pos = min_pos
+		if (st.pos > max_pos): st.pos = max_pos
+		divider = ui_rect_new(area.x + st.pos, area.y, handle, area.h)
+		if (vertical == 0): divider = ui_rect_new(area.x, area.y + st.pos, area.w, handle)
 
 	# A hairline down the middle of the grab area: the divider reads as
 	# a seam, not as a widget, until you are dragging it.

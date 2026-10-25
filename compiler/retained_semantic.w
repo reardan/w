@@ -104,9 +104,21 @@ list[char*] retained_interned
 # so a probe compares text only when the hashes agree.
 int* retained_intern_table
 int* retained_intern_hashes
+# #714: each slot's copy length too, so a probe whose hash agrees compares
+# lengths and then whole words instead of strcmp'ing byte by byte.
+int* retained_intern_lengths
 int retained_intern_table_capacity
+# The length of the text retained_intern_hash last hashed.
+int retained_intern_text_length
 # S2.5: the interned empty spelling (most nodes have no name).
 char* retained_intern_empty
+# Interned copy of each debug-registry file name, by debug file index (0 =
+# not interned yet). A registry name never changes once registered
+# (code_generator/dwarf.w appends clones and never frees them), so the
+# copy can be reused without hashing and comparing the full absolute path
+# on every binding and type note: those scans made the self-compile cost
+# grow with the checkout path (#714). Freed with the interned copies.
+list[char*] retained_interned_files
 
 # P1.2b: 1 when the session keeps semantic snapshot records (types and
 # bindings) for its nodes: a tree query, an explicit --ast-retain, or an
@@ -121,15 +133,31 @@ int retained_intern_hash(char* text):
 	while (text[i] != 0):
 		h = h * 31 + (text[i] & 255)
 		i = i + 1
+	retained_intern_text_length = i
 	return h
 
 
-void retained_intern_place(char* copy, int h):
+# 1 when the first length bytes at a and b agree, compared a word at a time.
+int retained_text_equal(char* a, char* b, int length):
+	int words = length / __word_size__
+	int* p = cast(int*, a)
+	int* q = cast(int*, b)
+	for i in range(words):
+		if (p[i] != q[i]): return 0
+	int at = words * __word_size__
+	while (at < length):
+		if (a[at] != b[at]): return 0
+		at = at + 1
+	return 1
+
+
+void retained_intern_place(char* copy, int h, int length):
 	int mask = retained_intern_table_capacity - 1
 	int i = h & mask
 	while (retained_intern_table[i] != 0): i = (i + 1) & mask
 	retained_intern_table[i] = cast(int, copy)
 	retained_intern_hashes[i] = h
+	retained_intern_lengths[i] = length
 
 
 # Make room for one more copy, growing the table at half load.
@@ -140,13 +168,16 @@ void retained_intern_reserve():
 	if (retained_intern_table != 0):
 		free(cast(char*, retained_intern_table))
 		free(cast(char*, retained_intern_hashes))
+		free(cast(char*, retained_intern_lengths))
 	retained_intern_table = cast(int*, malloc(capacity * __word_size__))
 	retained_intern_hashes = cast(int*, malloc(capacity * __word_size__))
+	retained_intern_lengths = cast(int*, malloc(capacity * __word_size__))
 	retained_intern_table_capacity = capacity
 	for i in range(capacity): retained_intern_table[i] = 0
 	for i in range(retained_interned.length):
 		char* copy = retained_interned[i]
-		retained_intern_place(copy, retained_intern_hash(copy))
+		int h = retained_intern_hash(copy)
+		retained_intern_place(copy, h, retained_intern_text_length)
 
 
 char* retained_intern(char* text):
@@ -155,16 +186,18 @@ char* retained_intern(char* text):
 	if (retained_interned == 0): retained_interned = new list[char*]
 	retained_intern_reserve()
 	int h = retained_intern_hash(text)
+	int length = retained_intern_text_length
 	int mask = retained_intern_table_capacity - 1
 	int i = h & mask
 	while (retained_intern_table[i] != 0):
-		if (retained_intern_hashes[i] == h):
+		if ((retained_intern_hashes[i] == h) && (retained_intern_lengths[i] == length)):
 			char* found = cast(char*, retained_intern_table[i])
-			if (strcmp(found, text) == 0): return found
+			if (retained_text_equal(found, text, length)): return found
 		i = (i + 1) & mask
 	char* copy = strclone(text)
 	retained_intern_table[i] = cast(int, copy)
 	retained_intern_hashes[i] = h
+	retained_intern_lengths[i] = length
 	retained_interned.push(copy)
 	if (text[0] == 0): retained_intern_empty = copy
 	return copy
@@ -255,9 +288,13 @@ void retained_semantic_clear():
 		if (retained_intern_table != 0):
 			free(cast(char*, retained_intern_table))
 			free(cast(char*, retained_intern_hashes))
+			free(cast(char*, retained_intern_lengths))
 	retained_interned = 0
+	if (retained_interned_files != 0): retained_interned_files.free()
+	retained_interned_files = 0
 	retained_intern_table = 0
 	retained_intern_hashes = 0
+	retained_intern_lengths = 0
 	retained_intern_table_capacity = 0
 	retained_intern_empty = 0
 	if (retained_key_buffer != 0): free(retained_key_buffer)

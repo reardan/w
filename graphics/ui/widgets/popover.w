@@ -54,11 +54,18 @@ ui_rect ui_popover_place(ui_rect anchor, float32 w, float32 h, float32 vw, float
 	return ui_rect_new(x, y, w, h)
 
 
+# Closing returns keyboard focus to the anchor, which shares the
+# popover's id; Tab from the anchor enters the open body.
+void ui_popover_release_focus(ui_context* ctx, int id):
+	if (ui_popup_registered(ctx, id)): ctx.focus = id
+
+
 # Open an anchored surface. Returns 1 while open, with the layout region
 # set to the surface's inside — issue body widgets and then call
 # ui_popover_end.
 int ui_popover_begin(ui_context* ctx, int id, ui_rect anchor, float32 w, float32 h, int32* open):
 	if (open[0] == 0):
+		ui_popover_release_focus(ctx, id)
 		ui_popup_dismiss(ctx, id)
 		return 0
 	ui_popup_open(ctx, id)
@@ -80,6 +87,7 @@ int ui_popover_begin(ui_context* ctx, int id, ui_rect anchor, float32 w, float32
 			open[0] = 0
 			ctx.input.mouse_pressed = 0
 	if (open[0] == 0):
+		ui_popover_release_focus(ctx, id)
 		ui_popup_dismiss(ctx, id)
 		return 0
 

@@ -120,7 +120,8 @@ void test_pressing_a_match_picks_and_closes():
 	assert_equal(2, selected)
 	assert_equal(0, open)
 	assert_equal(0, ctx.popup_depth)
-	assert_equal(0, ctx.focus)
+	# Focus is back on the header (id 1), which takes no text.
+	assert_equal(1, ctx.focus)
 
 	# Typing now goes nowhere: the textbox after the dropdown did not
 	# inherit the filter's focus.
@@ -212,7 +213,7 @@ void test_closing_without_a_pick():
 	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, open)
 	assert_equal(0, f.changed)
-	assert_equal(0, ctx.focus)
+	assert_equal(1, ctx.focus)
 	assert_equal(0, ctx.popup_depth)
 
 	ui_test_click(ctx, 20, 20)
@@ -222,7 +223,7 @@ void test_closing_without_a_pick():
 	ui_test_char(ctx, 27)
 	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, open)
-	assert_equal(0, ctx.focus)
+	assert_equal(1, ctx.focus)
 	assert_equal(0, ctx.popup_depth)
 	ui_render_destroy(&fx.r)
 
