@@ -178,7 +178,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_text(s, x - strlen(node.label) * 4, 90 + shift, node.label)
 			else: mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
 		mm_line(s, x, 140 + shift, x, end_y, 1)
-		if (d.kind == MM_SEQUENCE): mm_n_link_menu(s, node, bounds, end_y + 20)
+		if (d.kind == MM_SEQUENCE): mm_n_link_menu(s, node, bounds, end_y + 32)
 		if (dies):
 			mm_line(s, x - 9, end_y - 9, x + 9, end_y + 9, 0)
 			mm_line(s, x - 9, end_y + 9, x + 9, end_y - 9, 0)
