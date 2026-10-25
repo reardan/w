@@ -257,9 +257,13 @@ void test_source_stays_lossless():
 	mm_document* d = text_parse(source)
 	assert_equal(0, strcmp(d.source, source))
 	asserts(c"label keeps break tag", strcmp(d.edges[0].label, c"x<br>y") == 0)
-	# Canonical serialization cannot quote a raw newline and refuses.
+	# Canonical serialization keeps the raw newline inside the markdown string.
 	char* text = mm_serialize(d)
-	asserts(c"newline label not serialized approximately", text == 0)
+	asserts(c"markdown newline label serialized", text != 0 && contains(text, c"`multi\nline`"))
+	mm_document* again = mm_parse(text, strlen(text))
+	asserts(c"markdown newline label round-trips", mm_document_equal(d, again))
+	mm_document_free(again)
+	free(text)
 	mm_document_free(d)
 	# An unterminated markdown string falls back to the one-line rule.
 	char* open = c"flowchart LR\nA[\"`open]\nB\n"
