@@ -875,6 +875,8 @@ int mm_n_gantt_directive(mm_parser* p, char* text):
 
 void mm_n_gantt_finish_settings(mm_parser* p):
 	mm_gantt_settings* g = mm_n_gantt_settings(p.doc)
+	char* configured = mm_config_value(p.doc, c"gantt.axisFormat")
+	if (configured != 0 && (configured[0] == 0 || mm_n_axis_valid(configured) == 0)): mm_error(p.doc, 0, c"unsupported Gantt axisFormat")
 	if (g.weekends): g.weekday_mask = g.weekday_mask | (1 << g.weekend_start) | (1 << ((g.weekend_start + 1) % 7))
 	for mm_node* node in p.doc.nodes:
 		if (node.metadata.length == 0): continue

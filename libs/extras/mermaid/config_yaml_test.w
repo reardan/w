@@ -104,11 +104,11 @@ void test_yaml_quoted_strings_and_escapes():
 	mm_document_free(d)
 
 void test_yaml_anchors_aliases_and_merges():
-	mm_document* d = yaml_parse(c"---\ndefaults: &axis\n  showLabel: false\n  showTick: false\nconfig:\n  xyChart:\n    xAxis: *axis\n    yAxis:\n      <<: *axis\n      showTick: true\n---\nxychart\nx-axis [a, b]\nbar [1, 2]\n")
+	mm_document* d = yaml_parse(c"---\ndefaults: &axis\n  showLabel: false\n  showTitle: false\nconfig:\n  xyChart:\n    xAxis: *axis\n    yAxis:\n      <<: *axis\n      showTitle: true\n---\nxychart\nx-axis [a, b]\nbar [1, 2]\n")
 	yaml_value(d, c"xyChart.xAxis.showLabel", c"false")
-	yaml_value(d, c"xyChart.xAxis.showTick", c"false")
+	yaml_value(d, c"xyChart.xAxis.showTitle", c"false")
 	yaml_value(d, c"xyChart.yAxis.showLabel", c"false")
-	yaml_value(d, c"xyChart.yAxis.showTick", c"true")
+	yaml_value(d, c"xyChart.yAxis.showTitle", c"true")
 	asserts(c"top-level helper keys are ignored", yaml_ignored(d, c"defaults.showLabel"))
 	mm_document_free(d)
 	# Scalar anchors, flow aliases and the first merge winning over a later one.

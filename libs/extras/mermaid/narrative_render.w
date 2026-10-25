@@ -1,6 +1,7 @@
 # Lifelines, chronological event columns, scored journeys and a calendar axis.
 import libs.extras.mermaid.narrative
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.text
 
 void mm_n_arrow(mm_scene* s, int x, int y, int direction, int kind):
 	if (kind == 0): return
@@ -22,27 +23,77 @@ char* mm_n_label(mm_narrative_event* event, int number):
 	free(out)
 	return result
 
+# Message and note text: one line, or wrapped lines when sequence.wrap (or
+# the global wrap) is configured.
+void mm_n_message_text(mm_scene* s, int x, int y, char* label, int wrap):
+	if (wrap <= 0):
+		mm_text(s, x, y, label)
+		return
+	mm_text_block* b = mm_text_layout(label, wrap)
+	mm_text_draw(s, b, x, y - (mm_text_lines(b) - 1) * MM_TEXT_PITCH, 0)
+	mm_text_block_free(b)
+
+int mm_n_text_width(char* label, int wrap):
+	if (wrap <= 0): return strlen(label) * 8
+	mm_text_block* b = mm_text_layout(label, wrap)
+	int width = b.width
+	mm_text_block_free(b)
+	return width
+
+# A participant box or actor figure with its label; top is the box's top.
+void mm_n_actor_box(mm_scene* s, mm_node* node, mm_bounds* bounds, int top):
+	int x = bounds.x + bounds.w / 2
+	int shift = top - 65
+	if (node.shape == 1):
+		mm_draw(s, MM_CIRCLE, x - 9, 58 + shift, x + 9, 76 + shift, 0, c"")
+		mm_line(s, x, 76 + shift, x, 98 + shift, 0)
+		mm_line(s, x - 16, 84 + shift, x + 16, 84 + shift, 0)
+		mm_line(s, x, 98 + shift, x - 12, 110 + shift, 0)
+		mm_line(s, x, 98 + shift, x + 12, 110 + shift, 0)
+		mm_text(s, x - strlen(node.label) * 4, 115 + shift, node.label)
+		return
+	mm_draw(s, MM_BOX, bounds.x, top, bounds.x + bounds.w, top + bounds.h, 0, c"")
+	int middle = top + bounds.h / 2
+	if (node.annotation[0] != 0):
+		# ZenUML participant kinds (@Database, @Boundary, ...) as a stereotype line.
+		string_builder* stereotype = string_from(c"<<")
+		string_append(stereotype, node.annotation)
+		string_append(stereotype, c">>")
+		mm_text(s, x - stereotype.length * 4, middle - 22, stereotype.data)
+		string_free(stereotype)
+		mm_text(s, x - strlen(node.label) * 4, middle - 2, node.label)
+	else: mm_text(s, x - strlen(node.label) * 4, middle - 9, node.label)
+
 void mm_n_lifelines(mm_document* d, mm_scene* s):
 	int count = d.nodes.length
 	int bottom = 180 + d.narrative.length * 70
+	# sequence.* configuration; the defaults reproduce the unconfigured layout.
+	int gap = mm_config_number(d, c"sequence.actorMargin", 40)
+	int box_width = mm_config_number(d, c"sequence.width", 160)
+	int box_height = mm_config_number(d, c"sequence.height", 55)
+	int bar = mm_config_number(d, c"sequence.activationWidth", 12)
+	char* align = mm_config_value(d, c"sequence.messageAlign")
+	int numbered = mm_config_flag(d, c"sequence.showSequenceNumbers", 0)
+	int wrap = 0
+	if (mm_config_flag(d, c"sequence.wrap", mm_config_flag(d, c"wrap", 0))): wrap = box_width + gap - 20
 	for mm_node* node in d.nodes:
-		int width = strlen(node.label) * 8 + 60
-		int stereotype_width = strlen(node.annotation) * 8 + 92
+		int width = strlen(node.label) * 8 + 20 + gap
+		int stereotype_width = strlen(node.annotation) * 8 + 52 + gap
 		if (node.annotation[0] != 0 && stereotype_width > width): width = stereotype_width
-		if (width < 200): width = 200
-		s.nodes.push(new mm_bounds(0, 65, width, 55, 0))
+		if (width < box_width + gap): width = box_width + gap
+		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0))
 	# Charge each message's width to one lane, not every lane. A single long
 	# label with 1024 participants therefore cannot overflow 32-bit geometry.
 	for mm_narrative_event* event in d.narrative:
 		if (event.from_node >= 0):
 			mm_bounds* bounds = s.nodes[event.from_node]
-			int needed = strlen(event.label) * 8 + 80
+			int needed = mm_n_text_width(event.label, wrap) + 40 + gap
 			if (needed > bounds.w): bounds.w = needed
-	int right = 60
+	int right = mm_config_number(d, c"sequence.diagramMarginX", 80) - gap / 2
 	for mm_bounds* bounds in s.nodes:
-		bounds.x = right + 20
+		bounds.x = right + gap / 2
 		right = right + bounds.w
-		bounds.w = bounds.w - 40
+		bounds.w = bounds.w - gap
 	# Participant boxes span their contiguous lanes behind every other primitive.
 	for mm_narrative_event* box in d.boxes:
 		mm_bounds* first = s.nodes[box.from_node]
@@ -84,28 +135,13 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				end_y = 170 + event.end * 70
 				dies = 1
 		int shift = bounds.y - 65
-		if (node.shape == 1):
-			mm_draw(s, MM_CIRCLE, x - 9, 58 + shift, x + 9, 76 + shift, 0, c"")
-			mm_line(s, x, 76 + shift, x, 98 + shift, 0)
-			mm_line(s, x - 16, 84 + shift, x + 16, 84 + shift, 0)
-			mm_line(s, x, 98 + shift, x - 12, 110 + shift, 0)
-			mm_line(s, x, 98 + shift, x + 12, 110 + shift, 0)
-			mm_text(s, x - strlen(node.label) * 4, 115 + shift, node.label)
-		else:
-			mm_draw(s, MM_BOX, bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h, 0, c"")
-			if (node.annotation[0] != 0):
-				# ZenUML participant kinds (@Database, @Boundary, ...) as a stereotype line.
-				string_builder* stereotype = string_from(c"<<")
-				string_append(stereotype, node.annotation)
-				string_append(stereotype, c">>")
-				mm_text(s, x - stereotype.length * 4, 70 + shift, stereotype.data)
-				string_free(stereotype)
-				mm_text(s, x - strlen(node.label) * 4, 90 + shift, node.label)
-			else: mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
+		mm_n_actor_box(s, node, bounds, bounds.y)
 		mm_line(s, x, 140 + shift, x, end_y, 1)
 		if (dies):
 			mm_line(s, x - 9, end_y - 9, x + 9, end_y + 9, 0)
 			mm_line(s, x - 9, end_y + 9, x + 9, end_y - 9, 0)
+		# sequence.mirrorActors repeats each surviving participant below its lifeline.
+		else if (mm_config_flag(d, c"sequence.mirrorActors", 0)): mm_n_actor_box(s, node, bounds, end_y + 10)
 		# Draw outer activation bars first, so nested bars remain visible.
 		int depth = 0
 		for j in range(d.narrative.length):
@@ -123,10 +159,11 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				if (balance == 0):
 					if (170 + k * 70 < activation_end): activation_end = 170 + k * 70
 					break
-			int ax = x - 6 + depth * 5
-			mm_draw(s, MM_BOX, ax, 170 + j * 70, ax + 12, activation_end, 0, c"")
+			int ax = x - bar / 2 + depth * 5
+			mm_draw(s, MM_BOX, ax, 170 + j * 70, ax + bar, activation_end, 0, c"")
 			depth = depth + 1
 
+	int ordinal = 0
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
 		int y = 170 + i * 70
@@ -151,13 +188,23 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_n_arrow(s, to, y, direction, event.arrow)
 				if (event.arrow == 4): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
 			int shown = -1
+			ordinal = ordinal + 1
 			if (event.start): shown = event.value
+			else if (numbered): shown = ordinal
 			char* label = mm_n_label(event, shown)
-			if (x == to): mm_text(s, x + 8, y - 23, label)
+			if (x == to): mm_n_message_text(s, x + 8, y - 23, label, wrap)
 			else:
-				int label_x = (x + to) / 2 - strlen(label) * 4
+				int label_width = mm_n_text_width(label, wrap)
+				int label_x = (x + to) / 2 - label_width / 2
+				int low = x
+				int high = to
+				if (high < low):
+					low = to
+					high = x
+				if (align != 0 && strcmp(align, c"left") == 0): label_x = low + 10
+				if (align != 0 && strcmp(align, c"right") == 0): label_x = high - label_width - 10
 				if (label_x < 10): label_x = 10
-				mm_text(s, label_x, y - 23, label)
+				mm_n_message_text(s, label_x, y - 23, label, wrap)
 			free(label)
 		else if (event.kind == MM_N_NOTE):
 			int w = strlen(event.label) * 8 + 24
@@ -259,8 +306,17 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 	int x = 60
 	int index = 0
 	char* section = c""
+	# Upstream colors each section (or each period without sections) unless
+	# timeline.disableMulticolor is set; natively the boxes stay in the theme
+	# palette unless disableMulticolor: false or sectionFills is configured.
+	int fills = mm_config_count(d, c"timeline.sectionFills")
+	int multicolor = fills > 0 || mm_config_flag(d, c"timeline.disableMulticolor", 1) == 0
+	int min_width = mm_config_number(d, c"timeline.width", 170)
+	int color_index = -1
 	while (index < d.narrative.length):
 		mm_narrative_event* period = d.narrative[index]
+		int period_start = s.items.length
+		if (period.section[0] == 0 || strcmp(period.section, section) != 0 || color_index < 0): color_index = color_index + 1
 		list[char*] period_lines = mm_n_label_lines(period.label)
 		int next = index + 1
 		int width = mm_n_lines_width(period_lines) * 8 + 40
@@ -272,7 +328,7 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 			mm_n_lines_free(lines)
 			if (needed > width): width = needed
 			next = next + 1
-		if (width < 170): width = 170
+		if (width < min_width): width = min_width
 		if (strcmp(period.section, section) != 0):
 			mm_text(s, x, 60, period.section)
 			section = period.section
@@ -294,6 +350,14 @@ void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 			mm_n_lines_draw(s, x + 15, y + 15, lines)
 			mm_n_lines_free(lines)
 			y = y + height + 35
+		if (multicolor):
+			int fill = mm_style_series_color(color_index)
+			if (fills > 0): fill = mm_style_color(mm_config_item(d, c"timeline.sectionFills", color_index % fills))
+			for k in range(period_start, s.items.length):
+				mm_primitive* box = s.items[k]
+				if (box.kind != MM_BOX): continue
+				box.style.mask = box.style.mask | MM_STYLE_FILL
+				box.style.fill = fill
 		x = x + width + 50
 		index = next
 
@@ -373,6 +437,16 @@ char* mm_n_axis_label(mm_gantt_settings* g, int value):
 	free(out)
 	return result
 
+# The axisFormat statement wins over gantt.axisFormat, as upstream.
+char* mm_n_gantt_label(mm_document* d, mm_gantt_settings* g, int value):
+	char* configured = mm_config_value(d, c"gantt.axisFormat")
+	if (g.axis_format[0] != 0 || configured == 0): return mm_n_axis_label(g, value)
+	string_builder* out = string_new()
+	mm_n_format_moment(out, value, g.minutes, configured)
+	char* result = out.data
+	free(out)
+	return result
+
 # Day charts keep whole pixels per day; minute charts scale to 800 pixels.
 struct mm_n_axis:
 	int left
@@ -418,17 +492,133 @@ void mm_n_gantt_shading(mm_gantt_settings* g, mm_n_axis* axis, mm_scene* s, int 
 		mm_n_paint(s, 0xe2e8f0, 0xe2e8f0)
 		day = run
 
+# Year and month of a day count (days since 1970-01-01).
+void mm_n_civil(int days, int* year, int* month):
+	int y = 1970
+	while (days >= 365 + mm_n_leap(y)):
+		days = days - 365 - mm_n_leap(y)
+		y = y + 1
+	int m = 1
+	while (days >= mm_n_month_length(y, m)):
+		days = days - mm_n_month_length(y, m)
+		m = m + 1
+	*year = y
+	*month = m
+
+# Moments of the configured gantt.tickInterval ("2week", "6hour", "1month")
+# from earliest to latest, at most 1000; null when none is configured.
+list[int] mm_n_gantt_ticks(mm_document* d, mm_gantt_settings* g, int earliest, int latest):
+	char* interval = mm_config_value(d, c"gantt.tickInterval")
+	if (interval == 0): return 0
+	int count = 0
+	int at = 0
+	while (interval[at] >= '0' && interval[at] <= '9'):
+		count = count * 10 + interval[at] - '0'
+		at = at + 1
+	char* unit = interval + at
+	list[int] ticks = new list[int]
+	int per_day = 1
+	if (g.minutes): per_day = 1440
+	if (strcmp(unit, c"month") == 0):
+		int year = 0
+		int month = 0
+		mm_n_civil(earliest / per_day, &year, &month)
+		int value = mm_n_days(year, month, 1) * per_day
+		while (ticks.length < 1000 && year <= 9999):
+			if (value >= earliest && value <= latest): ticks.push(value)
+			if (value > latest): break
+			month = month + count
+			while (month > 12):
+				month = month - 12
+				year = year + 1
+			if (year > 9999): break
+			value = mm_n_days(year, month, 1) * per_day
+		return ticks
+	# Interval length in chart units: days, or minutes for charts with a time of day.
+	int minutes = count
+	if (strcmp(unit, c"hour") == 0): minutes = count * 60
+	else if (strcmp(unit, c"day") == 0): minutes = count * 1440
+	else if (strcmp(unit, c"week") == 0): minutes = count * 10080
+	else if (strcmp(unit, c"second") == 0 || strcmp(unit, c"millisecond") == 0): minutes = 1
+	int step = minutes
+	if (g.minutes == 0): step = (minutes + 1439) / 1440
+	if (step < 1): step = 1
+	# Keep at most 1000 ticks; a finer interval coarsens deterministically.
+	if ((latest - earliest) / step > 999): step = (latest - earliest) / 999 + 1
+	int first = earliest
+	if (strcmp(unit, c"week") == 0):
+		# Weekly ticks start on gantt.weekday (default sunday); 1970-01-01 was a Thursday.
+		char* weekday = mm_config_value(d, c"gantt.weekday")
+		int target = 0
+		list[char*] names = list[char*]{c"sunday", c"monday", c"tuesday", c"wednesday", c"thursday", c"friday", c"saturday"}
+		for i in range(7):
+			if (weekday != 0 && strcmp(weekday, names[i]) == 0): target = i
+		__w_list_free(cast(__w_list*, names))
+		int day = (earliest + per_day - 1) / per_day
+		while ((day + 4) % 7 != target): day = day + 1
+		first = day * per_day
+	else if (g.minutes): first = (earliest + step - 1) / step * step
+	int value = first
+	while (value <= latest && ticks.length < 1000):
+		ticks.push(value)
+		value = value + step
+	return ticks
+
 void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 	if (d.narrative.length == 0): return
 	mm_gantt_settings* g = mm_n_gantt_settings(d)
 	int earliest = 2147483647
 	int latest = 0
-	int left = 180
+	int left = mm_config_number(d, c"gantt.leftPadding", 180)
+	int compact = 0
+	char* mode = mm_config_value(d, c"gantt.displayMode")
+	if (mode != 0 && strcmp(mode, c"compact") == 0): compact = 1
 	for mm_narrative_event* task in d.narrative:
 		if (task.start < earliest): earliest = task.start
 		if (task.end > latest): latest = task.end
 		int needed = strlen(task.label) * 8 + 90
+		if (compact): needed = strlen(task.section) * 8 + 90
 		if (needed > left): left = needed
+	# Rows: one per task, or packed per section in compact mode. Configured
+	# barHeight/barGap replace the native 30px bars on an 85px pitch and
+	# reserve a header gap before each section.
+	int bar = 30
+	int pitch = 85
+	int header = 0
+	if (mm_config_has(d, c"gantt.barHeight") || mm_config_has(d, c"gantt.barGap")):
+		bar = mm_config_number(d, c"gantt.barHeight", 20)
+		pitch = bar + mm_config_number(d, c"gantt.barGap", 4)
+		if (pitch < MM_TEXT_PITCH): pitch = MM_TEXT_PITCH
+		header = 34
+	list[int] rows = new list[int]
+	list[int] row_ends = new list[int]
+	list[int] row_y = new list[int]
+	char* section = c""
+	int y = 135
+	int section_rows = 0
+	for i in range(d.narrative.length):
+		mm_narrative_event* task = d.narrative[i]
+		if (strcmp(task.section, section) != 0 || i == 0):
+			if (i > 0 || header): y = y + header
+			if (i > 0 && compact): y = y + section_rows * pitch
+			__w_list_free(cast(__w_list*, row_ends))
+			row_ends = new list[int]
+			section = task.section
+			section_rows = 0
+		int row = row_ends.length
+		if (compact):
+			for k in range(row_ends.length):
+				if (row == row_ends.length && row_ends[k] <= task.start): row = k
+		if (row == row_ends.length): row_ends.push(task.end)
+		else: row_ends[row] = task.end
+		if (row_ends.length > section_rows): section_rows = row_ends.length
+		if (compact): row_y.push(y + row * pitch)
+		else:
+			row_y.push(y)
+			y = y + pitch
+		rows.push(row)
+	if (compact): y = y + section_rows * pitch
+	__w_list_free(cast(__w_list*, row_ends))
 	int span = latest - earliest
 	if (span < 1): span = 1
 	mm_n_axis* axis = new mm_n_axis()
@@ -442,57 +632,79 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 	axis.unit = unit
 	int width = span * unit
 	if (g.minutes): width = 800
-	char* sample = mm_n_axis_label(g, earliest)
+	char* sample = mm_n_gantt_label(d, g, earliest)
 	int label_width = strlen(sample) * 8 + 24
 	free(sample)
 	if (label_width < 120): label_width = 120
-	int height = d.narrative.length * 85 + 160
+	int height = y - pitch + bar + 80
+	if (pitch == 85 && header == 0): height = d.narrative.length * 85 + 160
 	mm_n_gantt_shading(g, axis, s, latest, height)
-	int tick = 0
-	int first_tick = earliest
-	if (g.minutes == 0):
-		tick = (span + 7) / 8
-		int minimum_tick = (label_width + unit - 1) / unit
-		if (tick < minimum_tick): tick = minimum_tick
-	else:
-		list[int] steps = list[int]{1, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080, 20160, 43200, 129600, 525600}
-		for int step in steps:
-			if (tick == 0 && cast(float, step) * 800.0 / cast(float, span) >= cast(float, label_width)): tick = step
-		__w_list_free(cast(__w_list*, steps))
-		if (tick == 0): tick = span
-		first_tick = (earliest + tick - 1) / tick * tick
-	int value = first_tick
-	while (value <= latest):
+	# Axis labels sit above the chart natively; gantt.topAxis: true adds the
+	# bottom axis upstream draws by default, and false keeps only that one.
+	int top_labels = 1
+	int bottom_labels = 0
+	if (mm_config_has(d, c"gantt.topAxis")):
+		bottom_labels = 1
+		top_labels = mm_config_flag(d, c"gantt.topAxis", 0)
+	list[int] ticks = mm_n_gantt_ticks(d, g, earliest, latest)
+	if (ticks == 0):
+		ticks = new list[int]
+		int tick = 0
+		int first_tick = earliest
+		if (g.minutes == 0):
+			tick = (span + 7) / 8
+			int minimum_tick = (label_width + unit - 1) / unit
+			if (tick < minimum_tick): tick = minimum_tick
+		else:
+			list[int] steps = list[int]{1, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080, 20160, 43200, 129600, 525600}
+			for int step in steps:
+				if (tick == 0 && cast(float, step) * 800.0 / cast(float, span) >= cast(float, label_width)): tick = step
+			__w_list_free(cast(__w_list*, steps))
+			if (tick == 0): tick = span
+			first_tick = (earliest + tick - 1) / tick * tick
+		int value = first_tick
+		while (value <= latest):
+			ticks.push(value)
+			if (value > latest - tick): break
+			value = value + tick
+	for int value in ticks:
 		int x = mm_n_axis_x(axis, value)
 		mm_line(s, x, 95, x, height, 1)
-		char* date = mm_n_axis_label(g, value)
-		mm_text(s, x, 70, date)
+		char* date = mm_n_gantt_label(d, g, value)
+		if (top_labels): mm_text(s, x, 70, date)
+		if (bottom_labels): mm_text(s, x, height + 8, date)
 		free(date)
-		if (value > latest - tick): break
-		value = value + tick
-	char* section = c""
+	__w_list_free(cast(__w_list*, ticks))
+	section = c""
 	for i in range(d.narrative.length):
 		mm_narrative_event* task = d.narrative[i]
-		int y = 135 + i * 85
+		y = row_y[i]
 		if (strcmp(task.section, section) != 0):
-			mm_text(s, 30, y - 30, task.section)
+			if (compact): mm_text(s, 30, y + bar / 2 - 6, task.section)
+			else: mm_text(s, 30, y - 30, task.section)
 			section = task.section
-		mm_text(s, 30, y + 9, task.label)
 		int x = mm_n_axis_x(axis, task.start)
 		int w = mm_n_axis_x(axis, task.end) - x
+		int middle = y + bar / 2
+		if (compact): mm_text(s, x + 4, middle - 6, task.label)
+		else: mm_text(s, 30, middle - 6, task.label)
 		if ((task.value & 8) != 0):
 			x = x + w / 2
-			mm_line(s, x, y + 3, x + 12, y + 15, 0)
-			mm_line(s, x + 12, y + 15, x, y + 27, 0)
-			mm_line(s, x, y + 27, x - 12, y + 15, 0)
-			mm_line(s, x - 12, y + 15, x, y + 3, 0)
+			int half = 12
+			if (bar / 2 < half): half = bar / 2
+			mm_line(s, x, middle - half, x + half, middle, 0)
+			mm_line(s, x + half, middle, x, middle + half, 0)
+			mm_line(s, x, middle + half, x - half, middle, 0)
+			mm_line(s, x - half, middle, x, middle - half, 0)
 		else:
 			if (w < 2): w = 2
-			mm_draw(s, MM_BOX, x, y, x + w, y + 30, 0, c"")
-			if ((task.value & 4) != 0 && w > 5): mm_draw(s, MM_BOX, x + 2, y + 3, x + w - 2, y + 27, 0, c"")
-			if ((task.value & 1) != 0): mm_line(s, x, y + 15, x + w, y + 15, 0)
-			if ((task.value & 2) != 0): mm_text(s, x + w + 8, y + 7, c"active")
-		s.nodes.push(new mm_bounds(x, y, w, 30, 0))
+			mm_draw(s, MM_BOX, x, y, x + w, y + bar, 0, c"")
+			if ((task.value & 4) != 0 && w > 5 && bar > 6): mm_draw(s, MM_BOX, x + 2, y + 3, x + w - 2, y + bar - 3, 0, c"")
+			if ((task.value & 1) != 0): mm_line(s, x, middle, x + w, middle, 0)
+			if ((task.value & 2) != 0): mm_text(s, x + w + 8, middle - 8, c"active")
+		s.nodes.push(new mm_bounds(x, y, w, bar, 0))
+	__w_list_free(cast(__w_list*, rows))
+	__w_list_free(cast(__w_list*, row_y))
 	mm_line(s, left, 100, left + width, 100, 0)
 	if (g.today >= earliest && g.today <= latest):
 		int x = mm_n_axis_x(axis, g.today)
