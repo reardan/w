@@ -1139,9 +1139,10 @@ void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int
 	# emit the C ABI conversion inline for the actual argument classes.
 	sym_define_global(sym)
 	emit_ffi_shim(param_count, ci_param_classes, ffi_type_class(ret_type), got_vaddr)
-	if (is_variadic):
-		sym_set_variadic(sym, param_count)
-		sym_set_got_vaddr(sym, got_vaddr)
+	# Every import records its slot: the variadic call path loads through
+	# it, and tools/wllvm_emit.w finds the import by it.
+	sym_set_got_vaddr(sym, got_vaddr)
+	if (is_variadic): sym_set_variadic(sym, param_count)
 
 
 # Imported extern array, of known or unknown length (e.g. extern char
