@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_container_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -72,6 +72,13 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"call i32 @llvm.fshl.i32(")
 	unlink(first)
 	free(a)
+	# Containers lower to calls into the auto-imported runtime.
+	wllvm_test_emit(c"tests/wllvm_container_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"phi i64")
+	unlink(first)
+	free(a)
 	free(first)
 	free(second)
 
@@ -102,7 +109,8 @@ void wllvm_test_reject(char* source):
 
 void test_wllvm_rejects_unsupported_programs():
 	wllvm_test_reject(c"float value(float x):\n\treturn x + 1.0\nint main():\n\treturn 0\n")
-	wllvm_test_reject(c"int main():\n\tlist[int] values = new list[int]\n\treturn 0\n")
+	# generators switch stacks through assembly stubs
+	wllvm_test_reject(c"import lib.generator\ngenerator int count(int n):\n\tfor i in range(n):\n\t\tyield i\nint main():\n\tint total = 0\n\tfor x in count(3): total = total + x\n\treturn total\n")
 	wllvm_test_reject(c"struct Point:\n\tint x\nint first(Point p):\n\treturn p.x\nint main():\n\tPoint p\n\treturn first(p)\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
 	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat f = 1.0\n")
@@ -223,6 +231,7 @@ void test_wllvm_native_differential():
 		return
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
 	free(clang)
 
 
