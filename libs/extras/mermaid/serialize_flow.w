@@ -112,6 +112,23 @@ void mm_serialize_agent_link(mm_serializer* out, mm_edge* edge):
 	else if (edge.arrow == 0): string_append(out.text, c"---")
 	else: out.failed = 1
 
+# Swimlane link operators: --> --- -.-> -.- with x / o heads and a leading <.
+void mm_serialize_swim_link(mm_serializer* out, mm_edge* edge):
+	if (edge.id != 0 || edge.stroke != 0 || edge.extra_rank != 0 || edge.left_marker < 0 || edge.left_marker > 1): out.failed = 1
+	int head = 0
+	if (edge.arrow): head = '>'
+	if (edge.right_marker == 6): head = 'x'
+	else if (edge.right_marker == 8): head = 'o'
+	else if (edge.right_marker != 0): out.failed = 1
+	if (edge.arrow && edge.right_marker != 0): out.failed = 1
+	if (edge.left_marker):
+		if (head == 0): out.failed = 1
+		string_append_char(out.text, '<')
+	if (edge.dashed): string_append(out.text, c"-.-")
+	else if (head != 0): string_append(out.text, c"--")
+	else: string_append(out.text, c"---")
+	if (head != 0): string_append_char(out.text, head)
+
 # One edge statement (no indentation), plus its linkStyle line.
 void mm_serialize_edge(mm_serializer* out, mm_document* d, mm_edge* edge):
 	if (edge.from_node < 0 || edge.from_node >= d.nodes.length || edge.to_node < 0 || edge.to_node >= d.nodes.length):
@@ -134,6 +151,7 @@ void mm_serialize_edge(mm_serializer* out, mm_document* d, mm_edge* edge):
 		__w_list_free(cast(__w_list*, right))
 	else:
 		if (d.kind == MM_AGENT): mm_serialize_agent_link(out, edge)
+		else if (d.kind == MM_SWIMLANE): mm_serialize_swim_link(out, edge)
 		else: mm_serialize_flow_link(out, edge)
 		if (edge.label[0] != 0):
 			string_append_char(out.text, '|')
@@ -261,11 +279,9 @@ void mm_serialize_scope_items(mm_serializer* out, mm_document* d, int scope, int
 	if (depth > 32):
 		out.failed = 1
 		return
-	# Plain nodes first, then child blocks and edges by edge order.
-	for i in range(d.nodes.length):
-		mm_node* n = d.nodes[i]
-		if (n.parent != scope || n.group || n.global_node != globals): continue
-		mm_serialize_flow_node(out, d, i, depth)
+	# Plain nodes first, then child blocks and edges by edge order. Swimlane
+	# steps and edgeless clusters interleave in node order.
+	int swim = d.kind == MM_SWIMLANE
 	list[int] blocks = new list[int]
 	list[int] keys = new list[int]
 	for i in range(d.nodes.length):
@@ -274,6 +290,13 @@ void mm_serialize_scope_items(mm_serializer* out, mm_document* d, int scope, int
 		blocks.push(i)
 		keys.push(mm_serialize_first_edge(d, i, 0))
 	int next_block = 0
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		if (n.parent != scope || n.group || n.global_node != globals): continue
+		while (swim && next_block < blocks.length && keys[next_block] < 0 && blocks[next_block] < i):
+			mm_serialize_flow_node(out, d, blocks[next_block], depth)
+			next_block = next_block + 1
+		mm_serialize_flow_node(out, d, i, depth)
 	# Blocks without edges keep node order ahead of the scope's edges.
 	while (next_block < blocks.length && keys[next_block] < 0):
 		mm_serialize_flow_node(out, d, blocks[next_block], depth)
@@ -314,7 +337,99 @@ void mm_serialize_scope_items(mm_serializer* out, mm_document* d, int scope, int
 	__w_list_free(cast(__w_list*, blocks))
 	__w_list_free(cast(__w_list*, keys))
 
+# Shape names `@{ shape: ... }` accepts, one per code.
+char* mm_serialize_shape_name(int code):
+	list[char*] names = list[char*]{c"rect", c"rounded", c"stadium", c"fr-rect", c"cyl", c"circle", c"diam", c"hex", c"lean-r", c"lean-l", c"trap-b", c"trap-t", c"dbl-circ", c"text", c"notch-rect", c"lin-rect", c"sm-circ", c"fr-circ", c"fork", c"hourglass", c"brace", c"brace-r", c"braces", c"bolt", c"doc", c"delay", c"h-cyl", c"lin-cyl", c"curv-trap", c"div-rect", c"tri", c"win-pane", c"f-circ", c"notch-pent", c"flip-tri", c"sl-rect", c"docs", c"st-rect", c"bow-rect", c"cross-circ", c"tag-doc", c"tag-rect", c"flag", c"odd", c"lin-doc", c"datastore", c"folder", c"bucket", c"console", c"browser", c"person", c"bang", c"cloud", c"collapsedGroup"}
+	char* result = 0
+	for char* name in names:
+		if (result == 0 && mm_shape_lookup(name) == code): result = name
+	__w_list_free(cast(__w_list*, names))
+	return result
+
+# The swimlane bracket form of a shape code, or 0 when it has none.
+int mm_serialize_swim_bracket(int shape, char** open, char** close):
+	list[int] codes = list[int]{MM_SHAPE_RECT, MM_SHAPE_ROUNDED, MM_SHAPE_CIRCLE, MM_SHAPE_DIAMOND, MM_SHAPE_STADIUM, MM_SHAPE_FRAMED, MM_SHAPE_HEXAGON, MM_SHAPE_LEAN_RIGHT, MM_SHAPE_LEAN_LEFT, MM_SHAPE_TRAP_BOTTOM, MM_SHAPE_TRAP_TOP, MM_SHAPE_CYLINDER, MM_SHAPE_DOUBLE_CIRCLE, MM_SHAPE_ODD}
+	list[char*] opens = list[char*]{c"[", c"(", c"((", c"{", c"([", c"[[", c"{{", c"[/", c"[\\", c"[/", c"[\\", c"[(", c"(((", c">"}
+	list[char*] closes = list[char*]{c"]", c")", c"))", c"}", c"])", c"]]", c"}}", c"/]", c"\\]", c"\\]", c"/]", c")]", c")))", c"]"}
+	int found = 0
+	for i in range(codes.length):
+		if (found == 0 && codes[i] == shape):
+			open[0] = opens[i]
+			close[0] = closes[i]
+			found = 1
+	__w_list_free(cast(__w_list*, codes))
+	__w_list_free(cast(__w_list*, opens))
+	__w_list_free(cast(__w_list*, closes))
+	return found
+
+void mm_serialize_swim_node(mm_serializer* out, mm_document* d, int i, int depth):
+	mm_node* n = d.nodes[i]
+	out.nodes = out.nodes + 1
+	if (n.annotation[0] != 0 || n.members.length != 0 || n.attributes.length != 0 || n.global_node || n.role[0] != 0 || n.declared == 0): out.failed = 1
+	mm_out_indent(out)
+	if (n.group):
+		if (n.metadata.length != 0 || n.shape != 0): out.failed = 1
+		mm_out(out, c"subgraph ")
+		if (mm_serialize_is_id(n.id) && strcmp(n.id, c"end") != 0 && strcmp(n.id, c"subgraph") != 0):
+			mm_out(out, n.id)
+			if (strcmp(n.label, n.id) != 0):
+				mm_out_char(out, '[')
+				mm_serialize_flow_label(out, n.label)
+				mm_out_char(out, ']')
+		else:
+			if (strcmp(n.label, n.id) != 0): out.failed = 1
+			mm_serialize_quote(out, n.id)
+		mm_out_line(out)
+		out.depth = out.depth + 1
+		if (n.direction[0] != 0):
+			mm_out_indent(out)
+			mm_out(out, c"direction ")
+			mm_out(out, n.direction)
+			mm_out_line(out)
+		mm_serialize_scope_items(out, d, i, depth + 1, 0)
+		out.depth = out.depth - 1
+		mm_out_indent(out)
+		mm_out(out, c"end\n")
+		mm_serialize_node_style(out, d, n)
+		return
+	if (n.parent < 0 || n.direction[0] != 0): out.failed = 1
+	if (mm_serialize_is_id(n.id) == 0 || strcmp(n.id, c"end") == 0 || strcmp(n.id, c"subgraph") == 0): out.failed = 1
+	mm_out(out, n.id)
+	int shaped = mm_serialize_agent_has(n, c"shape")
+	int labelled = 0
+	for mm_property* property in n.metadata:
+		if (strcmp(property.key, c"label") == 0 && property.type != MM_VALUE_NULL): labelled = 1
+	char* open = 0
+	char* close = 0
+	if (shaped == 0 && mm_serialize_swim_bracket(n.shape, &open, &close) == 0):
+		# A shape without a bracket form goes into the metadata block.
+		char* name = mm_serialize_shape_name(n.shape)
+		if (name == 0 || n.metadata.length != 0): out.failed = 1
+		else:
+			mm_out(out, c"@{ shape: ")
+			mm_out(out, name)
+			if (strcmp(n.label, n.id) != 0):
+				mm_out(out, c", label: ")
+				mm_serialize_yaml_string(out, n.label)
+			mm_out(out, c" }")
+		mm_out_line(out)
+		mm_serialize_node_style(out, d, n)
+		return
+	if (shaped):
+		open = c"["
+		close = c"]"
+	if (labelled == 0 && (strcmp(n.label, n.id) != 0 || (shaped == 0 && n.shape != 0))):
+		mm_out(out, open)
+		mm_serialize_flow_label(out, n.label)
+		mm_out(out, close)
+	mm_serialize_agent_metadata(out, n.metadata)
+	mm_out_line(out)
+	mm_serialize_node_style(out, d, n)
+
 void mm_serialize_flow_node(mm_serializer* out, mm_document* d, int i, int depth):
+	if (d.kind == MM_SWIMLANE):
+		mm_serialize_swim_node(out, d, i, depth)
+		return
 	mm_node* n = d.nodes[i]
 	out.nodes = out.nodes + 1
 	int agent = d.kind == MM_AGENT
