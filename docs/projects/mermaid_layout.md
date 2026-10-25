@@ -70,10 +70,59 @@ preview) the edge falls back to the direct connector. Manual positions
 therefore always override layout. Force layout (`config.layout: force`) keeps
 direct connectors.
 
-Not routed through channels: edges between nodes in the same rank, self
-loops, edges whose endpoints are nested inside different subgraphs (laid out
-against their scope's group box), and agentflow edges with an explicit
-`curve`.
+### Obstacle routing for edges outside the channels
+
+Edges the rank channels cannot carry are routed by an obstacle-aware
+orthogonal router (`mm_obstacle_route` in `routing.w`, driven by
+`mm_render_obstacle_routes` in `render.w`): edges between nodes in the same
+rank, self loops, and edges whose endpoints sit in different subgraphs
+(laid out against their scope's group box). The router runs after ports are
+assigned and before edges are drawn, for each such edge whose direct
+connector enters a node box or group title band or runs collinear with an
+unrelated edge (a clear direct connector is kept), and for every same-rank
+edge:
+
+- **Obstacles** are every leaf node box and every group title band (the
+  label strip at the top of a subgraph), padded by 12px; the edge's own
+  endpoints are obstacles too except for their port stubs.
+- **Ports** are candidates on all four sides: the side facing the other
+  endpoint costs nothing, a perpendicular side half a bend, the opposite side
+  two bends; repeated use of a side spreads ports 16px apart. Same-rank
+  edges use the facing sides. Each port leaves its box by a 24px stub.
+- **Search** is Dijkstra over (grid point, axis) states on the Hanan grid of
+  obstacle edges, port stubs and the region around them (at most 256 grid
+  lines per axis). A step costs its length plus 48 per bend, 4000 per
+  collinear overlap with an already routed edge and 120 per crossing; a
+  step into an obstacle is not allowed. The chosen polyline is validated
+  against every obstacle again; an edge with no valid route keeps its
+  previous path. At most 512 edges per render are routed this way.
+- **Drawing** keeps the route's points in the edge's route record
+  (`mm_edge_route.points`), so the SVG, the native preview and edge-only
+  redraws draw the same path; arrowheads and end markers follow the last
+  segment's direction. Routes translate with their endpoints like channel
+  routes and fall back to direct connectors when one endpoint moved alone.
+
+Agentflow edges with an explicit `curve` (`step`, `linear`, `basis`, ...)
+are routed the same way first and then drawn along the route with that
+curve (rounded corners for the smooth curves), so a curved edge no longer
+cuts through the steps between its endpoints. Architecture diagrams, force
+layout, invisible flowchart links (`~~~`) and class lollipop endpoints keep
+their own connectors.
+
+Stress fixtures in `routing_test.w`, measured with `route_metrics.w` before
+(the direct connector) and after:
+
+| Fixture | Before | After |
+| --- | --- | --- |
+| Self loops beside neighbours (`nodeSpacing: 20`) | 2 node hits | 0 node hits |
+| Same-rank edges (persisted positions) | 4 edges through their own endpoint boxes | 0 endpoint or node hits, 0 overlaps, 0 shared ports, 4 crossings |
+| Edges between nested subgraphs, TB | 12 node hits, 3 title hits, 8 overlaps, 9 shared ports | 0, 0, 0, 0 (2 crossings) |
+| Edges between nested subgraphs, LR | 7 node hits, 3 title hits, 8 overlaps, 9 shared ports | 0, 0, 0, 2 |
+| Agentflow `step` / `linear` / `basis` curves | edges through steps | 0 node hits, 0 title hits |
+
+`route_metrics.w` gained two counts for these fixtures: **title hits**
+(a path entering an unrelated group title band) and **end hits** (a path
+entering its own endpoint's box past the port).
 
 ## Measured quality
 

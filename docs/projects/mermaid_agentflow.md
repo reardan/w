@@ -16,7 +16,9 @@ Implemented syntax:
   multi-line block mappings, nested mappings, block (`- item`) and flow
   (`[a, b]`) sequences, flow mappings, single/double-quoted scalars with
   escapes, `|`/`>` block scalars with `-`/`+` chomping, comments and repeated
-  keys (the last one wins). Plain scalars resolve to null, booleans, integers and
+  keys (the last one wins). Quoted and block scalars are read by the same
+  readers as frontmatter (`mm_yaml_quoted` / `mm_yaml_block_text` in
+  `config.w`), in a metadata mode that reads control escapes as a space. Plain scalars resolve to null, booleans, integers and
   floats exactly as in the JSON schema; everything else is a string.
 - The shape inventory of upstream `shapes.ts`: the six domain aliases (task,
   tool, input, decision, refdoc, action), the canonical names they stand for
