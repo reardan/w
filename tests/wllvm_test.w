@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_slice_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -80,6 +80,24 @@ void test_wllvm_deterministic_ir():
 	assert1(a != 0)
 	assert_contains(a, c"icmp ne i64")
 	unlink(first)
+	# Containers lower to calls into the auto-imported runtime.
+	wllvm_test_emit(c"tests/wllvm_container_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"phi i64")
+	unlink(first)
+	# Floats ride in the word as bit patterns; f-strings call the runtime.
+	wllvm_test_emit(c"tests/wllvm_float_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"bitcast i64 ")
+	assert_contains(a, c"fdiv double")
+	assert_contains(a, c"fcmp ueq double")
+	assert_contains(a, c"sitofp i64 ")
+	assert_contains(a, c"fpext float ")
+	assert_contains(a, c"call i64 @llvm.x86.sse2.cvttsd2si64(")
+	assert_contains(a, c"c\"specs [\\00\"")
+	unlink(first)
 	free(a)
 	free(first)
 	free(second)
@@ -110,11 +128,12 @@ void wllvm_test_reject(char* source):
 
 
 void test_wllvm_rejects_unsupported_programs():
-	wllvm_test_reject(c"float value(float x):\n\treturn x + 1.0\nint main():\n\treturn 0\n")
-	wllvm_test_reject(c"int main():\n\tlist[int] values = new list[int]\n\treturn 0\n")
+	wllvm_test_reject(c"float16 value(float16 x):\n\treturn x\nint main():\n\treturn 0\n")
+	# generators switch stacks through assembly stubs
+	wllvm_test_reject(c"import lib.generator\ngenerator int count(int n):\n\tfor i in range(n):\n\t\tyield i\nint main():\n\tint total = 0\n\tfor x in count(3): total = total + x\n\treturn total\n")
 	wllvm_test_reject(c"struct Point:\n\tint x\nint first(Point p):\n\treturn p.x\nint main():\n\tPoint p\n\treturn first(p)\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
-	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat f = 1.0\n")
+	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat16 f = 1.0\n")
 	wllvm_test_reject(c"int main():\n\tdefer main()\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
@@ -231,6 +250,10 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
 	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 185)
+	wllvm_test_differential(clang, c"tests/wllvm_container_fixture.w", 14)
+	wllvm_test_differential(clang, c"tests/wllvm_float_fixture.w", 34)
+	wllvm_test_differential(clang, c"tests/wllvm_registry_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_slice_fixture.w", 9)
 	free(clang)
 
 
