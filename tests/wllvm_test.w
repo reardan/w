@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_forms_fixture.w data=tests/wllvm_codec_fixture.w data=tests/debug_fixture.w data=tests/wllvm_control_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_float_fixture.w data=tests/wllvm_registry_fixture.w data=tests/wllvm_runtime_fixture.w data=tests/wllvm_math_fixture.w data=tests/wllvm_half_fixture.w data=tests/crash_deep_chain_fixture.w data=tests/crash_div_zero_fixture.w data=tests/wllvm_generic_fixture.w data=tests/wllvm_extern_fixture.w data=tests/wllvm_container_fixture.w data=tests/wllvm_slice_fixture.w data=tests/wllvm_generator_fixture.w data=tests/wllvm_forms_fixture.w data=tests/wllvm_codec_fixture.w data=tests/wllvm_operator_fixture.w data=tests/debug_fixture.w data=tests/wllvm_control_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -334,6 +334,7 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_generator_fixture.w", 69)
 	wllvm_test_differential(clang, c"tests/wllvm_forms_fixture.w", 11)
 	wllvm_test_differential(clang, c"tests/wllvm_codec_fixture.w", 10)
+	wllvm_test_differential(clang, c"tests/wllvm_operator_fixture.w", 7)
 	wllvm_test_differential(clang, c"tests/wllvm_control_fixture.w", 23)
 	wllvm_test_differential(clang, c"tests/wllvm_propagate_fixture.w", 44)
 	# Checked slices, borrowed records and records holding owners by value,
