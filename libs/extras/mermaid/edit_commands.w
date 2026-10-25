@@ -3,6 +3,7 @@
 import libs.extras.mermaid.editor
 import libs.extras.mermaid.serialize
 import libs.extras.mermaid.edit_outline
+import libs.extras.mermaid.edit_slots
 
 const int MM_EDIT_LABEL = 1
 const int MM_EDIT_NODE_DELETE = 2
@@ -23,7 +24,7 @@ int mm_edit_has_interfaces(mm_document* d):
 char* mm_editor_edit_reason(mm_editor* e, int operation, int index):
 	if (e == 0 || e.document.error != 0): return c"Fix source errors before editing the diagram."
 	mm_document* d = e.document
-	if (mm_canvas_edit_family(d.kind) == 0): return c"Graphical editing is available for flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap and treeView diagrams."
+	if (mm_canvas_edit_family(d.kind) == 0): return c"Graphical editing is available for flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView, kanban and agentflow diagrams."
 	if (operation == MM_EDIT_EDGE_DELETE):
 		if (index < 0 || index >= d.edges.length): return c"Select a connection first."
 		if (mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
@@ -264,6 +265,17 @@ void mm_edit_splice(mm_edit_scan* scan, int start, int end, char* replacement):
 		piece.statement = 0
 		scan.pieces.push(piece)
 		return
+	if (replacement[0] == 0):
+		# A removed statement alone on its line takes the line (with its
+		# indentation inside a subgraph) rather than leaving it blank.
+		mm_document* d = scan.original
+		int line_start = start
+		while (line_start > scan.copied && line_start > d.source_start && (d.source[line_start - 1] == 32 || d.source[line_start - 1] == 9)): line_start = line_start - 1
+		int line_end = end
+		while (line_end < d.source_end && (d.source[line_end] == 32 || d.source[line_end] == 9 || d.source[line_end] == 13)): line_end = line_end + 1
+		if ((line_start == d.source_start || d.source[line_start - 1] == 10) && line_start >= scan.copied && line_end < d.source_end && d.source[line_end] == 10):
+			start = line_start
+			end = line_end + 1
 	string_append_bytes(scan.output, scan.original.source + scan.copied, start - scan.copied)
 	string_append(scan.output, replacement)
 	scan.copied = end
@@ -1037,8 +1049,87 @@ int mm_editor_member_set(mm_editor* e, int index, int which, char* text):
 # operators contain `|`).
 char* mm_editor_edge_kinds(int kind):
 	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"--> --- -.-> ==> --o --x <-->"
+	if (kind == MM_AGENT): return c"--> --- -.-> -.- ==> --x"
 	if (kind == MM_CLASS): return c"--> -- ..> .. <|-- *-- o-- ..|>"
 	if (kind == MM_STATE): return c"-->"
 	if (kind == MM_REQUIREMENT): return c"contains copies derives satisfies verifies refines traces"
 	if (kind == MM_USECASE): return c"--> --- ..>"
 	return c""
+
+# The inspector's compartment lines: ER attributes, class members and
+# requirement properties, one editable text per line.
+int mm_editor_line_count(mm_editor* e, int index):
+	mm_document* d = e.document
+	if (d.error != 0 || index < 0 || index >= d.nodes.length): return 0
+	mm_node* n = d.nodes[index]
+	if (d.kind == MM_ER):
+		if (n.attributes == 0): return 0
+		return n.attributes.length
+	if (d.kind != MM_CLASS && d.kind != MM_REQUIREMENT): return 0
+	if (n.members == 0): return 0
+	return n.members.length
+
+# Owned text of line `which`: `type name [keys] ["comment"]` for an ER
+# attribute, the member text otherwise; null when out of range.
+char* mm_editor_line_text(mm_editor* e, int index, int which):
+	if (which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	mm_node* n = e.document.nodes[index]
+	if (e.document.kind == MM_ER):
+		mm_attribute* a = n.attributes[which]
+		return mm_ee_attribute_text(a.type_name, a.name, a.keys, a.comment)
+	return strclone(n.members[which].text)
+
+char* mm_edit_trimmed(char* text, int start, int end):
+	while (start < end && (text[start] == 32 || text[start] == 9)): start = start + 1
+	while (end > start && (text[end - 1] == 32 || text[end - 1] == 9)): end = end - 1
+	return str_copy_range(text, start, end)
+
+# Rewrite line `which` in place from its inspector text (one validated
+# splice; an ER text splits into type, name, keys and a quoted comment).
+int mm_editor_line_set(mm_editor* e, int index, int which, char* text):
+	if (text == 0 || which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	char* current = mm_editor_line_text(e, index, which)
+	int same = strcmp(current, text) == 0
+	free(current)
+	if (same): return 1
+	if (e.document.kind != MM_ER): return mm_editor_member_set(e, index, which, text)
+	int length = strlen(text)
+	int quote = index_of(text, c"\"")
+	int code_end = length
+	char* comment = strclone(c"")
+	if (quote >= 0):
+		int close = length
+		while (close > quote + 1 && text[close - 1] != '"'): close = close - 1
+		if (close <= quote + 1 || close - 1 == quote):
+			free(comment)
+			return 0
+		free(comment)
+		comment = str_copy_range(text, quote + 1, close - 1)
+		code_end = quote
+		for i in range(close, length):
+			if (text[i] != 32 && text[i] != 9):
+				free(comment)
+				return 0
+	# type and name are the first two words; the rest are the keys.
+	list[int] starts = new list[int]
+	list[int] ends = new list[int]
+	int at = 0
+	while (at < code_end && starts.length < 2):
+		while (at < code_end && (text[at] == 32 || text[at] == 9)): at = at + 1
+		if (at >= code_end): break
+		starts.push(at)
+		while (at < code_end && text[at] != 32 && text[at] != 9): at = at + 1
+		ends.push(at)
+	int ok = 0
+	if (starts.length == 2):
+		char* type_name = str_copy_range(text, starts[0], ends[0])
+		char* name = str_copy_range(text, starts[1], ends[1])
+		char* keys = mm_edit_trimmed(text, ends[1], code_end)
+		ok = mm_editor_attribute_set(e, index, which, type_name, name, keys, comment)
+		free(type_name)
+		free(name)
+		free(keys)
+	free(comment)
+	__w_list_free(cast(__w_list*, starts))
+	__w_list_free(cast(__w_list*, ends))
+	return ok

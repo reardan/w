@@ -1,12 +1,14 @@
-# Structural graphical edits for indentation outlines (mindmap, treeView):
-# rename, delete a subtree, add a child or sibling, and reorder siblings.
+# Structural graphical edits for indentation outlines (mindmap, treeView,
+# kanban): rename, delete a subtree, add a child or sibling, reorder
+# siblings and move a subtree under another parent (a kanban card into
+# another column).
 # Each edit splices whole lines (or a label inside one line) and is checked
 # against the expected tree before it becomes one undo step. Outline node
 # identities are positional, so the check compares the tree by position.
 import libs.extras.mermaid.edit_engine
 
 int mm_outline_family(int kind):
-	return kind == MM_MINDMAP || kind == MM_TREEVIEW
+	return kind == MM_MINDMAP || kind == MM_TREEVIEW || kind == MM_KANBAN
 
 int mm_oe_glyph(mm_document* d, int at, int end):
 	if (at + 2 >= end || (d.source[at] & 255) != 0xE2 || (d.source[at + 1] & 255) != 0x94): return 0
@@ -79,6 +81,9 @@ struct mm_oe_expect:
 	int changed
 	char* label
 	int new_parent
+	# A reparented subtree root (old index) and its new parent (old index).
+	int moved
+	int moved_parent
 
 int mm_oe_validate(mm_document* old, mm_document* next, mm_oe_expect* x):
 	if (next.error != 0 || next.kind != old.kind || next.nodes.length != x.order.length): return 0
@@ -96,8 +101,10 @@ int mm_oe_validate(mm_document* old, mm_document* next, mm_oe_expect* x):
 		mm_node want = *old.nodes[was]
 		if (was == x.changed): want.label = x.label
 		if (mm_ee_node_equal(&want, have) == 0): return 0
-		if (parent != old.nodes[was].parent): return 0
-		if (have.parent < 0 && old.nodes[was].parent >= 0): return 0
+		int want_parent = old.nodes[was].parent
+		if (was == x.moved): want_parent = x.moved_parent
+		if (parent != want_parent): return 0
+		if (have.parent < 0 && want_parent >= 0): return 0
 	if (strcmp(old.title, next.title) != 0 || strcmp(old.accessibility_title, next.accessibility_title) != 0 || strcmp(old.accessibility_description, next.accessibility_description) != 0): return 0
 	return 1
 
@@ -108,6 +115,8 @@ mm_oe_expect* mm_oe_expect_new(mm_document* d):
 	x.changed = -1
 	x.label = c""
 	x.new_parent = -1
+	x.moved = -1
+	x.moved_parent = -1
 	return x
 
 void mm_oe_expect_free(mm_oe_expect* x):
@@ -189,6 +198,13 @@ char* mm_oe_child_prefix(mm_document* d, list[int] lines, int index):
 	if (index + 1 < d.nodes.length && d.nodes[index + 1].parent == index):
 		int start = lines[index + 1]
 		return str_copy_range(d.source, start, mm_oe_label_start(d, start, mm_ee_line_end(d, start)))
+	# Kanban indentation levels are shared: an empty column's first card is
+	# indented like the cards of the other columns.
+	if (d.kind == MM_KANBAN):
+		for i in range(d.nodes.length):
+			if (d.nodes[i].parent >= 0):
+				int start = lines[i]
+				return str_copy_range(d.source, start, mm_oe_label_start(d, start, mm_ee_line_end(d, start)))
 	int start = lines[index]
 	int label = mm_oe_label_start(d, start, mm_ee_line_end(d, start))
 	string_builder* s = string_new()
@@ -298,5 +314,72 @@ int mm_outline_reorder(mm_editor* e, int index, int up):
 	string_free(moved)
 	free(a)
 	free(b)
+	__w_list_free(cast(__w_list*, lines))
+	return ok
+
+# Move index's subtree to the end of parent's children (a kanban card into
+# another column, a mindmap branch under another node). The subtree's lines
+# keep their relative indentation under the new parent's child prefix;
+# treeView glyph prefixes move only a single line.
+int mm_outline_reparent(mm_editor* e, int index, int parent):
+	mm_document* d = e.document
+	if (index < 0 || index >= d.nodes.length || parent < 0 || parent >= d.nodes.length): return 0
+	if (parent == index || mm_position_within(d, parent, index) || d.nodes[index].parent == parent): return 0
+	if (d.kind == MM_MINDMAP && d.nodes[index].parent < 0): return 0
+	# Kanban columns hold cards; a column does not nest.
+	if (d.kind == MM_KANBAN && (d.nodes[parent].parent >= 0 || d.nodes[index].parent < 0)): return 0
+	list[int] lines = mm_oe_lines(d)
+	if (lines == 0): return 0
+	int last = mm_oe_subtree_end(d, index)
+	int root_start = lines[index]
+	int root_label = mm_oe_label_start(d, root_start, mm_ee_line_end(d, root_start))
+	char* old_prefix = str_copy_range(d.source, root_start, root_label)
+	char* new_prefix = mm_oe_child_prefix(d, lines, parent)
+	int ok = 1
+	for i in range(root_label - root_start):
+		if (old_prefix[i] != 32 && old_prefix[i] != 9): ok = 0
+	if (d.kind == MM_TREEVIEW && last != index + 1): ok = 0
+	string_builder* text = string_new()
+	for k in range(index, last):
+		if (ok == 0): break
+		int start = lines[k]
+		int end = lines[k + 1]
+		int length = strlen(old_prefix)
+		if (end - start < length):
+			ok = 0
+			break
+		for j in range(length):
+			if (d.source[start + j] != old_prefix[j]): ok = 0
+		if (ok == 0): break
+		string_append(text, new_prefix)
+		string_append_bytes(text, d.source + start + strlen(old_prefix), end - start - strlen(old_prefix))
+	if (ok && text.length > 0 && text.data[text.length - 1] != 10): string_append_char(text, 10)
+	int target = mm_oe_subtree_end(d, parent)
+	if (ok && target > index && target < last): ok = 0
+	int at = lines[target]
+	string_builder* inserted = string_new()
+	if (ok && at == d.source_end && at != lines[last] && at > d.source_start && d.source[at - 1] != 10): string_append_char(inserted, 10)
+	string_append_bytes(inserted, text.data, text.length)
+	mm_oe_expect* x = mm_oe_expect_new(d)
+	while (x.order.length > 0): x.order.pop()
+	for i in range(d.nodes.length + 1):
+		if (i == target):
+			for k in range(index, last): x.order.push(k)
+		if (i < d.nodes.length && (i < index || i >= last)): x.order.push(i)
+	x.moved = index
+	x.moved_parent = parent
+	if (ok):
+		list[mm_ee_splice*] edits = mm_ee_splices()
+		# Removing the final line of the body takes its preceding newline
+		# when it has none of its own.
+		mm_ee_add(edits, lines[index], lines[last], c"")
+		mm_ee_add(edits, at, at, inserted.data)
+		ok = mm_oe_attempt(e, edits, x)
+		mm_ee_splices_free(edits)
+	mm_oe_expect_free(x)
+	string_free(text)
+	string_free(inserted)
+	free(old_prefix)
+	free(new_prefix)
 	__w_list_free(cast(__w_list*, lines))
 	return ok

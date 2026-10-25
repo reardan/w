@@ -375,7 +375,8 @@ void mm_c4_relation_draw(mm_document* d, mm_scene* s, mm_edge* e):
 		p.style.mask = p.style.mask | MM_STYLE_STROKE | MM_STYLE_TEXT
 	mm_style_edge(d, s, e, start)
 
-mm_scene* mm_c4_render(mm_document* d):
+# Layout only: card sizes and statement-order placement into s.nodes.
+mm_scene* mm_c4_layout(mm_document* d):
 	mm_scene* s = new mm_scene()
 	s.items = new list[mm_primitive*]
 	s.nodes = new list[mm_bounds*]
@@ -393,6 +394,10 @@ mm_scene* mm_c4_render(mm_document* d):
 		s.nodes.push(b)
 	int width = 0
 	mm_c4_place(d, s, -1, 40, 40, &width)
+	return s
+
+# Draw boundaries, cards and relations from the (possibly moved) bounds.
+void mm_c4_draw(mm_document* d, mm_scene* s):
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group): mm_c4_boundary(d, s, n, s.nodes[i])
@@ -400,4 +405,8 @@ mm_scene* mm_c4_render(mm_document* d):
 		mm_node* n = d.nodes[i]
 		if (n.group == 0): mm_c4_card(d, s, n, s.nodes[i])
 	for mm_edge* e in d.edges: mm_c4_relation_draw(d, s, e)
+
+mm_scene* mm_c4_render(mm_document* d):
+	mm_scene* s = mm_c4_layout(d)
+	mm_c4_draw(d, s)
 	return s

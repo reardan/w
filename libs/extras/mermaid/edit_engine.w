@@ -75,6 +75,8 @@ int mm_ee_opener(mm_document* d, int code, int code_end):
 	if (code_end <= code): return 0
 	if (d.source[code_end - 1] == '{'): return 1
 	if (mm_ee_word_is(d, code, code_end, c"subgraph") || mm_ee_word_is(d, code, code_end, c"systemBoundary")): return 2
+	# Agentflow containers: `flow id[label] ... end`.
+	if (d.kind == MM_AGENT && mm_ee_word_is(d, code, code_end, c"flow")): return 2
 	if (d.kind == MM_BLOCK && (mm_ee_word_is(d, code, code_end, c"block") || (code_end - code > 6 && mm_ee_word_is(d, code, code + 5, c"block") && d.source[code + 5] == ':'))): return 2
 	return 0
 
@@ -154,7 +156,7 @@ int mm_ee_token(mm_document* d, int start, int end, char* id, int from):
 		# Architecture `(icon)` names are not references either.
 		if (c == '[' || (c == '(' && d.kind == MM_ARCHITECTURE)): bracket = bracket + 1
 		else if ((c == ']' || (c == ')' && d.kind == MM_ARCHITECTURE)) && bracket > 0): bracket = bracket - 1
-		else if (c == '|' && d.kind == MM_FLOW && bracket == 0): bar = bar == 0
+		else if (c == '|' && (d.kind == MM_FLOW || d.kind == MM_AGENT) && bracket == 0): bar = bar == 0
 		if (bracket == 0 && bar == 0 && at >= from && at + length <= end):
 			int match = 1
 			for i in range(length):
