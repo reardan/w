@@ -63,6 +63,9 @@ SECTIONS = [
         "ਕਿ ਕੀ ਕੇ ਕੈ ਕੋ ਕੌ ਕੁ ਕੂ ਕੰ ਕਂ ਕੱ",
         "ਪ੍ਰ ਕ੍ਰ ਸ੍ਵ ਦ੍ਹ ਖ਼ ਗ਼ ਜ਼ ਫ਼",
         "ਕਿੰ ਸਿੱਖ ਧਰਮ ੍ਕ",
+        # A Latin run sends precomposed letters with marks through the
+        # default normalizer, which decomposes them (issue #825).
+        "a \u0a59\u0a3f \u0a36\u0a41 \u0a5e\u0a47",
     ]),
     ("tests/data/fonts/NotoSansGujarati-subset.ttf", [
         "ગુજરાતી ભાષા",
@@ -141,11 +144,30 @@ SECTIONS = [
         "क्षत्रिय ज्ञान श्री र्कि प्र्य",
         "अर्थ धर्म ि ्क अा",
     ]),
+    # Khmer and Myanmar shapers (issue #825): pre-base Coeng Ro and left
+    # vowels, split vowels, robat with joiners, broken clusters; medial
+    # Ra, kinzi, stacked consonants, variation selectors.
+    ("tests/data/fonts/NotoSansKhmer-subset.ttf", [
+        "ភាសាខ្មែរ កម្ពុជា សួស្តី ព្រះរាជាណាចក្រ",
+        "ក្រៅ ស្ត្រី ព្រឹក ង្គ្រ ន្ត្រ ក្សត្រ សង្គ្រាម",
+        "កើ កឿ កៀ កោ កៅ ក៏ ក៌ ក៍ ៗ ១២៣",
+        "ដ\u200d៉ ដ\u200c៉ ដ\u200d៉ា ា ្ក ិ",
+    ]),
+    ("tests/data/fonts/NotoSansMyanmar-subset.ttf", [
+        "မြန်မာ မင်္ဂလာပါ ကျေးဇူးတင်ပါတယ်",
+        "သင်္ချိုင်း ဗုဒ္ဓ ပုဂ္ဂိုလ် ဥက္ကဋ္ဌ ကမ္ဘာ",
+        "စြှို ဆြွး နြွှော ကြည့် ငြုံ ချစ်",
+        "က\ufe00ေ ေ\ufe00ကါ ိ ် ၂၀၂၆ ႀကိဳး",
+    ]),
     # Hidden tables reach the fallbacks: legacy kern and mark placement
-    # without GPOS, presentation forms without GSUB, Hebrew presentation
-    # compositions without GPOS mark, and Indic reordering without GSUB.
+    # without GPOS (marks ignore a kerned base's offset), presentation
+    # forms and ligatures without GSUB, Hebrew presentation compositions
+    # without GPOS mark (also past a blocked mark of lower modified
+    # class), and Indic reordering without GSUB.
     ("tools/ui/LiberationSans-Regular.ttf!-GPOS", [
         "AVATAR Wolf To. Ty, LT",
+        "Ay̤ Tẏ Vạ",
+        "אָׂ שָׂ סּׂ",
         "é ễ ậ ǖ q̣̇ ø̈",
         "e̊ q̣̇ a͜b x̧̌",
         "עִבְרִית שָׁלוֹם בְּרֵאשִׁית",
@@ -157,12 +179,25 @@ SECTIONS = [
     ]),
     ("tests/data/fonts/NotoSansArabic-subset.ttf!-GSUB", [
         "مرحبا بالعالم",
+        "سِّ دٌّ بًّ",
         "لا إله إلا الله ﻻ لأ لآ",
         "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
     ]),
     ("tests/data/fonts/NotoSansHebrew-subset.ttf!-GPOS", [
+        "אָׂ בּׂ שָׂ",
         "שָׁלוֹם עוֹלָם בְּרֵאשִׁית בָּרָא",
         "תּוֹרָה וּמִצְוֹת",
+    ]),
+    # Without GDEF a mark filtering set filters nothing; Khmer without
+    # GPOS and Myanmar without GSUB still reorder.
+    ("tests/data/fonts/NotoSans-subset.ttf!-GDEF", [
+        "e\u030a\u0307 x\u030c\u0307 q\u0307\u030a",
+    ]),
+    ("tests/data/fonts/NotoSansKhmer-subset.ttf!-GPOS", [
+        "ក្រៅ ស្ត្រី កើ ដ\u200d៉",
+    ]),
+    ("tests/data/fonts/NotoSansMyanmar-subset.ttf!-GSUB", [
+        "မြန်မာ ကြည့် ိ",
     ]),
     ("tests/data/fonts/NotoSansDevanagari-subset.ttf!-GSUB", [
         "हिन्दी भाषा का इतिहास बहुत पुराना है।",

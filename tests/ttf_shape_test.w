@@ -214,3 +214,60 @@ void test_use_engine():
 	assert_equal(0x0dd9, b.glyphs[0].cp)
 	assert_equal(0x0d9a, b.glyphs[1].cp)
 	otl_buffer_free(b)
+
+void test_khmer_myanmar_selection():
+	# HarfBuzz's categories for the Khmer and Myanmar blocks, the shared
+	# characters, and Indic characters through lib.unicode_text.
+	assert_equal(ttf_sea_h, ttf_sea_category(0x17d2))
+	assert_equal(ttf_sea_ra, ttf_sea_category(0x179a))
+	assert_equal(ttf_sea_robatic, ttf_sea_category(0x17cc))
+	assert_equal(ttf_sea_mr, ttf_sea_category(0x103c))
+	assert_equal(ttf_sea_as, ttf_sea_category(0x103a))
+	assert_equal(ttf_sea_vs, ttf_sea_category(0xfe00))
+	assert_equal(ttf_sea_dottedcircle, ttf_sea_category(0x25cc))
+	assert_equal(ttf_sea_c, ttf_sea_category(0x0915))
+	assert_equal(ttf_sea_x, ttf_sea_category('a'))
+	# Each machine renames the categories it names and drops the rest.
+	assert_equal(ttf_sea_x, ttf_khmer_symbol(ttf_sea_mr))
+	assert_equal(ttf_mym_mr, ttf_myanmar_symbol(ttf_sea_mr))
+	assert_equal(ttf_mym_ml, ttf_myanmar_symbol(ttf_sea_ml))
+	assert_equal(ttf_sea_x, ttf_myanmar_symbol(ttf_sea_robatic))
+	# Myanmar uses its shaper only for a 'mym2' font (or one without
+	# GSUB), as HarfBuzz does; a DFLT/latn font shapes it as default text.
+	int myanmar = ut_script_from_code(c"Mymr")
+	char[40] tags
+	int n = ttf_script_tags(myanmar, &tags[0])
+	assert_bytes_equal(c"mym2mymr", &tags[0], 8)
+	ttf_font font
+	asserts(c"Myanmar font loads", ttf_load(&font, c"tests/data/fonts/NotoSansMyanmar-subset.ttf"))
+	assert1(ttf_myanmar_applies(&font, c"Mymr", &tags[0], n))
+	assert1(!ttf_myanmar_applies(&font, c"Khmr", &tags[0], n))
+	ttf_free(&font)
+	asserts(c"Latin font loads", ttf_load(&font, c"tests/data/fonts/NotoSans-subset.ttf"))
+	assert1(!ttf_myanmar_applies(&font, c"Mymr", &tags[0], n))
+	ttf_free(&font)
+
+void test_fallback_mark_bearing():
+	# Without GPOS a mark is centred from HarfBuzz's glyph extents, whose
+	# x bearing is the hmtx left side bearing rather than the outline's
+	# xMin (FreeSans has marks where the two differ).
+	ttf_font font
+	asserts(c"font loads", shape_load_spec(&font, c"tools/ui/LiberationSans-Regular.ttf!-GPOS"))
+	int32[4] cps
+	cps[0] = 'q'
+	cps[1] = 0x0301
+	otl_buffer* b = shape_cps(&font, &cps[0], 2, 0, -1, 0)
+	assert_equal(2, b.count)
+	int centred = b.glyphs[1].x_offset
+	otl_buffer_free(b)
+	int mark = ttf_glyph_id(&font, 0x0301)
+	asserts(c"the mark has its own metrics", mark < font.num_hmetrics)
+	char* lsb = font.data + font.hmtx + mark * 4 + 2
+	int value = ((lsb[0] & 255) << 8) | (lsb[1] & 255)
+	value = value + 40
+	lsb[0] = (value >> 8) & 255
+	lsb[1] = value & 255
+	b = shape_cps(&font, &cps[0], 2, 0, -1, 0)
+	assert_equal(centred - 40, b.glyphs[1].x_offset)
+	otl_buffer_free(b)
+	ttf_free(&font)
