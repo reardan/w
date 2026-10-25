@@ -148,7 +148,7 @@ void consume_worker(void* arg):
 	int ok = 1
 	while (i < n):
 		# wait for slot i to be filled
-		while (atomic_add(&handoff_ring[i % 64 + 64], 0) == 0) {}
+		while (atomic_add(&handoff_ring[i % 64 + 64], 0) == 0) { }
 		int* p = cast(int*, handoff_ring[i % 64])
 		if (stamped(p, 8, i) == 0): ok = 0
 		free(cast(void*, p))
@@ -160,7 +160,7 @@ void consume_worker(void* arg):
 void produce_worker(void* arg):
 	int n = cast(int, arg)
 	for i in range(n):
-		while (atomic_add(&handoff_ring[i % 64 + 64], 0) != 0) {}
+		while (atomic_add(&handoff_ring[i % 64 + 64], 0) != 0) { }
 		int* p = cast(int*, malloc(8 * __word_size__))
 		stamp(p, 8, i)
 		handoff_ring[i % 64] = cast(int, p)

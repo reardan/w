@@ -7,4 +7,3 @@ int typed_identifier():
 	last_declared_symbol = table_pos - symbol_data_size
 	get_token()
 	return type
-

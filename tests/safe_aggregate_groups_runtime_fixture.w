@@ -2,8 +2,8 @@ import lib.memory_debug
 import tests.safe_aggregate_groups_import_fixture
 
 
-type SplitCopy = fn[a,b](ref[a,b] SplitView) -> ref[a,b] SplitView
-type SplitFirst = fn[a,b](ref[a,b] SplitView) -> ref[a] int*
+type SplitCopy = fn[a, b](ref[a, b] SplitView) -> ref[a, b] SplitView
+type SplitFirst = fn[a, b](ref[a, b] SplitView) -> ref[a] int*
 
 
 int groups_clobber(int value):
@@ -21,7 +21,7 @@ int groups_exercise():
 	for i in range(100):
 		*value = 3
 		data[0] = 5
-		ref[a,b] SplitView view = copy(split_view(value, data))
+		ref[a, b] SplitView view = copy(split_view(value, data))
 		int pressure = groups_clobber(1)
 		ref int* p = first(view)
 		data[0] = 9
@@ -36,11 +36,11 @@ struct SplitExclusive:
 
 
 struct SplitOuter:
-	refmut[right,left] SplitExclusive pair
+	refmut[right, left] SplitExclusive pair
 	int tag
 
 
-refmut[a,b] SplitOuter groups_pair(refmut[a] int* x, refmut[b] int* y):
+refmut[a, b] SplitOuter groups_pair(refmut[a] int* x, refmut[b] int* y):
 	return SplitOuter(SplitExclusive(x, y), 3)
 
 
@@ -49,7 +49,7 @@ int groups_exclusive():
 	own int* second = new int
 	*first = 3
 	*second = 5
-	refmut[a,b] SplitOuter outer = groups_pair(first, second)
+	refmut[a, b] SplitOuter outer = groups_pair(first, second)
 	for i in range(4):
 		refmut int* p = outer.pair.first
 		refmut int* q = outer.pair.second

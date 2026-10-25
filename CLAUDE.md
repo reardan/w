@@ -100,8 +100,10 @@ file.w` adds opt-in rules (unused locals, unreachable code, shadowing, ...) for
 the named files, and `check --fix` rewrites their whitespace issues in place
 (docs/projects/lint.md, `./wbuild lint_test`). `bin/wfmt` (`./wbuild wfmt`)
 is the rewriting formatter: `-w` rewrites files in the canonical spacing,
-`--check` lists unformatted ones (docs/projects/wfmt.md; the tree is not
-formatted with it yet, so don't reformat files you aren't otherwise changing).
+`--check` lists unformatted ones (docs/projects/wfmt.md). The tree is
+formatted and `wfmt_check` (in `tests`) enforces it: run `bin/wfmt -w` on the
+`.w` files you change; `tools/wfmt_exclude.txt` lists files that must stay
+byte-exact (the `--safe` audited runtime sources, whitespace fixtures).
 
 **Find declarations**: `./bin/wv2 symbols --json file.w` instead of grepping.
 

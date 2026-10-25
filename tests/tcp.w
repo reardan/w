@@ -4,7 +4,6 @@ import lib.net
 import lib.str
 
 
-
 # iptables -t nat -A OUTPUT -o lo -p tcp --dport 80 -j REDIRECT --to-port 8080
 # https://datatracker.ietf.org/doc/html/rfc6455#section-5.2
 # https://en.wikipedia.org/wiki/WebSocket

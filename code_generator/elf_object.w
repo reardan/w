@@ -23,7 +23,7 @@ import code_generator.static_link
 import code_generator.elf_exports
 import code_generator.dynamic_registry
 
-int sym_address(char *s);
+int sym_address(char* s);
 char* debug_file_name(int index);
 int global_storage_size(int type);
 int next_token(int t);

@@ -87,8 +87,6 @@ char* safe_zero(int count, int width):
 	return result
 
 
-
-
 void safe_reset():
 	safe_mode = 0
 	safe_bounds_disabled = 0

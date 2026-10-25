@@ -94,10 +94,6 @@ void nested_replacement_case(char* source, char* diagnostic, int relaxed = 0, in
 	free(full)
 
 
-
-
-
-
 void test_nested_replacement_0():
 	nested_replacement_case(c"struct Child:\n\town int* first\n\town int* second\n\tint tag\nstruct Outer:\n\town Child* left\n\town Child* right\nint main():\n\town Outer* outer = new Outer(new Child(new int, new int, 3), new Child(new int, new int, 4))\n\town int* value = outer.left.first\n\touter.left.first = value\n\town Outer* complete = outer\n\treturn complete.left.tag - 3\n", 0)
 	nested_replacement_case(c"struct Child:\n\town int* first\n\town int* second\n\tint tag\nstruct Outer:\n\town Child* left\n\town Child* right\nint main():\n\town Outer* outer = new Outer(new Child(new int, new int, 3), new Child(new int, new int, 4))\n\trefmut int* sibling = outer.left.second\n\touter.left.first = new int\n\t*sibling = 8\n\treturn *sibling - 8\n", 0)

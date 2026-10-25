@@ -172,4 +172,3 @@ void test_global_aggregate_storage():
 	p0_global_value.pair.b = 42
 	assert_equal(41, p0_global_value.pair.a)
 	assert_equal(42, p0_global_value.pair.b)
-

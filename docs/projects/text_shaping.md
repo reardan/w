@@ -121,16 +121,85 @@ are the line's extent over every face used.
   combining mark stays with its base whenever that face has the mark, and
   faces change only at grapheme boundaries. Every face shapes at the strike's
   ppem.
+- **Context**: each item shapes with the text around it as context
+  (`ui_shape_portable_item`, below), so contextual forms see across item
+  boundaries: an Arabic word split between two faces (one of its letters
+  missing from the first) still joins across the split.
 
 `ui_paragraph_caret_x` and `ui_paragraph_offset_from_x` map byte offsets to x
 across the whole paragraph. An offset at a run boundary belongs to the run
 that starts there. `ui_paragraph_draw` draws every run on one baseline.
-`ui_paragraph_fit(p, text, max_width)` is a width-fit helper for simple
-wrapping: it returns the last break after a space whose prefix fits, measured
-from the shaped glyphs without reshaping. Real line breaking (UAX #14), per-line
-bidi reordering of wrapped lines (`ui_bidi_reorder_line` below) and reshaping
-each line stay with the host, as do contextual forms across a run boundary: an
-Arabic word split between two faces does not join across the split.
+`ui_paragraph_fit(p, text, max_width)` is the older width-fit helper: it
+returns the last break after a space whose prefix fits, measured from the
+shaped glyphs without reshaping. Wrap with `ui_paragraph_layout` instead.
+
+### Shaping context
+
+`ui_shape_portable_item(text, text_length, item_start, item_length, strike,
+direction, script, language, max_glyphs)` shapes the item
+`text[item_start, item_start + item_length)` like `ui_shape_portable_utf8`, with
+the text around it as context, as HarfBuzz's `hb_buffer_add_utf8` item offsets
+do. Clusters are relative to `item_start`. Up to five scalars on each side are
+read; only the item has to be valid UTF-8, and the context stops at an invalid
+sequence. In `lib.ttf_shape` the context is `ttf_shape_context(font, cps,
+clusters, count, pre, pre_count, post, post_count, ...)` (or
+`ttf_shape_set_context` around `ttf_shape`): the pre-context is the text before
+the run in logical order, the post-context the text after it. As in HarfBuzz's
+Arabic shaper it feeds the joining state machine, skipping transparent
+characters, so the run's first letter takes its final or medial form after a
+joining letter and its last letter its initial or medial form before one. The
+context never produces glyphs.
+
+### Line layout
+
+`ui_paragraph_layout(p, text, max_width, flags)` wraps a shaped paragraph into
+lines at most `max_width` (26.6 pixels) wide and returns `UI_SHAPE_OK` (or
+`UI_SHAPE_INVALID` / `UI_SHAPE_FAILED` with no lines). `flags` are the
+`lib.linebreak` tailorings below (`lb_tailor_default` for plain UAX #14). It
+replaces any earlier layout, so call it again for a new width; the paragraph
+retains its bidi analysis for this (`p.bidi`).
+
+1. **Breaks**: UAX #14 break opportunities (`lib.linebreak`), chosen greedily
+   by the unwrapped paragraph's shaped advances: the last opportunity whose
+   line, without its trailing whitespace, fits. Trailing whitespace (bidi WS
+   and S, the characters rule L1 resets) hangs past the width. A word wider
+   than `max_width` on its own line breaks between graphemes at the last one
+   that fits (at least one per line).
+2. **Reorder**: each line goes through `ui_bidi_portable_reorder_line` (the
+   portable `ui_bidi_reorder_line`), so its levels include the L1 resets and
+   its runs come out in the line's visual order. The paragraph's items are cut
+   to the line and to its bidi runs, keeping their script and face.
+3. **Reshape**: every line item is shaped again with the line as its context,
+   because ligatures, kerning and contextual forms change at a break (an Arabic
+   word broken between graphemes ends and starts in unjoined forms on its two
+   lines). If the reshaped line is wider than `max_width`, the line ends at
+   the previous opportunity instead.
+
+The result is `p.lines[0, p.line_count)`, top to bottom, with `p.height` (pixels)
+their total height and `p.line_width` the width used. A `ui_text_line` has:
+
+| Field | Meaning |
+| --- | --- |
+| `byte_start`, `byte_length` | Logical paragraph byte range, trailing whitespace included |
+| `scalar_start`, `scalar_count` | The same range in paragraph scalars |
+| `items[item_count]` | Reshaped runs in logical order (level, script, face, strike, run), `x` from the line's left edge |
+| `visual_items` | Item indices, left to right |
+| `advance`, `trailing` | 26.6 width of the line, and of its trailing whitespace within that |
+| `x` | 26.6 left edge within `max_width`, start-aligned: 0 for a left-to-right paragraph, `max_width - advance` for a right-to-left one (its trailing whitespace hangs at the left) |
+| `top`, `ascent`, `descent` | Pixels: the line box's top below the paragraph's top, and its extent over every face on the line (at least the paragraph strike's) |
+
+Lines tile the text: an offset at a break belongs to the line that starts
+there (`ui_paragraph_line_at`), and the end of the text to the last line.
+`ui_paragraph_line_caret_x(p, text, offset, &line)` gives the caret's x from
+the layout's left edge and its line, whose `top`, `ascent` and `descent` make
+the caret box. `ui_paragraph_hit_test(p, text, x, y)` (x in 26.6, y in pixels
+from the paragraph's top, clamped to the first and last lines) returns the
+grapheme boundary on that line whose caret is nearest x; on a wrapped line that
+excludes its end offset, which is the next line's start.
+`ui_paragraph_draw_lines(renderer, x, y, p, color)` draws each line at its `x`
+and `top` on its own baseline. A paragraph has no hard breaks (the bidi API
+rejects line and paragraph separators), so split a document into paragraphs
+first; empty text lays out as one empty line.
 
 The embedded faces cover Latin, Greek and Cyrillic, and no larger fallback face
 is bundled: a Noto set covering the world's scripts is tens of megabytes, which
@@ -259,7 +328,20 @@ and the dots of `i` and `j`.
   Devanagari over the embedded face with the Noto subsets as fallbacks. It checks
   run splits, visual order, face choice, marks staying with their base, bracket
   and leading-punctuation scripts, carets across runs, drawing, fitting, and
-  empty, invalid and oversized input.
+  empty, invalid and oversized input. It also checks the shaping context
+  (medial, initial and final forms from context, transparent marks, spaces and
+  invalid UTF-8 in it) and an Arabic word split between faces that still joins,
+  and line layout: Latin words with hanging spaces, a Hebrew word in a
+  left-to-right paragraph whose line-final space is reset to the paragraph
+  level, right-to-left start alignment, per-line reshaping of a word broken
+  between graphemes, kinsoku with ideographs, carets and hit-testing for every
+  grapheme boundary across lines, drawing, relayout, and empty and invalid
+  paragraphs.
+- `./wbuild linebreak_test` (and `linebreak_64_test`) runs `lib.linebreak`
+  against a 1,462-line sample of `LineBreakTest.txt`
+  (`tests/data/linebreak_sample.txt`) and checks the property table, its
+  defaults and flags, the UTF-8 helper, and the CJK, East Asian and Southeast
+  Asian tailorings.
 
 The native adapter uses the published HarfBuzz contracts for
 [buffers and clusters](https://harfbuzz.github.io/harfbuzz-hb-buffer.html),
@@ -334,7 +416,8 @@ ui_bidi_paragraph_free(paragraph)
 Shaped cluster offsets are relative to the slice: add `item.byte_start` to map
 them back into the document. Directional runs may still contain several scripts
 or require font fallback. The host must subdivide them further and order those
-subruns according to the enclosing direction. Line wrapping remains a separate
+subruns according to the enclosing direction (`graphics.ui.itemize` does this,
+and wraps lines too: see "Line layout" above). Line wrapping is a separate
 layout step: do not independently analyze each wrapped line, because paragraph
 context affects bidi resolution. Use the retained analysis as described below.
 Neither API changes default widget rendering or adds native IME support.
@@ -346,7 +429,9 @@ Neither API changes default widget rendering or adds native IME support.
 The caller selects line breaks from measured/shaped text. Arguments are scalar
 indices, not UTF-8 byte offsets; a range cannot split a UTF-8 scalar. The caller
 must also avoid breaking graphemes or shaping clusters and implement its own
-line-break policy. This API does not measure widths or choose break positions.
+line-break policy. This API does not measure widths or choose break positions;
+`ui_paragraph_layout` (above) does, with UAX #14 breaks from `lib.linebreak`
+and this API for each line.
 
 Each call copies the selected resolved levels, applies line-ending whitespace
 resets and produces new visual ordering. It retains the paragraph's base
@@ -433,3 +518,57 @@ and [paired-bracket API](https://github.com/fribidi/fribidi/blob/master/lib/frib
 The line suffix reset follows [Unicode bidi rule L1](https://www.unicode.org/reports/tr9/#L1)
 and the [retained-control convention](https://www.unicode.org/reports/tr9/#Retaining_Explicit_Formatting_Characters),
 using the published [FriBidi type masks](https://github.com/fribidi/fribidi/blob/master/lib/fribidi-bidi-types.h).
+
+## Line breaking
+
+`lib.linebreak` is a W implementation of the Unicode Line Breaking Algorithm
+([UAX #14](https://www.unicode.org/reports/tr14/), Unicode 15.0.0, to match
+`lib.bidi`) with no native dependency. `lb_breaks(cps, count, flags, breaks)`
+writes `count + 1` actions: `breaks[i]` is `lb_break_none`, `lb_break_allowed`
+or `lb_break_mandatory` between `cps[i - 1]` and `cps[i]`, with no break at the
+start (LB2) and a mandatory one at the end (LB3). `lb_breaks_utf8(text, length,
+flags, breaks)` does the same per byte offset of valid UTF-8 (no break inside a
+character). `lb_class(cp)` reads the Line_Break property.
+
+It implements rules LB1-LB31, including the 15.0 aksara rule LB28a, the East
+Asian width exception of LB30 and the unassigned-pictographic case of LB30b.
+Numbers use the regular-expression form of LB25 from section 8.2, Example 7,
+as `LineBreakTest.txt` does. It passes all 7,654 lines of the Unicode 15.0.0
+`LineBreakTest.txt` (`./wbuild linebreak_conformance`, then
+`bin/linebreak_conformance path/to/LineBreakTest.txt`); `linebreak_test` runs a
+committed sample.
+
+The property table is generated, not committed: `tools/generate_linebreak_data.w`
+(the `linebreak_data` target, in the `generated` umbrella every `./wbuild` run
+builds first) writes `lib/linebreak_data.w` from the unmodified Unicode 15.0.0
+`LineBreak.txt`, `EastAsianWidth.txt`, `emoji-data.txt` and `UnicodeData.txt`
+under `tools/unicode/`. It applies the defaults `LineBreak.txt` documents for
+unlisted code points (ID in the CJK and Plane 1-3 ranges, PR among the currency
+symbols, XX elsewhere), resolves Southeast Asian marks (SA with Mn or Mc) to CM
+as LB1 does, and flags wide OP/CP and unassigned Extended_Pictographic code
+points for LB30 and LB30b. The table is about 3,600 ranges (14 KB).
+
+Tailorings are `flags`, combined with `|`:
+
+- `lb_tailor_cjk_normal`: CJ (small kana, the prolonged sound mark) resolves to
+  ID instead of NS, so lines may start with them (CSS `line-break: normal`).
+  The default is strict kinsoku: closing punctuation, iteration marks, small
+  kana and the other NS, CL, CP, EX and IS characters never start a line, and
+  opening brackets never end one.
+- `lb_tailor_cjk_loose`: also resolves NS to ID, allowing breaks before
+  iteration marks and the katakana middle dot (CSS `line-break: loose`).
+- `lb_tailor_east_asian`: AI (ambiguous width) resolves to ID instead of AL,
+  for text in an East Asian context.
+- `lb_tailor_sa_clusters`: the fallback for Southeast Asian scripts. Thai, Lao,
+  Khmer, Myanmar and the other SA scripts write words without spaces and need a
+  dictionary to find word boundaries. None is shipped (a usable Thai or Khmer
+  dictionary is hundreds of kilobytes per language), so by default SA text is
+  AL (rule LB1) and breaks only at its spaces and punctuation, keeping words
+  whole. With this flag a break is also allowed between any two SA letters,
+  but never inside a cluster: not before a combining mark (SA Mn/Mc are CM),
+  a Thai or Lao SARA AM or repetition mark, not after a stacking virama or
+  coeng (Khmer U+17D2, Myanmar U+1039, Tai Tham U+1A60), and not after a
+  prepended vowel (the Thai, Lao, Tai Viet and New Tai Lue logical-order
+  exceptions). That is grapheme-cluster breaking, which keeps text inside the
+  line width at the cost of breaking inside words. A dictionary engine could
+  replace this flag later by marking word boundaries inside SA runs.

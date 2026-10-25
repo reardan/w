@@ -362,7 +362,6 @@ void test_read_exact_result_eof_versus_full():
 	free(fds)
 
 
-
 # wbuild: target=task_io_64_test tag=tests_x64 dep=wv2
 # wbuild: step="bin/wv2 x64 lib/task_io_test.w -o bin/task_io_64_test"
 # wbuild: step="bin/task_io_64_test"

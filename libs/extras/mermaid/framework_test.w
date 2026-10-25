@@ -76,7 +76,7 @@ void test_framework_wardley_normalized_axes_and_dependencies():
 	mm_document_free(d)
 
 void test_framework_invalid_input_and_prefixes():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA:::cls", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B",c"ishikawa-beta\n"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA:::cls", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B", c"ishikawa-beta\n"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid framework fails explicitly", d.error != 0)

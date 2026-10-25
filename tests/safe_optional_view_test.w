@@ -94,12 +94,6 @@ void optional_view_case(char* source, char* diagnostic, int relaxed = 0, int see
 	free(full)
 
 
-
-
-
-
-
-
 void test_optional_view_0():
 	optional_view_case(c"struct View:\n\town int* stored\n\tref[data] int* data\n\tint tag\nint main():\n\toptref View* view = 0\n\tif (view): return 1\n\treturn 0\n", 0)
 	optional_view_case(c"struct View:\n\town int* stored\n\tref[data] int* data\n\tint tag\nint main():\n\tint x = 3\n\town[a] View* owner = new View(new int, &x, 7)\n\toptref View* view = owner\n\tif (view):\n\t\tref int* data = view.data\n\t\treturn *data - 3\n\treturn 1\n", 0)

@@ -2,8 +2,8 @@ import lib.memory_debug
 import tests.safe_mixed_owner_exclusive_import_fixture
 
 
-type ExclusiveFactory = fn[a,b](refmut[a] int*, ref[b] int*) -> own[a,b] ExclusiveOwner*
-type ExclusiveTake = fn[a,b](own[a,b] ExclusiveOwner*) -> refmut[a] int*
+type ExclusiveFactory = fn[a, b](refmut[a] int*, ref[b] int*) -> own[a, b] ExclusiveOwner*
+type ExclusiveTake = fn[a, b](own[a, b] ExclusiveOwner*) -> refmut[a] int*
 
 
 int exclusive_exercise():
@@ -13,7 +13,7 @@ int exclusive_exercise():
 	int shared = 7
 	int total = 0
 	for i in range(100):
-		own[a,b] ExclusiveOwner* holder = factory(&value, &shared)
+		own[a, b] ExclusiveOwner* holder = factory(&value, &shared)
 		ref int* before = exclusive_inspect(holder)
 		total += *before
 		refmut int* result = take(holder)
@@ -24,7 +24,7 @@ int exclusive_exercise():
 int exclusive_replace():
 	int value = 0
 	int shared = 7
-	own[a,b] ExclusiveOwner* holder = exclusive_new(&value, &shared)
+	own[a, b] ExclusiveOwner* holder = exclusive_new(&value, &shared)
 	for i in range(10):
 		refmut int* item = holder.item
 		*item += 1
@@ -35,18 +35,18 @@ int exclusive_replace():
 
 
 struct ExclusiveOuter:
-	own[item,shared] ExclusiveOwner* child
+	own[item, shared] ExclusiveOwner* child
 	own int* stored
 
 
-refmut[a] int* exclusive_nested(own[a,b] ExclusiveOuter* outer):
+refmut[a] int* exclusive_nested(own[a, b] ExclusiveOuter* outer):
 	return outer.child.item
 
 
 int exclusive_nested_exercise():
 	int value = 3
 	int shared = 7
-	own[a,b] ExclusiveOuter* outer = new ExclusiveOuter(exclusive_new(&value, &shared), new int)
+	own[a, b] ExclusiveOuter* outer = new ExclusiveOuter(exclusive_new(&value, &shared), new int)
 	refmut int* item = exclusive_nested(outer)
 	*item = 11
 	return value
@@ -56,7 +56,7 @@ int exclusive_exits(int early):
 	int value = 0
 	int shared = 7
 	for i in range(3):
-		own[a,b] ExclusiveOwner* holder = exclusive_new(&value, &shared)
+		own[a, b] ExclusiveOwner* holder = exclusive_new(&value, &shared)
 		refmut int* item = holder.item
 		*item += 1
 		if (early): return value

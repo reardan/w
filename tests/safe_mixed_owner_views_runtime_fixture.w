@@ -20,7 +20,7 @@ int mixed_view_exercise():
 	int calls = 0
 	int total = 0
 	for i in range(100):
-		own[a,b] OwnedView* holder = owned_view_new(&item, data)
+		own[a, b] OwnedView* holder = owned_view_new(&item, data)
 		refmut int* stored = holder.stored
 		*stored = 7
 		ref OwnedView* view = pass(mixed_view_count(holder, &calls))
@@ -32,7 +32,7 @@ int mixed_view_exercise():
 
 
 struct MixedViewOuter:
-	own[item,data] OwnedView* child
+	own[item, data] OwnedView* child
 	int tag
 
 
@@ -44,7 +44,7 @@ int mixed_view_nested_exercise():
 	int item = 3
 	int[2] data
 	data[0] = 9
-	own[a,b] MixedViewOuter* owner = new MixedViewOuter(owned_view_new(&item, data), 1)
+	own[a, b] MixedViewOuter* owner = new MixedViewOuter(owned_view_new(&item, data), 1)
 	ref MixedViewOuter* view = owner
 	ref int[] result = mixed_view_nested(view)
 	int answer = result[0] + result.length
