@@ -224,3 +224,18 @@ working in this repo.
  prompt such as: "Install wine (wine64) via apt into the snapshot so win64
  W-compiler test binaries (PE32+ .exe) can run under Wine, mirroring how
  qemu-user-static is baked in for the ARM64 tests."
+
+## Working on GitHub issues
+
+- When asked to implement an issue, keep working until the issue is fully
+  complete. Don't stop after a first slice and don't block waiting on the
+  maintainer: make reasonable calls, note them, and split independent parts
+  of the work across parallel subagents so the work keeps moving.
+- A PR says `Closes #N` only when nothing in the issue remains; otherwise
+  use `Part of #N`.
+- If the work can't be fully completed (it needs a Mac, the ssh host `w`,
+  a human review, ...), post a comment on the issue that states what was
+  accomplished so far, the concrete next steps, and whether the issue
+  should be broken into smaller issues — suggest the breakdown when it
+  should.
+- Never report an issue as done while it is still open.
