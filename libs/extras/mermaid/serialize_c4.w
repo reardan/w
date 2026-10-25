@@ -40,7 +40,7 @@ void mm_serialize_c4_scope(mm_serializer* out, mm_document* d, int scope, int* n
 		mm_out_indent(out)
 		mm_out(out, n.annotation)
 		mm_out_char(out, '(')
-		mm_serialize_c4_value(out, n.id)
+		mm_serialize_id(out, n.id)
 		mm_out(out, c", ")
 		mm_serialize_c4_value(out, n.label)
 		for mm_property* property in n.metadata:
@@ -94,9 +94,9 @@ void mm_serialize_c4_body(mm_serializer* out, mm_document* d, int variant):
 		else if (e.from_port == 2 && e.to_port == 1): mm_out(out, c"_R")
 		else if (e.from_port != 0 || e.to_port != 0): out.failed = 1
 		mm_out_char(out, '(')
-		mm_serialize_c4_value(out, d.nodes[e.from_node].id)
+		mm_serialize_id(out, d.nodes[e.from_node].id)
 		mm_out(out, c", ")
-		mm_serialize_c4_value(out, d.nodes[e.to_node].id)
+		mm_serialize_id(out, d.nodes[e.to_node].id)
 		mm_out(out, c", ")
 		mm_serialize_c4_value(out, label)
 		mm_out(out, c")\n")
@@ -110,7 +110,7 @@ void mm_serialize_c4_body(mm_serializer* out, mm_document* d, int variant):
 		if (n.style.mask == 0 && techn == 0): continue
 		mm_out_indent(out)
 		mm_out(out, c"UpdateElementStyle(")
-		mm_serialize_c4_value(out, n.id)
+		mm_serialize_id(out, n.id)
 		if (n.style.mask & MM_STYLE_FILL): mm_serialize_c4_color(out, c"bgColor", n.style.fill)
 		if (n.style.mask & MM_STYLE_TEXT): mm_serialize_c4_color(out, c"fontColor", n.style.text)
 		if (n.style.mask & MM_STYLE_STROKE): mm_serialize_c4_color(out, c"borderColor", n.style.stroke)
@@ -124,9 +124,9 @@ void mm_serialize_c4_body(mm_serializer* out, mm_document* d, int variant):
 		if (e.from_node < 0 || e.to_node < 0 || e.from_node >= d.nodes.length || e.to_node >= d.nodes.length): continue
 		mm_out_indent(out)
 		mm_out(out, c"UpdateRelStyle(")
-		mm_serialize_c4_value(out, d.nodes[e.from_node].id)
+		mm_serialize_id(out, d.nodes[e.from_node].id)
 		mm_out(out, c", ")
-		mm_serialize_c4_value(out, d.nodes[e.to_node].id)
+		mm_serialize_id(out, d.nodes[e.to_node].id)
 		if (e.style.mask & MM_STYLE_TEXT): mm_serialize_c4_color(out, c"textColor", e.style.text)
 		if (e.style.mask & MM_STYLE_STROKE): mm_serialize_c4_color(out, c"lineColor", e.style.stroke)
 		if (e.label_dx != 0):
