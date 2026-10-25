@@ -1,4 +1,4 @@
-# wbuild: binary=linebreak_conformance
+# wbuild: binary=linebreak_conformance tag=tests
 # Run lib/linebreak.w (UAX #14, default tailoring) against a
 # LineBreakTest.txt-format file:
 #   bin/linebreak_conformance path/to/LineBreakTest.txt
