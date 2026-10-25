@@ -94,6 +94,17 @@ void mm_n_link_menu(mm_scene* s, mm_node* node, mm_bounds* bounds, int y):
 
 void mm_n_arrow(mm_scene* s, int x, int y, int direction, int kind):
 	if (kind == 0): return
+	if (kind >= 5):
+		# Half-arrows (upstream solid/stick Top/Bottom markers): the wing sits on
+		# one side of the line, mirrored with the head's direction like an SVG
+		# marker oriented auto-start-reverse.
+		int side = 1
+		if (kind == 5 || kind == 7 || kind == 10 || kind == 12): side = -1
+		if (kind == 7 || kind == 8 || kind == 11 || kind == 12): mm_line(s, x, y, x - direction * 7, y + side * direction * 7, 0)
+		else:
+			mm_line(s, x, y, x - direction * 10, y + side * direction * 8, 0)
+			mm_line(s, x - direction * 10, y + side * direction * 8, x - direction * 10, y, 0)
+		return
 	if (kind == 2):
 		mm_line(s, x - 5, y - 5, x + 5, y + 5, 0)
 		mm_line(s, x - 5, y + 5, x + 5, y - 5, 0)
@@ -132,6 +143,80 @@ int mm_n_text_width(char* label, int wrap):
 	mm_text_block_free(b)
 	return width
 
+# Contrasting label colour for a ZenUML participant colour (ZenUML's
+# brightness > 128 rule).
+int mm_n_zen_contrast(int fill):
+	int brightness = (((fill >> 16) & 255) * 299 + ((fill >> 8) & 255) * 587 + (fill & 255) * 114) / 1000
+	if (brightness > 128): return 0
+	return 0xffffff
+
+# Width of a ZenUML participant box's content: optional icon tile, label and
+# «stereotype» / <<annotation>> line.
+int mm_n_zen_content_width(mm_node* node):
+	int width = mm_text_width(node.label, 0)
+	if (node.shape == 8): width = width + 30
+	int line = 0
+	if (node.role[0] != 0): line = mm_text_width(node.role, 0) + 16
+	else if (node.annotation[0] != 0 && node.shape != 8): line = mm_text_width(node.annotation, 0) + 32
+	if (line > width): width = line
+	return width
+
+void mm_n_zen_ink(mm_primitive* text, int color):
+	text.style.mask = text.style.mask | MM_STYLE_TEXT
+	text.style.text = color
+	text.user_mask = text.user_mask | MM_STYLE_TEXT
+
+# ZenUML participant box contents: the `#color` fill with a contrasting
+# label, a cloud annotator's icon tile left of the label, and the
+# `<<Stereotype>>` (or a symbol-less annotation) as a line above it.
+void mm_n_zen_box(mm_scene* s, mm_node* node, mm_primitive* box, int x, int middle):
+	int text_color = -3
+	if (node.style.mask & MM_STYLE_FILL):
+		box.style.mask = box.style.mask | MM_STYLE_FILL
+		box.style.fill = node.style.fill
+		box.user_mask = box.user_mask | MM_STYLE_FILL
+		text_color = mm_n_zen_contrast(node.style.fill)
+	char* above = 0
+	if (node.role[0] != 0):
+		string_builder* line = string_from(c"«")
+		string_append(line, node.role)
+		string_append(line, c"»")
+		above = line.data
+		free(line)
+	else if (node.annotation[0] != 0 && node.shape != 8):
+		string_builder* line = string_from(c"<<")
+		string_append(line, node.annotation)
+		string_append(line, c">>")
+		above = line.data
+		free(line)
+	int label_y = middle - 9
+	if (above != 0):
+		label_y = middle - 2
+		mm_text(s, x - mm_text_width(above, 0) / 2, middle - 22, above)
+		if (text_color != -3): mm_n_zen_ink(s.items[s.items.length - 1], text_color)
+		free(above)
+	int label_x = x - mm_text_width(node.label, 0) / 2
+	if (node.shape == 8):
+		int tile = 0
+		char* caption = mm_n_zen_icon(node.annotation, &tile)
+		label_x = x - (mm_text_width(node.label, 0) + 30) / 2 + 30
+		int left = label_x - 30
+		int tile_y = label_y - 3
+		mm_draw(s, MM_BOX, left, tile_y, left + 24, tile_y + 24, 0, c"")
+		mm_primitive* square = s.items[s.items.length - 1]
+		square.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE
+		square.style.fill = tile
+		square.style.stroke = tile
+		square.user_mask = MM_STYLE_FILL | MM_STYLE_STROKE
+		if (caption != 0):
+			mm_text(s, left + 12 - mm_text_width(caption, 0) * 5 / 16, tile_y + 7, caption)
+			mm_primitive* glyph = s.items[s.items.length - 1]
+			glyph.font_size = 10
+			mm_n_zen_ink(glyph, 0xffffff)
+			free(caption)
+	mm_text(s, label_x, label_y, node.label)
+	if (text_color != -3): mm_n_zen_ink(s.items[s.items.length - 1], text_color)
+
 # A participant box or actor figure with its label; top is the box's top.
 void mm_n_actor_box(mm_document* d, mm_scene* s, mm_node* node, mm_bounds* bounds, int top):
 	int x = bounds.x + bounds.w / 2
@@ -155,6 +240,9 @@ void mm_n_actor_box(mm_document* d, mm_scene* s, mm_node* node, mm_bounds* bound
 		return
 	mm_draw(s, MM_BOX, bounds.x, top, bounds.x + bounds.w, top + bounds.h, 0, c"")
 	int middle = top + bounds.h / 2
+	if (d.kind == MM_ZENUML):
+		mm_n_zen_box(s, node, s.items[s.items.length - 1], x, middle)
+		return
 	if (node.annotation[0] != 0):
 		# ZenUML participant kinds (@Database, @Boundary, ...) as a stereotype line.
 		string_builder* stereotype = string_from(c"<<")
@@ -209,6 +297,11 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		int width = mm_text_width(node.label, 0) + 20 + gap
 		int stereotype_width = mm_text_width(node.annotation, 0) + 52 + gap
 		if (node.annotation[0] != 0 && stereotype_width > width): width = stereotype_width
+		if (d.kind == MM_ZENUML):
+			# ZenUML boxes fit their icon/stereotype content and a declared width.
+			width = mm_n_zen_content_width(node) + 20 + gap
+			if (node.annotation[0] != 0 && node.shape != 8 && stereotype_width > width): width = stereotype_width
+			if (node.value_x > 0 && node.value_x + gap > width): width = node.value_x + gap
 		if (width < box_width + gap): width = box_width + gap
 		s.nodes.push(new mm_bounds(0, 65, width, box_height, 0, 0))
 	# Charge each message's width to one lane, not every lane. A single long
@@ -317,10 +410,13 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_line(s, x, y, x + 45, y, event.dashed)
 				mm_line(s, x + 45, y, x + 45, y + 25, event.dashed)
 				mm_line(s, x + 45, y + 25, x, y + 25, event.dashed)
-				mm_n_arrow(s, x, y + 25, -1, event.arrow)
+				# Reversed half-arrows point back at the sender's end of the line.
+				if (event.arrow >= 9): mm_n_arrow(s, x, y, -1, event.arrow)
+				else: mm_n_arrow(s, x, y + 25, -1, event.arrow)
 			else:
 				mm_line(s, x, y, to, y, event.dashed)
-				mm_n_arrow(s, to, y, direction, event.arrow)
+				if (event.arrow >= 9): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
+				else: mm_n_arrow(s, to, y, direction, event.arrow)
 				if (event.arrow == 4): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
 				# Central connections mark the lifeline point with a small circle.
 				if (event.central & 1): mm_draw(s, MM_CIRCLE, x + direction * 2 - 5, y - 5, x + direction * 2 + 5, y + 5, 0, c"")
