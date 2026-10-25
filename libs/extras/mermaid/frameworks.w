@@ -218,7 +218,7 @@ void mm_wardley_set(mm_parser* p, mm_node* n, char* key, char* value):
 	if (mm_wardley_get(n, key) != 0):
 		mm_error(p.doc, p.pos, c"duplicate Wardley component modifier")
 		return
-	n.metadata.push(new mm_property(strclone(key), strclone(value)))
+	n.metadata.push(new mm_property(strclone(key), strclone(value), MM_VALUE_STRING))
 
 void mm_wardley_coordinates(mm_parser* p, mm_node* n):
 	mm_space(p)

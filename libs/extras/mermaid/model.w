@@ -139,6 +139,10 @@ struct mm_gantt_settings:
 	list[int] included
 	int today
 
+const int MM_CURVE_STEP = 1
+const int MM_CURVE_LINEAR = 2
+const int MM_CURVE_BASIS = 3
+
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
@@ -156,9 +160,20 @@ struct mm_member:
 	char* text
 	int method
 
+# Metadata value types (agentflow `@{ ... }` YAML); value holds the scalar
+# text, or canonical JSON for a mapping or sequence.
+const int MM_VALUE_STRING = 0
+const int MM_VALUE_INT = 1
+const int MM_VALUE_FLOAT = 2
+const int MM_VALUE_BOOL = 3
+const int MM_VALUE_NULL = 4
+const int MM_VALUE_MAP = 5
+const int MM_VALUE_LIST = 6
+
 struct mm_property:
 	char* key
 	char* value
+	int type
 
 struct mm_node:
 	char* id
@@ -196,6 +211,11 @@ struct mm_edge:
 	char* right_label
 	int scope
 	mm_style style
+	# Agentflow edge id (`a e1@--> b`, null when unnamed), its `e1@{ ... }`
+	# metadata (null when none) and curve (MM_CURVE_*, 0 = family default).
+	char* id
+	list[mm_property*] metadata
+	int curve
 
 # UML notes are annotations, not graph vertices.
 struct mm_note:
@@ -343,6 +363,13 @@ void mm_document_free(mm_document* d):
 		free(n.label)
 		free(n)
 	for mm_edge* e in d.edges:
+		if (e.id != 0): free(e.id)
+		if (e.metadata != 0):
+			for mm_property* property in e.metadata:
+				free(property.key)
+				free(property.value)
+				free(property)
+			__w_list_free(cast(__w_list*, e.metadata))
 		free(e.label)
 		free(e.left_label)
 		free(e.right_label)

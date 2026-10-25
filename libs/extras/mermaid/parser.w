@@ -184,6 +184,7 @@ void mm_statement(mm_parser* p):
 			else if (mm_match(p, c"--") == 0 && mm_keyword(p, c"to") == 0): mm_error(p.doc, p.pos, c"expected identifying -- or non-identifying .. relationship")
 			e.right_card = mm_card(p, 0)
 		else:
+			if (p.doc.kind == MM_AGENT): mm_agent_edge_id(p, e)
 			if (mm_match(p, c"-->")): e.arrow = 1
 			else if (p.doc.kind == MM_AGENT && mm_match(p, c"--x")): e.right_marker = 6
 			else if (mm_match(p, c"-.->")):
@@ -296,6 +297,7 @@ void mm_flow_body(mm_parser* p, int depth):
 				p.scope = outer
 				p.global_nodes = globals
 			free(label)
+		else if (p.doc.kind == MM_AGENT && mm_agent_edge_metadata(p)): mm_space(p)
 		else if (mm_keyword(p, c"direction")):
 			if (p.scope < 0): mm_direction(p)
 			else:
@@ -443,6 +445,7 @@ mm_document* mm_parse_raw(char* source, int length):
 	mm_separators(&p)
 	if (d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_AGENT):
 		mm_flow_body(&p, 0)
+		if (d.kind == MM_AGENT && d.error == 0): mm_agent_finish(&p)
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)

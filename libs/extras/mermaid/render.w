@@ -14,6 +14,7 @@ import libs.extras.mermaid.narrative_render
 import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
+import libs.extras.mermaid.agentflow_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -75,6 +76,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 		if (n.shape == 3):
 			b.w = b.w * 2
 			b.h = 100 + extra * 2
+		if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): mm_shape_size(n.shape, &b.w, &b.h)
 		if (d.kind == MM_ER):
 			b.h = 40 + extra + n.attributes.length * 26
 			for mm_attribute* a in n.attributes:
@@ -354,7 +356,8 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
-	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, e.dashed, e.from_node == e.to_node)
+	if (d.kind == MM_AGENT && e.curve != 0 && e.from_node != e.to_node): mm_agent_edge_path(s, e.curve, ax, ay, mx, my, bx, by, horizontal, e.dashed)
+	else: mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, e.dashed, e.from_node == e.to_node)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -465,7 +468,8 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 			if (n.shape == 12): mm_label(s, b.x + 12, b.y + 86, n.label, mm_label_wrap(d, n), 0)
 			mm_style_node(d, s, n, style_start)
 			continue
-		if (n.shape == 21 || n.shape == 22):
+		if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): mm_shape_draw(s, n.shape, b.x, b.y, b.w, b.h)
+		else if (n.shape == 21 || n.shape == 22):
 			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
 			mm_primitive* box = s.items[s.items.length - 1]
 			if (n.shape == 21): box.dashed = 3
@@ -516,6 +520,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 		mm_text_block* title = mm_node_text(d, n)
 		int extra = title.height - MM_TEXT_LINE
 		int title_y = b.y + (b.h - title.height) / 2
+		if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): title_y = b.y + mm_shape_label_y(n.shape, b.h, title.height)
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
 		mm_text_block_free(title)
@@ -534,6 +539,14 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
 	if (d.error != 0): return 0
+	if (mm_agent_has_collapsed(d)):
+		list[int] slots = new list[int]
+		mm_document* view = mm_agent_project(d, slots)
+		mm_scene* folded = mm_render_diagram(view)
+		if (folded != 0): mm_agent_unproject(folded, slots)
+		mm_document_free(view)
+		__w_list_free(cast(__w_list*, slots))
+		return folded
 	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
 	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
