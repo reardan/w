@@ -283,7 +283,7 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 
 void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	if (d.kind == MM_ARCHITECTURE):
-		mm_arch_edge(s, e)
+		mm_arch_edge(d, s, e)
 		return
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
@@ -463,7 +463,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 			continue
 		if (n.shape == 12 || n.shape == 13):
 			mm_arch_icon(s, n, b)
-			if (n.shape == 12): mm_label(s, b.x + 12, b.y + 86, n.label, mm_label_wrap(d, n), 0)
+			if (n.shape == 12): mm_label(s, b.x + b.w / 2, b.y + 86, n.label, mm_label_wrap(d, n), 1)
 			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 21 || n.shape == 22):
@@ -552,7 +552,10 @@ mm_scene* mm_render_diagram(mm_document* d):
 	s.nodes = new list[mm_bounds*]
 	s.width = 240
 	s.height = 160
-	mm_layout(d, s)
+	if (d.kind == MM_ARCHITECTURE):
+		mm_measure(d, s)
+		mm_arch_layout(d, s)
+	else: mm_layout(d, s)
 	mm_positions_apply(d, s)
 	mm_render_graph(d, s)
 	return s
