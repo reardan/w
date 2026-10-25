@@ -212,6 +212,54 @@ stack proper, so overflowing a worker stack faults on the guard
 (`thread_stack_guard`, issue #526). Pool workers keep theirs
 across jobs. See docs/projects/thread_local.md.
 
+**In the REPL** (#713, `repl_threads_enable` in `repl/core.w`). A
+compile sizes the block once, when the executable is finished. The
+interactive REPL cannot, because entries keep declaring `thread_local`
+variables (at the prompt, or through imports such as
+`lib/thread_heap.w`) while threads that earlier entries started are
+still running. Each session therefore uses a fixed 64KB block for every
+thread. The in-process `__w_tls_size` stub returns that capacity, so
+every `thread_spawn` reserves a whole block at the bottom of the new
+stack (mmap zeroes it, and `thread_join`'s munmap frees it with the
+stack). The main thread's block is mapped once, at startup. The
+compiler rejects a declaration that does not fit (W0416). Offsets are
+assigned as entries declare them.
+
+Rollback must not hand an offset, global or piece of code to new code
+while an old thread might still use it:
+
+- A compile error rolls back as before. Nothing ran, so its offsets are
+  released, and the main block's released tail is zeroed for the next
+  declaration.
+- A fault or `:reset` releases code and offsets only when no other
+  thread exists (`/proc/self/task`). Otherwise the code, globals and
+  offsets stay reserved and only the names roll back (`:reset` prints a
+  note).
+- A rollback that releases `lib/thread_heap.w`'s code also clears the
+  allocator hooks `thread_spawn` installed. No other thread exists at
+  that point, and a block a finished worker allocated has the free-list
+  layout, so a later free files it in the main heap and its segment is
+  leaked. While the hooks still point into kept code, compiling
+  `lib/thread.w` afresh is rejected until those threads have exited. A
+  second runtime would otherwise install its hooks under them.
+- A fault on a thread an entry started ends the process, because the
+  entry checkpoint lives on the main thread's stack. A `debugger` stop
+  or breakpoint on such a thread also ends the process, because the
+  command loop belongs to the main thread.
+- A fault on the main thread while a thread the same entry started is
+  still running also ends the process. That thread may borrow the
+  abandoned entry frame (`safe_thread_fork_join` lends its caller's
+  storage). Threads from earlier entries do not prevent recovery.
+- While another thread runs, redefining a function does not repatch
+  older call sites (repatching would modify code another processor
+  may be executing). A note says those callers keep the previous
+  definition. `thread_pool_shutdown()` ends the pool's workers.
+
+wdbg and the incremental compile API still reject `thread_local`
+(W0324). Under `W_DEBUG_ALLOC` the in-process compiler's own guard-page
+allocations reach `vm.max_map_count` once it retains the thread runtime,
+so the REPL's thread tests run without it.
+
 **Allocator** (issue #498, `lib/thread_heap.w`). Workers used to be
 barred from allocating because `lib/memory.w`'s free list and brk
 growth are plain globals. Now every spawned thread allocates from its

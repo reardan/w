@@ -1813,15 +1813,58 @@ not read that data. Fault discard applies unchanged. An inferred `h :=
 holder(a, 3)` is rejected by the checker (`safe: unsupported type or
 reference-bearing aggregate`), as it is for a local.
 
-Lock guards stay rejected (`safe: session bindings cannot hold lock guards
-(own[a] WSafeGuard[T]*); lock and unlock inside a function`), directly or
-through owned fields; the check is by the guard record's name and fails
-closed on unbounded shapes. A guard's destruction unlocks its mutex, so it
-uses its loan until the session ends, and `lib/safe_thread.w` cannot be
-imported in-process anyway: in-process images reject `thread_local` (W0324),
-and admitting it would need per-thread storage beyond the host's fixed TLS
-block, which entries cannot grow. Lowering it to shared storage would be
-unsound once an entry spawns a thread.
+**Lock guards and threads.** The REPL gives each session per-thread
+storage (docs/projects/threads.md, "In the REPL"), so `lib/safe_thread.w`
+imports in process and its owners are session bindings. A guard
+(`own[a] WSafeGuard[T]* g = safe_mutex_lock(m)`) is an owner carrying the
+mutex's loan. It follows the labeled-binding rules above: the mutex
+cannot be replaced, moved or destroyed while a later entry still uses the
+guard, and `:reset` and exit destroy newest first, so a guard is always
+released before or with its mutex. Releasing a guard unlocks its mutex
+exactly once:
+
+- `safe_guard_unlock(g)` moves the guard;
+- a redeclaration of a held guard unlocks the old generation where the
+  transcript destroys it, at the redeclaration and before the new
+  initializer runs. That initializer may lock the same mutex again, so
+  waiting for commit would deadlock. The entry calls the session's own
+  destruction (`safe_session_replace_now`), which marks the generation
+  dropped, so commit, `:reset` and exit skip it;
+- `:reset` and exit release the guards still held and report them
+  (`note: released N held lock guard(s) of the session`).
+
+A guard the entry has already released is never unlocked a second time.
+If an entry faults after taking a lock, the session follows fault discard:
+it does not know whether the entry's unlock ran, so it leaks the guard
+instead of unlocking it again. A replaced guard that was already released
+is discarded with nothing leaked. A leaked guard leaves its mutex locked,
+so `safe_mutex_try_lock` on that mutex reports it held and
+`safe_mutex_lock` blocks forever. This loses liveness but not safety: no
+second unlock can let two holders in, and nothing reads the payload
+without a guard. Destroying the mutex later frees a locked lock word that
+no checked thread can be waiting on. A checked thread can reach a mutex
+only through a scoped `safe_thread_fork_join` loan, and the fault rules
+below end the process when such a thread is still running. As in a
+function, an entry that locks a mutex its own session guard holds waits
+forever. Use `safe_mutex_try_lock` to probe.
+
+Checked thread handles (`optown WSafeThread*`) held by session bindings are
+joined when replaced, at `:reset` and at exit. A thread an entry starts can
+outlive the entry, so the thread rules in threads.md apply. A fault on the
+main thread while a thread started by the same entry is still running ends
+the process, because that thread may borrow the abandoned entry frame. A
+fault on another thread also ends the process. A fault or `:reset` while
+older threads still run keeps the code and storage they may use. These
+forms are rejected and nothing is replaced:
+- a `thread_local` that does not fit the session's 64KB per-thread block
+  (W0416);
+- loading `lib/thread.w` again while threads still run on a copy a rollback
+  kept.
+
+Under `W_DEBUG_ALLOC` the in-process compiler's guard-page allocations
+exhaust `vm.max_map_count` once it retains the thread runtime, so these
+sessions are tested without it. wdbg still rejects `thread_local` (W0324):
+a debuggee that imports `lib/safe_thread.w` cannot be loaded.
 
 **Unsupported forms.** These fail explicitly instead of being
 approximated: `--safe` on in-process entry points; checked declarations in
@@ -1829,7 +1872,7 @@ an entry that does not run (`:type`, `safe: an entry that is not run cannot
 declare checked session bindings`); declaring, replacing or naming a checked
 session binding from a nested entry (a stop inside a running entry, or any
 debugger evaluation); `return`, `goto`, `defer` and `yield` in an item that
-names a checked session binding; and lock guards (above). Owner assignment
+names a checked session binding; and the thread forms above. Owner assignment
 to an existing persistent binding is rejected by the existing `owner
 assignment requires a plain local or parameter` rule; declare a new
 generation instead.
@@ -1895,10 +1938,18 @@ and reborrow parents while an outer frame's call statement is re-run.
 (each with an x64 twin) cover persistence, replacement, reset and exit
 destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
 diagnostic recovery, fault discards, lifetime-labeled bindings (borrowed
-records, owners carrying borrowed groups, the lock-guard rejection),
-every unsupported form above, an imported-source edit across `:reset`, and
-the debugger views (innermost and outer frames, optional, slice, record
-and labeled views), conditions and rejections.
+records, owners carrying borrowed groups), lock guards
+(`tests/safe_repl_thread_fixture.w`): locking and unlocking across entries,
+replacement unlocking exactly once, a failed redeclaration, mutex
+replacement rejected while a guard borrows it, fault discard, and the
+releases `:reset` and exit report. They also cover checked thread handles
+joined by replacement and `:reset`, `thread_local` and spawned threads at
+the prompt, the parallel_for pool and redefinition, the capacity limit,
+threads that outlive their entry across faults and `:reset`, faults and
+stops on entry threads, wdbg's `thread_local` rejection, every other
+unsupported form above, an imported-source edit across `:reset`, and the
+debugger views (innermost and outer frames, optional, slice, record and
+labeled views), conditions and rejections.
 
 ## Entry points, diagnostics and costs
 

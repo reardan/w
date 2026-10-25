@@ -1909,6 +1909,27 @@ void generic_finish_instantiations():
 			generic_insts_compiled = generic_insts_compiled + 1
 
 
+# In-process rollback (repl/core.w): forget the definitions, instantiations
+# and forward calls registered after a checkpoint. Their code, symbols and
+# type records were rolled back with it, so a record kept here would hand a
+# later call a released body or signature type, or patch a released chain.
+void generic_registry_truncate(int defs, int insts, int forwards):
+	while (generic_def_count() > defs): generic_defs.pop()
+	while (generic_inst_count() > insts):
+		int last = generic_insts.length - 1
+		free(generic_insts[last].mangled)
+		free(cast(char*, generic_insts[last].args))
+		generic_insts.pop()
+	while (generic_forward_count() > forwards):
+		int last_forward = generic_forwards.length - 1
+		free(generic_forwards[last_forward].name)
+		free(cast(char*, generic_forwards[last_forward].args))
+		free(generic_forwards[last_forward].call_file)
+		generic_forwards.pop()
+	if (generic_insts_compiled > insts): generic_insts_compiled = insts
+	if (generic_forwards_resolved > forwards): generic_forwards_resolved = forwards
+
+
 /*
 'w check' coverage for uninstantiated generics. A generic definition is
 captured but never parsed past its header, so before this a check of a

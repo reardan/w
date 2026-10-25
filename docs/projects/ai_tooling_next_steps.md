@@ -1517,3 +1517,21 @@ when stderr is not a terminal.
   Observed once in a worktree under parallel load. Direction: key the
   cache check on content hashes only (never an mtime/size shortcut), or
   print which input digests a cached target was matched against.
+
+## REPL-building tests miss compiler edits (2026-10-25, #713 REPL threads)
+
+- **`wtest changed` did not select `safe_repl_session_test`** for edits
+  to `repl/core.w` and `compiler/safe_session.w`. The test compiles
+  `repl.w` with `bin/wv2` when it runs, so that closure is not part of
+  its own import closure. The same blind spot means its wexec cache key
+  ignores those edits. Direction: a `# wbuild:` directive naming a root
+  whose import closure counts as the test's input, such as
+  `closure=repl.w`, read by both wtest and wexec.
+- **`W_DEBUG_ALLOC` plus `lib/thread.w` in the 32-bit REPL hits
+  `vm.max_map_count`.** The in-process compiler's own allocations go
+  through the guard-page backend too, at two mappings per block, so
+  importing the thread runtime pushed the host past 65530 maps. The
+  failure surfaced as `memory_debug: cannot protect freed allocation`.
+  Direction: let memory_debug retry a failed guard munmap after
+  reclaiming its quarantine, as it already does for a failed mmap. Also
+  name the limit in the message.
