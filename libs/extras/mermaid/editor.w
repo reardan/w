@@ -93,6 +93,15 @@ int mm_editor_change(mm_editor* e, char* source):
 	while (e.history.length > e.position + 1):
 		free(e.history[e.history.length - 1])
 		e.history.pop()
+	# Inside a transaction only the state at its begin and the latest one
+	# are kept, so a long command (a multi-selection reorder of many
+	# validated steps) can neither push the begin state out of the bounded
+	# history nor exhaust it.
+	if (e.transaction >= 0 && e.position == e.transaction + 1):
+		free(e.history[e.position])
+		e.history[e.position] = copy
+		mm_editor_load(e, copy)
+		return 1
 	# At most 32 MiB source snapshots. A dropped oldest state is freed.
 	if (e.history.length >= 32):
 		free(e.history[0])

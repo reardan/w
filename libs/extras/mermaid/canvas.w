@@ -250,6 +250,14 @@ void mm_canvas_follow_slot(mm_canvas* c):
 	c.node = mm_slot_moved
 	c.edge = -1
 
+# A multi-selection follows every item a set command moved.
+void mm_canvas_follow_slots(mm_canvas* c):
+	mm_canvas_clear_selection(c)
+	if (mm_slot_moved_set != 0):
+		for int i in mm_slot_moved_set: c.selection.push(i)
+	c.node = mm_slot_moved
+	c.edge = -1
+
 # Release of a source-order drag: the slot under the dragged box's centre.
 int mm_canvas_slot_drop(mm_canvas* c, mm_editor* e):
 	int index = e.move_index
@@ -262,6 +270,14 @@ int mm_canvas_slot_drop(mm_canvas* c, mm_editor* e):
 	mm_editor_move_cancel(e)
 	int target = mm_canvas_slot_at(e, index, cx, cy)
 	if (target < 0): return 0
+	if (mm_canvas_selection_count(c, e) > 1):
+		# The whole selection moves to the slot under the dragged item.
+		if (mm_canvas_selected(c, target)): return 0
+		list[int] all = mm_canvas_selected_nodes(c, e)
+		int moved = mm_editor_slot_move_set(e, all, index, target)
+		__w_list_free(cast(__w_list*, all))
+		if (moved): mm_canvas_follow_slots(c)
+		return moved
 	int ok = mm_editor_slot_move(e, index, target)
 	if (ok): mm_canvas_follow_slot(c)
 	return ok
@@ -381,8 +397,7 @@ void mm_canvas_motion(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 		c.dragged = 1
 		if (c.gesture == 2):
 			int began = 0
-			if (mm_canvas_selection_count(c, e) > 1 && mm_slot_family(e.document.kind)): began = 0
-			else if (mm_canvas_selection_count(c, e) > 1):
+			if (mm_canvas_selection_count(c, e) > 1):
 				list[int] set = mm_canvas_move_set(c, e)
 				if (set != 0):
 					# The primary node leads so previews and commits track it.
@@ -470,9 +485,39 @@ int mm_canvas_slot_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
 	if (ok): mm_canvas_follow_slot(c)
 	return ok
 
+# Arrow keys on a source-order multi-selection: every selected item moves
+# one slot (block cells up and down by a row), keeping their gaps; kanban
+# cards of one column move across columns together.
+int mm_canvas_slot_nudge_set(mm_canvas* c, mm_editor* e, int dx, int dy):
+	mm_document* d = e.document
+	list[int] all = mm_canvas_selected_nodes(c, e)
+	int across = 0
+	if (dx > 0): across = 1
+	if (dx < 0): across = -1
+	int along = 0
+	if (dy > 0): along = 1
+	if (dy < 0): along = -1
+	int ok = 0
+	if (d.kind == MM_BLOCK && all.length > 0):
+		int parent = d.nodes[all[0]].parent
+		int columns = 0
+		if (parent >= 0): columns = d.nodes[parent].value_x
+		if (columns <= 0):
+			list[int] siblings = mm_slot_siblings(d, all[0])
+			columns = siblings.length
+			__w_list_free(cast(__w_list*, siblings))
+		ok = mm_editor_slot_step_set(e, all, across + along * columns)
+	else if (d.kind == MM_KANBAN && across != 0): ok = mm_editor_slot_column_set(e, all, across)
+	else:
+		if (along == 0): along = across
+		ok = mm_editor_slot_step_set(e, all, along)
+	__w_list_free(cast(__w_list*, all))
+	if (ok): mm_canvas_follow_slots(c)
+	return ok
+
 int mm_canvas_nudge(mm_canvas* c, mm_editor* e, int dx, int dy):
 	if (mm_slot_family(e.document.kind)):
-		if (mm_canvas_selection_count(c, e) > 1): return 0
+		if (mm_canvas_selection_count(c, e) > 1): return mm_canvas_slot_nudge_set(c, e, dx, dy)
 		return mm_canvas_slot_nudge(c, e, dx, dy)
 	if (mm_canvas_selection_count(c, e) > 1):
 		list[int] set = mm_canvas_move_set(c, e)
@@ -492,7 +537,7 @@ int mm_canvas_grow(mm_canvas* c, mm_editor* e, int dw, int dh):
 	if (mm_slot_family(e.document.kind)):
 		# Blocks: Alt+Right/Left widen/narrow the column span by one.
 		if (dw == 0): return 0
-		int span = e.document.nodes[one].value_x
+		int span = mm_block_span_of(e.document, one)
 		if (dw > 0): span = span + 1
 		else: span = span - 1
 		return mm_editor_block_span(e, one, span)
