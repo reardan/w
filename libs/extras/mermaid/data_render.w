@@ -905,7 +905,9 @@ mm_scene* mm_data_render(mm_document* d):
 	char* title = d.title
 	if (title[0] == 0): title = d.data.title
 	# xyChart.showTitle: false hides the chart title.
-	if (d.kind == MM_XY && mm_config_flag(d, c"xyChart.showTitle", 1) == 0): title = c""
+	if (d.kind == MM_XY && mm_config_flag(d, c"xyChart.showTitle", 1) == 0):
+		title = c""
+		s.has_title = 1
 	if (title[0] != 0):
 		mm_text(s, 40, 20, title)
 		s.has_title = 1

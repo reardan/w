@@ -64,9 +64,35 @@ void mm_n_actor_box(mm_scene* s, mm_node* node, mm_bounds* bounds, int top):
 		mm_text(s, x - strlen(node.label) * 4, middle - 2, node.label)
 	else: mm_text(s, x - strlen(node.label) * 4, middle - 9, node.label)
 
+# Message label: optional sequence number, then the text.
+char* mm_n_message_label(mm_narrative_event* event, int ordinal, int numbered):
+	int shown = -1
+	if (event.start): shown = event.value
+	else if (numbered): shown = ordinal
+	return mm_n_label(event, shown)
+
+# Event rows sit 70px apart from y=170; a wrapped multi-line message label
+# pushes its own and every later row down. rows has one entry past the end.
+list[int] mm_n_rows(mm_document* d, int wrap, int numbered):
+	list[int] rows = new list[int]
+	int extra = 0
+	int ordinal = 0
+	for i in range(d.narrative.length):
+		mm_narrative_event* event = d.narrative[i]
+		if (event.kind == MM_N_MESSAGE):
+			ordinal = ordinal + 1
+			if (wrap > 0):
+				char* label = mm_n_message_label(event, ordinal, numbered)
+				mm_text_block* b = mm_text_layout(label, wrap)
+				extra = extra + (mm_text_lines(b) - 1) * MM_TEXT_PITCH
+				mm_text_block_free(b)
+				free(label)
+		rows.push(170 + i * 70 + extra)
+	rows.push(170 + d.narrative.length * 70 + extra)
+	return rows
+
 void mm_n_lifelines(mm_document* d, mm_scene* s):
 	int count = d.nodes.length
-	int bottom = 180 + d.narrative.length * 70
 	# sequence.* configuration; the defaults reproduce the unconfigured layout.
 	int gap = mm_config_number(d, c"sequence.actorMargin", 40)
 	int box_width = mm_config_number(d, c"sequence.width", 160)
@@ -75,7 +101,9 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 	char* align = mm_config_value(d, c"sequence.messageAlign")
 	int numbered = mm_config_flag(d, c"sequence.showSequenceNumbers", 0)
 	int wrap = 0
-	if (mm_config_flag(d, c"sequence.wrap", mm_config_flag(d, c"wrap", 0))): wrap = box_width + gap - 20
+	if (mm_config_flag(d, c"sequence.wrap", mm_config_flag(d, c"wrap", 0))): wrap = box_width + gap
+	list[int] rows = mm_n_rows(d, wrap, numbered)
+	int bottom = rows[d.narrative.length] + 10
 	for mm_node* node in d.nodes:
 		int width = strlen(node.label) * 8 + 20 + gap
 		int stereotype_width = strlen(node.annotation) * 8 + 52 + gap
@@ -113,8 +141,8 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_narrative_event* outer = d.narrative[j]
 				if (outer.kind == MM_N_BLOCK && outer.end > i): depth = depth + 1
 			int x = 30 + depth * 8
-			int y = 145 + i * 70
-			mm_draw(s, MM_BOX, x, y, right + 15 - depth * 8, 175 + event.end * 70, 0, c"")
+			int y = rows[i] - 25
+			mm_draw(s, MM_BOX, x, y, right + 15 - depth * 8, rows[event.end] + 5, 0, c"")
 			# rect highlights are filled, borderless backgrounds rather than labelled fragments.
 			if (strcmp(event.detail, c"rect") == 0):
 				mm_primitive* highlight = s.items[s.items.length - 1]
@@ -130,9 +158,9 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		for j in range(d.narrative.length):
 			mm_narrative_event* event = d.narrative[j]
 			if (event.from_node != i): continue
-			if (event.kind == MM_N_CREATE): bounds.y = 155 + j * 70
+			if (event.kind == MM_N_CREATE): bounds.y = rows[j] - 15
 			if (event.kind == MM_N_DESTROY):
-				end_y = 170 + event.end * 70
+				end_y = rows[event.end]
 				dies = 1
 		int shift = bounds.y - 65
 		mm_n_actor_box(s, node, bounds, bounds.y)
@@ -157,16 +185,16 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				if (later.kind == MM_N_ACTIVATE): balance = balance + 1
 				if (later.kind == MM_N_DEACTIVATE): balance = balance - 1
 				if (balance == 0):
-					if (170 + k * 70 < activation_end): activation_end = 170 + k * 70
+					if (rows[k] < activation_end): activation_end = rows[k]
 					break
 			int ax = x - bar / 2 + depth * 5
-			mm_draw(s, MM_BOX, ax, 170 + j * 70, ax + bar, activation_end, 0, c"")
+			mm_draw(s, MM_BOX, ax, rows[j], ax + bar, activation_end, 0, c"")
 			depth = depth + 1
 
 	int ordinal = 0
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
-		int y = 170 + i * 70
+		int y = rows[i]
 		int x = 0
 		int to = 0
 		if (event.from_node >= 0):
@@ -187,11 +215,8 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_line(s, x, y, to, y, event.dashed)
 				mm_n_arrow(s, to, y, direction, event.arrow)
 				if (event.arrow == 4): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
-			int shown = -1
 			ordinal = ordinal + 1
-			if (event.start): shown = event.value
-			else if (numbered): shown = ordinal
-			char* label = mm_n_label(event, shown)
+			char* label = mm_n_message_label(event, ordinal, numbered)
 			if (x == to): mm_n_message_text(s, x + 8, y - 23, label, wrap)
 			else:
 				int label_width = mm_n_text_width(label, wrap)
@@ -218,6 +243,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		else if (event.kind == MM_N_BRANCH):
 			mm_line(s, 35, y - 20, right + 10, y - 20, 1)
 			mm_text(s, 45, y - 12, event.label)
+	__w_list_free(cast(__w_list*, rows))
 
 void mm_n_journey_scene(mm_document* d, mm_scene* s):
 	int x = 110

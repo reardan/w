@@ -35,7 +35,7 @@ restrictions and budgets.
 
 Details: [Flow/ER compatibility](mermaid.md#flowchart-and-er-compatibility) and
 [UML additions and limits](mermaid_uml.md).
-Node styling: [Styles and themes](mermaid_styling.md). Labels: [Text layout](mermaid_text.md).
+Node styling: [Styles and themes](mermaid_styling.md). Configuration: [Config reference](mermaid_config.md). Labels: [Text layout](mermaid_text.md).
 
 | Family / headers | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ connectors or external systems.
 | Read/write | Lossless original UTF-8 source; separate canonical flow/ER model serializer | Canonical model serialization for families beyond flow/ER and themed/configured documents |
 | Edit | Flow/ER/class/state node and edge selection, label editing, node/edge deletion, creation/connections, top-level dragging, click-to-place and keyboard movement; transactional undo/redo, grouped source typing and stable viewport | Group/nested-node movement, multi-selection, resizing, richer edge/attribute inspectors and graphical editing for the remaining families |
 | View/export | Deterministic display lists, SVG export, layered crossing reduction, optional force layout, persisted flow/ER node positions, live edge updates and cursor-anchored zoom | Dense-layout quality, text metrics for families with their own renderers and upstream geometry parity |
-| Markdown/frontmatter | Selectable Mermaid fences, surrounding prose preservation, original-source diagnostics, title, relaxed YAML frontmatter and `%%{init}%%` directives with themes, layout, flowchart, kanban and packet configuration | YAML lists/block scalars/anchors, directives after the header and arbitrary configuration |
+| Markdown/frontmatter | Selectable Mermaid fences, surrounding prose preservation, original-source diagnostics, title, bounded YAML frontmatter (block/flow lists, block scalars with chomping, anchors/aliases/merge keys, escapes) and `%%{init}%%`/`%%{initialize}%%`/`%%{wrap}%%` directives anywhere with upstream precedence; themes, layout, flowchart, kanban, packet and per-family sequence, gantt, timeline, xyChart, sankey, radar, gitGraph, railroad, requirement and C4 keys ([config reference](mermaid_config.md)); unknown keys ignored deterministically | YAML tags, complex keys and multi-line plain or quoted scalars; font/CSS keys; the per-family keys listed as ignored in the config reference |
 | Accessibility | Escaped SVG titles/descriptions, visible titles, visible canvas selection, keyboard navigation/editing and non-drag move controls | Screen-reader integration and broader native accessibility interactions |
 | Node styling | Flow/ER/class/state/requirement/use-case/block node classes and link styles, quadrant point and treemap cell classes, colors, transparent fill and precedence; graph labels with line breaks, bold/italic and wrapping | Per-family style parity, CSS, font configuration and other rich text |
 | Themes | Native default/base/dark/forest/neutral palettes plus neo/redux approximations, primary/secondary/tertiary/cluster/edge-label/title variables with upstream-style derivation, `darkMode`, `pie1`–`pie12` and `cScale0`–`cScale11` | Upstream base palettes and CSS, the neo look, and remaining theme variables |
