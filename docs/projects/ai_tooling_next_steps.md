@@ -1546,3 +1546,15 @@ root that compiles. Running `--fix` over a whole import closure therefore
 fixes only the files nothing earlier imported. Run the text rules for
 every named root before compiling any of them, or point users at
 `bin/wfmt -w`, which formats files without compiling them.
+
+## Cold wtest closure cache was serial (2026-10-25, PR #831)
+
+A cold `bin/.wtest_deps_cache` ran one `bin/wv2 deps` per root, one at a
+time: 2059 roots took about 15 minutes on a 4-core box, and under the
+coverage-instrumented compiler `wtest_map_test` alone ran past the
+coverage shard's 30-minute limit once the Mermaid follow-ups doubled
+that tree's test roots. Done: first attempts now run `WTEST_DEPS_JOBS`
+(default: CPU count) at a time in windows of 20 roots, so a cold run takes
+4m25s. Remaining: `bin/wv2 deps` still runs the whole front end over the
+closure (about 2s for a Mermaid root), so a listing-only import walk
+would make the cold pass cheaper still.
