@@ -1,0 +1,12 @@
+%% Named flowchart shapes, link kinds, edge IDs and click actions
+flowchart LR
+    request@{ shape: manual-input, label: "Order form" } e1@==> check{"Valid?"}
+    check -- yes --> store[(Orders DB)] & queue@{ shape: das, label: "Queue" }
+    check -. no .-> reject>Rejected]
+    store o--o audit@{ shape: docs, label: "Audit trail" }
+    queue <--> worker@{ shape: procs, label: "Workers" }
+    worker ~~~ reject
+    worker x--x done(((Done)))
+    e1@{ animate: true }
+    click store href "https://example.com/orders" "Open the orders table" _blank
+    click worker call showWorkers() "Workers are listed by the host page"

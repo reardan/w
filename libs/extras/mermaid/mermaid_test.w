@@ -76,7 +76,7 @@ void test_mermaid_lossless_write_and_immutable_edit():
 	mm_document_free(d)
 
 void test_mermaid_invalid_and_unsupported():
-	list[char*] cases = list[char*]{c"unknownDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nA", c"flowchart LR\nA ==> B", c"erDiagram\nA {\nint id PK,\n}"}
+	list[char*] cases = list[char*]{c"unknownDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nA", c"flowchart LR\nA =-> B", c"erDiagram\nA {\nint id PK,\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"invalid input diagnosed", d.error != 0)
@@ -196,7 +196,7 @@ void test_mermaid_item_limits():
 	string_free(s)
 
 void test_mermaid_rejects_configuration_and_other_shapes():
-	list[char*] cases = list[char*]{c"%%{init: {\"fontSize\": 12}}%%\nflowchart TB\nA", c"flowchart TB\nA[(database)]", c"erDiagram\nA {\n9bad id\n}"}
+	list[char*] cases = list[char*]{c"%%{init: {\"look\": \"handDrawn\"}}%%\nflowchart TB\nA", c"flowchart TB\nA[{database}]", c"erDiagram\nA {\n9bad id\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported semantics rejected", d.error != 0)

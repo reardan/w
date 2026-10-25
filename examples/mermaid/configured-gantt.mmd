@@ -1,0 +1,19 @@
+---
+displayMode: compact
+config:
+  gantt:
+    barHeight: 24
+    barGap: 6
+    tickInterval: 1week
+    weekday: monday
+    topAxis: true
+    axisFormat: "%d %b"
+---
+gantt
+dateFormat YYYY-MM-DD
+section Build
+Design : d1, 2024-01-01, 5d
+Implement : i1, 2024-01-08, 10d
+Review : 2024-01-22, 3d
+section Ship
+Release : milestone, 2024-01-26, 0d

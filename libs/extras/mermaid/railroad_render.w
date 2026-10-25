@@ -8,11 +8,19 @@
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.railroad_parse
 import libs.extras.mermaid.style_render
+import libs.extras.mermaid.style
 
 const int MM_RAIL_ARC = 10
 const int MM_RAIL_PAD = 10
+# Upstream defaults of railroad.horizontalSeparation / verticalSeparation.
 const int MM_RAIL_HSEP = 10
 const int MM_RAIL_VSEP = 8
+
+int mm_rail_hsep(mm_document* d):
+	return mm_config_number(d, c"railroad.horizontalSeparation", MM_RAIL_HSEP)
+
+int mm_rail_vsep(mm_document* d):
+	return mm_config_number(d, c"railroad.verticalSeparation", MM_RAIL_VSEP)
 const int MM_RAIL_MARKER = 5
 # Extra lane width that holds PEG ordered-choice numbers.
 const int MM_RAIL_ORDER = 20
@@ -86,14 +94,14 @@ void mm_rail_measure(mm_document* d, int index):
 	int count = e.children.length
 	mm_rail_expr* first = g.expressions[e.children[0]]
 	if (e.kind == MM_RAIL_SEQUENCE):
-		e.width = sum_width + (count - 1) * MM_RAIL_HSEP
+		e.width = sum_width + (count - 1) * mm_rail_hsep(d)
 		e.up = max_up
 		e.down = max_down
 		e.height = max_up + max_down
 	else if (e.kind == MM_RAIL_CHOICE):
 		e.width = max_width + r * 4
 		if (d.kind == MM_RAIL_PEG): e.width = e.width + MM_RAIL_ORDER
-		e.height = sum_height + (count - 1) * MM_RAIL_VSEP
+		e.height = sum_height + (count - 1) * mm_rail_vsep(d)
 		e.up = e.height / 2
 		e.down = e.height - e.up
 	else if (e.kind == MM_RAIL_EXCEPT || e.kind == MM_RAIL_AND || e.kind == MM_RAIL_NOT):
@@ -179,6 +187,19 @@ void mm_rail_draw_expr(mm_document* d, mm_scene* s, int index, int x, int y);
 void mm_rail_draw_leaf(mm_document* d, mm_scene* s, mm_rail_expr* e, int x, int y):
 	int round = e.kind == MM_RAIL_TERMINAL || e.kind == MM_RAIL_NUMERIC || e.kind == MM_RAIL_CLASS
 	mm_draw(s, MM_BOX, x, y, x + e.width, y + e.height, round, c"")
+	# railroad.terminalFill/Stroke and nonTerminalFill/Stroke.
+	char* fill = mm_config_value(d, c"railroad.nonTerminalFill")
+	char* stroke = mm_config_value(d, c"railroad.nonTerminalStroke")
+	if (round):
+		fill = mm_config_value(d, c"railroad.terminalFill")
+		stroke = mm_config_value(d, c"railroad.terminalStroke")
+	mm_primitive* box = s.items[s.items.length - 1]
+	if (fill != 0):
+		box.style.mask = box.style.mask | MM_STYLE_FILL
+		box.style.fill = mm_style_color(fill)
+	if (stroke != 0):
+		box.style.mask = box.style.mask | MM_STYLE_STROKE
+		box.style.stroke = mm_style_color(stroke)
 	char* text = mm_rail_display(e)
 	mm_text(s, x + MM_RAIL_PAD, y + MM_RAIL_PAD, text)
 	free(text)
@@ -225,7 +246,7 @@ void mm_rail_draw_choice(mm_document* d, mm_scene* s, mm_rail_expr* e, int x, in
 			string_append_int(label, order)
 			mm_text(s, x + r * 2 + 3, lane - MM_TEXT_LINE, label.data)
 			string_free(label)
-		yy = yy + c.height + MM_RAIL_VSEP
+		yy = yy + c.height + mm_rail_vsep(d)
 		order = order + 1
 
 # Upstream bypass above a track: leaves the main line at (x,center), runs
@@ -271,8 +292,8 @@ void mm_rail_draw_expr(mm_document* d, mm_scene* s, int index, int x, int y):
 			mm_rail_expr* c = g.expressions[e.children[i]]
 			mm_rail_draw_expr(d, s, e.children[i], xx, center - c.up)
 			xx = xx + c.width
-			if (i + 1 < e.children.length): mm_line(s, xx, center, xx + MM_RAIL_HSEP, center, 0)
-			xx = xx + MM_RAIL_HSEP
+			if (i + 1 < e.children.length): mm_line(s, xx, center, xx + mm_rail_hsep(d), center, 0)
+			xx = xx + mm_rail_hsep(d)
 		return
 	if (e.kind == MM_RAIL_CHOICE):
 		mm_rail_draw_choice(d, s, e, x, y)
@@ -328,6 +349,7 @@ mm_scene* mm_rail_render(mm_document* d):
 	if (s.has_title):
 		mm_text(s, left, y, title)
 		y = y + MM_TEXT_LINE + 24
+	int markers = mm_config_flag(d, c"railroad.showMarkers", 1)
 	for mm_rail_rule* rule in d.railroad.rules:
 		mm_rail_measure(d, rule.expression)
 		mm_rail_expr* e = d.railroad.expressions[rule.expression]
@@ -347,13 +369,24 @@ mm_scene* mm_rail_render(mm_document* d):
 		label.anchor = strclone(anchor.data)
 		string_free(anchor)
 		int marker = left + name_width
-		mm_draw(s, MM_CIRCLE, marker - MM_RAIL_MARKER, baseline - MM_RAIL_MARKER, marker + MM_RAIL_MARKER, baseline + MM_RAIL_MARKER, 1, c"")
+		if (markers): mm_draw(s, MM_CIRCLE, marker - MM_RAIL_MARKER, baseline - MM_RAIL_MARKER, marker + MM_RAIL_MARKER, baseline + MM_RAIL_MARKER, 1, c"")
 		mm_line(s, marker + MM_RAIL_MARKER, baseline, definition_x, baseline, 0)
 		mm_rail_draw_expr(d, s, rule.expression, definition_x, definition_y)
 		int end = definition_x + e.width + 10
 		mm_line(s, definition_x + e.width, baseline, end - MM_RAIL_MARKER, baseline, 0)
-		mm_draw(s, MM_CIRCLE, end - MM_RAIL_MARKER, baseline - MM_RAIL_MARKER, end + MM_RAIL_MARKER, baseline + MM_RAIL_MARKER, 1, c"")
+		if (markers): mm_draw(s, MM_CIRCLE, end - MM_RAIL_MARKER, baseline - MM_RAIL_MARKER, end + MM_RAIL_MARKER, baseline + MM_RAIL_MARKER, 1, c"")
 		int row = definition_y - y + e.height + MM_RAIL_PAD * 2
 		if (row < 40): row = 40
-		y = y + row + MM_RAIL_VSEP
+		y = y + row + mm_rail_vsep(d)
+	# railroad.lineColor and strokeWidth apply to every connection and outline.
+	char* line = mm_config_value(d, c"railroad.lineColor")
+	int stroke_width = mm_config_number(d, c"railroad.strokeWidth", 0)
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT): continue
+		if (line != 0 && p.kind == MM_LINE):
+			p.style.mask = p.style.mask | MM_STYLE_STROKE
+			p.style.stroke = mm_style_color(line)
+		if (stroke_width > 0):
+			p.style.mask = p.style.mask | MM_STYLE_WIDTH
+			p.style.width = stroke_width
 	return s

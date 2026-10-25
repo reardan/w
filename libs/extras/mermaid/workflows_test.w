@@ -56,7 +56,7 @@ void test_workflow_event_frames_namespaces_and_explicit_inputs():
 	mm_document_free(d)
 
 void test_workflow_invalid_and_truncated_inputs():
-	list[char*] bad = list[char*]{c"swimlane-beta\na --> b", c"swimlane-beta\nsubgraph A\na\nend\nsubgraph B\na\nend", c"swimlane-beta\nsubgraph A\na", c"swimlane-beta\nsubgraph A\nsubgraph B\nend\nend", c"eventmodeling\ntf 1 unknown A", c"eventmodeling\ntf 01 ui A\ntf 1 ui B", c"eventmodeling\ntf 1 ui A ->> 2", c"eventmodeling\ntf 1 evt A [[Data]]", c"eventmodeling\nrf a evt A"}
+	list[char*] bad = list[char*]{c"swimlane-beta\na --> b", c"swimlane-beta\nsubgraph A\na\nend\nsubgraph B\na\nend", c"swimlane-beta\nsubgraph A\na", c"swimlane-beta\nsubgraph A\nsubgraph A\na\nend\nend", c"swimlane-beta\nsubgraph A\na@{shape: nope}\nend", c"swimlane-beta\nsubgraph A\na <--- b\nend", c"eventmodeling\ntf 1 unknown A", c"eventmodeling\ntf 01 ui A\ntf 1 ui B", c"eventmodeling\ntf 1 ui A ->> 2", c"eventmodeling\ntf 1 evt A [[Data]]", c"eventmodeling\nrf a evt A"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid workflow rejected", d.error != 0)
@@ -98,3 +98,177 @@ void test_workflow_cycle_does_not_pull_downstream_step_before_loop():
 	asserts(c"downstream step placed after process loop", receive.rank > check.rank && receive.x > check.x)
 	mm_scene_free(s)
 	mm_document_free(d)
+
+int workflow_inside(mm_bounds* inner, mm_bounds* outer):
+	return inner.x > outer.x && inner.y > outer.y && inner.x + inner.w < outer.x + outer.w && inner.y + inner.h < outer.y + outer.h
+
+void test_workflow_swimlane_nested_lanes_shapes_and_links():
+	char* text = c"swimlane-beta LR\nsubgraph ops [Operations]\nintake([Receive request])\nsubgraph triage [Triage desk]\nclassify{Known issue?}\nlog[(Ticket store)]\nend\nreply>Reply sent]\nend\nsubgraph eng [Engineering]\nsubgraph squad [Platform squad]\nfix[[Patch service]]\ndeploy{{Deploy}}\nhold(((Hold)))\nend\nverify@{ shape: docs, label: \"Release notes\" }\nend\nintake ==> classify\nclassify -->|Yes| reply\nclassify -- needs code --> fix\nclassify -.-> log\nfix --> deploy --> verify\nverify --o reply\ndeploy --x fix\nhold & fix <--> deploy\nclassDef hot fill:#fee2e2,stroke:#dc2626;\nclass deploy hot\nlinkStyle 0 stroke:#2563eb\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	if (d.error != 0): println2(d.error)
+	asserts(c"nested swimlane parses", d.error == 0)
+	int ops = mm_find_node(d, c"ops")
+	int triage = mm_find_node(d, c"triage")
+	int squad = mm_find_node(d, c"squad")
+	int eng = mm_find_node(d, c"eng")
+	mm_node* n = d.nodes[triage]
+	assert_equal(ops, n.parent)
+	assert_strings_equal(c"Triage desk", n.label)
+	n = d.nodes[squad]
+	assert_equal(eng, n.parent)
+	n = d.nodes[mm_find_node(d, c"classify")]
+	assert_equal(triage, n.parent)
+	assert_equal(3, n.shape)
+	n = d.nodes[mm_find_node(d, c"intake")]
+	assert_equal(MM_SHAPE_STADIUM, n.shape)
+	n = d.nodes[mm_find_node(d, c"log")]
+	assert_equal(MM_SHAPE_CYLINDER, n.shape)
+	n = d.nodes[mm_find_node(d, c"reply")]
+	assert_equal(MM_SHAPE_ODD, n.shape)
+	n = d.nodes[mm_find_node(d, c"fix")]
+	assert_equal(squad, n.parent)
+	assert_equal(MM_SHAPE_FRAMED, n.shape)
+	n = d.nodes[mm_find_node(d, c"deploy")]
+	assert_equal(MM_SHAPE_HEXAGON, n.shape)
+	n = d.nodes[mm_find_node(d, c"hold")]
+	assert_equal(MM_SHAPE_DOUBLE_CIRCLE, n.shape)
+	n = d.nodes[mm_find_node(d, c"verify")]
+	assert_equal(MM_SHAPE_DOCUMENTS, n.shape)
+	assert_strings_equal(c"Release notes", n.label)
+	assert_equal(eng, n.parent)
+	assert_equal(10, d.edges.length)
+	mm_edge* e = d.edges[0]
+	assert_equal(4, e.style.width)
+	e = d.edges[2]
+	assert_strings_equal(c"needs code", e.label)
+	e = d.edges[3]
+	assert_equal(1, e.dashed)
+	e = d.edges[6]
+	assert_equal(8, e.right_marker)
+	e = d.edges[7]
+	assert_equal(6, e.right_marker)
+	e = d.edges[9]
+	assert_equal(1, e.left_marker)
+	char* saved = mm_write(d)
+	assert_strings_equal(text, saved)
+	free(saved)
+	mm_scene* s = mm_render(d)
+	asserts(c"inner lane inside outer lane", workflow_inside(s.nodes[triage], s.nodes[ops]))
+	asserts(c"step inside nested lane", workflow_inside(s.nodes[mm_find_node(d, c"classify")], s.nodes[triage]))
+	asserts(c"nested lane inside engineering", workflow_inside(s.nodes[squad], s.nodes[eng]))
+	asserts(c"lane-level step outside nested lane", workflow_inside(s.nodes[mm_find_node(d, c"verify")], s.nodes[squad]) == 0)
+	int polygons = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_POLYGON): polygons = polygons + 1
+	asserts(c"catalogue shapes drawn as outlines", polygons >= 4)
+	char* svg = mm_svg(s)
+	asserts(c"nested lane title exported", index_of(svg, c">Platform squad<") >= 0)
+	asserts(c"classDef fill exported", index_of(svg, c"#fee2e2") >= 0)
+	asserts(c"linkStyle exported", index_of(svg, c"#2563eb") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	# Nesting depth is bounded.
+	string_builder* deep = string_from(c"swimlane-beta\n")
+	for i in range(40):
+		string_append(deep, c"subgraph L")
+		string_append_int(deep, i)
+		string_append_char(deep, 10)
+	string_append(deep, c"a\n")
+	for i in range(40): string_append(deep, c"end\n")
+	d = mm_parse(deep.data, deep.length)
+	asserts(c"swimlane nesting bounded", d.error != 0)
+	mm_document_free(d)
+	string_free(deep)
+
+int workflow_side_count(mm_document* d, int side):
+	int count = 0
+	for mm_note* note in d.notes:
+		if (note.side == side): count = count + 1
+	return count
+
+void test_workflow_event_data_blocks_and_annotations():
+	char* text = c"eventmodeling\ntitle Cart\n/* block\ncomment */\n// line comment\nentity Cart.Item\ntf 01 ui CartUI\ntf 02 cmd AddItem [[AddItem01]]\ntf 03 evt ItemAdded [[ItemAdded]] `json`\ntf 004 rmo Cart.Items `jsobj` { items: [{ id: 1 }], total: { amount: 2 } }\nrf 05 evt Reset \"quoted payload\"\n\ndata AddItem01 `json` {\n  description: 'john'\n  nested:\n    price: 20.4\n}\n\ndata ItemAdded {\n  description: string\n}\nnote 02 {\n  Validates stock\n}\ngwt 03 given evt ItemAdded when cmd AddItem then evt ItemAdded\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	if (d.error != 0): println2(d.error)
+	asserts(c"event data blocks parse", d.error == 0)
+	assert_strings_equal(c"Cart", d.title)
+	mm_node* n = d.nodes[mm_find_node(d, c"2")]
+	assert_equal(3, n.members.length)
+	mm_member* m = n.members[2]
+	assert_strings_equal(c"price: 20.4", m.text)
+	mm_property* reference = mm_agent_get(n.metadata, c"dataReference")
+	assert_strings_equal(c"AddItem01", reference.value)
+	mm_property* type = mm_agent_get(n.metadata, c"dataType")
+	assert_strings_equal(c"json", type.value)
+	n = d.nodes[mm_find_node(d, c"3")]
+	type = mm_agent_get(n.metadata, c"dataType")
+	assert_strings_equal(c"json", type.value)
+	assert_equal(1, n.members.length)
+	n = d.nodes[mm_find_node(d, c"4")]
+	m = n.members[0]
+	assert_strings_equal(c"items: [{ id: 1 }], total: { amount: 2 }", m.text)
+	n = d.nodes[mm_find_node(d, c"5")]
+	m = n.members[0]
+	assert_strings_equal(c"quoted payload", m.text)
+	assert_equal(1, workflow_side_count(d, MM_EM_ENTITY))
+	assert_equal(2, workflow_side_count(d, MM_EM_DATA))
+	assert_equal(1, workflow_side_count(d, MM_EM_NOTE))
+	assert_equal(1, workflow_side_count(d, MM_EM_GWT))
+	char* saved = mm_write(d)
+	assert_strings_equal(text, saved)
+	free(saved)
+	mm_scene* s = mm_render(d)
+	char* svg = mm_svg(s)
+	asserts(c"typed heading exported", index_of(svg, c">cmd [json]<") >= 0)
+	asserts(c"external data exported", index_of(svg, c"price: 20.4") >= 0)
+	asserts(c"note exported", index_of(svg, c"Validates stock") >= 0)
+	asserts(c"gwt exported", index_of(svg, c"given:") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	for length in range(strlen(text) + 1):
+		d = mm_parse(text, length)
+		s = mm_render(d)
+		asserts(c"event prefix parse/render consistent", (d.error == 0 && s != 0) || (d.error != 0 && s == 0))
+		mm_scene_free(s)
+		mm_document_free(d)
+	list[char*] bad = list[char*]{c"eventmodeling\ntf 0001 ui A", c"eventmodeling\ndata X {\na", c"eventmodeling\ndata X `xml` {\na\n}", c"eventmodeling\ndata X { a }", c"eventmodeling\ndata X {\na\n}\ndata X {\nb\n}", c"eventmodeling\nnote 09 {\nx\n}", c"eventmodeling\ntf 01 ui A\ngwt 01 given evt A", c"eventmodeling\ntf 01 ui A\ngwt 01 when cmd B then evt C", c"eventmodeling\n/* open", c"eventmodeling\ntf 01 ui A { open"}
+	for char* source in bad:
+		d = mm_parse(source, strlen(source))
+		asserts(c"invalid event model rejected", d.error != 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, bad))
+
+void test_workflow_shape_catalogue():
+	list[char*] names = list[char*]{c"cyl", c"dbl-circ", c"doc", c"lin-doc", c"docs", c"st-rect", c"notch-rect", c"lin-rect", c"sm-circ", c"fr-circ", c"fork", c"hourglass", c"brace", c"brace-r", c"braces", c"bolt", c"delay", c"h-cyl", c"lin-cyl", c"curv-trap", c"div-rect", c"tri", c"win-pane", c"f-circ", c"notch-pent", c"flip-tri", c"sl-rect", c"bow-rect", c"cross-circ", c"tag-doc", c"tag-rect", c"flag", c"odd", c"text", c"cloud", c"bang", c"folder", c"datastore", c"console", c"browser", c"person", c"bucket", c"database", c"stadium", c"hex", c"rounded", c"rect", c"circle", c"diamond", c"lean-r", c"trap-b"}
+	string_builder* text = string_from(c"swimlane-beta TB\nsubgraph L [Catalogue]\n")
+	for i in range(names.length):
+		asserts(c"shape name known", mm_shape_lookup(names[i]) >= 0)
+		string_append(text, c"n")
+		string_append_int(text, i)
+		string_append(text, c"@{ shape: ")
+		string_append(text, names[i])
+		string_append(text, c", label: \"")
+		string_append(text, names[i])
+		string_append(text, c"\" }\n")
+	string_append(text, c"end\n")
+	asserts(c"unknown shape name", mm_shape_lookup(c"no-such-shape") < 0)
+	mm_document* d = mm_parse(text.data, text.length)
+	if (d.error != 0): println2(d.error)
+	asserts(c"catalogue parses", d.error == 0)
+	for i in range(names.length):
+		mm_node* n = d.nodes[i + 1]
+		assert_equal(mm_shape_lookup(names[i]), n.shape)
+	mm_scene* s = mm_render(d)
+	for i in range(names.length):
+		mm_bounds* b = s.nodes[i + 1]
+		asserts(c"catalogue shape has extent", b.w > 0 && b.h > 0)
+		asserts(c"catalogue shape inside lane", workflow_inside(b, s.nodes[0]))
+	char* svg = mm_svg(s)
+	asserts(c"catalogue exported", index_of(svg, c">datastore<") >= 0 && index_of(svg, c"<polygon") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	string_free(text)
+	__w_list_free(cast(__w_list*, names))

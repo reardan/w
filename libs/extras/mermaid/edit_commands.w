@@ -276,6 +276,7 @@ void mm_edit_separators(mm_edit_scan* scan):
 		mm_space(p)
 		int start = p.pos
 		if (mm_match(p, c"%%")):
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			int x = 0
 			int y = 0

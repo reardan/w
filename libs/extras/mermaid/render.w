@@ -15,6 +15,42 @@ import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
 import libs.extras.mermaid.c4_render
+import libs.extras.mermaid.agentflow_render
+import libs.extras.mermaid.flow_shapes
+import libs.extras.mermaid.class_members
+
+# A comment holding a Markdown string or a <br> renders through the shared
+# label layout; plain comments stay in the attribute's single text run.
+# Requirement text is Markdown upstream: a member with emphasis markers or
+# `<br>` gets the rich layout (an owned label), plain members return 0.
+char* mm_member_markup(int markdown, mm_member* m):
+	int emphasis = markdown && mm_text_is_markdown(m.text) == 0 && (index_of(m.text, c"*") >= 0 || index_of(m.text, c"_") >= 0)
+	if (emphasis == 0):
+		if (mm_text_rich(m.text)): return strclone(m.text)
+		return 0
+	string_builder* text = string_from(c"`")
+	string_append(text, m.text)
+	string_append_char(text, '`')
+	char* result = text.data
+	free(text)
+	return result
+
+# Extra row height and the width of a member's rich label (0 when plain).
+int mm_member_extra(int markdown, mm_member* m, int* width):
+	char* label = mm_member_markup(markdown, m)
+	if (label == 0): return 0
+	mm_text_block* t = mm_text_layout(label, 0)
+	int extra = (mm_text_lines(t) - 1) * t.pitch
+	width[0] = t.width
+	mm_text_block_free(t)
+	free(label)
+	return extra
+
+int mm_attribute_rich(mm_attribute* a):
+	if (mm_text_is_markdown(a.comment)): return 1
+	for i in range(strlen(a.comment)):
+		if (mm_text_break_tag(a.comment, i, strlen(a.comment))): return 1
+	return 0
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -23,12 +59,39 @@ char* mm_attribute_text(mm_attribute* a):
 	if (a.keys[0] != 0):
 		string_append(s, c"  ")
 		string_append(s, a.keys)
-	if (a.comment[0] != 0):
+	if (a.comment[0] != 0 && mm_attribute_rich(a) == 0):
 		string_append(s, c"  ")
 		string_append(s, a.comment)
 	char* result = s.data
 	free(s)
 	return result
+
+# Row height of an attribute: 26px, plus one pitch per extra comment line.
+int mm_attribute_height(mm_attribute* a):
+	if (mm_attribute_rich(a) == 0): return 26
+	mm_text_block* t = mm_text_layout(a.comment, 0)
+	int height = 26 + (mm_text_lines(t) - 1) * t.pitch
+	mm_text_block_free(t)
+	return height
+
+int mm_attribute_width(mm_attribute* a):
+	char* text = mm_attribute_text(a)
+	int width = mm_text_width(text, 0)
+	free(text)
+	if (mm_attribute_rich(a)):
+		mm_text_block* t = mm_text_layout(a.comment, 0)
+		width = width + mm_text_width(c"  ", 0) + t.width
+		mm_text_block_free(t)
+	return width
+
+void mm_attribute_draw(mm_scene* s, mm_attribute* a, int x, int y):
+	char* text = mm_attribute_text(a)
+	mm_text(s, x, y, text)
+	if (mm_attribute_rich(a)):
+		mm_text_block* t = mm_text_layout(a.comment, 0)
+		mm_text_draw(s, t, x + mm_text_width(text, 0) + mm_text_width(c"  ", 0), y, 0)
+		mm_text_block_free(t)
+	free(text)
 
 char* mm_scope_direction(mm_document* d, int scope):
 	while (scope >= 0):
@@ -44,23 +107,40 @@ int mm_label_wrap(mm_document* d, mm_node* n):
 	if (n.group || d.kind == MM_ER || d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4): return 0
 	return MM_TEXT_WRAP
 
+# font-weight / font-style styles give the whole label a base text style.
 mm_text_block* mm_node_text(mm_document* d, mm_node* n):
-	return mm_text_layout(n.label, mm_label_wrap(d, n))
+	mm_style style = mm_style_resolve(d, n)
+	int base = 0
+	if (style.mask & MM_STYLE_WEIGHT): base = base | (style.font & MM_TEXT_BOLD)
+	if (style.mask & MM_STYLE_ITALIC): base = base | (style.font & MM_TEXT_ITALIC)
+	return mm_text_layout_style(n.label, mm_label_wrap(d, n), base)
+
+# Select a node's font-size style for its measurement and drawing; returns
+# the previous size for mm_text_set_size.
+int mm_node_font_push(mm_document* d, mm_node* n):
+	mm_style style = mm_style_resolve(d, n)
+	if (style.mask & MM_STYLE_SIZE): return mm_text_set_size(style.font_size)
+	return mm_text_set_size(mm_text_size())
 
 # Height a node's label adds beyond the single line every shape reserves.
 int mm_node_text_extra(mm_document* d, mm_node* n):
+	int previous = mm_node_font_push(d, n)
 	mm_text_block* t = mm_node_text(d, n)
 	int extra = t.height - MM_TEXT_LINE
 	mm_text_block_free(t)
+	mm_text_set_size(previous)
 	return extra
 
 void mm_measure(mm_document* d, mm_scene* s):
 	for mm_node* n in d.nodes:
 		mm_bounds* b = new mm_bounds()
 		b.rank = -1
+		int previous = mm_node_font_push(d, n)
 		mm_text_block* text = mm_node_text(d, n)
 		int extra = text.height - MM_TEXT_LINE
 		b.w = text.width + 40
+		int text_w = text.width
+		int text_h = text.height
 		mm_text_block_free(text)
 		if (b.w < 180): b.w = 180
 		b.h = 60 + extra
@@ -76,22 +156,39 @@ void mm_measure(mm_document* d, mm_scene* s):
 		if (n.shape == 3):
 			b.w = b.w * 2
 			b.h = 100 + extra * 2
+		if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): mm_shape_size(n.shape, &b.w, &b.h)
 		if (d.kind == MM_ER):
-			b.h = 40 + extra + n.attributes.length * 26
+			b.h = 40 + extra
 			for mm_attribute* a in n.attributes:
-				char* text = mm_attribute_text(a)
-				int width = mm_text_width(text, 0) + 32
+				b.h = b.h + mm_attribute_height(a)
+				int width = mm_attribute_width(a) + 32
 				if (width > b.w): b.w = width
-				free(text)
 		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4) && n.group == 0):
 			b.h = 80 + extra + n.members.length * 26
 			if (n.annotation[0] != 0): b.h = b.h + 24
 			int width = mm_text_width(n.annotation, 0) + 68
 			if (width > b.w): b.w = width
 			for mm_member* m in n.members:
-				width = mm_text_width(m.text, 0) + 32
+				if (d.kind == MM_CLASS):
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					width = mm_text_width(shown, style) + 32
+					free(shown)
+				else:
+					width = mm_text_width(m.text, 0) + 32
+					int rich_width = 0
+					b.h = b.h + mm_member_extra(d.kind == MM_REQUIREMENT, m, &rich_width)
+					if (rich_width != 0): width = rich_width + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_USECASE): mm_uc_measure(d, n, b)
+		# requirement.rect_min_width / rect_min_height enlarge requirement and element boxes.
+		if (d.kind == MM_REQUIREMENT && n.group == 0):
+			int min_width = mm_config_number(d, c"requirement.rect_min_width", 0)
+			int min_height = mm_config_number(d, c"requirement.rect_min_height", 0)
+			if (b.w < min_width): b.w = min_width
+			if (b.h < min_height): b.h = min_height
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
 			b.h = 32
@@ -105,6 +202,8 @@ void mm_measure(mm_document* d, mm_scene* s):
 				if (strcmp(dir, c"LR") == 0 || strcmp(dir, c"RL") == 0):
 					b.w = 10
 					b.h = 100
+		if (d.kind == MM_FLOW && n.group == 0 && n.shape >= MM_FLOW_CYLINDER): mm_flow_shape_measure(n, b, mm_scope_direction(d, n.parent), text_w, text_h)
+		mm_text_set_size(previous)
 		s.nodes.push(b)
 
 void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap):
@@ -133,8 +232,9 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 		for mm_edge* e in edges:
 			if (e.from_node == index && done[e.to_node] == 0):
 				mm_bounds* to = nodes[e.to_node]
-				int step = 1
-				if (e.min_length > 1): step = e.min_length
+				# Longer links (flowchart `--->`, use case extra dashes) span extra ranks.
+				int step = 1 + e.extra_rank
+				if (e.min_length > step): step = e.min_length
 				if (to.rank < from.rank + step): to.rank = from.rank + step
 				incoming[e.to_node] = incoming[e.to_node] - 1
 	__w_list_free(cast(__w_list*, incoming))
@@ -209,7 +309,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.parent == scope):
-			if (n.group): mm_layout_scope(d, s, i)
+			if (n.group && mm_flow_collapsed(d, i) == 0): mm_layout_scope(d, s, i)
 			indices.push(i)
 			nodes.push(s.nodes[i])
 	for mm_edge* e in d.edges:
@@ -220,6 +320,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		# Borrowed for label-aware rank gaps; only the struct is freed below.
 		mapped.label = e.label
 		mapped.min_length = e.min_length
+		mapped.extra_rank = e.extra_rank
 		for i in range(indices.length):
 			if (indices[i] == a): mapped.from_node = i
 			if (indices[i] == b): mapped.to_node = i
@@ -252,6 +353,16 @@ void mm_layout(mm_document* d, mm_scene* s):
 	mm_measure(d, s)
 	mm_layout_scope(d, s, -1)
 	mm_layout_absolute(d, s, -1, 0, 0)
+	# Contents of collapsed subgraphs keep empty bounds at their group's origin.
+	for i in range(d.nodes.length):
+		int visible = mm_flow_visible_node(d, i)
+		if (visible == i): continue
+		mm_bounds* b = s.nodes[i]
+		mm_bounds* group = s.nodes[visible]
+		b.x = group.x
+		b.y = group.y
+		b.w = 0
+		b.h = 0
 
 # Convex, axis-aligned endpoint polygons, oriented away from their node.
 void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
@@ -371,10 +482,23 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
+	int path_start = s.items.length
+	if (d.kind == MM_FLOW && e.stroke == 2): return
 	int dashed = e.dashed
 	# Animated use-case edges (e.arrow) draw as dashes in static output.
 	if (d.kind == MM_USECASE && e.arrow): dashed = 1
-	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, dashed, e.from_node == e.to_node)
+	int curve = d.edge_curve
+	if (d.kind == MM_FLOW && e.curve != 0): d.edge_curve = e.curve - 1
+	if (d.kind == MM_AGENT && e.curve != 0 && e.from_node != e.to_node): mm_agent_edge_path(s, e.curve, ax, ay, mx, my, bx, by, horizontal, dashed)
+	else: mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, dashed, e.from_node == e.to_node)
+	d.edge_curve = curve
+	if (d.kind == MM_FLOW):
+		mm_flow_link_stroke(s, e, path_start)
+		int end_dx = 0 - dx
+		int end_dy = 0 - dy
+		if (e.from_node == e.to_node): end_dx = dx
+		mm_flow_marker(s, ax, ay, dx, dy, e.left_marker)
+		mm_flow_marker(s, bx, by, end_dx, end_dy, e.right_marker)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -415,6 +539,14 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 			mm_render_groups(d, s, i)
 			continue
 		int style_start = s.items.length
+		if (mm_flow_collapsed(d, i)):
+			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_text_block* collapsed = mm_node_text(d, n)
+			mm_text_draw(s, collapsed, b.x + b.w / 2, b.y + (b.h - collapsed.height) / 2, 1)
+			mm_text_block_free(collapsed)
+			mm_flow_link_scene(s, n, style_start)
+			mm_style_node(d, s, n, style_start)
+			continue
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
 		# Concurrent state regions are unlabeled dashed partitions of their composite.
 		if (d.kind == MM_STATE && index_of(n.id, c"@region:") == 0):
@@ -428,12 +560,17 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 			mm_text(s, title_x, b.y + 12, prefix.data)
 			title_x = title_x + mm_text_width(prefix.data, 0)
 			string_free(prefix)
-		int extra = mm_label(s, title_x, b.y + 12, n.label, 0, 0) - MM_TEXT_LINE
+		int previous = mm_node_font_push(d, n)
+		mm_text_block* title = mm_node_text(d, n)
+		mm_text_draw(s, title, title_x, b.y + 12, 0)
+		int extra = title.height - MM_TEXT_LINE
+		mm_text_block_free(title)
+		mm_text_set_size(previous)
 		mm_line(s, b.x, b.y + 40 + extra, b.x + b.w, b.y + 40 + extra, 0)
 		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
-void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
+void mm_render_class(mm_document* d, mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 	int y = b.y + 40 + extra
 	if (n.annotation[0] != 0):
 		string_builder* text = string_from(c"<<")
@@ -447,112 +584,173 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 		int count = 0
 		for mm_member* m in n.members:
 			if (m.method == method):
-				mm_text(s, b.x + 12, y + 5, m.text)
+				if (d.kind == MM_CLASS):
+					# Static members are underlined, abstract members italic, as upstream.
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					mm_text_styled(s, b.x + 12, y + 5, shown, style)
+					if (classifier == MM_MEMBER_STATIC): mm_line(s, b.x + 12, y + 5 + MM_TEXT_LINE - 1, b.x + 12 + mm_text_width(shown, 0), y + 5 + MM_TEXT_LINE - 1, 0)
+					free(shown)
+				else:
+					char* rich = mm_member_markup(d.kind == MM_REQUIREMENT, m)
+					if (rich != 0):
+						mm_label(s, b.x + 12, y + 5, rich, 0, 0)
+						free(rich)
+						int rich_width = 0
+						y = y + mm_member_extra(d.kind == MM_REQUIREMENT, m, &rich_width)
+					else: mm_text(s, b.x + 12, y + 5, m.text)
 				y = y + 26
 				count = count + 1
 		if (count == 0): y = y + 18
 		if (method == 0): mm_line(s, b.x, y, b.x + b.w, y, 0)
+
+# One node's shape, label and compartments, at the node's own font size.
+void mm_render_node(mm_document* d, mm_scene* s, int i):
+	mm_node* n = d.nodes[i]
+	mm_bounds* b = s.nodes[i]
+	int style_start = s.items.length
+	if (d.kind == MM_FLOW && n.shape >= MM_FLOW_CYLINDER):
+		if (mm_flow_shape_draw(s, n, b) == 0):
+			mm_text_block* inner = mm_node_text(d, n)
+			mm_text_draw(s, inner, b.x + b.w / 2, b.y + (b.h - inner.height) / 2, 1)
+			mm_text_block_free(inner)
+		mm_flow_link_scene(s, n, style_start)
+		mm_style_node(d, s, n, style_start)
+		return
+	if (d.kind == MM_STATE && n.shape >= 4):
+		if (n.shape == 6): mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 2, c"")
+		else:
+			mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 4, c"")
+			if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
+		mm_style_node(d, s, n, style_start)
+		return
+	if (n.shape == 28):
+		int cx = b.x + b.w / 2
+		mm_draw(s, MM_CIRCLE, cx - 12, b.y + 4, cx + 12, b.y + 28, 0, c"")
+		mm_label(s, b.x + b.w / 2, b.y + 44, n.label, mm_label_wrap(d, n), 1)
+		mm_style_node(d, s, n, style_start)
+		return
+	if (d.kind == MM_USECASE && mm_uc_node_draw(d, s, n, b)): return
+	if (n.shape == 12 || n.shape == 13):
+		mm_arch_icon(s, n, b)
+		if (n.shape == 12): mm_label(s, b.x + b.w / 2, b.y + 86, n.label, mm_label_wrap(d, n), 1)
+		mm_style_node(d, s, n, style_start)
+		return
+	if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): mm_shape_draw(s, n.shape, b.x, b.y, b.w, b.h)
+	else if (n.shape == 21 || n.shape == 22):
+		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		mm_primitive* box = s.items[s.items.length - 1]
+		if (n.shape == 21): box.dashed = 3
+		else:
+			mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
+			mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
+	else if (n.shape >= 23 && n.shape <= 27):
+		mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		mm_primitive* polygon = s.items[s.items.length - 1]
+		if (n.shape == 23): polygon.points = list[int]{b.x + 20, b.y, b.x + b.w - 20, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 20, b.y + b.h, b.x + 20, b.y + b.h, b.x, b.y + b.h / 2}
+		else:
+			int tl = 0
+			int tr = 0
+			int bl = 0
+			int br = 0
+			if (n.shape == 24 || n.shape == 26): tl = 20
+			if (n.shape == 25 || n.shape == 26): tr = 20
+			if (n.shape == 25 || n.shape == 27): bl = 20
+			if (n.shape == 24 || n.shape == 27): br = 20
+			polygon.points = list[int]{b.x + tl, b.y, b.x + b.w - tr, b.y, b.x + b.w - br, b.y + b.h, b.x + bl, b.y + b.h}
+	else if (n.shape == 3):
+		mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		mm_primitive* diamond = s.items[s.items.length - 1]
+		diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
+	else if (d.kind == MM_AGENT && n.shape >= 17):
+		if (n.shape == 17 || n.shape == 19):
+			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			if (n.shape == 17):
+				mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
+				mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
+			else:
+				mm_line(s, b.x + 8, b.y + b.h - 8, b.x + b.w - 8, b.y + b.h - 8, 0)
+		else:
+			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* polygon = s.items[s.items.length - 1]
+			if (n.shape == 18): polygon.points = list[int]{b.x + 16, b.y, b.x + b.w, b.y, b.x + b.w - 16, b.y + b.h, b.x, b.y + b.h}
+			else: polygon.points = list[int]{b.x + 16, b.y, b.x + b.w - 16, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 16, b.y + b.h, b.x + 16, b.y + b.h, b.x, b.y + b.h / 2}
+	else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+	else if (n.shape == 11):
+		mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		mm_primitive* oval = s.items[s.items.length - 1]
+		oval.points = new list[int]
+		for i in range(48):
+			float angle = cast(float, i) * 6.2831853 / 48.0
+			oval.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * cast(float, b.w) / 2.0))
+			oval.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * cast(float, b.h) / 2.0))
+	else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
+	mm_text_block* title = mm_node_text(d, n)
+	int extra = title.height - MM_TEXT_LINE
+	int title_y = b.y + (b.h - title.height) / 2
+	if (n.shape >= 100 && n.shape <= MM_SHAPE_LAST): title_y = b.y + mm_shape_label_y(n.shape, b.h, title.height)
+	if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
+	if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
+	mm_text_block_free(title)
+	if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(d, s, n, b, extra)
+	if (d.kind == MM_ER):
+		int y = b.y + 40 + extra
+		for j in range(n.attributes.length):
+			mm_attribute* a = n.attributes[j]
+			int height = mm_attribute_height(a)
+			# Themed rows alternate attributeBackgroundColorOdd / Even.
+			if (d.theme_values != 0):
+				int row = s.items.length
+				mm_draw(s, MM_BOX, b.x + 1, y + 1, b.x + b.w - 1, y + height - 1, 0, c"")
+				mm_style_role(s, row, MM_ROLE_ROW, j)
+				mm_primitive* fill = s.items[row]
+				fill.style.mask = MM_STYLE_STROKE
+				fill.style.stroke = -1
+			mm_line(s, b.x, y, b.x + b.w, y, 0)
+			mm_attribute_draw(s, a, b.x + 12, y + 5)
+			y = y + height
+	mm_flow_link_scene(s, n, style_start)
+	mm_style_node(d, s, n, style_start)
 
 # Rebuild primitives from existing bounds; pointer-motion previews skip parsing and layout.
 void mm_render_graph(mm_document* d, mm_scene* s):
 	mm_render_groups(d, s, -1)
 	for mm_edge* e in d.edges:
 		int start = s.items.length
-		mm_render_edge(d, s, e)
+		int from = mm_flow_visible_node(d, e.from_node)
+		int to = mm_flow_visible_node(d, e.to_node)
+		if (from == e.from_node && to == e.to_node): mm_render_edge(d, s, e)
+		else if (from != to):
+			int original_from = e.from_node
+			int original_to = e.to_node
+			e.from_node = from
+			e.to_node = to
+			mm_render_edge(d, s, e)
+			e.from_node = original_from
+			e.to_node = original_to
 		mm_style_edge(d, s, e, start)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
-		mm_bounds* b = s.nodes[i]
-		if (n.group): continue
-		int style_start = s.items.length
-		if (d.kind == MM_STATE && n.shape >= 4):
-			if (n.shape == 6): mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 2, c"")
-			else:
-				mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 4, c"")
-				if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
-			mm_style_node(d, s, n, style_start)
-			continue
-		if (n.shape == 28):
-			int cx = b.x + b.w / 2
-			mm_draw(s, MM_CIRCLE, cx - 12, b.y + 4, cx + 12, b.y + 28, 0, c"")
-			mm_label(s, b.x + b.w / 2, b.y + 44, n.label, mm_label_wrap(d, n), 1)
-			mm_style_node(d, s, n, style_start)
-			continue
-		if (d.kind == MM_USECASE && mm_uc_node_draw(d, s, n, b)): continue
-		if (n.shape == 12 || n.shape == 13):
-			mm_arch_icon(s, n, b)
-			if (n.shape == 12): mm_label(s, b.x + b.w / 2, b.y + 86, n.label, mm_label_wrap(d, n), 1)
-			mm_style_node(d, s, n, style_start)
-			continue
-		if (n.shape == 21 || n.shape == 22):
-			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-			mm_primitive* box = s.items[s.items.length - 1]
-			if (n.shape == 21): box.dashed = 3
-			else:
-				mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
-				mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
-		else if (n.shape >= 23 && n.shape <= 27):
-			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-			mm_primitive* polygon = s.items[s.items.length - 1]
-			if (n.shape == 23): polygon.points = list[int]{b.x + 20, b.y, b.x + b.w - 20, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 20, b.y + b.h, b.x + 20, b.y + b.h, b.x, b.y + b.h / 2}
-			else:
-				int tl = 0
-				int tr = 0
-				int bl = 0
-				int br = 0
-				if (n.shape == 24 || n.shape == 26): tl = 20
-				if (n.shape == 25 || n.shape == 26): tr = 20
-				if (n.shape == 25 || n.shape == 27): bl = 20
-				if (n.shape == 24 || n.shape == 27): br = 20
-				polygon.points = list[int]{b.x + tl, b.y, b.x + b.w - tr, b.y, b.x + b.w - br, b.y + b.h, b.x + bl, b.y + b.h}
-		else if (n.shape == 3):
-			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-			mm_primitive* diamond = s.items[s.items.length - 1]
-			diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
-		else if (d.kind == MM_AGENT && n.shape >= 17):
-			if (n.shape == 17 || n.shape == 19):
-				mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-				if (n.shape == 17):
-					mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
-					mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
-				else:
-					mm_line(s, b.x + 8, b.y + b.h - 8, b.x + b.w - 8, b.y + b.h - 8, 0)
-			else:
-				mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-				mm_primitive* polygon = s.items[s.items.length - 1]
-				if (n.shape == 18): polygon.points = list[int]{b.x + 16, b.y, b.x + b.w, b.y, b.x + b.w - 16, b.y + b.h, b.x, b.y + b.h}
-				else: polygon.points = list[int]{b.x + 16, b.y, b.x + b.w - 16, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 16, b.y + b.h, b.x + 16, b.y + b.h, b.x, b.y + b.h / 2}
-		else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-		else if (n.shape == 11):
-			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-			mm_primitive* oval = s.items[s.items.length - 1]
-			oval.points = new list[int]
-			for i in range(48):
-				float angle = cast(float, i) * 6.2831853 / 48.0
-				oval.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * cast(float, b.w) / 2.0))
-				oval.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * cast(float, b.h) / 2.0))
-		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
-		mm_text_block* title = mm_node_text(d, n)
-		int extra = title.height - MM_TEXT_LINE
-		int title_y = b.y + (b.h - title.height) / 2
-		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
-		if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
-		mm_text_block_free(title)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra)
-		if (d.kind == MM_ER):
-			for j in range(n.attributes.length):
-				int y = b.y + 40 + extra + j * 26
-				mm_line(s, b.x, y, b.x + b.w, y, 0)
-				char* text = mm_attribute_text(n.attributes[j])
-				mm_text(s, b.x + 12, y + 5, text)
-				free(text)
-		mm_style_node(d, s, n, style_start)
+		if (n.group || mm_flow_visible_node(d, i) != i): continue
+		int previous = mm_node_font_push(d, n)
+		mm_render_node(d, s, i)
+		mm_text_set_size(previous)
 	if (d.kind == MM_CLASS || d.kind == MM_STATE): mm_uml_notes(d, s)
 
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
 	if (d.error != 0): return 0
+	if (mm_agent_has_collapsed(d)):
+		list[int] slots = new list[int]
+		mm_document* view = mm_agent_project(d, slots)
+		mm_scene* folded = mm_render_diagram(view)
+		if (folded != 0): mm_agent_unproject(folded, slots)
+		mm_document_free(view)
+		__w_list_free(cast(__w_list*, slots))
+		return folded
 	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
 	if (d.kind == MM_C4): return mm_c4_render(d)
@@ -600,9 +798,12 @@ void mm_render_metadata(mm_document* d, mm_scene* s):
 	s.accessibility_description = strclone(d.accessibility_description)
 	mm_style_scene(d, s)
 
+# fontSize configuration scales every label measured and drawn for d.
 mm_scene* mm_render(mm_document* d):
+	int previous = mm_text_set_size(d.font_size)
 	mm_scene* s = mm_render_diagram(d)
 	if (s != 0): mm_render_metadata(d, s)
+	mm_text_set_size(previous)
 	return s
 
 # Scene bounds use final coordinates, including the optional title gutter.
@@ -610,6 +811,9 @@ void mm_render_graph_refresh(mm_document* d, mm_scene* s):
 	for mm_primitive* p in s.items:
 		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
 		free(p.text)
+		if (p.href != 0): free(p.href)
+		if (p.href_target != 0): free(p.href_target)
+		if (p.tooltip != 0): free(p.tooltip)
 		free(p)
 	while (s.items.length > 0): s.items.pop()
 	free(s.accessibility_title)
@@ -623,5 +827,10 @@ void mm_render_graph_refresh(mm_document* d, mm_scene* s):
 	s.has_title = 0
 	s.has_background = 0
 	s.background = 0
+	if (s.font_family != 0): free(s.font_family)
+	s.font_family = 0
+	s.has_effects = 0
+	int previous = mm_text_set_size(d.font_size)
 	mm_render_graph(d, s)
 	mm_render_metadata(d, s)
+	mm_text_set_size(previous)

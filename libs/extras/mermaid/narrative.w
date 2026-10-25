@@ -22,9 +22,22 @@ char* mm_n_trim(char* text):
 	while (b > a && (text[b - 1] == 32 || text[b - 1] == 9 || text[b - 1] == 13)): b = b - 1
 	return str_copy_range(text, a, b)
 
+# Sequence entity codes (`#9829;`, `#infin;`) end in a semicolon that is not a separator.
+int mm_n_entity_semicolon(mm_parser* p):
+	if (p.doc.kind != MM_SEQUENCE || mm_peek(p) != ';'): return 0
+	int at = p.pos - 1
+	int digits = 0
+	int letters = 0
+	while (at >= 0 && digits + letters < 12 && isalnum(p.doc.source[at] & 255)):
+		if (isdigit(p.doc.source[at] & 255)): digits = digits + 1
+		else: letters = letters + 1
+		at = at - 1
+	if (at < 0 || p.doc.source[at] != '#' || digits + letters == 0): return 0
+	return digits == 0 || letters == 0
+
 char* mm_n_line(mm_parser* p):
 	int start = p.pos
-	while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != ';'): p.pos = p.pos + 1
+	while (mm_peek(p) != 0 && mm_peek(p) != 10 && (mm_peek(p) != ';' || mm_n_entity_semicolon(p))): p.pos = p.pos + 1
 	char* raw = str_copy_range(p.doc.source, start, p.pos)
 	char* result = mm_n_trim(raw)
 	free(raw)
@@ -67,6 +80,74 @@ int mm_n_actor(mm_parser* p, char* name):
 			return -1
 	return mm_add_node(p.doc, name, p.pos)
 
+# Named entity codes accepted in sequence text; -1 when unknown.
+int mm_n_entity_named(char* name):
+	if (strcmp(name, c"amp") == 0): return 38
+	if (strcmp(name, c"lt") == 0): return 60
+	if (strcmp(name, c"gt") == 0): return 62
+	if (strcmp(name, c"quot") == 0): return 34
+	if (strcmp(name, c"apos") == 0): return 39
+	if (strcmp(name, c"nbsp") == 0): return 160
+	if (strcmp(name, c"copy") == 0): return 169
+	if (strcmp(name, c"reg") == 0): return 174
+	if (strcmp(name, c"deg") == 0): return 176
+	if (strcmp(name, c"plusmn") == 0): return 177
+	if (strcmp(name, c"micro") == 0): return 181
+	if (strcmp(name, c"middot") == 0): return 183
+	if (strcmp(name, c"times") == 0): return 215
+	if (strcmp(name, c"divide") == 0): return 247
+	if (strcmp(name, c"ndash") == 0): return 8211
+	if (strcmp(name, c"mdash") == 0): return 8212
+	if (strcmp(name, c"hellip") == 0): return 8230
+	if (strcmp(name, c"euro") == 0): return 8364
+	if (strcmp(name, c"larr") == 0): return 8592
+	if (strcmp(name, c"uarr") == 0): return 8593
+	if (strcmp(name, c"rarr") == 0): return 8594
+	if (strcmp(name, c"darr") == 0): return 8595
+	if (strcmp(name, c"harr") == 0): return 8596
+	if (strcmp(name, c"infin") == 0): return 8734
+	if (strcmp(name, c"ne") == 0): return 8800
+	if (strcmp(name, c"le") == 0): return 8804
+	if (strcmp(name, c"ge") == 0): return 8805
+	if (strcmp(name, c"hearts") == 0): return 9829
+	return -1
+
+# Owned copy of sequence text with `#NNN;` and named `#name;` codes decoded to
+# UTF-8. Unknown names, control characters and invalid code points stay literal.
+char* mm_n_entities(char* text):
+	string_builder* out = string_new()
+	int i = 0
+	while (text[i] != 0):
+		if (text[i] == '#'):
+			int j = i + 1
+			int numeric = isdigit(text[j] & 255)
+			while (j - i <= 12 && text[j] != 0 && ((numeric && isdigit(text[j] & 255)) || (numeric == 0 && isalpha(text[j] & 255)))): j = j + 1
+			if (text[j] == ';' && j > i + 1):
+				int code = -1
+				if (numeric):
+					code = 0
+					for k in range(i + 1, j):
+						if (code < 1114112): code = code * 10 + text[k] - '0'
+				else:
+					char* name = str_copy_range(text, i + 1, j)
+					code = mm_n_entity_named(name)
+					free(name)
+				if (code >= 32 && code < 1114112 && (code < 55296 || code > 57343) && code != 127):
+					char[8] bytes
+					int length = utf8_encode(&bytes[0], code)
+					string_append_bytes(out, &bytes[0], length)
+					i = j + 1
+					continue
+		string_append_char(out, text[i])
+		i = i + 1
+	char* result = out.data
+	free(out)
+	return result
+
+char* mm_n_text(mm_parser* p, char* text):
+	if (p.doc.kind == MM_SEQUENCE): return mm_n_entities(text)
+	return strclone(text)
+
 mm_narrative_event* mm_n_event(mm_parser* p, int kind, char* label, char* section):
 	if (p.doc.narrative.length >= MM_MAX_ITEMS):
 		mm_error(p.doc, p.pos, c"narrative event limit exceeded")
@@ -82,21 +163,149 @@ mm_narrative_event* mm_n_event(mm_parser* p, int kind, char* label, char* sectio
 	p.doc.narrative.push(event)
 	return event
 
+char* mm_n_json_string(char* text, list[int] cursor);
+
+# Participant object types of `participant X@{ "type": ... }`, as node shapes; -1 when unknown.
+int mm_n_participant_type(char* name):
+	if (strcmp(name, c"participant") == 0): return 0
+	if (strcmp(name, c"actor") == 0): return 1
+	if (strcmp(name, c"boundary") == 0): return 2
+	if (strcmp(name, c"control") == 0): return 3
+	if (strcmp(name, c"entity") == 0): return 4
+	if (strcmp(name, c"database") == 0): return 5
+	if (strcmp(name, c"collections") == 0): return 6
+	if (strcmp(name, c"queue") == 0): return 7
+	return -1
+
+# Index just past the `}` closing the object that starts at text[start] == '{', or -1.
+int mm_n_object_end(char* text, int start):
+	int quoted = 0
+	int i = start
+	while (text[i] != 0):
+		if (quoted && text[i] == 92 && text[i + 1] != 0): i = i + 1
+		else if (text[i] == '"'): quoted = 1 - quoted
+		else if (quoted == 0 && text[i] == '}'): return i + 1
+		i = i + 1
+	return -1
+
+# Calls back for each `"key": "value"` pair of a flat JSON object of strings.
+# Returns 0 for anything else; pairs before the error have been delivered.
+int mm_n_object_pairs(mm_parser* p, char* body, mm_node* node, int kind):
+	list[int] cursor = list[int]{1}
+	int valid = body[0] == '{'
+	int done = 0
+	while (body[cursor[0]] == ' ' || body[cursor[0]] == 9): cursor[0] = cursor[0] + 1
+	if (valid && body[cursor[0]] == '}'): done = 1
+	while (valid && done == 0 && p.doc.error == 0):
+		char* key = mm_n_json_string(body, cursor)
+		if (key == 0):
+			valid = 0
+			continue
+		while (body[cursor[0]] == ' ' || body[cursor[0]] == 9): cursor[0] = cursor[0] + 1
+		char* value = 0
+		if (body[cursor[0]] == ':'):
+			cursor[0] = cursor[0] + 1
+			value = mm_n_json_string(body, cursor)
+		if (value == 0): valid = 0
+		else if (kind == 0):
+			if (strcmp(key, c"type") == 0):
+				int shape = mm_n_participant_type(value)
+				if (shape < 0): mm_error(p.doc, p.pos, c"unsupported participant type; supported: participant, actor, boundary, control, entity, database, collections, queue")
+				else: node.shape = shape
+			else if (strcmp(key, c"alias") == 0):
+				free(node.label)
+				node.label = mm_n_entities(value)
+				if (node.label[0] == 0): mm_error(p.doc, p.pos, c"empty participant alias")
+			else: mm_error(p.doc, p.pos, c"unsupported participant object key; supported: type, alias")
+		else:
+			if (node.members.length >= 64 || p.doc.attribute_count >= 4096): mm_error(p.doc, p.pos, c"participant property limit exceeded")
+			else:
+				string_builder* text = string_from(key)
+				string_append(text, c": ")
+				string_append(text, value)
+				mm_member* member = new mm_member()
+				member.text = strclone(text.data)
+				string_free(text)
+				node.members.push(member)
+				p.doc.attribute_count = p.doc.attribute_count + 1
+		free(key)
+		if (value != 0): free(value)
+		while (body[cursor[0]] == ' ' || body[cursor[0]] == 9): cursor[0] = cursor[0] + 1
+		if (body[cursor[0]] == ','): cursor[0] = cursor[0] + 1
+		else if (body[cursor[0]] == '}'): done = 1
+		else: valid = 0
+	if (valid && done && body[cursor[0] + 1] != 0): valid = 0
+	__w_list_free(cast(__w_list*, cursor))
+	return valid
+
+# `participant ID[@{ "type": ..., "alias": ... }] [as Alias]`; an `as` alias wins.
 int mm_n_declare(mm_parser* p, char* text, int actor):
-	int split = index_of(text, c" as ")
+	int object = -1
+	if (p.doc.kind == MM_SEQUENCE): object = index_of(text, c"@{")
+	int object_end = -1
+	if (object >= 0):
+		object_end = mm_n_object_end(text, object + 1)
+		if (object_end < 0):
+			mm_error(p.doc, p.pos, c"unterminated participant object")
+			return -1
+	int search = 0
+	if (object_end >= 0): search = object_end
+	int split = index_of(text + search, c" as ")
+	if (split >= 0): split = split + search
 	char* id
-	if (split >= 0): id = mm_n_part(text, 0, split)
+	if (object >= 0): id = mm_n_part(text, 0, object)
+	else if (split >= 0): id = mm_n_part(text, 0, split)
 	else: id = mm_n_trim(text)
 	int index = mm_n_actor(p, id)
 	free(id)
 	if (index < 0): return -1
 	mm_node* node = p.doc.nodes[index]
 	node.shape = actor
+	if (object >= 0):
+		char* rest = mm_n_part(text, object_end, strlen(text))
+		if (rest[0] != 0 && mm_n_prefix(rest, c"as ") == 0): mm_error(p.doc, p.pos, c"expected as or end of participant declaration")
+		free(rest)
+		char* body = str_copy_range(text, object + 1, object_end)
+		if (p.doc.error == 0 && mm_n_object_pairs(p, body, node, 0) == 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"participant object requires a JSON object of strings")
+		free(body)
 	if (split >= 0):
 		free(node.label)
-		node.label = mm_n_part(text, split + 4, strlen(text))
+		char* alias = mm_n_part(text, split + 4, strlen(text))
+		node.label = mm_n_text(p, alias)
+		free(alias)
 		if (node.label[0] == 0): mm_error(p.doc, p.pos, c"empty participant alias")
 	return index
+
+# `properties A: {"key": "value"}` and `details A: text` are kept as participant
+# members ("key: value"; details as "details: text"). Upstream resolves details
+# from a DOM element and fetches property icons; neither happens natively.
+void mm_n_properties(mm_parser* p, char* text, int details):
+	int colon = index_of(text, c":")
+	if (colon < 0):
+		mm_error(p.doc, p.pos, c"participant properties require a colon")
+		return
+	char* id = mm_n_part(text, 0, colon)
+	int index = mm_find_node(p.doc, id)
+	free(id)
+	if (index < 0):
+		mm_error(p.doc, p.pos, c"properties require an existing participant")
+		return
+	mm_node* node = p.doc.nodes[index]
+	char* body = mm_n_trim(text + colon + 1)
+	if (details):
+		if (body[0] == 0): mm_error(p.doc, p.pos, c"participant details require text")
+		else if (node.members.length >= 64 || p.doc.attribute_count >= 4096): mm_error(p.doc, p.pos, c"participant property limit exceeded")
+		else:
+			string_builder* line = string_from(c"details: ")
+			string_append(line, body)
+			mm_member* member = new mm_member()
+			member.text = strclone(line.data)
+			member.method = 1
+			string_free(line)
+			node.members.push(member)
+			p.doc.attribute_count = p.doc.attribute_count + 1
+	else if (mm_n_object_pairs(p, body, node, 1) == 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"participant properties require a JSON object of strings")
+	free(body)
 
 void mm_n_activation(mm_parser* p, int actor, int active):
 	if (actor < 0): return
@@ -121,6 +330,10 @@ void mm_n_message(mm_parser* p, char* text, int zen):
 	while (mm_id_char(text[at] & 255)): at = at + 1
 	char* left = mm_n_part(text, 0, at)
 	while (text[at] == 32 || text[at] == 9): at = at + 1
+	int central = 0
+	if (zen == 0 && text[at] == '(' && text[at + 1] == ')'):
+		central = 1
+		at = at + 2
 	char* arrow = strclone(c"")
 	list[char*] arrows = list[char*]{c"<<-->>", c"<<->>", c"-->>", c"->>", c"-->", c"--x", c"--)", c"->", c"-x", c"-)"}
 	for char* candidate in arrows:
@@ -148,6 +361,10 @@ void mm_n_message(mm_parser* p, char* text, int zen):
 	else if (text[at] == '-'):
 		activate = -1
 		at = at + 1
+	while (text[at] == 32 || text[at] == 9): at = at + 1
+	if (zen == 0 && text[at] == '(' && text[at + 1] == ')'):
+		central = central | 2
+		at = at + 2
 	char* right = mm_n_part(text, at, colon)
 	int from = mm_n_actor(p, left)
 	int to = mm_n_actor(p, right)
@@ -155,7 +372,9 @@ void mm_n_message(mm_parser* p, char* text, int zen):
 	free(right)
 	if (type < 0): mm_error(p.doc, p.pos, c"unsupported sequence message arrow")
 	if (p.doc.error != 0): return
-	char* label = mm_n_part(text, colon + 1, strlen(text))
+	char* part = mm_n_part(text, colon + 1, strlen(text))
+	char* label = mm_n_text(p, part)
+	free(part)
 	mm_narrative_event* event = mm_n_event(p, MM_N_MESSAGE, label, c"")
 	free(label)
 	if (event == 0): return
@@ -163,6 +382,7 @@ void mm_n_message(mm_parser* p, char* text, int zen):
 	event.to_node = to
 	event.arrow = type
 	event.dashed = dashed
+	event.central = central
 	if (activate == 1): mm_n_activation(p, to, 1)
 	if (activate == -1): mm_n_activation(p, from, 0)
 
@@ -198,7 +418,9 @@ void mm_n_note(mm_parser* p, char* text):
 	free(left)
 	free(right)
 	free(actors)
-	char* label = mm_n_part(text, colon + 1, strlen(text))
+	char* part = mm_n_part(text, colon + 1, strlen(text))
+	char* label = mm_n_text(p, part)
+	free(part)
 	mm_narrative_event* event = mm_n_event(p, MM_N_NOTE, label, c"")
 	free(label)
 	if (event == 0): return
@@ -441,6 +663,8 @@ void mm_n_sequence(mm_parser* p, char* text, list[int] blocks, list[int] numberi
 	else if (mm_n_prefix(text, c"participant ")): mm_n_declare(p, text + 12, 0)
 	else if (mm_n_prefix(text, c"link ")): mm_n_link(p, text + 5, 0)
 	else if (mm_n_prefix(text, c"links ")): mm_n_link(p, text + 6, 1)
+	else if (mm_n_prefix(text, c"properties ")): mm_n_properties(p, text + 11, 0)
+	else if (mm_n_prefix(text, c"details ")): mm_n_properties(p, text + 8, 1)
 	else if (mm_n_prefix(text, c"actor ")): mm_n_declare(p, text + 6, 1)
 	else if (mm_n_prefix(text, c"create ")): mm_n_lifecycle(p, text + 7, 1)
 	else if (mm_n_prefix(text, c"destroy ")): mm_n_lifecycle(p, text + 8, 0)
@@ -875,6 +1099,8 @@ int mm_n_gantt_directive(mm_parser* p, char* text):
 
 void mm_n_gantt_finish_settings(mm_parser* p):
 	mm_gantt_settings* g = mm_n_gantt_settings(p.doc)
+	char* configured = mm_config_value(p.doc, c"gantt.axisFormat")
+	if (configured != 0 && (configured[0] == 0 || mm_n_axis_valid(configured) == 0)): mm_error(p.doc, 0, c"unsupported Gantt axisFormat")
 	if (g.weekends): g.weekday_mask = g.weekday_mask | (1 << g.weekend_start) | (1 << ((g.weekend_start + 1) % 7))
 	for mm_node* node in p.doc.nodes:
 		if (node.metadata.length == 0): continue
@@ -1067,11 +1293,20 @@ int mm_n_method(char* text):
 		i = i + 1
 	return 0
 
-# The innermost enclosing participant that is executing a call, or External.
+# Per-parse ZenUML state, reset by mm_narrative_body: the `@Starter(Name)`
+# participant (-1 = External), a pending `@return`/`@reply` annotator, and the
+# `//` comment lines waiting for the next message or fragment.
+int mm_n_zen_starter
+int mm_n_zen_return
+string_builder* mm_n_zen_comment
+
+# The innermost enclosing participant that is executing a call, else the
+# `@Starter` participant, else External.
 int mm_n_zen_sender(mm_parser* p, list[int] callers):
 	int sender = -1
 	for int actor in callers:
 		if (actor >= 0): sender = actor
+	if (sender < 0 && mm_n_zen_starter >= 0): sender = mm_n_zen_starter
 	if (sender < 0):
 		sender = mm_n_actor(p, c"__external")
 		if (sender >= 0):
@@ -1118,6 +1353,8 @@ void mm_n_zen_new(mm_parser* p, char* text, int nested, list[int] blocks, list[i
 	int length = strlen(text) - nested
 	char* call = mm_n_part(text, 4, length)
 	int open = index_of(call, c"(")
+	# `new A1` creates without arguments.
+	if (open < 0 && mm_n_method(call)): open = strlen(call)
 	if (open <= 0 || mm_n_method(call) == 0):
 		mm_error(p.doc, p.pos, c"ZenUML new requires a participant and balanced arguments")
 		free(call)
@@ -1184,6 +1421,20 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 			if (actor >= 0): mm_n_activation(p, actor, 0)
 			else: mm_n_event(p, MM_N_END, c"", c"")
 		return
+	if (strcmp(text, c"@return") == 0 || strcmp(text, c"@reply") == 0):
+		mm_n_zen_return = 1
+		return
+	if (mm_n_prefix(text, c"@Starter(")):
+		int length = strlen(text)
+		char* name = 0
+		if (text[length - 1] == ')'): name = mm_n_part(text, 9, length - 1)
+		if (name == 0 || name[0] == 0 || mm_n_zen_starter >= 0): mm_error(p.doc, p.pos, c"ZenUML @Starter takes one participant, once")
+		else: mm_n_zen_starter = mm_n_actor(p, name)
+		if (name != 0): free(name)
+		return
+	if (mm_n_zen_return && (index_of(text, c"->") < 0 || index_of(text, c":") < 0)):
+		mm_error(p.doc, p.pos, c"ZenUML @return must precede an async message")
+		return
 	if (text[0] == '@'):
 		int at = 1
 		while (mm_id_char(text[at] & 255)): at = at + 1
@@ -1197,6 +1448,13 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 			mm_node* node = p.doc.nodes[index]
 			free(node.annotation)
 			node.annotation = strclone(annotation)
+			# Annotators with a UML symbol draw it; others keep the stereotype line.
+			if (strcmp(annotation, c"Boundary") == 0): node.shape = 2
+			else if (strcmp(annotation, c"Control") == 0): node.shape = 3
+			else if (strcmp(annotation, c"Entity") == 0): node.shape = 4
+			else if (strcmp(annotation, c"Database") == 0): node.shape = 5
+			else if (strcmp(annotation, c"Collections") == 0 || strcmp(annotation, c"Collection") == 0): node.shape = 6
+			else if (strcmp(annotation, c"Queue") == 0): node.shape = 7
 		free(annotation)
 		return
 	if (mm_n_prefix(text, c"return ")):
@@ -1227,7 +1485,14 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 			free(label)
 		return
 	if (index_of(text, c"->") >= 0 && index_of(text, c":") >= 0):
+		int first = p.doc.narrative.length
 		mm_n_message(p, text, 1)
+		if (mm_n_zen_return && p.doc.narrative.length > first):
+			# `@return` turns the async message into a dashed reply.
+			mm_narrative_event* reply = p.doc.narrative[first]
+			reply.dashed = 1
+			reply.arrow = 1
+		mm_n_zen_return = 0
 		return
 	char* reply = strclone(c"")
 	int assign = mm_n_zen_assignment(text)
@@ -1282,7 +1547,16 @@ void mm_n_zen(mm_parser* p, char* text, list[int] blocks, list[int] callers, lis
 # Splits inline brace bodies (`A.m() { B.n() }`) into the line-oriented
 # statements above. Braces inside quotes, arguments or async labels stay text.
 void mm_n_zen_line(mm_parser* p, char* text, list[int] blocks, list[int] callers, list[char*] replies):
-	if (mm_n_prefix(text, c"//")): return
+	if (mm_n_prefix(text, c"//")):
+		# Comments render above the next message or fragment (Markdown emphasis kept).
+		char* comment = mm_n_trim(text + 2)
+		if (mm_n_zen_comment.length + strlen(comment) > 4096): mm_error(p.doc, p.pos, c"ZenUML comment limit exceeded")
+		else if (comment[0] != 0):
+			if (mm_n_zen_comment.length != 0): string_append_char(mm_n_zen_comment, 10)
+			string_append(mm_n_zen_comment, comment)
+		free(comment)
+		return
+	int first = p.doc.narrative.length
 	int length = strlen(text)
 	int start = 0
 	int depth = 0
@@ -1320,6 +1594,17 @@ void mm_n_zen_line(mm_parser* p, char* text, list[int] blocks, list[int] callers
 	char* tail = mm_n_part(text, start, length)
 	if (tail[0] != 0): mm_n_zen(p, tail, blocks, callers, replies)
 	free(tail)
+	if (mm_n_zen_comment.length == 0): return
+	if (p.doc.narrative.length == first && (strcmp(text, c"@return") == 0 || strcmp(text, c"@reply") == 0)): return
+	# Comments elsewhere (on declarations, closing braces) are dropped, as upstream.
+	for i in range(first, p.doc.narrative.length):
+		mm_narrative_event* event = p.doc.narrative[i]
+		if (event.kind == MM_N_MESSAGE || event.kind == MM_N_BLOCK):
+			free(event.detail)
+			event.detail = strclone(mm_n_zen_comment.data)
+			break
+	string_free(mm_n_zen_comment)
+	mm_n_zen_comment = string_new()
 
 void mm_narrative_body(mm_parser* p):
 	char* section = strclone(c"")
@@ -1328,6 +1613,9 @@ void mm_narrative_body(mm_parser* p):
 	list[char*] replies = new list[char*]
 	list[mm_n_schedule*] schedules = new list[mm_n_schedule*]
 	list[int] numbering = list[int]{0, 1, 1}
+	mm_n_zen_starter = -1
+	mm_n_zen_return = 0
+	mm_n_zen_comment = string_new()
 	while (mm_peek(p) != 0 && p.doc.error == 0):
 		if (mm_metadata(p)):
 			mm_separators(p)
@@ -1357,6 +1645,9 @@ void mm_narrative_body(mm_parser* p):
 		free(text)
 		mm_separators(p)
 	if (blocks.length != 0): mm_error(p.doc, p.pos, c"unterminated narrative fragment or synchronous call")
+	if (p.doc.error == 0 && mm_n_zen_return): mm_error(p.doc, p.pos, c"ZenUML @return must precede an async message")
+	string_free(mm_n_zen_comment)
+	mm_n_zen_comment = 0
 	if (p.doc.error == 0 && p.doc.kind == MM_SEQUENCE): mm_n_validate_lifetimes(p)
 	if (p.doc.error == 0 && p.doc.kind == MM_GANTT): mm_n_gantt_finish_settings(p)
 	if (p.doc.error == 0 && p.doc.kind == MM_GANTT): mm_n_resolve_gantt(p, schedules)

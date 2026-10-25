@@ -108,7 +108,7 @@ int main():
 			if (item.text != 0 && strcmp(item.text, title) == 0): count = count + 1
 		ht_require(count == 1, c"frontmatter title missing or repeated")
 		xml_element* rect = xml_find(tree, c"{http://www.w3.org/2000/svg}rect")
-		ht_require(rect != 0 && strcmp(xml_get(rect, c"fill"), c"#0f172a") == 0, c"frontmatter theme not applied")
+		ht_require(rect != 0 && strcmp(xml_get(rect, c"fill"), c"#333333") == 0, c"frontmatter theme not applied")
 		ht_write(replacement, c"Edited family title", 19)
 		at = index_of(titled, title)
 		mc_run(ht_argv(c"edit", source, itoa(at), itoa(at + strlen(title)), replacement, copy))

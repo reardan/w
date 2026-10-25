@@ -52,13 +52,13 @@ void test_radar_curve_tension_configuration():
 	mm_scene_free(s)
 	mm_document_free(d)
 	d = shape_parse(c"---\nconfig:\n  radar:\n    curveTension: 0\n---\nradar-beta\naxis a, b, c, d\ncurve one{4, 2, 4, 2}\nmax 4\n")
-	assert_equal(0, d.radar_tension)
+	assert_equal(0, mm_config_milli(d, c"radar.curveTension", -1))
 	s = mm_render(d)
 	int straight_y = first_segment_end_y(s)
 	mm_scene_free(s)
 	mm_document_free(d)
 	d = shape_parse(c"%%{init: {\"radar\": {\"curveTension\": 0.5}}}%%\nradar-beta\naxis a, b, c, d\ncurve one{4, 2, 4, 2}\nmax 4\n")
-	assert_equal(500, d.radar_tension)
+	assert_equal(500, mm_config_milli(d, c"radar.curveTension", -1))
 	s = mm_render(d)
 	int loose_y = first_segment_end_y(s)
 	char* copy = mm_write(d)
@@ -72,33 +72,25 @@ void test_radar_curve_tension_configuration():
 	shape_bad(c"---\nconfig:\n  radar:\n    curveTension: -1\n---\nradar-beta\naxis a, b, c\ncurve x{1,2,3}\n")
 	shape_bad(c"---\nconfig:\n  radar:\n    curveTension: lots\n---\nradar-beta\naxis a, b, c\ncurve x{1,2,3}\n")
 
-# Circles are emitted as runs of 32 sampled segments; recover center and radius.
+# Sets are 48-vertex Venn discs; recover center and radius.
 list[int] venn_circles(mm_scene* s):
 	list[int] circles = new list[int]
-	int run = 0
-	int min_x = 0
-	int max_x = 0
-	int min_y = 0
-	int max_y = 0
 	for mm_primitive* p in s.items:
-		if (p.kind != MM_LINE):
-			run = 0
-			continue
-		if (run == 0):
-			min_x = p.x
-			max_x = p.x
-			min_y = p.y
-			max_y = p.y
-		if (p.x < min_x): min_x = p.x
-		if (p.x > max_x): max_x = p.x
-		if (p.y < min_y): min_y = p.y
-		if (p.y > max_y): max_y = p.y
-		run = run + 1
-		if (run == 32):
-			circles.push((min_x + max_x) / 2)
-			circles.push((min_y + max_y) / 2)
-			circles.push((max_x - min_x) / 2)
-			run = 0
+		if (p.kind != MM_POLYGON || p.role != MM_ROLE_VENN || p.points.length != 96): continue
+		int min_x = p.points[0]
+		int max_x = p.points[0]
+		int min_y = p.points[1]
+		int max_y = p.points[1]
+		for i in range(48):
+			int x = p.points[i * 2]
+			int y = p.points[i * 2 + 1]
+			if (x < min_x): min_x = x
+			if (x > max_x): max_x = x
+			if (y < min_y): min_y = y
+			if (y > max_y): max_y = y
+		circles.push((min_x + max_x) / 2)
+		circles.push((min_y + max_y) / 2)
+		circles.push((max_x - min_x) / 2)
 	return circles
 
 int venn_distance(list[int] c, int a, int b):

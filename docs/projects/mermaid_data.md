@@ -17,7 +17,7 @@ the original source remains available for lossless writing and editing.
 | `quadrantChart` | Title, one- or two-ended x/y labels, four quadrant names, hyphenated unquoted axis labels, labeled points in `[0,1]²`, direct point styles and forward `classDef` references with direct-over-class precedence | Chart configuration and typography |
 | `xychart-beta` | Categorical, numeric-range or inferred x axis, numeric y range, bar and line series with point annotations and matching colored legend keys, horizontal layout; signed values and zero baseline | Configuration and custom plot palettes |
 | `sankey-beta` | CSV source/target/value records, quoted commas, doubled quotes and multiline fields (LF or CRLF); DAG validation, node aggregation, proportional smooth ribbons, longest-path columns and weighted predecessor ordering to reduce crossings; multiline label layout | Configuration and global crossing optimization |
-| `radar-beta` | Named axes and curves, positional and keyed curve values with axes declared before or after curves, min/max, circle/polygon graticule, bounded ticks, colored curves and matching legend keys; on circle graticules curves are the upstream closed cubic spline with `config.radar.curveTension` (default 0.17), polygon graticules keep straight edges | Custom curve palettes and the other radar configuration keys |
+| `radar-beta` | Named axes and curves, positional and keyed curve values with axes declared before or after curves, min/max, circle/polygon graticule, bounded ticks, colored curves and matching legend keys; on circle graticules curves are the upstream closed cubic spline with `config.radar.curveTension` (default 0.17), polygon graticules keep straight edges | Custom curve palettes |
 | `treemap-beta` | Indented quoted groups and positive valued leaves; recursive aggregate weights and stable weight-sorted squarified rectangle subdivision; labels in tiny cells use the accompanying hierarchy key; `classDef` (fill, stroke, color, stroke-width) assigned with `:::class` on groups or leaves, outranking the theme | `style` statements and per-depth palettes |
 | `venn-beta` | One to eight named/labeled sets and labeled `union` intersections of any arity; only declared overlaps (plus the pairs a three-or-more-set union implies); explicit set/intersection sizes for any number of sets; text nodes attached to the preceding set or union | Styles; fitting higher-order region areas |
 | `packet` / `packet-beta` | Absolute inclusive bit ranges, individual bits, relative `+count`, title; configurable word width, ascending or descending bit order, row wrapping and width proportional to bit count | Styles |
@@ -33,7 +33,7 @@ requires 3–32 axes and 1–20 ticks. Treemaps permit 16 nested groups. Packets
 bits 0–4095 with disjoint fields declared in ascending order. Frontmatter
 `config.packet.bitsPerRow` accepts 1–128 (default 32), and
 `config.packet.bitOrder` accepts `ascending` (default) or `descending`.
-`config.radar.curveTension` accepts a decimal from 0 to 2 (default 0.17); 0
+`config.radar.curveTension` accepts a decimal from 0 to 1 (default 0.17); 0
 draws straight chords.
 Descending order mirrors each complete word independently, including padding on
 the left of a partially filled word; it does not change source range ordering.

@@ -1,8 +1,9 @@
 # Native Mermaid styles and themes
 
 The W library, SVG exporter and native desktop preview share the same resolved
-colors and stroke widths. This adds a bounded subset of Mermaid 12.2.0 styling;
-it is not a CSS engine or a pixel-identical implementation of Mermaid themes.
+colors, strokes, dashes, opacity and fonts. This is a bounded subset of Mermaid
+12.2.0 styling: a documented CSS subset rather than a CSS engine, and upstream
+theme values rather than pixel-identical upstream rendering.
 Reference syntax: [flowcharts](https://mermaid.js.org/syntax/flowchart.html),
 [ER diagrams](https://mermaid.js.org/syntax/entityRelationshipDiagram.html),
 [class diagrams](https://mermaid.js.org/syntax/classDiagram.html) and
@@ -10,25 +11,36 @@ Reference syntax: [flowcharts](https://mermaid.js.org/syntax/flowchart.html),
 
 ## Diagram statements
 
-Flowchart, ER, class, state, requirement and use-case diagrams accept `style ID properties` and
-`classDef NAME properties`. `style` and `classDef` can target comma-separated
-names. Flowchart, ER and state diagrams accept `class ID,ID NAME`; class diagrams
-use `cssClass "ID,ID" NAME` so `class` remains a class declaration. `cssClass`
-works in these families. Flowchart/ER nodes and class declarations accept
-inline `:::NAME` assignment. Style classes may be defined after they are used;
-a missing definition produces a diagnostic. Existing graph groups can be styled.
+Flowchart, ER, class, state, requirement, use-case, swimlane and block diagrams
+accept `style ID properties` and `classDef NAME properties`. `style` and
+`classDef` can target comma-separated names. These families accept
+`class ID,ID NAME`; class diagrams use `cssClass "ID,ID" NAME` so `class`
+remains a class declaration. `cssClass` works in these families. Inline
+`:::NAME` assignment works on flowchart/ER/use-case/swimlane nodes, class
+declarations and states. Style classes may be defined after they are used; a
+missing definition produces a diagnostic. Existing graph groups can be styled.
 
-Supported properties are:
+Supported properties (the classDef property set, shared by `style`,
+`classDef`, `themeCSS` and the per-family statements below):
 
-| Property | Accepted values |
-| --- | --- |
-| `fill`, `stroke`, `color` | `#RGB`, `#RRGGBB`, supported names, `none`, `transparent` |
-| `stroke-width` | Integer 1–16, optionally followed by `px` |
+| Property | Accepted values | Native effect |
+| --- | --- | --- |
+| `fill`, `stroke`, `color` | `#RGB`, `#RRGGBB`, supported names, `none`, `transparent` | shape fill, outline, label text |
+| `stroke-width` | 1–16, optionally `px` | outline width |
+| `stroke-dasharray` | `none`, `0`, or one or two 1–64px lengths (`5 3`) | dashed outlines and lines |
+| `opacity`, `fill-opacity` | 0–1 (`0.25`) or a percentage | whole-primitive / fill alpha |
+| `font-weight` | `normal`, `bold`, `bolder`, `lighter`, 100–900 (≥ 600 is bold) | bold label runs |
+| `font-style` | `normal`, `italic`, `oblique` | italic label runs |
+| `font-size` | 8–72, optionally `px` | label size; the node is measured at that size |
+| `font-family` | one quoted or plain family name | SVG `font-family`; native text keeps the bundled face |
+| `rx`, `ry` | 0–64, optionally `px` | one uniform corner radius |
 
 The supported color names are black, white, red, green, blue, yellow, cyan,
 magenta, gray, grey, orange, purple, pink, navy, teal and lime. Hex digits may be
 upper or lower case; names and property names are case sensitive. Unrecognized
-properties, URLs, arbitrary CSS functions and invalid values fail explicitly.
+properties (`text-shadow`, `filter`, ...), URLs, arbitrary CSS functions and
+invalid values fail explicitly with the supported list. At most 32 distinct font
+families are kept per document.
 
 A `classDef default` supplies node defaults. Assigned classes then apply in
 assignment order; explicit `style` properties take precedence. Repeated class
@@ -39,13 +51,55 @@ and 4 KiB of assigned class names per node, in addition to the document limits.
 Fillable rectangles, rounded rectangles, diamonds, circles, ER tables, UML
 classes and groups use the resolved palette. Semantic filled endpoint symbols
 continue to use the stroke color. Transparent fills preserve the native preview
-behind their outlines. Stroke widths and colors are carried by the display list,
-so native rendering and SVG use the same values. Node styles do not recolor the
+behind their outlines. Every property is carried by the display list, so native
+rendering and SVG use the same values. Node styles do not recolor the
 relationship connecting two nodes. `linkStyle default stroke:blue` supplies edge
 defaults; `linkStyle 0,2 stroke:red,stroke-width:4,color:green` overrides source-order
 edge indices. Indices must refer to already declared edges. Link styles accept
-`stroke`, `stroke-width` and label `color`; explicit edge values override defaults.
-They apply to the shared graph renderer, including arrows and endpoint markers.
+the same properties; explicit edge values override defaults.
+They apply to the shared graph renderer, including arrows and endpoint markers,
+and to swimlane edges.
+
+### Per-family styling
+
+| Family | Styling forms |
+| --- | --- |
+| State | `style`, `classDef`, `class`, and `:::NAME` after a state declaration, a state reference or a transition target. Start/end pseudo-states cannot be styled (as upstream); fork/join bars can |
+| Mindmap | `:::NAME` lines assign classes; classes come from `themeCSS` (mindmap has no `classDef`). Under a theme each top-level branch takes its `cScale` color, lightened per depth |
+| TreeView | `name :::a b ## description`; classes come from `themeCSS`, plus upstream's built-in `highlight` (highlightBg/highlightStroke). `icon(...)` is rejected |
+| Treemap | `:::NAME` on sections and leaves, `classDef`, and `style "Label" properties` (direct styles beat classes). Cells use a per-depth palette: each top-level section takes a series color (`cScale` under a theme), lighter as cells nest |
+| Venn | `style A properties` (a set or text node) and `style A,B properties` (the union of exactly those sets; a fill draws the shared region). Sets are translucent filled discs (`venn1`–`venn8` under a theme) |
+| Packet | `classDef`, `:::NAME` after a field label, and `style "Label"` or `style <first bit>` |
+| Radar | `style curveId properties`; a fill draws the curve's area (fill-opacity 0.5 unless given) |
+| Swimlane | `style`, `classDef`, `class` and `:::NAME` on nodes and lanes, `linkStyle` on edges; circles and decisions are fillable |
+| Use case | `style`, `classDef`, `class`, `:::NAME` after an actor, use case or boundary |
+| Block | node styles as above; `-.->`/`-.-` draw dotted links and `==>`/`===` thick (4px) links |
+| C4 | `UpdateElementStyle` (`$bgColor`, `$fontColor`, `$borderColor`) and `UpdateRelStyle` (`$textColor`, `$lineColor`) set fill, color and stroke (see the C4 family) |
+| Quadrant | point styles and classes (see the data family) |
+
+Style rules in data charts name existing items: an unmatched target fails with
+`style target matches no item`.
+
+### themeCSS
+
+`themeCSS` (configuration) accepts `.name[, .name ...] { property: value; ... }`
+rules whose declarations use the property set above; `/* comments */` are
+skipped and `!important` is accepted and ignored. Each rule merges into the
+named class definitions (creating them), beneath the diagram's own `classDef`
+statements, so `class`, `:::` and the mindmap/TreeView class lines can assign
+them. Other selectors (`#id`, element or descendant selectors), at-rules and
+malformed text fail with `themeCSS supports .class { property: value; } rules`.
+At most 64 rules are read.
+
+### Fonts
+
+`fontFamily` (or `themeVariables.fontFamily`) takes a CSS font-family list of
+names, quotes, commas and spaces and becomes the SVG default `font-family`.
+`fontSize` (or `themeVariables.fontSize`) takes 8–72 (optionally `px`) and
+drives text metrics: label widths, line height and wrapping are measured at
+that size, so nodes grow with the font, and SVG text carries the size. Native
+rendering scales the bundled metric-compatible face; it does not load other
+font families.
 
 ## Configuration: frontmatter and init directives
 
@@ -64,39 +118,50 @@ A -->|label| B
 ```
 
 Configuration comes from YAML frontmatter, from `%%{init: {...}}%%` /
-`%%{initialize: {...}}%%` directives, or both. Both become the same dotted keys
-and pass one validator, so they accept the same keys and report the same
-diagnostics. Directives must come after any frontmatter and before the diagram
-header; they may span lines and be mixed with `%%` comments and blank lines, and
-several may be given. A directive after the header is still rejected. Later
-sources override earlier ones key by key (frontmatter, then directives in
-order); repeating a key inside one source is an error.
-
-Frontmatter is a bounded YAML subset: block mappings at any consistent space
-indentation (tabs are rejected; a dedent must return to an enclosing level), `#`
-comment lines and trailing comments, plain or single/double-quoted scalars
-(without escapes), quoted keys, and inline `{key: value}` flow mappings. Lists,
-block scalars, anchors and tags produce a diagnostic. Directive objects are
-JSON-ish: single- or double-quoted strings, bare keys and values, numbers,
-booleans, nested objects and trailing commas; arrays and escapes are rejected.
-At most 256 entries and four levels of nesting are read.
+`%%{initialize: {...}}%%` directives anywhere in the diagram, or both. All
+sources become the same dotted keys and pass one validator; later sources
+override earlier ones key by key (frontmatter, then directives in order).
+Frontmatter is a bounded YAML subset with lists, block scalars, anchors,
+aliases, merge keys and escapes. The sources, precedence, YAML subset, bounds
+and the per-family keys (sequence, gantt, timeline, xyChart, sankey, radar,
+gitGraph, railroad, requirement, c4) are documented in
+[mermaid_config.md](mermaid_config.md). The keys below are the theme, look,
+layout and flowchart settings.
 
 | Key | Accepted values |
 | --- | --- |
 | `title` (frontmatter only) | scalar string |
-| `theme` | `default`, `base`, `dark`, `forest`, `neutral`; `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, `redux-dark-color` as native approximations |
-| `look` | `classic`; `neo` is accepted and renders with classic geometry |
+| `theme` | `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, `redux-dark-color` |
+| `look` | `classic`, `neo` (drop shadows and gradient outlines, see below) |
+| `fontFamily`, `fontSize`, `themeCSS` | see Fonts and themeCSS above |
 | `layout` | `dagre` (native layered), `force` |
 | `themeVariables.*` | see below; any theme |
 | `flowchart.nodeSpacing`, `flowchart.rankSpacing` | integer 0–500 |
 | `flowchart.curve` | `basis`, `linear`, `step`, `stepBefore`, `stepAfter` |
 | `packet.bitsPerRow`, `packet.bitOrder` | see the packet family |
 
-Any other key — `fontSize`, `fontFamily`, `themeCSS`, other diagram sections,
-`look: handDrawn` — produces a diagnostic. The theme names select deterministic
-native palettes; `dark`, `neo-dark`, `redux-dark` and `redux-dark-color` are dark
-modes and paint a dark preview/SVG background. They keep the intent of upstream
-themes rather than reproducing upstream CSS or typography.
+Keys that are not supported natively — unsupported diagram settings — are
+ignored deterministically and recorded in `mm_document.config_ignored`;
+invalid values of supported keys, such as `look: handDrawn`, produce a
+diagnostic.
+
+### Themes
+
+Each theme resolves every variable to the values upstream mermaid@12.2.0's
+`theme-*.js` computes (translucent upstream colors are composited over the
+theme background), including the redux and neo families. `dark`, `neo-dark`,
+`redux-dark` and `redux-dark-color` are dark modes and paint a dark
+preview/SVG background; `base` paints its `#f4f4f4` background. Themes also set
+the label font size (16px, 14px for neo/redux) and the node stroke width (1px,
+2px for neo/redux); upstream's theme `fontFamily` is not applied, so text keeps
+the metric-compatible default face unless `fontFamily` is configured.
+A document without any configuration keeps the native palette.
+
+`look: neo` gives themed nodes, clusters and sequence actors the theme's drop
+shadow (an SVG `mermaid-drop-shadow` filter; an offset shadow box natively) and,
+on themes that use it, a `gradientStart` → `gradientStop` outline
+(`mermaid-gradient`; natively its first stop). The redux themes name an SVG
+filter upstream; here they use the neo drop shadow.
 
 ### Theme variables
 
@@ -116,7 +181,18 @@ supported color name (quote hex values in YAML, where `#` starts a comment);
 | `edgeLabelBackground` | a box behind graph edge labels |
 | `background` | preview/SVG background |
 | `pie1`–`pie12` | pie slices and legend keys |
-| `cScale0`–`cScale11` | series colors of the other chart families (xychart, radar, …) |
+| `cScale0`–`cScale11` | series colors of the other chart families (xychart, radar, …), mindmap branches, treemap sections |
+| `noteBkgColor`, `noteBorderColor`, `noteTextColor` | sequence and UML notes |
+| `actorBkg`, `actorBorder`, `actorTextColor`, `actorLineColor` | sequence participants and lifelines |
+| `signalColor`, `signalTextColor` | sequence messages |
+| `taskBkgColor`, `taskBorderColor`, `taskTextColor`, `activeTaskBkgColor`, `doneTaskBkgColor`, `critBkgColor` | Gantt tasks by status |
+| `gridColor`, `todayLineColor`, `excludeBkgColor` | Gantt grid, today marker, excluded days |
+| `sectionBkgColor`, `altSectionBkgColor` | alternating section bands |
+| `git0`–`git7` | gitGraph branch lines and commits |
+| `venn1`–`venn8` | Venn sets |
+| `attributeBackgroundColorOdd`, `attributeBackgroundColorEven` | ER attribute rows |
+| `gradientStart`, `gradientStop` | neo-look outline gradient |
+| `fontFamily`, `fontSize` | see Fonts |
 
 A variable keeps the selected theme's native value unless it, or a variable it
 derives from, is set; then it is derived as Mermaid's theme-base derives it,
@@ -143,11 +219,11 @@ percentage points, clamped; hue wraps):
 | `cScale0`–`cScale2` | primary, secondary, tertiary |
 | `cScale3`–`cScale11` | primary hue +30, 60, 90, 120, 150, 210, 270, 300, 330 |
 
-`darkMode` defaults to the theme's own mode. The native palettes supply
-`background`, the primary colors, `lineColor`, `textColor`, cluster colors equal
-to the node colors, no edge-label box, and the fixed native series colors for
-`pie*`/`cScale*`; so a theme without variables renders as before. Without any
-configuration, charts keep the fixed series colors.
+`darkMode` defaults to the theme's own mode. Variables a theme does not define
+upstream are derived as above. Without any configuration, charts keep the fixed
+native series colors. An unknown variable (`gitBranchLabel0`, `cScaleLabel0`,
+`commitLabelColor`, ...) is ignored and recorded in `config_ignored`, like
+other unknown keys.
 
 ### Layout keys
 
@@ -162,13 +238,26 @@ sampled cubic curve; each route keeps its final axis-aligned leg so arrowheads s
 oriented. Self-loops remain orthogonal.
 
 The source remains byte-for-byte saveable, including unsupported styles and
-configuration. Invalid styles or configuration suppress the preview. The
-current implementation does not support custom CSS, `stroke-dasharray`,
-opacity, font configuration (`fontSize`, `fontFamily`), the hand-drawn look,
-arbitrary diagram configuration or external stylesheets. Classes refer to
-existing node identifiers; quoted ER display aliases are not style identifiers.
+configuration. Invalid styles or configuration suppress the preview. Not
+supported: selectors beyond `.class` in `themeCSS`, CSS properties outside the
+table above, loading font families natively, the hand-drawn look, upstream's
+SVG filters for redux, TreeView icons, arbitrary diagram configuration and
+external stylesheets. Classes refer to existing node identifiers; quoted ER
+display aliases are not style identifiers.
 
-Example: [styled.mmd](../../examples/mermaid/styled.mmd).
+Rich labels: graph labels, ER attribute comments, requirement text (Markdown
+emphasis), sequence messages and notes, journey tasks, timeline entries and
+use-case labels share the [text layout](mermaid_text.md): `<br>`, Markdown
+strings, bold/italic and wrapping.
+
+Examples: [styled.mmd](../../examples/mermaid/styled.mmd) (dark theme, neo
+look, fontSize, themeCSS), [states.mmd](../../examples/mermaid/states.mmd),
+[swimlanes.mmd](../../examples/mermaid/swimlanes.mmd),
+[blocks.mmd](../../examples/mermaid/blocks.mmd),
+[treemap.mmd](../../examples/mermaid/treemap.mmd),
+[venn.mmd](../../examples/mermaid/venn.mmd),
+[radar.mmd](../../examples/mermaid/radar.mmd) and
+[packet.mmd](../../examples/mermaid/packet.mmd).
 
 ## Checks
 
@@ -176,8 +265,16 @@ Example: [styled.mmd](../../examples/mermaid/styled.mmd).
 precedence, forward definitions, all four graph families, fillable shapes,
 SVG/native palette parity, transparent interiors, nested clipping, theme
 variables, malformed input, truncation, budgets and owned scene lifetime.
-`./wbuild config_test config_64_test` covers palette derivation, native theme
-stability, variables with every theme and dark mode, pie/cScale series colors,
+`./wbuild style_parity_test style_parity_64_test` has one fixture per CSS
+property (through `style`, `classDef` + `class` and `:::`), `themeCSS`, each
+font key, every theme with the neo look, every theme variable, each family
+styling form, the rich labels, and the deliberately unsupported options
+(`look: handDrawn`, other CSS properties and selectors, out-of-range font sizes, TreeView icons, styled start states, unmatched data
+style targets).
+`./wbuild config_test config_64_test` covers palette derivation, upstream theme
+palettes, variables with every theme and dark mode, pie/cScale series colors,
 init directives (quoting, multi-line, fenced, frontmatter override, line numbers),
 relaxed frontmatter, spacing and curves, every configuration diagnostic, the
-entry budget and truncated prefixes.
+entry budget and truncated prefixes; `config_yaml_test` and
+`config_family_test` cover the YAML subset and per-family keys
+([mermaid_config.md](mermaid_config.md#checks)).
