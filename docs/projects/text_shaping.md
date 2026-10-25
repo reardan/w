@@ -195,9 +195,11 @@ The algorithm follows FreeType's Latin autohinter:
   flat mean and its overshoot the round mean. A face with none of a
   zone's letters has no such zone, and a face with no Latin letters
   only has its stems fitted.
-- **Scale**: the vertical scale grows (or shrinks) slightly so that the
-  x-height overshoot lands on a whole pixel. It rounds up from 0.375 px
-  unless that would move anything by two pixels. Zones snap to whole
+- **Scale**: the vertical scale grows or shrinks slightly so that the
+  x-height overshoot lands on a whole pixel. A fraction of 0.375 px or
+  more rounds up, and a smaller one rounds down. The adjustment is
+  skipped when it would move any point of the face by two pixels or
+  more. Zones snap to whole
   pixels, and a zone is active only while its overshoot is under 3/4
   pixel. Below 1/2 pixel the overshoot is suppressed, and from 1/2 to
   3/4 it becomes half a pixel. These comparisons use FreeType's 26.6

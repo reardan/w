@@ -598,7 +598,7 @@ void ttf_points_push(ttf_points* p, float32 x, float32 y, int flags):
 		p.flags = cast(char*, malloc(p.cap))
 	if (p.count >= p.cap):
 		int next = p.cap * 2
-		p.x =cast(float32*, realloc(cast(char*, p.x), p.cap * 4, next * 4))
+		p.x = cast(float32*, realloc(cast(char*, p.x), p.cap * 4, next * 4))
 		p.y = cast(float32*, realloc(cast(char*, p.y), p.cap * 4, next * 4))
 		p.flags = realloc(p.flags, p.cap, next)
 		p.cap = next

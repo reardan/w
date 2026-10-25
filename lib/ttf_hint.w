@@ -16,9 +16,9 @@ outline itself:
   counts as flat or round by its neighbours, the reference is the flat
   mean and the overshoot the round mean. A font without the letters
   gets no zones, and only its stems are fitted.
-- Per size: the vertical scale grows slightly so the x-height overshoot
-  lands on a pixel boundary (rounding up from 0.375 px, unless that moves
-  anything by two pixels or more), zones snap to whole pixels, and a
+- Per size: the vertical scale changes slightly so the x-height
+  overshoot lands on a pixel boundary (rounding up from 0.375 px, unless
+  that moves anything by two pixels or more), zones snap to whole pixels, and a
   zone stays active only while its overshoot is under 3/4 pixel
   (suppressed below 1/2, half a pixel below 3/4).
 - Per glyph: horizontal edges (runs of near-horizontal outline segments,
@@ -420,8 +420,10 @@ void ttf_hint_link(ttf_font* f, ttf_hint_edge* edges, int count, float32 max_wid
 
 # ---- fitting ----------------------------------------------------------
 
-# The vertical scale at ppem: grown (rarely shrunk) so the x-height
-# overshoot lands on a whole pixel, as FreeType's autohinter does.
+# The vertical scale at ppem, adjusted so the x-height overshoot lands
+# on a whole pixel (rounding up from 0.375 px, down below it) unless
+# that moves any point of the face two pixels, as FreeType's autohinter
+# does.
 float32 ttf_hint_scale(ttf_font* f, ttf_hint_metrics* h, int ppem):
 	float32 scale = cast(float32, ppem) / cast(float32, f.upem)
 	if (h.xheight < 0): return scale

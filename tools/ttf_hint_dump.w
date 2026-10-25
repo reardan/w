@@ -1,4 +1,4 @@
-# wbuild: binary=ttf_hint_dump
+# wbuild: binary=ttf_hint_dump tag=tests
 # Print lib.ttf glyph bitmaps, hinted or not, for eyeballing the light
 # autohinter (lib/ttf_hint.w) and for regenerating its golden file:
 #
