@@ -535,7 +535,7 @@ c70078563412|mov dword [rax],0x12345678
 4183bc24e803000005|cmp dword [r12+0x3e8],5
 4983bc24e803000005|cmp qword [r12+0x3e8],5
 41807d0a00|cmp byte [r13+0xa],0
-483d00f0ffff|cmp rax,-4096
+483d00f0ffff|cmp rax,-0x1000
 51|push rcx
 7503|jne .+5
 488db91000c0ff|lea rdi,[rcx-0x3ffff0]

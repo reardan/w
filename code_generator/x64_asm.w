@@ -106,7 +106,7 @@ void define_asm_functions_x64():
 	sym_define_declare_global_function(c"thread_create")
 	int stack_call = codepos
 	emit(5, c"\xe8....") # patched once the variable-width stub is emitted
-	x64_asm(c"cmp rax,-4096")
+	x64_asm(c"cmp rax,-0x1000")
 	int mmap_failed = asm_text_jump8_begin(ASM_ARCH_X64, c"ja .+2")   # mmap error: return it
 	x64_asm(c"lea rcx,[rax+0x3ffff0]; mov rdx,[rsp+8]; mov [rcx],rdx")
 	x64_asm(c"mov edi,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO

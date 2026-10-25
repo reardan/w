@@ -133,7 +133,7 @@ void define_asm_functions():
 	sym_define_declare_global_function(c"thread_create")
 	int stack_call = codepos
 	emit(5, c"\xe8....") # patched once the stub is emitted
-	x86_asm(c"cmp eax,-4096")
+	x86_asm(c"cmp eax,-0x1000")
 	int mmap_failed = asm_text_jump8_begin(ASM_ARCH_X86, c"ja .+2")   # mmap error: return it
 	x86_asm(c"lea ecx,[eax+0x3ffff0]; mov edx,[esp+4]; mov [ecx],edx")
 	x86_asm(c"mov ebx,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO

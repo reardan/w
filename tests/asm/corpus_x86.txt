@@ -647,7 +647,7 @@ c4e3791dc004|vcvtps2ph xmm0,xmm0,4
 e81f000000|call .+0x24
 7502|jne .+4
 31ed|xor ebp,ebp
-3d00f0ffff|cmp eax,-4096
+3d00f0ffff|cmp eax,-0x1000
 7503|jne .+5
 8d991000c0ff|lea ebx,[ecx-0x3ffff0]
 b85b000000|mov eax,0x5b
