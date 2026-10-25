@@ -304,6 +304,14 @@ ui_access_node* ui_atspi_selected_at(ui_access_node* n, int index):
 	return 0
 
 
+int ui_atspi_selection_same(ui_access_node* a, ui_access_node* b):
+	int count = ui_atspi_selected_count(a)
+	if (count != ui_atspi_selected_count(b)): return 0
+	for i in range(count):
+		if (ui_atspi_selected_at(a, i).id != ui_atspi_selected_at(b, i).id): return 0
+	return 1
+
+
 
 int ui_atspi_role(ui_access_node* n):
 	int r = n.role
@@ -1564,6 +1572,14 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 		if (ui_atspi_has_text(n) && !ui_atspi_text_same(&n.value, &was.value)):
 			ui_atspi_emit_text(b, id, c"delete", &was.value)
 			ui_atspi_emit_text(b, id, c"insert", &n.value)
+	# One SelectionChanged per container whose selected children changed,
+	# after the per-child selected states.
+	walk = fresh.root
+	while (walk != 0):
+		ui_access_node* had = ui_access_find(old, walk.id)
+		if (ui_atspi_has_selection(walk) && (had != 0) && !ui_atspi_selection_same(walk, had)):
+			ui_atspi_emit(b, walk.id, c"org.a11y.atspi.Event.Object", c"SelectionChanged", c"", 0, 0)
+		walk = ui_atspi_preorder_next(walk)
 	int old_focus = 0
 	if (old != 0): old_focus = old.focused_id
 	if (fresh.focused_id != old_focus):

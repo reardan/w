@@ -645,6 +645,9 @@ void check_tables(char* address):
 	asserts(c"old row uncached", contains(log, c"RemoveAccessible /org/a11y/atspi/accessible/30 "))
 	asserts(c"old row defunct", contains(log, c"StateChanged defunct /org/a11y/atspi/accessible/30"))
 	asserts(c"selection cleared", contains(log, c"StateChanged selected /org/a11y/atspi/accessible/20"))
+	int changed = index_of(log, c"SelectionChanged  /org/a11y/atspi/accessible/10\n")
+	asserts(c"table selection changed", changed > index_of(log, c"StateChanged selected /org/a11y/atspi/accessible/20"))
+	asserts(c"tab selection unchanged", !contains(log, c"SelectionChanged  /org/a11y/atspi/accessible/40\n"))
 	assert_equal(0, atspi_test_int_property(c, b, tree, 10, table, c"NSelectedRows"))
 
 	ui_access_atspi_close(b)
