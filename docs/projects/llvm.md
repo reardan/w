@@ -186,8 +186,11 @@ point, and the output file is left untouched.
 - Records by value: record parameters (the caller passes the address of
   its own copy), record results (written to a caller buffer passed as a
   hidden first argument), assignment from calls, fields of a call's result
-  (a record or a pointer: `json_object_get(v, c"x").type`) and
-  `T(field: value, ...)` literals.
+  (a record or a pointer: `json_object_get(v, c"x").type`),
+  `T(field: value, ...)` literals, method calls and record operator
+  overloads (`a + b` calls `operator+`) taking or returning records, and
+  functions with more parameters than the symbol table's ten type slots
+  (the definition's own parameter locals give the rest).
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and

@@ -914,6 +914,8 @@ void llvm_generator_emit_runtime();
 int llvm_uses_debugtrap
 char* llvm_call1(int id, char* name, char* a);
 char* llvm_method_call(int group, int id, retained_node* node);
+char* llvm_operator_call(int group, int id, retained_node* node);
+char* llvm_definition_call(int group, int id, int linkage, list[int] operands, char* count_message);
 char* llvm_array_allocation(int group, int id, retained_node* node);
 char* llvm_propagate(int group, int id, retained_node* node);
 int llvm_is_var(int type);
@@ -2143,6 +2145,23 @@ void llvm_emit_test_main():
 	string_append(llvm_code, c"  ret i64 0\x0a}\x0a\x0a")
 
 
+# A function definition's parameter types. The symbol table keeps ten
+# type slots (sym_param_type answers -1 past them); the definition's
+# leading locals name the rest.
+void llvm_definition_parameters(int definition, list[int] types):
+	retained_node node
+	retained_node_load(definition, &node)
+	for parameter in retained_bindings[node.binding].parameters: types.push(parameter)
+	int child = llvm_first[definition]
+	int i = 0
+	while ((child >= 0) && (retained_node_kind(child) == retained_local) && (i < types.length)):
+		retained_node local
+		retained_node_load(child, &local)
+		if ((types[i] < 0) && (local.binding >= 0)): types[i] = retained_bindings[local.binding].type
+		i = i + 1
+		child = llvm_next[child]
+
+
 char* llvm_call(int group, int id, retained_node* node):
 	list[char*] values = new list[char*]
 	list[int] types = new list[int]
@@ -2253,20 +2272,23 @@ char* llvm_call(int group, int id, retained_node* node):
 		retained_node definition
 		retained_node_load(llvm_functions[linkage], &definition)
 		retained_binding* defined = retained_bindings[definition.binding]
+		list[int] parameters = new list[int]
+		llvm_definition_parameters(llvm_functions[linkage], parameters)
 		# A W variadic callee takes its tail as one slice parameter.
 		int variadic = sym_w_variadic_fixed_args(defined.origin)
 		int packed = -1
-		if ((variadic >= 0) && (variadic < defined.parameters.length) && (count >= variadic)):
-			count = llvm_variadic_tail(group, id, values, types, operands, variadic, defined.parameters[variadic])
+		if ((variadic >= 0) && (variadic < parameters.length) && (count >= variadic)):
+			count = llvm_variadic_tail(group, id, values, types, operands, variadic, parameters[variadic])
 			packed = variadic
 		# _main passes argc and argv even to a main without parameters.
-		if (count > defined.parameters.length): count = defined.parameters.length
-		if (count < defined.parameters.length): llvm_error_at(id, c"call argument count", callee_name)
+		if (count > parameters.length): count = parameters.length
+		if (count < parameters.length): llvm_error_at(id, c"call argument count", callee_name)
 		for i in range(count):
-			if ((i < defined.parameters.length) && (i != packed)):
-				if (llvm_parameter_ok(defined.parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", callee_name)
-				values[i] = llvm_convert(id, values[i], types[i], defined.parameters[i])
-				llvm_owner_move(group, operands[i], defined.parameters[i])
+			if ((i < parameters.length) && (i != packed)):
+				if (llvm_parameter_ok(parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", callee_name)
+				values[i] = llvm_convert(id, values[i], types[i], parameters[i])
+				llvm_owner_move(group, operands[i], parameters[i])
+		parameters.free()
 		if (llvm_class(defined.return_type) == llvm_class_struct): record_result = defined.return_type
 		target = llvm_function_symbol(linkage)
 	# A record result is written to a caller buffer named by a hidden first
@@ -2364,6 +2386,8 @@ char* llvm_float_branch(int group, int operand, int type):
 	int got = llvm_float_kind(branch.semantic_type)
 	int want = llvm_float_kind(type)
 	if ((got != want) && (got <= 2) && (want <= 2)): return llvm_float_coerce(value, got, want)
+	# An array branch of a pointer-typed ?: decays to its data pointer.
+	if (llvm_decays(branch.semantic_type, type) && (llvm_type(type).pointer_level > 0)): return llvm_load(-1, llvm_pointer(value))
 	return value
 
 
@@ -2748,6 +2772,7 @@ char* llvm_value_inner(int group, int operand):
 	if (op == 'A'): return llvm_parallel_assign(group, id, &node)
 	if (op == 'X'): return llvm_generator_create(group, id, &node)
 	if (op == 'z'): return llvm_method_call(group, id, &node)
+	if (op == 'l'): return llvm_operator_call(group, id, &node)
 	if (op == 'x'): return llvm_codec(group, id, &node)
 	if (op == 'Y'): return llvm_array_allocation(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
@@ -3191,10 +3216,13 @@ char* llvm_record_copy(int type, char* value):
 char* llvm_temporary_field(int group, int id, retained_node* node):
 	# Natively an array field of a call's result reads its header's data
 	# word as a descriptor: no defined value to reproduce.
-	retained_type* t = llvm_type(node.semantic_type)
-	if ((t.pointer_level == 0) && ((t.kind == 6) || (t.kind == 7) || (t.kind == 9))):
-		llvm_error(id, c"array field of a call's record result")
-		return c"0"
+	retained_node call
+	retained_node_load(llvm_node_id(group, node.left), &call)
+	if (call.semantic_type >= 0):
+		for field in llvm_type(call.semantic_type).fields:
+			if ((field.offset == node.value) && (field.type >= 0) && (llvm_type(field.type).pointer_level == 0) && (llvm_type(field.type).kind == 6)):
+				llvm_error(id, c"array field of a call's record result")
+				return c"0"
 	char* address = llvm_offset(llvm_pointer(llvm_value(group, node.left)), llvm_number(node.value))
 	int c = llvm_class(node.semantic_type)
 	if ((c == llvm_class_struct) || (c == llvm_class_array)): return llvm_address_value(address)
@@ -4611,16 +4639,13 @@ int llvm_global_record_headers(int linkage, int type, string_builder* text):
 # record receiver passes its address, as a T* parameter takes it.
 char* llvm_method_call(int group, int id, retained_node* node):
 	int result_class = llvm_class(node.semantic_type)
-	if ((result_class != llvm_class_word) && (result_class != llvm_class_void)):
+	if ((result_class != llvm_class_void) && (llvm_parameter_ok(node.semantic_type) == 0)):
 		llvm_error(id, c"call result type")
 		return c"0"
 	if ((node.binding < 0) || ((retained_bindings[node.binding].linkage in llvm_functions) == 0)):
 		llvm_error(id, c"method without a W body")
 		return c"0"
 	int linkage = retained_bindings[node.binding].linkage
-	retained_node definition
-	retained_node_load(llvm_functions[linkage], &definition)
-	retained_binding* defined = retained_bindings[definition.binding]
 	list[int] operands = new list[int]
 	operands.push(node.right)
 	int arg = node.left
@@ -4629,32 +4654,82 @@ char* llvm_method_call(int group, int id, retained_node* node):
 		retained_node argument
 		retained_node_load(llvm_node_id(group, arg), &argument)
 		arg = argument.next_arg
+	return llvm_definition_call(group, id, linkage, operands, c"method argument count")
+
+
+# left op right on records (op 'l', ast_expression_overload): a call of
+# the operator function with both operands.
+char* llvm_operator_call(int group, int id, retained_node* node):
+	int result_class = llvm_class(node.semantic_type)
+	if ((result_class != llvm_class_void) && (llvm_parameter_ok(node.semantic_type) == 0)):
+		llvm_error(id, c"call result type")
+		return c"0"
+	if ((node.binding < 0) || ((retained_bindings[node.binding].linkage in llvm_functions) == 0)):
+		llvm_error(id, c"operator without a W body")
+		return c"0"
+	list[int] operands = list[int]{node.left, node.right}
+	return llvm_definition_call(group, id, retained_bindings[node.binding].linkage, operands, c"operator argument count")
+
+
+# A call of a W function by definition, its arguments the operands (freed
+# here): record arguments by copy, W variadic tails packed, a record
+# result in a caller buffer passed as the hidden first argument.
+char* llvm_definition_call(int group, int id, int linkage, list[int] operands, char* count_message):
+	retained_node definition
+	retained_node_load(llvm_functions[linkage], &definition)
+	retained_binding* defined = retained_bindings[definition.binding]
+	list[int] parameters = new list[int]
+	llvm_definition_parameters(llvm_functions[linkage], parameters)
 	list[char*] values = new list[char*]
+	list[int] types = new list[int]
 	for i in range(operands.length):
 		if (llvm_failed): break
 		values.push(llvm_value(group, operands[i]))
-	if (operands.length != defined.parameters.length): llvm_error_at(id, c"method argument count", defined.name)
+		types.push(llvm_operand_type(group, operands[i]))
+	# A W variadic method takes its tail as one slice parameter.
+	int count = values.length
+	int variadic = sym_w_variadic_fixed_args(defined.origin)
+	int packed = -1
+	if ((llvm_failed == 0) && (variadic >= 0) && (variadic < parameters.length) && (count >= variadic)):
+		count = llvm_variadic_tail(group, id, values, types, operands, variadic, parameters[variadic])
+		packed = variadic
+	if (count != parameters.length): llvm_error_at(id, count_message, defined.name)
 	if (llvm_failed):
 		operands.free()
 		values.free()
+		types.free()
+		parameters.free()
 		return c"0"
-	for i in range(values.length):
-		if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", defined.name)
-		values[i] = llvm_convert(id, values[i], llvm_operand_type(group, operands[i]), defined.parameters[i])
-		llvm_owner_move(group, operands[i], defined.parameters[i])
+	for i in range(count):
+		if (i == packed): continue
+		if (llvm_parameter_ok(parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", defined.name)
+		# A record argument is the address of the caller's own copy.
+		if (llvm_class(parameters[i]) == llvm_class_struct): values[i] = llvm_record_copy(parameters[i], values[i])
+		else: values[i] = llvm_convert(id, values[i], types[i], parameters[i])
+		llvm_owner_move(group, operands[i], parameters[i])
+	# A record result goes to a caller buffer, the hidden first argument.
+	char* buffer = 0
+	if (llvm_class(defined.return_type) == llvm_class_struct): buffer = llvm_address_value(llvm_record_buffer(defined.return_type))
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
 	llvm_put(c" = call i64 ")
 	llvm_put(llvm_function_symbol(linkage))
 	llvm_put(c"(")
-	for i in range(values.length):
+	if (buffer != 0):
+		llvm_put(c"i64 ")
+		llvm_put(buffer)
+		if (count > 0): llvm_put(c", ")
+	for i in range(count):
 		if (i > 0): llvm_put(c", ")
 		llvm_put(c"i64 ")
 		llvm_put(values[i])
 	llvm_put(c")\x0a")
 	operands.free()
 	values.free()
+	types.free()
+	parameters.free()
+	if (buffer != 0): return buffer
 	return result
 
 
@@ -5513,8 +5588,11 @@ void llvm_emit_body(int id):
 	int return_class = llvm_class(function.return_type)
 	if ((return_class != llvm_class_void) && (llvm_parameter_ok(function.return_type) == 0)):
 		llvm_error_at(id, c"return type of", node.name)
-	for p in range(function.parameters.length):
-		if (llvm_parameter_ok(function.parameters[p]) == 0): llvm_error_at(id, c"parameter type of", node.name)
+	list[int] parameter_types = new list[int]
+	llvm_definition_parameters(id, parameter_types)
+	for p in range(parameter_types.length):
+		if (llvm_parameter_ok(parameter_types[p]) == 0): llvm_error_at(id, c"parameter type of", node.name)
+	parameter_types.free()
 	if (ends_with(retained_sources[node.source].path, c"lib/stack_trace.w")): llvm_traces = 1
 	int subprogram = llvm_debug_function(&node)
 	llvm_function_setjmp = 0

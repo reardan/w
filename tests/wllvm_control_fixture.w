@@ -122,6 +122,44 @@ pair* pair_cell(int x):
 	return p
 
 
+# Methods and operators on records by value.
+pair pair_shifted(pair* self, int by):
+	pair p = *self
+	p.a = p.a + by
+	return p
+
+
+int pair_dot(pair* self, pair other):
+	other.a = other.a * 2
+	return self.a * other.a + self.b * other.b
+
+
+pair operator+(pair x, pair y):
+	return pair(x.a + y.a, x.b + y.b)
+
+
+# More parameters than the symbol table's ten type slots.
+int wide(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, pair l):
+	return a + b + c + d + e + f + g + h + i + j + k * 100 + l.b * 1000
+
+
+struct span_box:
+	int[] values
+
+
+int[3] span_values
+
+
+span_box span_make():
+	span_box s
+	s.values = span_values
+	return s
+
+
+int* span_pick(int flag, int* other):
+	return flag ? span_values : other
+
+
 int pair_sum(pair p):
 	# a by-value parameter is the callee's own copy
 	p.a = p.a + 100
@@ -179,6 +217,15 @@ int main():
 	q = make_pair(10)
 	println(make_pair(20).b + q.b)
 	println(pair_cell(17).b)
+	pair m = pair(2, 3)
+	pair other = pair(4, 5)
+	println(m.shifted(5).a * 100 + m.dot(other) + other.a * 1000)
+	pair added = m + other + pair(1, 1)
+	println(added.a * 10 + added.b + (m + other).b * 100)
+	println(wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, other))
+	span_values[1] = 7
+	int fallback = 2
+	println(span_make().values[1] * 100 + span_make().values.length * 10 + span_pick(1, &fallback)[1] + span_pick(0, &fallback)[0])
 	pair literal = pair(a: 4, b: 5)
 	pair positional = pair(6, 7)
 	println(literal.a * 1000 + literal.b * 100 + positional.a * 10 + positional.b)
