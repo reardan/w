@@ -22,9 +22,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Install kernel build and VM dependencies
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
+          tools/ci_apt_install.sh \
             build-essential flex bison bc libelf-dev libssl-dev \
             qemu-system-x86 python3 curl ca-certificates xz-utils
           test -c /dev/kvm
