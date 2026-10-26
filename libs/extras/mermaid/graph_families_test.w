@@ -72,13 +72,14 @@ void test_graph_mindmap_shapes_icons_and_classes():
 	int polygons = 0
 	for mm_primitive* item in s.items:
 		if (item.kind == MM_POLYGON): polygons = polygons + 1
-	assert_equal(3, polygons)
+	# Three outlines plus the native book pictogram for `fa fa-book`.
+	assert_equal(4, polygons)
 	for i in range(d.nodes.length):
 		mm_bounds* b = s.nodes[i]
 		mm_node* n = d.nodes[i]
 		asserts(c"label fits its outline", strlen(n.label) * 8 + 40 <= b.w)
 	char* svg = mm_svg(s)
-	asserts(c"icon name rendered", index_of(svg, c">fa fa-book</text>") >= 0)
+	asserts(c"icon drawn as a pictogram, not its name", index_of(svg, c">fa fa-book</text>") < 0)
 	asserts(c"cloud outline exported", index_of(svg, c"<polygon") >= 0)
 	free(svg)
 	mm_scene_free(s)
@@ -142,8 +143,8 @@ void test_graph_kanban_ticket_links_and_flattened_nesting():
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
-	list[char*] bad = list[char*]{c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'javascript:alert(1)'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://a/#TICKET#'\n    ticketBaseUrl: 'https://b/#TICKET#'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n  kanban:\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl\n---\nkanban\nA\n", c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n  theme: default\n    ticketBaseUrl: 'https://a/'\n---\nkanban\nA\n"}
-	list[char*] messages = list[char*]{c"ticketBaseUrl must be an http or https URL", c"unsupported kanban setting; supported: ticketBaseUrl", c"duplicate ticketBaseUrl", c"duplicate kanban configuration", c"frontmatter entry requires key: value", c"inconsistent frontmatter indentation"}
+	list[char*] bad = list[char*]{c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'javascript:alert(1)'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://a/#TICKET#'\n    ticketBaseUrl: 'https://b/#TICKET#'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n  kanban:\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl\n---\nkanban\nA\n", c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n  theme: default\n    ticketBaseUrl: 'https://a/'\n---\nkanban\nA\n"}
+	list[char*] messages = list[char*]{c"ticketBaseUrl must be an http or https URL", c"duplicate ticketBaseUrl", c"duplicate kanban configuration", c"frontmatter entry requires key: value", c"inconsistent frontmatter indentation"}
 	for i in range(bad.length):
 		mm_document* invalid = mm_parse(bad[i], strlen(bad[i]))
 		assert_strings_equal(messages[i], invalid.error)
@@ -159,7 +160,7 @@ void test_graph_kanban_ticket_links_and_flattened_nesting():
 		mm_document_free(prefix)
 
 void test_graph_family_rejections_and_truncations():
-	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\nA\n  B\n C", c"mindmap\n::icon(fa)", c"mindmap\nA\n  ::icon()", c"mindmap\nA\n  ::icon(a)\n  ::icon(b)", c"mindmap\nA\n  :::", c"mindmap\nA\n  ::shape(x)", c"mindmap\nA))bang(", c"mindmap\nA{{hex}", c"mindmap\nA:::bad!name", c"kanban\nA\n    B\n  C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
+	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\n::icon(fa)", c"mindmap\nA\n  ::icon()", c"mindmap\nA\n  ::icon(a)\n  ::icon(b)", c"mindmap\nA\n  :::", c"mindmap\nA\n  ::shape(x)", c"mindmap\nA))bang(", c"mindmap\nA{{hex}", c"mindmap\nA:::bad!name", c"kanban\nA\n    B\n  C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid syntax rejected", d.error != 0)

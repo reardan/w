@@ -1536,6 +1536,25 @@ when stderr is not a terminal.
   reclaiming its quarantine, as it already does for a failed mmap. Also
   name the limit in the message.
 
+## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
+
+`./wbuild wmermaid` (a `# wbuild: binary=wmermaid` target in
+`tools/wmermaid.w`) stays cached after an edit to any module it imports,
+for example `libs/extras/mermaid/scene.w`, so the CLI silently runs stale
+code; `<name>_test` targets in the same tree do rebuild on the same edit.
+Only `--no-cache` (or compiling with `bin/wv2` by hand) refreshes it.
+Direction: give source-owned `binary=`/`target=` compile steps the same
+`bin/wv2 deps` closure inputs that conventional test targets get.
+
+Likely cause (2026-10-25, corpus gaps for #818/#820/#821): after one
+`./wbuild wmermaid` whose compile failed on an error in an imported module,
+`bin/.wexec_deps_cache` held `X x86 tools/wmermaid.w` with no `F` closure
+lines, keyed on the root file's hash; since `tools/wmermaid.w` itself never
+changed, that failed (empty) closure was reused and no later import edit
+invalidated the target. Deleting `bin/.wexec_deps_cache` restored an `R`
+entry with the full closure and correct rebuilds. Direction: never cache a
+failed `deps` result, or key it on the inputs that made it fail.
+
 ## `check --fix` skips a root that is also an import (2026-10-25, wfmt #716)
 
 `bin/wv2 check --fix m.w lib/lib.w` fixes `m.w` but prints `skipping
@@ -1545,3 +1564,26 @@ root that compiles. Running `--fix` over a whole import closure therefore
 fixes only the files nothing earlier imported. Run the text rules for
 every named root before compiling any of them, or point users at
 `bin/wfmt -w`, which formats files without compiling them.
+
+## Zeroing a struct with `T[N]` fields (2026-10-25, issue #827)
+
+- **`mem_fill` over a local struct wipes its array fields' hidden
+  headers**, and the next `&s.field[0]` traps with "index out of range:
+  index 0, length 0" at a line that looks obviously in bounds. W0415
+  (`[malloc-array-fields]`) warns for `cast(T*, malloc(...))` but not for
+  `mem_fill[char](cast(char*, &s), 0, sizeof(T))` on a struct that has
+  `T[N]` fields. Direction: extend W0415 to byte-filling or `mem_copy`ing
+  over such a struct, or name the struct field and the header in the
+  trap message.
+
+## Cold wtest closure cache was serial (2026-10-25, PR #831)
+
+A cold `bin/.wtest_deps_cache` ran one `bin/wv2 deps` per root, one at a
+time: 2059 roots took about 15 minutes on a 4-core box, and under the
+coverage-instrumented compiler `wtest_map_test` alone ran past the
+coverage shard's 30-minute limit once the Mermaid follow-ups doubled
+that tree's test roots. Done: first attempts now run `WTEST_DEPS_JOBS`
+(default: CPU count) at a time in windows of 20 roots, so a cold run takes
+4m25s. Remaining: `bin/wv2 deps` still runs the whole front end over the
+closure (about 2s for a Mermaid root), so a listing-only import walk
+would make the cold pass cheaper still.

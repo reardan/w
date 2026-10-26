@@ -20,6 +20,19 @@ default Regular), else the face's .notdef box. Each new glyph bumps
 ui_font_atlas_generation(); the renderer uploads the grown atlas
 before it draws, so glyphs can appear mid-frame.
 
+Color glyphs (COLR/CPAL, CBDT/CBLC and sbix, graphics.ui.font_color)
+rasterize into a second, RGBA atlas: a glyph's ui_glyph then names a
+list of parts (ui_font_color_part) in paint order, each an RGBA rect
+drawn untinted or a coverage rect in the R8 atlas drawn in the text
+color (COLR's foreground layers). ui_font_color_generation() and the
+color atlas accessors mirror the coverage atlas's.
+
+A strike also carries a hinting mode (issue #824): ui_font_strike
+gives the unhinted strike, and ui_font_strike_hinted(face, ppem,
+UI_HINT_LIGHT) a separate one whose glyphs lib.ttf_hint fits to the
+pixel grid vertically. Hinting never changes advances, kerning or
+shaped positions, so layout and carets are the same in both.
+
 Text is UTF-8 (invalid bytes read as U+FFFD), measured with pair
 kerning from the face's GPOS or kern table. Pure CPU code — the GL
 upload lives in graphics.ui.render.
@@ -27,6 +40,7 @@ upload lives in graphics.ui.render.
 import lib.lib
 import lib.utf8
 import lib.ttf
+import lib.ttf_hint
 import lib.rle
 import lib.mem
 import libs.standard.crypto.base64
@@ -34,6 +48,8 @@ import graphics.ui.font_data
 import lib.bytes
 import graphics.ui.grapheme
 import lib.unicode_text
+import graphics.ui.font_color
+import lib.emoji
 
 
 # Mask ids in atlas bake order.
@@ -57,7 +73,9 @@ const int ui_mask_cross = 8
 # the pen-to-bitmap x offset; bearing_top is rows above the baseline
 # (negative for below-baseline ink like '_'). face and gid name the
 # outline it came from (a fallback face's, for a borrowed glyph), for
-# kerning; masks carry face -1.
+# kerning; masks carry face -1. A color glyph has color > 0 (see
+# ui_font_color_part); x, y, w, h and the bearings then give the box of
+# all its parts, and x, y name no atlas rect.
 struct ui_glyph:
 	int32 x
 	int32 y
@@ -68,6 +86,20 @@ struct ui_glyph:
 	int32 bearing_top
 	int32 face
 	int32 gid
+	int32 color
+
+
+# One part of a color glyph: an RGBA rect of the color atlas, drawn
+# untinted, or (foreground) a coverage rect of the R8 atlas drawn in the
+# text color. The bearings are the glyph's, as for ui_glyph.
+struct ui_color_part:
+	int32 x
+	int32 y
+	int32 w
+	int32 h
+	int32 bearing_x
+	int32 bearing_top
+	int32 foreground
 
 
 ui_glyph ui_font_decode(char* record):
@@ -81,6 +113,7 @@ ui_glyph ui_font_decode(char* record):
 	g.bearing_top = (record[8] & 255) - 8
 	g.face = 0 - 1
 	g.gid = 0
+	g.color = 0
 	return g
 
 
@@ -104,11 +137,19 @@ const int ui_font_min_ppem = 4
 const int ui_font_max_ppem = 200
 
 
-# A face at one pixel size, with its line metrics in pixels (y-down
-# from the baseline for the decoration lines, lib.ttf's conventions).
+# Strike hinting modes (lib.ttf_hint's): outlines as designed, or
+# fitted to the pixel grid vertically by the light autohinter.
+const int UI_HINT_NONE = 0
+const int UI_HINT_LIGHT = 1
+
+
+# A face at one pixel size and hinting mode, with its line metrics in
+# pixels (y-down from the baseline for the decoration lines, lib.ttf's
+# conventions).
 struct ui_strike:
 	int32 face
 	int32 ppem
+	int32 hinting       # UI_HINT_NONE or UI_HINT_LIGHT
 	int32 italic        # the true-italic companion strike; -1 unresolved, -2 none
 	int32 ascent
 	int32 descent
@@ -150,6 +191,27 @@ struct ui_font_state:
 	int generation
 	int uv_rows         # the height UVs are normalized by (ui_font_uv_rows)
 	char* baked         # decoded baked rows, cached
+	# Color glyphs: each face's color tables (color_known 0 until
+	# looked up, 1 none, 2 present), the parts of every color glyph
+	# (ui_glyph.color - 1 indexes color_first / color_count), and the
+	# RGBA atlas, packed like the coverage rows.
+	ttf_color_font*[32] colors
+	int32[32] color_known
+	int32* color_first
+	int32* color_count
+	int color_glyphs
+	int color_glyph_cap
+	ui_color_part* color_parts
+	int color_part_count
+	int color_part_cap
+	char* color_pixels
+	int color_rows
+	int color_cap_rows
+	int color_shelf_x
+	int color_shelf_y
+	int color_shelf_h
+	int color_generation
+	int color_uv_rows
 
 
 ui_font_state ui_font_st
@@ -196,6 +258,7 @@ int ui_font_face_add(ttf_font* font):
 	int face = ui_font_st.face_count
 	ui_font_st.fonts[face] = font
 	ui_font_st.italic_of[face] = 0 - 1
+	ui_font_st.color_known[face] = 0
 	ui_font_st.face_count = face + 1
 	return face
 
@@ -336,14 +399,207 @@ int ui_font_rows_place(char* bitmap, int w, int h, int* x, int* y):
 	return 1
 
 
+# ---- color atlas -----------------------------------------------------
+
+# The RGBA atlas holding color glyphs: ui_font_color_atlas_w() texels
+# wide, ui_font_color_atlas_rows() tall (0 until the first color glyph),
+# 4 straight-alpha bytes per texel.
+int ui_font_color_atlas_w():
+	return 512
+
+
+int ui_font_color_atlas_rows():
+	return ui_font_st.color_cap_rows
+
+
+char* ui_font_color_atlas_pixels():
+	return ui_font_st.color_pixels
+
+
+# Changes whenever a color glyph is added.
+int ui_font_color_generation():
+	return ui_font_st.color_generation
+
+
+# As ui_font_uv_rows / ui_font_uv_sync, for the color atlas.
+int ui_font_color_uv_rows():
+	if (ui_font_st.color_uv_rows == 0): ui_font_st.color_uv_rows = ui_font_color_atlas_rows()
+	if (ui_font_st.color_uv_rows == 0): return 1
+	return ui_font_st.color_uv_rows
+
+
+int ui_font_color_uv_sync():
+	int old = ui_font_color_uv_rows()
+	ui_font_st.color_uv_rows = ui_font_color_atlas_rows()
+	return old
+
+
+int ui_font_color_reserve(int rows):
+	if (rows <= ui_font_st.color_cap_rows): return 1
+	int next = ui_font_st.color_cap_rows * 2
+	if (next < 128): next = 128
+	while (next < rows): next = next * 2
+	int stride = ui_font_color_atlas_w() * 4
+	char* grown = cast(char*, malloc(next * stride))
+	if (grown == 0): return 0
+	int old = ui_font_st.color_cap_rows * stride
+	if (old > 0): mem_copy(grown, ui_font_st.color_pixels, old)
+	mem_fill[char](grown + old, 0, next * stride - old)
+	if (ui_font_st.color_pixels != 0): free(ui_font_st.color_pixels)
+	ui_font_st.color_pixels = grown
+	ui_font_st.color_cap_rows = next
+	return 1
+
+
+# Shelf-pack a w x h RGBA bitmap into the color atlas (1px gaps).
+# Stores its rect origin in x[0], y[0]; returns 0 when it cannot fit.
+int ui_font_color_place(char* rgba, int w, int h, int* x, int* y):
+	int atlas_w = ui_font_color_atlas_w()
+	if (w + 2 > atlas_w): return 0
+	if (ui_font_st.color_shelf_x + w + 1 > atlas_w):
+		ui_font_st.color_shelf_y = ui_font_st.color_shelf_y + ui_font_st.color_shelf_h
+		ui_font_st.color_shelf_x = 1
+		ui_font_st.color_shelf_h = 0
+	if (h + 1 > ui_font_st.color_shelf_h): ui_font_st.color_shelf_h = h + 1
+	if (ui_font_color_reserve(ui_font_st.color_shelf_y + ui_font_st.color_shelf_h + 1) == 0): return 0
+	int top = ui_font_st.color_shelf_y + 1
+	for row in range(h):
+		char* dst = ui_font_st.color_pixels + ((top + row) * atlas_w + ui_font_st.color_shelf_x) * 4
+		mem_copy(dst, rgba + row * w * 4, w * 4)
+	x[0] = ui_font_st.color_shelf_x
+	y[0] = top
+	ui_font_st.color_shelf_x = ui_font_st.color_shelf_x + w + 1
+	if (top + h + 1 > ui_font_st.color_rows): ui_font_st.color_rows = top + h + 1
+	ui_font_st.color_generation = ui_font_st.color_generation + 1
+	return 1
+
+
+# The color tables of face, or 0 when it has none (looked up once).
+ttf_color_font* ui_font_face_color(int face):
+	if ((face < 0) || (face >= ui_font_st.face_count)): return 0
+	if (ui_font_st.color_known[face] == 0):
+		ui_font_st.color_known[face] = 1
+		ttf_font* font = ui_font_face_font(face)
+		ttf_color_font* cf = cast(ttf_color_font*, malloc(sizeof(ttf_color_font)))
+		if ((font != 0) && ttf_color_init(cf, font)):
+			ui_font_st.colors[face] = cf
+			ui_font_st.color_known[face] = 2
+		else:
+			free(cast(char*, cf))
+	return ui_font_st.colors[face]
+
+
+# Whether face has color glyphs (COLR/CPAL, CBDT/CBLC or sbix).
+int ui_font_face_has_color(int face):
+	ui_font_init()
+	return ui_font_face_color(face) != 0
+
+
+# Whether glyph gid of face draws in color.
+int ui_font_face_glyph_has_color(int face, int gid):
+	ui_font_init()
+	ttf_color_font* cf = ui_font_face_color(face)
+	if (cf == 0): return 0
+	return ttf_color_glyph_kind(cf, gid) != TTF_COLOR_NONE
+
+
+# The number of parts of a color glyph (0 for any other glyph), and
+# each part in paint order.
+int ui_font_color_part_count(ui_glyph* g):
+	if ((g.color <= 0) || (g.color > ui_font_st.color_glyphs)): return 0
+	return ui_font_st.color_count[g.color - 1]
+
+
+ui_color_part* ui_font_color_part(ui_glyph* g, int i):
+	return &ui_font_st.color_parts[ui_font_st.color_first[g.color - 1] + i]
+
+
+# Render gid of face as a color glyph at ppem into g, placing its parts
+# in the atlases. Returns 0 when it has no color data (or a part does
+# not fit), leaving g for the outline path.
+int ui_font_make_color_glyph(int face, int gid, int ppem, ui_glyph* g):
+	ttf_color_font* cf = ui_font_face_color(face)
+	if (cf == 0): return 0
+	ttf_color_glyph cg
+	if (!ttf_color_render(cf, gid, ppem, &cg)): return 0
+	if (ui_font_st.color_glyphs >= ui_font_st.color_glyph_cap):
+		int next = ui_font_st.color_glyph_cap * 2
+		if (next < 16): next = 16
+		ui_font_st.color_first = cast(int32*, realloc(cast(char*, ui_font_st.color_first), ui_font_st.color_glyph_cap * 4, next * 4))
+		ui_font_st.color_count = cast(int32*, realloc(cast(char*, ui_font_st.color_count), ui_font_st.color_glyph_cap * 4, next * 4))
+		ui_font_st.color_glyph_cap = next
+	if (ui_font_st.color_part_count + cg.count > ui_font_st.color_part_cap):
+		int next = ui_font_st.color_part_cap * 2
+		if (next < 64): next = 64
+		while (next < ui_font_st.color_part_count + cg.count): next = next * 2
+		ui_font_st.color_parts = cast(ui_color_part*, realloc(cast(char*, ui_font_st.color_parts), ui_font_st.color_part_cap * sizeof(ui_color_part), next * sizeof(ui_color_part)))
+		ui_font_st.color_part_cap = next
+	int first = ui_font_st.color_part_count
+	int placed = 0
+	int left = 0
+	int top = 0
+	int right = 0
+	int bottom = 0
+	for i in range(cg.count):
+		ttf_color_part* part = &cg.parts[i]
+		if ((part.w <= 0) || (part.h <= 0)): continue
+		int x = 0
+		int y = 0
+		int ok = 0
+		if (part.foreground):
+			for k in range(part.w * part.h): part.pixels[k] = ttf_boost_coverage(part.pixels[k] & 255)
+			ok = ui_font_rows_place(part.pixels, part.w, part.h, &x, &y)
+			if (ok): ui_font_st.generation = ui_font_st.generation + 1
+		else:
+			ok = ui_font_color_place(part.pixels, part.w, part.h, &x, &y)
+		if (!ok): continue
+		ui_color_part* out = &ui_font_st.color_parts[first + placed]
+		out.x = x
+		out.y = y
+		out.w = part.w
+		out.h = part.h
+		out.bearing_x = part.bearing_x
+		out.bearing_top = part.bearing_top
+		out.foreground = part.foreground
+		int pl = part.bearing_x
+		int pt = 0 - part.bearing_top
+		if ((placed == 0) || (pl < left)): left = pl
+		if ((placed == 0) || (pt < top)): top = pt
+		if ((placed == 0) || (pl + part.w > right)): right = pl + part.w
+		if ((placed == 0) || (pt + part.h > bottom)): bottom = pt + part.h
+		placed = placed + 1
+	g.advance = cg.advance
+	ttf_color_glyph_free(&cg)
+	if (placed == 0):
+		# Nothing inked (or nothing fit): an empty glyph that advances.
+		g.color = 0
+		return 1
+	ui_font_st.color_part_count = first + placed
+	ui_font_st.color_first[ui_font_st.color_glyphs] = first
+	ui_font_st.color_count[ui_font_st.color_glyphs] = placed
+	ui_font_st.color_glyphs = ui_font_st.color_glyphs + 1
+	g.color = ui_font_st.color_glyphs
+	g.x = 0
+	g.y = 0
+	g.w = right - left
+	g.h = bottom - top
+	g.bearing_x = left
+	g.bearing_top = 0 - top
+	return 1
+
+
 # ---- strikes ---------------------------------------------------------
 
-# Find or create the strike of face at ppem. Returns its id, or -1 for
-# an unknown face or a size outside 4..200 (after printing why).
-int ui_font_strike(int face, int ppem):
+# Find or create the strike of face at ppem with a hinting mode
+# (UI_HINT_NONE or UI_HINT_LIGHT). Returns its id, or -1 for an unknown
+# face or mode or a size outside 4..200 (after printing why).
+int ui_font_strike_hinted(int face, int ppem, int hinting):
 	ui_font_init()
 	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
+		return 0 - 1
+	if ((hinting != UI_HINT_NONE) && (hinting != UI_HINT_LIGHT)):
+		print_error(c"graphics.ui.font: unknown hinting mode\n")
 		return 0 - 1
 	ttf_font* font = ui_font_face_font(face)
 	if (font == 0):
@@ -351,8 +607,8 @@ int ui_font_strike(int face, int ppem):
 		return 0 - 1
 	int i = 0
 	while (i < ui_font_st.strike_count):
-		if ((ui_font_st.strikes[i].face == face) && (ui_font_st.strikes[i].ppem == ppem)):
-			return i
+		ui_strike* found = &ui_font_st.strikes[i]
+		if ((found.face == face) && (found.ppem == ppem) && (found.hinting == hinting)): return i
 		i = i + 1
 	if (ui_font_st.strike_count >= ui_font_max_strikes):
 		print_error(c"graphics.ui.font: strike limit reached\n")
@@ -365,6 +621,7 @@ int ui_font_strike(int face, int ppem):
 	ui_strike* s = &ui_font_st.strikes[id]
 	s.face = face
 	s.ppem = ppem
+	s.hinting = hinting
 	s.italic = 0 - 1
 	s.ascent = ttf_scale_round(font, ppem, font.ascent)
 	s.descent = ttf_scale_round(font, ppem, font.descent)
@@ -374,6 +631,11 @@ int ui_font_strike(int face, int ppem):
 	s.strikeout_thickness = ttf_strikeout_thickness(font, ppem)
 	ui_font_st.strike_count = id + 1
 	return id
+
+
+# The unhinted strike of face at ppem (ui_font_strike_hinted).
+int ui_font_strike(int face, int ppem):
+	return ui_font_strike_hinted(face, ppem, UI_HINT_NONE)
 
 
 # Set up the default faces and the body/title strikes (0 and 1). Runs
@@ -386,7 +648,10 @@ int ui_font_init():
 	while (i < ui_font_max_faces):
 		ui_font_st.fonts[i] = 0
 		ui_font_st.italic_of[i] = 0 - 1
+		ui_font_st.colors[i] = 0
+		ui_font_st.color_known[i] = 0
 		i = i + 1
+	ui_font_st.color_shelf_x = 1
 	ui_font_st.italic_of[UI_FACE_REGULAR] = UI_FACE_ITALIC
 	ui_font_st.italic_of[UI_FACE_BOLD] = UI_FACE_BOLD_ITALIC
 	ui_font_st.italic_of[UI_FACE_ITALIC] = UI_FACE_ITALIC
@@ -436,10 +701,28 @@ int ui_font_strike_ppem(int strike):
 	return ui_font_st.strikes[i].ppem
 
 
+int ui_font_strike_hinting(int strike):
+	int i = ui_font_strike_valid(strike)
+	return ui_font_st.strikes[i].hinting
+
+
+# A strike of face at ppem with strike's hinting mode: how a strike's
+# companions (italic, fallback faces, device sizes) are found.
+int ui_font_strike_sibling(int strike, int face, int ppem):
+	return ui_font_strike_hinted(face, ppem, ui_font_strike_hinting(strike))
+
+
 # The same face as strike at another size: text scaled cleanly to any
 # size. Returns -1 when ppem is out of range.
 int ui_font_strike_resized(int strike, int ppem):
-	return ui_font_strike(ui_font_strike_face(strike), ppem)
+	return ui_font_strike_sibling(strike, ui_font_strike_face(strike), ppem)
+
+
+# The same face and size as strike in another hinting mode. Returns -1
+# for an unknown mode.
+int ui_font_strike_with_hinting(int strike, int hinting):
+	int i = ui_font_strike_valid(strike)
+	return ui_font_strike_hinted(ui_font_st.strikes[i].face, ui_font_st.strikes[i].ppem, hinting)
 
 
 # The true-italic companion of strike (the same size in its face's
@@ -453,7 +736,7 @@ int ui_font_strike_italic(int strike):
 		int found = 0 - 2
 		if (face == s.face): found = strike
 		else if (face >= 0):
-			found = ui_font_strike(face, s.ppem)
+			found = ui_font_strike_sibling(strike, face, s.ppem)
 			if (found < 0): found = 0 - 2
 		# ui_font_strike may have moved the array.
 		ui_font_st.strikes[strike].italic = found
@@ -574,10 +857,32 @@ int ui_font_is_control(int cp):
 	return (cp < 32) || ((cp >= 127) && (cp < 160))
 
 
+# The first of face, the fallbacks and the default Regular that has
+# color glyphs and maps cp (glyph id in gid[0]), else -1.
+int ui_font_resolve_color(int face, int cp, int* gid):
+	int i = 0 - 1
+	while (i <= ui_font_st.fallback_count):
+		int f = face
+		if (i == ui_font_st.fallback_count): f = UI_FACE_REGULAR
+		else if (i >= 0): f = ui_font_st.fallbacks[i]
+		i = i + 1
+		if (ui_font_face_color(f) == 0): continue
+		int g = ttf_glyph_id(ui_font_face_font(f), cp)
+		if (g != 0):
+			gid[0] = g
+			return f
+	return 0 - 1
+
+
 # The face that supplies cp for a strike of face: face itself, else
 # the first fallback that maps it, else the default Regular, else face
-# (whose .notdef box then marks the gap). gid[0] gets the glyph id.
+# (whose .notdef box then marks the gap). A character shown as emoji by
+# default (Emoji_Presentation) prefers the first of those with color
+# glyphs. gid[0] gets the glyph id.
 int ui_font_resolve(int face, int cp, int* gid):
+	if (emoji_is_presentation(cp)):
+		int colored = ui_font_resolve_color(face, cp, gid)
+		if (colored >= 0): return colored
 	gid[0] = ttf_glyph_id(ui_font_face_font(face), cp)
 	if (gid[0] != 0):
 		return face
@@ -601,6 +906,7 @@ int ui_font_resolve(int face, int cp, int* gid):
 ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 	ui_strike* s = &ui_font_st.strikes[strike]
 	int ppem = s.ppem
+	int hinting = s.hinting
 	ui_glyph g
 	g.x = 0
 	g.y = 0
@@ -611,12 +917,14 @@ ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 	g.bearing_top = 0
 	g.face = s.face
 	g.gid = 0
+	g.color = 0
 	ttf_font* font = ui_font_face_font(face)
 	if ((font == 0) || (gid < 0) || (gid >= font.glyph_count)): return g
 	g.face = face
 	g.gid = gid
+	if (ui_font_make_color_glyph(face, gid, ppem, &g)): return g
 	ttf_bitmap bm
-	if (ttf_rasterize(font, gid, ppem, &bm) == 0):
+	if (ttf_rasterize_hinted(font, gid, ppem, 0.0, hinting, &bm) == 0):
 		# A malformed outline still advances, so text stays laid out.
 		g.advance = ttf_scale_round(font, ppem, ttf_advance_units(font, gid))
 		return g
@@ -644,7 +952,9 @@ ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 ui_glyph ui_font_make_glyph(int strike, int cp):
 	int face = ui_font_st.strikes[strike].face
 	int gid = 0
-	if (ui_font_is_control(cp)):
+	# Controls and default-ignorables (ZWJ, variation selectors, ...) draw
+	# as nothing, as a shaper hides them.
+	if (ui_font_is_control(cp) || ut_default_ignorable(cp)):
 		ui_glyph empty
 		mem_fill[char](cast(char*, &empty), 0, sizeof(ui_glyph))
 		empty.face = face

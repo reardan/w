@@ -1,9 +1,16 @@
 usecase-beta
 direction LR
 actor Customer
-systemBoundary Store[Order system]
-  Checkout(Place order)
+actor Staff("Order staff")@{ type: hollow, business: true } <<Employee>>
+systemBoundary Store["Order system"]@{ type: package }
+  Checkout(Place order) <<Core>>
   Payment(Pay)
+  Review[Review order]
 end
-Customer --> Checkout
+json Order@{ "status": "pending", "items": [{ "name": "Book" }] }
+note for Checkout "`Validates the **cart** first`"
+Customer starts@-- "places order" --> Checkout
 Checkout ..> : include Payment
+Staff --> Review
+Review --> Order
+starts@{ animation: fast }

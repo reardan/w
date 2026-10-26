@@ -53,10 +53,22 @@ void test_mermaid_canonical_er_attributes_and_cardinality():
 	mm_document_free(d)
 
 void test_mermaid_canonical_rejects_unsupported_or_invalid_model():
-	list[char*] sources = list[char*]{c"pie\n\"A\": 1\n", c"---\nconfig:\n  theme: dark\n---\nflowchart LR\nA\n", c"flowchart LR\nA["}
+	list[char*] sources = list[char*]{c"flowchart LR\nA[", c"pie\n\"A\": oops\n"}
 	for char* source in sources:
 		mm_document* d = mm_parse(source, strlen(source))
 		assert_equal(0, cast(int, mm_serialize(d)))
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, sources))
+	# Other families and frontmatter configuration have a canonical form.
+	sources = list[char*]{c"pie\n\"A\": 1\n", c"---\nconfig:\n  theme: dark\n---\nflowchart LR\nA\n"}
+	for char* source in sources:
+		mm_document* d = mm_parse(source, strlen(source))
+		char* text = mm_serialize(d)
+		asserts(c"family or configuration serialized", text != 0)
+		mm_document* again = mm_parse(text, strlen(text))
+		asserts(c"canonical output reparses to the same model", mm_document_equal(d, again))
+		free(text)
+		mm_document_free(again)
 		mm_document_free(d)
 	__w_list_free(cast(__w_list*, sources))
 	char* source = c"flowchart LR\nA --> B\n"
@@ -108,10 +120,13 @@ void test_mermaid_canonical_scoped_edge_styles_follow_output_order():
 	asserts(c"scoped serialization", text != 0)
 	mm_document* result = mm_parse(text, strlen(text))
 	asserts(c"scoped canonical parse", result.error == 0)
-	assert_strings_equal(c"Inside", result.nodes[result.edges[0].from_node].id)
-	assert_equal(0x0000ff, result.edges[0].style.stroke)
-	assert_strings_equal(c"Outside", result.nodes[result.edges[1].from_node].id)
-	assert_equal(0xff0000, result.edges[1].style.stroke)
+	# Canonical output keeps the original edge order, so each linkStyle
+	# index still names the same edge.
+	assert_strings_equal(c"Outside", result.nodes[result.edges[0].from_node].id)
+	assert_equal(0xff0000, result.edges[0].style.stroke)
+	assert_strings_equal(c"Inside", result.nodes[result.edges[1].from_node].id)
+	assert_equal(0x0000ff, result.edges[1].style.stroke)
+	asserts(c"scoped model preserved", mm_document_equal(d, result))
 	free(text)
 	mm_document_free(result)
 	mm_document_free(d)

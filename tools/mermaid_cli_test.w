@@ -76,9 +76,29 @@ int main():
 	mc_run(ht_argv(c"check", source))
 	mc_run(ht_argv(c"canonical", source, copy))
 	ht_equal_file(copy, text)
-	ht_write(source, c"pie\n\"A\": 1\n", 11)
+	# format: stdout or -o, --check reports non-canonical input, selection.
+	ht_require(strcmp(mc_run(ht_argv(c"format", copy)).stdout_text, text) == 0, c"format stdout differs from canonical")
+	mc_run(ht_argv(c"format", c"--check", copy))
+	char* loose = c"pie\n\"A\": 1\n"
+	ht_write(source, loose, strlen(loose))
+	ht_require(contains(mc_run(ht_argv(c"format", c"--check", source), 0).stderr_text, c"not canonically formatted"), c"format --check accepted non-canonical input")
+	ht_equal_file(source, loose)
+	mc_run(ht_argv(c"format", source, c"-o", copy))
+	mc_run(ht_argv(c"format", c"--check", copy))
+	char* formatted = ht_read(copy).data
+	ht_require(starts_with(formatted, c"pie") && contains(formatted, c"\"A\": 1"), c"format lost pie data")
+	ht_require(strcmp(mc_run(ht_argv(c"format", copy)).stdout_text, formatted) == 0, c"format is not idempotent")
+	mc_run(ht_argv(c"format", c"--check", path_join(root, c"missing.mmd")), 0)
+	mc_run(ht_argv(c"format", source, c"-x", copy), 0)
+	mc_run(ht_argv(c"format", c"--check", source, c"-o", copy), 0)
+	ht_write(source, markdown, strlen(markdown))
+	ht_require(contains(mc_run(ht_argv(c"format", source, c"--diagram", c"1")).stdout_text, c"Second"), c"format selection regression")
+	mc_run(ht_argv(c"format", c"--check", source, c"--diagram", c"1"), 0)
+	# A parse error has no canonical form; the output file is left alone.
+	ht_write(source, c"pie\n\"A\": oops\n", 14)
 	before = ht_read(copy).data
 	mc_run(ht_argv(c"canonical", source, copy), 0)
+	mc_run(ht_argv(c"format", source, c"-o", copy), 0)
 	ht_equal_file(copy, before)
 	char* deep = path_join(path_join(root, strjoin(c"long-directory-", ht_repeat('x', 100))), strjoin(c"nested-", ht_repeat('y', 80)))
 	ht_mkdir(deep)
@@ -108,7 +128,7 @@ int main():
 			if (item.text != 0 && strcmp(item.text, title) == 0): count = count + 1
 		ht_require(count == 1, c"frontmatter title missing or repeated")
 		xml_element* rect = xml_find(tree, c"{http://www.w3.org/2000/svg}rect")
-		ht_require(rect != 0 && strcmp(xml_get(rect, c"fill"), c"#0f172a") == 0, c"frontmatter theme not applied")
+		ht_require(rect != 0 && strcmp(xml_get(rect, c"fill"), c"#333333") == 0, c"frontmatter theme not applied")
 		ht_write(replacement, c"Edited family title", 19)
 		at = index_of(titled, title)
 		mc_run(ht_argv(c"edit", source, itoa(at), itoa(at + strlen(title)), replacement, copy))

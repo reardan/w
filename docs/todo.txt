@@ -639,7 +639,9 @@ current state:
 	text and fonts (docs/projects/text_shaping.md, text_input.md):
 		working:
 			lib/ttf.w: TrueType glyf and CFF/OTTO outlines (name-keyed
-				and CID-keyed), cmap, legacy kern; unhinted rasterizer
+				and CID-keyed), cmap, legacy kern; rasterizer with an
+				opt-in vertical light autohinter per strike
+				(lib/ttf_hint.w)
 			lib/bidi.w: UAX #9, passes all of BidiCharacterTest.txt
 			lib/ttf_shape.w + lib/ttf_layout.w: portable GSUB/GPOS
 				shaper (default, Arabic, Hebrew, Indic for nine scripts,
@@ -656,7 +658,7 @@ current state:
 			IME: X11 XIM, Win64 IMM, web composition, opt-in Cocoa
 				NSTextInputClient bridge (graphics.ime_cocoa)
 		missing:
-			hinting; color glyphs; Sinhala, Myanmar/Khmer/USE
+			color glyphs; Sinhala, Myanmar/Khmer/USE
 				shapers; dictionary word breaking for Thai/Lao/
 				Khmer/Myanmar (cluster-break fallback only);
 				a bundled fallback face (by decision:

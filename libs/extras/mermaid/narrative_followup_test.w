@@ -133,10 +133,10 @@ void test_gantt_date_formats_and_minute_units():
 	a = followup_task(d, 0)
 	assert_equal(mm_n_date(c"2024-01-08") * 1440 + 120, a.end)
 	mm_document_free(d)
-	followup_expect_error(c"gantt\ndateFormat DD/MMM/YYYY", c"unsupported Gantt dateFormat")
-	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD HH", c"unsupported Gantt dateFormat")
+	followup_expect_error(c"gantt\ndateFormat DD/MMM/YYYY ww", c"unsupported Gantt dateFormat")
+	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD YYYY", c"unsupported Gantt dateFormat")
 	followup_expect_error(c"gantt\nA: 2024-01-01, 1d\ndateFormat DD-MM-YYYY", c"Gantt dateFormat must precede tasks and dates")
-	followup_expect_error(c"gantt\nA: 2024-01-01, 3h", c"Gantt requires end date, until task or positive duration")
+	followup_expect_error(c"gantt\nA: 2024-01-01, 3x", c"Gantt requires end date, until task or positive duration")
 	followup_expect_error(c"gantt\ndateFormat DD-MM-YYYY\nA: a, 2024-01-01, 1d", c"Gantt requires a dateFormat start or after dependencies")
 	followup_expect_error(c"gantt\ndateFormat DD-MM-YYYY\nA: a, 05-01-2024, 2024-01-06", c"Gantt requires end date, until task or positive duration")
 	followup_expect_error(c"gantt\ndateFormat YYYY-MM-DD HH:mm\nA: a, 2024-01-01 24:00, 1h", c"Gantt requires a dateFormat start or after dependencies")
@@ -158,7 +158,7 @@ void test_gantt_axis_format_tokens():
 	assert_strings_equal(c"Fri 01:05 PM", label)
 	free(label)
 	mm_document_free(d)
-	followup_expect_error(c"gantt\naxisFormat %Q\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
+	followup_expect_error(c"gantt\naxisFormat %K\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
 	followup_expect_error(c"gantt\naxisFormat %\nA: 2024-01-01, 1d", c"unsupported Gantt axisFormat")
 
 void test_gantt_today_marker_is_fixed_only():
@@ -256,7 +256,7 @@ void test_zenuml_creation_assignment_annotations_and_try():
 	branch = d.narrative[10]
 	assert_strings_equal(c"finally", branch.label)
 	char* svg = followup_svg(d)
-	asserts(c"annotation shown as stereotype", index_of(svg, c"&lt;&lt;Database&gt;&gt;") >= 0)
+	asserts(c"Database annotator draws its symbol", repo.shape == 5 && api.shape == 2)
 	asserts(c"creation label shown", index_of(svg, c"new Repo(config)") >= 0)
 	free(svg)
 	mm_scene* scene = mm_render(d)
@@ -297,7 +297,7 @@ void test_zenuml_nested_assignment_reply_and_inline_bodies():
 	followup_expect_error(c"zenuml\n@ Foo", c"unsupported ZenUML annotation")
 	followup_expect_error(c"zenuml\n@Database", c"unsupported ZenUML annotation")
 	followup_expect_error(c"zenuml\nx = 5", c"ZenUML assignment requires a call")
-	followup_expect_error(c"zenuml\nx = new A", c"ZenUML new requires a participant and balanced arguments")
+	followup_expect_error(c"zenuml\nx = new A(b", c"ZenUML new requires a participant and balanced arguments")
 	followup_expect_error(c"zenuml\nnew A(", c"ZenUML new requires a participant and balanced arguments")
 	followup_prefixes(c"zenuml\n@Database Repo\nApi.handle() {\nrepo = new Repo(config) { Repo.init() }\nOrder result = Repo.save(order)\ntry { Repo.flush() } catch(e) { return failed } finally { Api->Repo: close }\n}\n")
 

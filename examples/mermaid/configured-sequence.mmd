@@ -1,0 +1,20 @@
+---
+title: >-
+  Checkout flow
+  (configured)
+shared: &actors
+  width: 120
+  actorMargin: 60
+config:
+  sequence:
+    <<: *actors
+    mirrorActors: true
+    showSequenceNumbers: true
+    messageAlign: left
+---
+sequenceDiagram
+participant C as Client
+participant S as Server
+C->>S: POST /cart/checkout with a long payload description
+%%{init: {"sequence": {"wrap": true}}}%%
+S-->>C: 201 Created

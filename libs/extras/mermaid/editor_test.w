@@ -185,7 +185,7 @@ void test_mermaid_graph_hit_and_long_path_save_as():
 	string_free(path)
 
 void test_mermaid_selection_survives_invalid_first_frontmatter():
-	char* source = c"```mermaid\n---\ntitle: |\n---\nflowchart LR\nA\n```\n```mermaid\nflowchart LR\nB\n```\n"
+	char* source = c"```mermaid\n---\ntitle: |x\n---\nflowchart LR\nA\n```\n```mermaid\nflowchart LR\nB\n```\n"
 	mm_editor* e = mm_editor_new(c"unused.mmd", source)
 	asserts(c"invalid first diagram", e.document.error != 0)
 	assert_equal(2, mm_source_diagram_count(source, strlen(source)))

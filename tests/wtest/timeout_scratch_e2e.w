@@ -47,10 +47,15 @@ void wt_fake_head(string_builder* sb):
 	sc_src(sb, 1, c"char* nl = cast(char*, malloc(1))")
 	sc_src(sb, 1, c"nl[0] = 10")
 	sc_src(sb, 1, c"char* root = argv[2]")
+	# One write per line: wtest runs first attempts concurrently, and
+	# two O_APPEND writes per line would interleave between children.
+	sc_src(sb, 1, c"int n = strlen(root)")
+	sc_src(sb, 1, c"char* line = cast(char*, malloc(n + 1))")
+	sc_src(sb, 1, c"for i in range(n): line[i] = root[i]")
+	sc_src(sb, 1, c"line[n] = 10")
 	sc_src(sb, 1, c"int fd = open(c\"calls.log\", 1089, 420)")
 	sc_src(sb, 1, c"if (fd >= 0):")
-	sc_src(sb, 2, c"write(fd, root, strlen(root))")
-	sc_src(sb, 2, c"write(fd, nl, 1)")
+	sc_src(sb, 2, c"write(fd, line, n + 1)")
 	sc_src(sb, 2, c"close(fd)")
 
 

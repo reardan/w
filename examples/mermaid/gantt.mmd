@@ -4,10 +4,14 @@ dateFormat YYYY-MM-DD
 axisFormat %d %b
 excludes weekends 2026-10-12
 todayMarker 2026-10-08
+tickInterval 1week
+weekday monday
 section Development
 Implement :done, code, 2026-10-01, 4d
 Tests :active, crit, tests, after code, 3d
 section Release
 Review :review, after tests, 2d
 Ship :milestone, ship, after review, 0d
+Code freeze :vert, freeze, 2026-10-09, 1d
+Announce :announce, after ship, 20h
 click review href "https://github.com/reardan/w/pulls"

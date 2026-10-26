@@ -440,6 +440,12 @@ selection — per-arch verify selection included — until the root's
 content changes. Every failed shell-out (timeout, nonzero exit, spawn
 failure) prints one stderr line naming the root, so a lost closure is
 visible at the moment it is lost instead of silent.
+
+A cold pass runs the first attempt for up to WTEST_DEPS_JOBS roots at a
+time (default: one per CPU in /proc/cpuinfo; 1, or no /proc, keeps it
+serial) in windows of 20 outstanding roots, so the progress lines and
+checkpoints below keep their cadence. Each concurrent run keeps its own
+budget; a timed-out one is retried serially exactly as above.
 */
 import lib.lib
 import lib.env
@@ -1034,6 +1040,158 @@ void wtest_deps_shellout_warn(char* what, char* id, char* tail):
 	stream_flush(err)
 
 
+# First 'bin/wv2 deps' attempts run ahead of the serial pass by
+# wtest_prefetch_closures: root id -> its result, taken (and so run
+# only once) by wtest_run_deps.
+map[char*, process_result*] wtest_prefetched
+
+
+struct wtest_deps_job:
+	char* id
+	process* child
+	process_capture* out
+	process_capture* err
+	int out_open
+	int err_open
+	int deadline
+	int timed_out
+
+
+# Concurrent first attempts per window: WTEST_DEPS_JOBS when it is a
+# positive integer, else one per CPU listed in /proc/cpuinfo, else 1.
+int wtest_deps_jobs():
+	char* override = env_get(c"WTEST_DEPS_JOBS")
+	if (override != 0):
+		int value = atoi(override)
+		if (value > 0): return value
+	char* text = file_read_text(c"/proc/cpuinfo")
+	if (text == 0): return 1
+	int count = 0
+	int line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (line_start && starts_with(text + i, c"processor")): count = count + 1
+		line_start = text[i] == 10
+		i = i + 1
+	free(text)
+	if (count < 1): return 1
+	return count
+
+
+# Spawn one root's deps run with piped output, as deps_run would; 0 when
+# it cannot be spawned (wtest_run_deps then runs it serially and
+# reports the failure itself).
+wtest_deps_job* wtest_deps_job_start(char* id, int budget):
+	char** argv = deps_wv2_argv(id, c"deps")
+	if (argv == 0): return 0
+	spawn_options* opts = spawn_options_new()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_pipe
+	process* child = process_spawn(build_host_compiler(), argv, opts)
+	free(opts)
+	free(cast(char*, argv))
+	if (child == 0): return 0
+	wtest_deps_job* job = new wtest_deps_job()
+	job.id = id
+	job.child = child
+	job.out = new process_capture()
+	job.err = new process_capture()
+	process_capture_init(job.out)
+	process_capture_init(job.err)
+	job.out_open = 1
+	job.err_open = 1
+	job.deadline = process_monotonic_ms() + budget
+	job.timed_out = 0
+	return job
+
+
+# Reap a job whose streams are closed and file its process_result the
+# way process_run reports it (status, or process_status_timeout).
+void wtest_deps_job_finish(wtest_deps_job* job):
+	int decoded = 0
+	if (job.timed_out):
+		process_wait(job.child)
+		decoded = process_status_timeout
+	else:
+		int remaining_ms = job.deadline - process_monotonic_ms()
+		if (remaining_ms <= 0): remaining_ms = 1
+		decoded = process_wait_or_kill(job.child, remaining_ms)
+	process_result* result = new process_result()
+	result.status = decoded
+	result.stdout_length = job.out.length
+	result.stdout_text = process_capture_take(job.out)
+	result.stderr_length = job.err.length
+	result.stderr_text = process_capture_take(job.err)
+	process_free(job.child)
+	free(cast(char*, job.out))
+	free(cast(char*, job.err))
+	wtest_prefetched[job.id] = result
+	free(cast(char*, job))
+
+
+# Run the first deps attempt for every root in window, up to
+# wtest_deps_jobs() at once, multiplexing their output with poll.
+void wtest_prefetch_closures(list[char*] window):
+	int jobs = wtest_deps_jobs()
+	if ((jobs < 2) || (window.length < 2) || os_windows()): return
+	if (wtest_prefetched == 0): wtest_prefetched = new map[char*, process_result*]
+	int budget = wtest_deps_budget_ms()
+	char* fds = cast(char*, malloc(2 * jobs * 8 + 16))
+	list[wtest_deps_job*] running = new list[wtest_deps_job*]
+	int next = 0
+	while ((next < window.length) || (running.length > 0)):
+		while ((next < window.length) && (running.length < jobs)):
+			wtest_deps_job* started = wtest_deps_job_start(window[next], budget)
+			if (started != 0): running.push(started)
+			next = next + 1
+		if (running.length == 0): continue
+		int now = process_monotonic_ms()
+		int wait_ms = -1
+		int nfds = 0
+		for wtest_deps_job* job in running:
+			int left = job.deadline - now
+			if (left < 0): left = 0
+			if ((wait_ms < 0) || (left < wait_ms)): wait_ms = left
+			if (job.out_open):
+				process_pollfd_set(fds, nfds, job.child.stdout_fd, 1)
+				nfds = nfds + 1
+			if (job.err_open):
+				process_pollfd_set(fds, nfds, job.child.stderr_fd, 1)
+				nfds = nfds + 1
+		if (nfds > 0): poll(cast(int*, fds), nfds, wait_ms)
+		int slot = 0
+		now = process_monotonic_ms()
+		list[wtest_deps_job*] still = new list[wtest_deps_job*]
+		for wtest_deps_job* job in running:
+			if (job.out_open):
+				if (process_pollfd_revents(fds, slot) != 0):
+					if (process_capture_read(job.out, job.child.stdout_fd) <= 0): job.out_open = 0
+				slot = slot + 1
+			if (job.err_open):
+				if (process_pollfd_revents(fds, slot) != 0):
+					if (process_capture_read(job.err, job.child.stderr_fd) <= 0): job.err_open = 0
+				slot = slot + 1
+			if ((job.out_open || job.err_open) && (now >= job.deadline)):
+				process_kill_group(job.child, sigkill)
+				job.timed_out = 1
+				job.out_open = 0
+				job.err_open = 0
+			if (job.out_open || job.err_open): still.push(job)
+			else: wtest_deps_job_finish(job)
+		running = still
+	free(fds)
+
+
+# The prefetched first attempt for id, removed from the store; 0 when
+# none ran.
+process_result* wtest_take_prefetched(char* id):
+	if (wtest_prefetched == 0): return 0
+	process_result* result = wtest_prefetched.get(id, 0)
+	if (result != 0): wtest_prefetched.remove(id)
+	return result
+
+
 # Run 'bin/wv2 deps [selector] <root>' for one root id; returns a
 # newline-guarded closure blob or 0 when the root does not compile for
 # its target (literal matching still applies). A run that exceeds the
@@ -1053,7 +1211,8 @@ char* wtest_run_deps(char* id):
 	wtest_last_failure_line = 0
 	if (deps_id_root(id) == 0): return 0
 	int budget = wtest_deps_budget_ms()
-	process_result* result = deps_run(id, budget)
+	process_result* result = wtest_take_prefetched(id)
+	if (result == 0): result = deps_run(id, budget)
 	if ((result != 0) && (result.status == process_status_timeout)):
 		wtest_deps_shellout_warn(c"timed out", id, c"; retrying once")
 		process_result_free(result)
@@ -1192,8 +1351,18 @@ void wtest_compute_closures(list[char*] roots):
 	int failed = 0
 	list[char*] failed_roots = new list[char*]
 	int start_ms = process_monotonic_ms()
-	for char* pending in roots:
-		if (wtest_closure_known(pending) == 0):
+	int scan = 0
+	while (scan < roots.length):
+		# The next window of up to 20 outstanding roots, first attempts
+		# run concurrently (header comment), then recorded in order.
+		list[char*] window = new list[char*]
+		while ((scan < roots.length) && (window.length < 20)):
+			if (wtest_closure_known(roots[scan]) == 0): window.push(roots[scan])
+			scan = scan + 1
+		wtest_prefetch_closures(window)
+		for char* pending in window:
+			# A root listed twice is recorded by its first copy.
+			if (wtest_closure_known(pending)): continue
 			if (wtest_closure_compute(pending) == 0):
 				failed = failed + 1
 				failed_roots.push(pending)

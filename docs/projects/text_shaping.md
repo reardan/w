@@ -40,7 +40,8 @@ the same rasterizer and cache.
 
 `ttf_shape(font, cps, clusters, count, rtl, script, language, flags)` returns an
 `otl_buffer` of positioned glyphs in visual order, in font units. It follows
-HarfBuzz's default, Arabic, Hebrew, Indic and Thai/Lao shapers:
+HarfBuzz's default, Arabic, Hebrew, Indic, Thai/Lao and Universal Shaping
+Engine shapers:
 
 - **Normalization** against the font's cmap (decompose, reorder by modified
   combining class, recompose), with default ignorables hidden and RTL mirroring.
@@ -58,6 +59,25 @@ HarfBuzz's default, Arabic, Hebrew, Indic and Thai/Lao shapers:
   joiner rules, final reordering (reph, pre-base matras, pre-base-reordering
   `pref` consonants), and the `init`/`pres`/`abvs`/`blws`/`psts`/`haln`
   presentation features.
+- **Universal Shaping Engine** (`lib.ttf_use`, issue #825): HarfBuzz 15's
+  `hb-ot-shaper-use` for the scripts it sends there (Tibetan, Sinhala,
+  Javanese, Balinese, Batak, Mongolian, Brahmi and about 75 others) unless the
+  font's script choice falls back to `DFLT`/`latn`, and for the nine Indic
+  scripts in fonts whose chosen tag is a `dev3`-style one: USE categories
+  (HarfBuzz's table, kept in `tools/unicode/use_categories.txt` and generated
+  into `lib/ttf_use_data.w`), the cluster machine, the `rphf`/`pref`/`abvf`/
+  `blwf`/`half`/`pstf`/`vatu`/`cjct` stages with repha and pre-base recording,
+  reordering, dotted circles for broken clusters and the Sinhala, Brahmi,
+  Khojki, Khudawadi, Tirhuta, Modi and Takri vowel constraints, topographical
+  (or Arabic joining) forms, and the presentation features.
+- **Khmer and Myanmar** (`lib.ttf_khmer`, `lib.ttf_myanmar`, with the
+  shared categories in `lib.ttf_sea`): HarfBuzz's Khmer shaper (syllable
+  machine, split vowels, Coeng Ro and left vowels moved before the base,
+  `pref`/`blwf`/`abvf`/`pstf`/`cfar` in one per-syllable stage, `liga`
+  off) and Myanmar shaper for `mym2` fonts (kinzi, medial Ra and left
+  vowels before the base, below/post-base groups by a cluster-merging
+  sort, `rphf`/`pref`/`blwf`/`pstf` one stage each); like HarfBuzz, a
+  `mymr`, DFLT or latn font shapes Myanmar as default text.
 - **GPOS** types 1-9: `kern`, mark-to-base, mark-to-ligature, mark-to-mark,
   cursive attachment, `dist`, `abvm`/`blwm`.
 - **Fallbacks** for fonts without the tables: Arabic presentation forms
@@ -66,22 +86,37 @@ HarfBuzz's default, Arabic, Hebrew, Indic and Thai/Lao shapers:
   combining-class mark placement.
 
 `ttf_shape_no_liga` and `ttf_shape_no_kern` flags turn off ligatures and
-kerning. Other complex scripts (Sinhala, Myanmar, Khmer, the Universal Shaping
-Engine scripts, and Indic text in fonts with only `dev3`-style USE tags) shape
-through the default shaper: their GSUB/GPOS features apply, but without
-script-specific reordering. Against the full Noto Sans fonts the Indic shaper
-matches HarfBuzz 15 on a word-and-conjunct corpus (about 2,000-2,600 lines per
-script) and on random mark/joiner stress text; the known differences are a
-syllable longer than HarfBuzz's buffer window and a precomposed letter that a
-mixed Latin run sends through the default shaper's normalizer.
+kerning.
+
+Against the full Noto fonts the USE shaper matches HarfBuzz 15 on generated
+syllable-and-word corpora (2,000 lines each) and random-character text for
+Sinhala, Tibetan, Javanese, Balinese, Tai Tham (a `DFLT`-only font, so the
+default shaper) and Devanagari in a `dev3`-only copy of Noto Sans Devanagari,
+and on 500 generated lines for each of about 60 other USE fonts; the known
+difference is a Tai Tham ZWNJ before a mark in random text, which the default
+shaper's legacy joiner rules match differently. Against the full Noto Sans
+fonts the Indic shaper matches HarfBuzz 15 on a word-and-conjunct corpus
+(about 2,000-2,600 lines per script) and on random mark/joiner stress text;
+the known difference is a syllable longer than HarfBuzz's buffer window.
 
 `tools/shape_dump.w` prints a run in `hb-shape` format and
-`tools/shape_compare_hb.py` diffs it against HarfBuzz 15 (uharfbuzz). Across 62
-system TrueType fonts, nine Noto fonts and the installed CFF fonts over a
-multi-script corpus, with GSUB/GPOS/GDEF/kern hidden in turn to reach every
-fallback, the remaining differences are a fallback Greek mark offset in
-OpenSymbol, a one-unit double-width mark rounding in FreeSans without GPOS, and
-Unifont's Arabic presentation ligatures.
+`tools/shape_compare_hb.py` diffs it against HarfBuzz 15 (uharfbuzz). The
+Khmer and Myanmar shapers match it on a word, syllable and random-stress
+corpus (about 1,100 lines per script plus 5,000 stress lines) in all 144
+installed Noto Sans/Serif Khmer and Myanmar weights, also with GSUB, GPOS
+or GDEF hidden. Across the installed system TrueType and CFF fonts,
+OpenSymbol and Unifont over a multi-script corpus (Latin, Greek and
+Cyrillic with random mark stacks, Arabic, Hebrew, Gurmukhi in a Latin
+run), with GSUB/GPOS/GDEF hidden in turn to reach every fallback, the only
+remaining differences are in symbol-encoded fonts (Webdings), whose (3,0)
+cmap HarfBuzz also reads at U+F000..U+F0FF for U+0000..U+00FF and
+`lib.ttf` does not. Fallback mark placement follows HarfBuzz's glyph
+extents (the hmtx left side bearing), ligature components and clusters;
+the Arabic fallback synthesizes HarfBuzz's presentation-form ligature
+lookups; ligatures carry HarfBuzz's ligature ids and component numbers,
+which later input matching checks; an unclassified GDEF glyph and a mark
+filtering set GDEF lacks filter nothing; and the default normalizer
+decomposes a letter followed by marks (Gurmukhi U+0A59 in a Latin run).
 
 ## Carets, clusters and fonts
 
@@ -210,8 +245,9 @@ CID-keyed CJK fonts), register it with `ui_font_add_fallback` for codepoint
 text, create its strike, and shape that run (or let `graphics.ui.itemize` pick
 faces per grapheme). A single shaped run does not fall back inside itself:
 missing coverage produces the selected face's `.notdef` glyph.
-Color glyphs and hinting remain outside the rasterizer; CFF hint operators are
-read and skipped, as the rasterizer draws unhinted outlines at every size.
+Color glyphs draw through `graphics.ui.font_color` (next section). Hinting is
+an opt-in strike option (see Hinting below); CFF hint operators are read and
+skipped either way.
 
 Calls accept at most 65536 source bytes and an output budget between zero and
 1048576 glyphs. Failure returns no partial glyph array. HarfBuzz owns its
@@ -221,10 +257,162 @@ caches retain their existing process lifetime; runs must be freed
 individually. Use the UI thread, as the shared font/atlas and lazy adapter
 initialization are not synchronized.
 
+## Color glyphs
+
+`graphics.ui.font_color` reads a face's color tables, in the order HarfBuzz
+prefers them, and renders a glyph into a list of parts in paint order
+(`ttf_color_render`); pure W on every target.
+
+- **COLR version 1**: the whole paint graph. PaintColrLayers, PaintSolid,
+  linear, radial (two-point conical) and sweep gradients with pad, repeat and
+  reflect color lines (interpolated in premultiplied space), PaintGlyph,
+  PaintColrGlyph, every transform (affine, translate, scale, rotate and skew,
+  with and without a center), PaintComposite with all 28 composite modes
+  (Porter-Duff, the separable blend modes and the HSL ones), and the ClipList.
+  The canvas covers the clip box, else the transformed boxes of the glyphs the
+  graph paints. The variable formats read their default values: there is no
+  font-variation support, so deltas are ignored. A depth limit (64) and a node
+  budget stop cycles and paint bombs; a glyph whose graph fails falls back to
+  its bitmap, then its outline.
+- **COLR version 0** with CPAL: layers, each a glyph and a palette entry.
+- **CBDT/CBLC** (Noto Color Emoji): PNG image formats 17, 18 and 19 through
+  index subtable formats 1 to 5.
+- **sbix**: PNG and JPEG images, and `dupe` records.
+
+Bitmaps come from the strike nearest the size (the smallest at least as large,
+else the largest), decoded by `graphics.image.png` (or `jpeg`) and resampled to
+the strike's ppem: area-averaged when shrinking, bilinear when growing, in
+premultiplied space. Advances come from `hmtx`, so bitmap-only fonts (which
+`lib.ttf` now loads although they have no `glyf` or `CFF `) lay out like any
+other. Palette 0 is used.
+
+A part is either RGBA (straight alpha), drawn untinted, or a foreground
+coverage mask drawn in the text color: palette index `0xFFFF` on a version 0
+layer, or a top-level PaintGlyph of a solid fill in version 1. Consecutive
+non-foreground layers composite into one RGBA part. A foreground reference
+elsewhere in a version 1 graph (a gradient stop, a nested layer) cannot be
+split out of the composite and paints opaque black.
+
+`graphics.ui.font` rasterizes color glyphs into a second, RGBA atlas
+(`ui_font_color_atlas_*`, 512 texels wide, growing like the coverage rows) and
+foreground parts into the R8 atlas; a color glyph's `ui_glyph.color` names its
+parts (`ui_font_color_part`). `graphics.ui.render` draws them through a
+renderer-owned image (`color_image`) with the RGBA shader path, tinted only by
+the text color's alpha, and the foreground parts from the atlas in the text
+color, interleaved in paint order, so `ui_draw_text`, `ui_draw_shaped_run` and
+`ui_paragraph_draw` all draw color glyphs. The device-pixel path rasterizes
+color glyphs at the device size too. `ui_font_face_has_color` and
+`ui_font_face_glyph_has_color` report color faces and glyphs.
+
+**Emoji presentation** (UTS #51, `lib.emoji`, Unicode 15.0's
+Emoji_Presentation property): the itemizer gives a grapheme presented as emoji
+(VS16, or any character with Emoji_Presentation: a base emoji, a skin-tone
+modifier, a regional indicator) the first color face that covers it, and one
+presented as text (VS15) the first face without color, before the ordinary
+face choice. Codepoint text (`ui_draw_text`) prefers a color fallback for
+Emoji_Presentation characters; it has no lookahead for VS16, so a text-default
+character such as U+2764 followed by VS16 needs shaped text to switch faces.
+Codepoint text now draws default-ignorables (ZWJ, variation selectors) as
+nothing. Emoji ZWJ sequences and skin-tone modifiers form through the face's
+GSUB: the portable shaper's default rules now let an input sequence match the
+ZWJ and variation selectors it names (they were always skipped), and a font
+with no space glyph drops hidden default-ignorables, as HarfBuzz does.
+
+`tools/color_glyph_dump.w` writes rendered glyphs as PNGs and
+`tools/color_glyph_compare_hb.py` compares them with HarfBuzz's hb-raster
+(COLR) or with the PNG and metrics fontTools reads (CBDT, sbix, at a strike's
+size). Every glyph of the COLR test fonts matches HarfBuzz within
+antialiasing at 23 and 64 ppem (mean channel difference under 3 of 255), as do
+115 glyphs sampled across the COLRv1 Noto Color Emoji at 40 ppem (mean
+difference at most 4.5, at most 2% of pixels off by more than 32, the largest
+on thin lines such as a bridge's cables): the rasterizer's 4x4 subsampling
+against HarfBuzz's exact area coverage. CBDT and sbix glyphs match exactly at
+their strike sizes.
+
+Not yet supported: `SVG ` glyphs, palette selection (`CPAL` palettes other than
+0, light/dark flags), font variations for `COLR` version 1 (`Var*` paints draw
+their defaults), EBDT/EBLC monochrome and grayscale bitmaps, and CBDT image
+formats other than PNG.
+
+## Hinting
+
+`lib.ttf_hint` fits glyph outlines to the pixel grid for small UI text
+(issue #824). It is a vertical-only light autohinter in the style of
+FreeType's light mode, and it handles TrueType (`glyf`) and CFF (`OTTO`)
+outlines the same way. It does not run the TrueType bytecode (`fpgm`,
+`prep`, `cvt `, glyph instructions) or read CFF stem hints and hint masks;
+it measures the outline itself. We chose this over a bytecode interpreter
+for three reasons. It covers both outline formats and unhinted fonts with a
+few hundred lines instead of a full TrueType VM. Vertical-only fitting
+fixes the problem the issue describes (soft, unevenly placed horizontal
+stems, baselines and x-heights at 9-14 px). It also leaves every
+horizontal metric alone, so there is nothing to reconcile with shaped
+advances. A bytecode interpreter could still be added later as another
+mode.
+
+Opt in per strike. `ui_font_strike_hinted(face, ppem, UI_HINT_LIGHT)` finds
+or creates a hinted strike. It is separate from the unhinted
+`ui_font_strike(face, ppem)` (`UI_HINT_NONE`), so existing golden rasters
+and `ui_draw_text` output change only where a program asks for hinting.
+`ui_font_strike_hinting` reads a strike's mode, and
+`ui_font_strike_with_hinting` switches it. The companions a strike finds
+for itself keep its mode: the resized and true-italic strikes, the device
+strike `graphics.ui.render` draws at a pixel scale, and the per-face item
+strikes of a paragraph (`ui_font_strike_sibling`). At the `lib.ttf` level,
+`ttf_rasterize_hinted(font, gid, ppem, skew, TTF_HINT_LIGHT, &bitmap)` is
+the entry point. `TTF_HINT_NONE` is exactly `ttf_rasterize_skewed`.
+
+Hinting never moves anything horizontally. Advances, kerning, bitmap
+widths and left bearings are identical in both modes, and shaped runs keep
+their unhinted 1/64-pixel advances and offsets. Carets, line widths and
+paragraph layout are therefore the same whether a strike is hinted or not.
+
+The algorithm follows FreeType's Latin autohinter:
+
+- **Blue zones**, measured once per face from FreeType's Latin reference
+  letters. These are the capital top and bottom (`THEZOCQS`, `HEZLOCUS`),
+  the ascender (`fijkdbh`), the x-height and small-letter bottom
+  (`xzroesc`) and the descender (`pqgjy`). Each letter's extreme point is
+  flat or round depending on its neighbours. A zone's reference is the
+  flat mean and its overshoot the round mean. A face with none of a
+  zone's letters has no such zone, and a face with no Latin letters
+  only has its stems fitted.
+- **Scale**: the vertical scale grows or shrinks slightly so that the
+  x-height overshoot lands on a whole pixel. A fraction of 0.375 px or
+  more rounds up, and a smaller one rounds down. The adjustment is
+  skipped when it would move any point of the face by two pixels or
+  more. Zones snap to whole pixels, and a zone is active only while its
+  overshoot is under 3/4 pixel. Below 1/2 pixel the overshoot is
+  suppressed, and from 1/2 to 3/4 it becomes half a pixel. These
+  comparisons use FreeType's 26.6 rounding.
+- **Edges and stems**: runs of near-horizontal outline segments become
+  edges. An edge is round when it passes through an off-curve point.
+  Edges merge when they are within 1/4 pixel. Bottom and top edges pair
+  into stems when the choice is mutual and the stem is under upem/4.
+  Edges in an active zone snap to its reference or overshoot and carry
+  their stem partner with them. Every other stem moves whole. A thin stem
+  is centred on a pixel, and a thicker one goes to whichever rounded edge
+  is closer to its original centre. As in FreeType's light mode, stem
+  widths keep their scaled size; only positions change.
+- **Map**: the fitted edges define a monotonic piecewise-linear map of y.
+  The map is applied to the flattened outline. Points between fitted
+  edges are interpolated, points beyond them move with the nearest one,
+  and a synthetic oblique is sheared after the move.
+
+Against FreeType 2.13's light autohinter (`FT_LOAD_TARGET_LIGHT |
+FT_LOAD_FORCE_AUTOHINT`) at 9-16 px over ASCII letters and digits, the
+ink rows (rows carrying at least half a pixel of coverage) are the same
+for 92-100% of glyphs. The fonts compared are Liberation, DejaVu, Noto,
+Roboto and URW, in both TrueType and CFF. Unhinted outlines match for
+62-76%. The row-profile distance (summed per-row coverage differences,
+relative to FreeType's total ink) drops from 0.14-0.18 to 0.04-0.06.
+Most remaining differences are sloped serif tops in the URW serif faces
+and the dots of `i` and `j`.
+
 ## Tests
 
 - `./wbuild ttf_shape_test` (and `ttf_shape_64_test`) checks the portable
-  engine against 46 lines of recorded HarfBuzz 15 output
+  engine against recorded HarfBuzz 15 output
   (`tests/data/shape_golden.txt`, regenerated by `tools/shape_golden_hb.py`)
   over Liberation Sans and the small OFL Noto subsets in `tests/data/fonts/`,
   including fonts with tables hidden, plus joining forms, normalization
@@ -232,6 +420,18 @@ initialization are not synchronized.
 - `./wbuild ttf_cff_test` compares CFF paths with fontTools output
   (`tests/data/cff_paths.txt`, from `tools/cff_paths_ref.py`) for a name-keyed
   and a CID-keyed font, and rasterizes and shapes them.
+- `./wbuild ttf_hint_test` (and `ttf_hint_64_test`) checks the hinter
+  against golden bitmaps for a TrueType and a CFF Noto subset at 9-14 px
+  (`tests/data/ttf_hint_golden.txt`, regenerated by `bin/ttf_hint_dump
+  --golden` from `tools/ttf_hint_dump.w`, after reviewing the change).
+  It also checks agreement with FreeType's light autohinter over the
+  same set (`tests/data/ttf_hint_freetype.txt`, from
+  `tools/ttf_hint_ref.py`, which needs freetype-py offline only), the
+  measured blue zones and x-height scaling, and that `TTF_HINT_NONE` is
+  the unhinted rasterizer byte for byte with unchanged advances.
+  `./wbuild graphics_ui_font_hint_test` covers hinted strikes, the
+  companions that inherit the mode, unchanged widths and shaped advances,
+  and paragraph items.
 - `./wbuild graphics_ui_shape_test` runs strict UTF-8, explicit-length NUL,
   empty runs, invalid inputs, output limits, mark positioning, Hebrew RTL
   clusters, an in-memory GSUB `fi` ligature, Arabic and Devanagari runs, engine
@@ -255,6 +455,20 @@ initialization are not synchronized.
   (`tests/data/linebreak_sample.txt`) and checks the property table, its
   defaults and flags, the UTF-8 helper, and the CJK, East Asian and Southeast
   Asian tailorings.
+- `./wbuild graphics_ui_font_color_test` (and `_64_test`) renders the color
+  test fonts from `tools/make_color_test_fonts.py` (COLR version 0, a COLR
+  version 1 graph exercising every paint type, sbix) and a Noto Color Emoji
+  subset (CBDT), checking parts, pixel colors, strike choice and resampling,
+  every composite mode, emoji presentation, a paint cycle falling back, and
+  scrambled COLR, CPAL, sbix and CBLC tables rendering without a crash.
+- `./wbuild graphics_ui_color_glyph_test` draws those fonts through
+  `ui_draw_text` and the itemizer (Latin, an emoji, a skin-tone ligature, a ZWJ
+  family and a VS16 heart) into a headless renderer, rasterizes the batch on
+  the CPU (`graphics.ui.render_soft`) and compares golden PNGs in
+  `tests/data/color_glyphs/` (`W_UPDATE_GOLDENS=1` rewrites them). It also
+  checks foreground layers take the text color while color layers ignore it
+  (but for alpha), the itemizer's color-face choice for VS16/VS15, the color
+  atlas growing mid-frame, and the device-pixel path.
 
 The native adapter uses the published HarfBuzz contracts for
 [buffers and clusters](https://harfbuzz.github.io/harfbuzz-hb-buffer.html),

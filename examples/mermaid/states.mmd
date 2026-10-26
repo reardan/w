@@ -15,3 +15,7 @@ stateDiagram-v2
     }
     Processing --> Shipped : complete
     Shipped --> [*]
+    classDef terminal fill:#fee2e2,stroke:#b91c1c
+    class Rejected terminal
+    Shipped:::done
+    classDef done fill:#dcfce7,stroke:#15803d,font-weight:bold
