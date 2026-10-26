@@ -872,8 +872,29 @@ calls, including generic method syntax. Inside a specialization, `new T` and
 `new T(arguments)` resolve `T` through its active type substitution. Default
 allocation still requires a pointer-free sized value; record construction
 checks every concrete field, transfers owners once and preserves borrowed
-field lifetimes. Function pointers use explicit quantified contracts; owned
-callback objects can pair them with an environment as described below.
+field lifetimes. Generic records follow the same rules once applied:
+
+```w
+struct Box[T]:
+	own T* value
+
+struct View[T]:
+	ref[a] T* item
+
+own Box[T]* wrap[T](own T* value):
+	return new Box[T](value)
+
+ref[x] T* item_of[T](ref[x] View[T] view):
+	return view.item
+```
+
+`new Box[int](value)` moves `value` into the instance and the owner is
+destroyed recursively, `View[int](&n)` builds a borrowed record value whose
+group borrows `n`, and `item_of(view)` infers `T` from the instance under its
+`ref`/`refmut` wrapper. `new Box[int]` without arguments is rejected like any
+default allocation of an owner-bearing record. Function pointers use explicit
+quantified contracts; owned callback objects can pair them with an
+environment as described below.
 
 ### Quantified function pointers
 
@@ -3029,6 +3050,23 @@ Compiler and prior checked fixture bytes are identical. Measurements describe
 that corpus on the shared host. The implementation rebased unchanged onto
 the prerequisite validation commit; #696/#644 retain their completion gates.
 
+
+### Generic record application validation
+
+`new Name[T]`, `new Name[T](arguments)`, `new Name[T][n]` and the value
+constructor `Name[T](arguments)` name a generic record instance in both
+front ends (the retained parser instantiates a declined expression's first
+applications, then retries it once). In checked code the instance is an
+ordinary record: owner fields transfer once and are destroyed recursively,
+including nested instances and early failure returns; borrowed fields keep
+their lifetime groups through construction, returns and inference through
+`ref[a] Name[T]`/`refmut[a] Name[T]` parameters; default allocation of an
+owner-bearing instance stays rejected. `tests/safe_generic_record_test.w`
+(27 accepted/rejected contracts, x86/x64, with and without `--safe`, no
+executable on rejection) and `tests/safe_generic_record_runtime_test.w`
+(guard-allocator leak counts across optimization variants and ARM64/win64
+cross builds, plus the unchecked forms under `--streaming` and
+`--ast-required`) cover it. Part of #696.
 
 ### Checked mutable-slice validation
 

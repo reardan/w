@@ -2,6 +2,8 @@ int expression();
 int ast_expression_try(int group_offset);
 int struct_value_ctor_ready(); /* defined in unary_expression */
 int struct_value_ctor_expr(); /* defined in unary_expression */
+int generic_record_ctor_ready(); /* defined in unary_expression */
+int generic_record_ctor_expr(); /* defined in unary_expression */
 int protobuf_to_proto_expr(); /* defined in protobuf_builtin */
 int protobuf_from_proto_expr(); /* defined in protobuf_builtin */
 int protobuf_descriptor_expr(); /* defined in protobuf_builtin */
@@ -179,6 +181,9 @@ int primary_expr():
 
 	# Generic function instantiation: 'max[int](...)'
 	else if (generic_call_ready()): type = generic_call_expr()
+
+	# Generic record value constructor: 'Pair[int](a, b)'
+	else if (generic_record_ctor_ready()): type = generic_record_ctor_expr()
 
 	# 'name[...' where nothing knows the name: speculatively a call to a
 	# generic defined later in the file (or a later import); resolved -

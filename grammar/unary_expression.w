@@ -103,6 +103,9 @@ void zero_stack_count_bytes():
 	be_ctrl_end(h_done)
 
 
+int struct_value_ctor_fields(int base);
+
+
 # 'T(a, b)' where T names a struct or union type is a struct value
 # constructor (issue #270): it builds the value in a stack temp and
 # yields the temp's address, typed as a T value. Recognized by
@@ -146,6 +149,26 @@ int struct_value_ctor_expr():
 		expect(c".")
 	int base = type_lookup(token)
 	get_token()
+	return struct_value_ctor_fields(base)
+
+
+# 'Pair[int](a, b)': a generic record application followed by its
+# constructor arguments builds a value like 'T(a, b)'. The name is not
+# a generic function or a symbol (those keep their call forms).
+int generic_record_ctor_ready():
+	if (is_ident_start_byte(token[0]) == 0): return 0
+	if (nextc != '['): return 0
+	if ((sym_lookup(token) >= 0) || (type_lookup(token) >= 0)): return 0
+	if (generic_def_lookup(token, 0) >= 0): return 0
+	return generic_def_lookup(token, 1) >= 0
+
+
+int generic_record_ctor_expr():
+	return struct_value_ctor_fields(generic_struct_type())
+
+
+# The constructor's '(' is the current token.
+int struct_value_ctor_fields(int base):
 	expect(c"(")
 	int size = type_get_size(base)
 	int words = (size + word_size - 1) >> word_size_log2
@@ -353,6 +376,7 @@ int unary_expression_operand():
 			list_emit_new_container(list_container_type)
 			return type_value(list_container_type)
 		int base = -1
+		int generic_record = 0
 		# 'new alias.T': the qualified type spelling; the member must be
 		# a type declared in the aliased module (import_statement.w)
 		if (nextc == '.'):
@@ -360,11 +384,18 @@ int unary_expression_operand():
 			if (new_alias >= 0): base = import_alias_type_member(new_alias)
 		if (base < 0):
 			base = generic_subst_lookup(token)
+			# 'new Pair[int]' / 'new Pair[T](...)': a generic record
+			# application names its (possibly new) instance, as in a
+			# declaration's type_name(); generic_struct_type consumes
+			# through the closing ']'
+			if ((base < 0) && (nextc == '[') && (generic_def_lookup(token, 1) >= 0)):
+				base = generic_struct_type()
+				generic_record = 1
 			if (base < 0): base = type_lookup(token)
 			if (base < 0):
 				type_suggest_names(token)
 				error3(c"unknown type after new: '", token, c"'")
-		get_token()
+		if (generic_record == 0): get_token()
 		if (accept(c"[")):
 			int element_size = type_get_size(base)
 			if (element_size <= 0): error(c"cannot allocate array of zero-sized type")
