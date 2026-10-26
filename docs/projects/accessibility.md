@@ -63,8 +63,9 @@ coordinates relative to the content view, converted to screen coordinates at
 query time; moving the window does not require republishing bounds. Press,
 toggle, focus and value requests enter the queue and are revalidated by
 `ui_access_dispatch`. Layout and focus changes emit native notifications.
-Text range navigation, selection APIs, table cell relations, incremental updates,
-and native object identity preservation remain follow-ups. Document and list
+Text range navigation, the snapshot's caret and selection (published by the
+other bridges), table cell relations, incremental updates, and native object
+identity preservation remain follow-ups. Document and list
 item roles currently map to AppKit groups. Readonly text remains queryable while
 value writes are rejected.
 
@@ -102,7 +103,8 @@ this optional capability return zero from publication and otherwise keep working
    rejected edits/focus requests, to restore the DOM to the authoritative model.
    Publishing copies text, drops pending old requests, and invalidates every old
    DOM listener. Do not publish every render frame: replacement resets DOM node
-   identity, text selection and browser composition.
+   identity and browser composition (the text selection is restored from the
+   snapshot's caret and selection).
 5. Call `gfx_access_close()` before freeing the final snapshot or removing the
    canvas. It removes the mirror, clears requests and restores the canvas's
    previous `aria-hidden` and `tabindex` attributes. Callbacks must not free the
@@ -136,9 +138,21 @@ input. While installed, it replaces the canvas's accessibility exposure and tab
 stop. Programmatic snapshot focus does not echo a request. DOM keyboard events
 stay separate from the existing canvas keyboard event queue. The application
 must paint visible focus and coordinate its canvas editor model with semantic
-focus/value callbacks. Geometry, spatial touch exploration, selection/range
-round trips, incremental updates and automatic widget semantics are not provided
-by this adapter.
+focus/value callbacks. Geometry, spatial touch exploration, incremental updates
+and automatic widget semantics are not provided by this adapter.
+
+Text selection round-trips. `ui_access_web_publish` passes each text node's
+caret and selection (`gfx_access_selection`, after its text); the mirror's
+textarea gets them with `setSelectionRange`, converted from code points to
+UTF-16 units, backward when the caret is at the start. That programmatic
+selection is not echoed. A user's selection or caret move on a textarea whose
+node offers `UI_ACCESS_SET_SELECTION` (`select`, `selectionchange`, `keyup` and
+`mouseup`, and after each committed edit, following its value request) queues a
+`SET_SELECTION` request with the anchor and active ends in code points, once per
+distinct selection. Read-only textareas can still be selected. A real headless
+Chromium probe confirmed the published range and direction, no echo, and that
+its asynchronous `select`/`selectionchange` events queue the user's range and
+a collapsed caret.
 
 `graphics_ui_accessibility_web_test` (in `tests_wasm`) runs portable DOM contract
 tests and a real
@@ -186,6 +200,20 @@ then behaves exactly as for a click or an edit. The roles cover document, group,
 text, heading, button, checkbox, textbox, list/list item, table/row/cell, radio,
 switch, combobox, tab list/tab, progress and dialog.
 
+Text nodes also carry a caret and a selection (`caret`, `selection_start`,
+`selection_end`), in characters (code points) of the value, set with
+`ui_access_set_selection(tree, id, anchor, active)` after the value; `caret`
+is -1 on nodes without one and an empty selection has equal ends. Bridges move
+them with `UI_ACCESS_SET_SELECTION`, whose payload is the ASCII pair
+`"anchor active"` (`ui_access_dispatch_selection` builds and dispatches it,
+`ui_access_selection_parse` reads it); a caret move has equal ends, and active
+before anchor is a backward selection. `ui_access_dispatch` checks the payload's
+form but not its range, since a request can follow an edit queued just before
+it; each bridge checks the range against the text it published, and widgets
+clamp. `ui_textarea` publishes its caret and selection and `ui_textbox`
+(single-line, no selection) its caret; both apply a request on the next frame,
+snapped to grapheme boundaries, the textbox moving its caret to the active end.
+
 ```
 ui_access_tree* fresh = ui_access_tree_new(4096, 65536)
 ui_access_capture(ctx, fresh)
@@ -229,12 +257,24 @@ format). It needs no libatspi, ATK, GLib or libdbus.
 Each node is an object at `/org/a11y/atspi/accessible/<id>` under the
 application root. Objects implement Accessible, Component (extents, hit
 testing, GrabFocus), Action (activate/toggle/focus by name), Text (character
-offsets over UTF-8), EditableText (set, insert, delete; applied as a whole-value
+offsets over UTF-8, the caret and one selection), EditableText (set, insert, delete; applied as a whole-value
 `SET_VALUE`) and Value (progress percentages) as the role allows. Switches are
 published as toggle buttons with checked and pressed states, since AT-SPI 2.52
 has no switch role. Actions are queued (64 at most) and revalidated against the
 application's tree, as in the other bridges; publishing drops queued actions
 for the old snapshot.
+
+Text reports `CaretOffset` and `GetNSelections`/`GetSelection` from the
+snapshot (one selection at most). `SetCaretOffset`, `SetSelection(0, ...)`,
+`AddSelection` (only while nothing is selected, and never empty) and
+`RemoveSelection(0)` (which keeps the caret) queue `UI_ACCESS_SET_SELECTION`
+for nodes offering it, range-checked against the published text; those nodes
+also carry the selectable-text state. A republication emits
+`TextSelectionChanged` when a non-empty selection appears, changes or goes,
+then `TextCaretMoved` with the new offset. The bridge knows no fonts or
+colours, so `GetAttributes`, `GetAttributeRun`, `GetDefaultAttributes` and
+`GetDefaultAttributeSet` return empty sets, the runs spanning the whole text,
+and `GetAttributeValue` an empty string.
 
 Tables implement Table and their data cells TableCell. The snapshot has no
 header flag, so the bridge treats a TABLE's first ROW as its column header
@@ -260,7 +300,8 @@ for gone ones, as the ATK bridge does, so a caching libatspi stays coherent.
 `graphics_ui_accessibility_atspi_test` runs the bridge against a private
 `dbus-daemon` with a client that plays both the registry and a screen reader:
 registration, tree walking, roles, states, geometry, text offsets, actions,
-edits, tables, selection, the cache preload and the events a republication
+edits, text caret, selection and attributes, tables, selection, the cache
+preload and the events a republication
 emits, in order (it skips when `dbus-daemon` is not installed). The bridge
 was also qualified against the real at-spi2-core 2.52 registry with a
 libatspi (pyatspi) client: the application appears on the desktop, the tree,
@@ -279,8 +320,22 @@ Its speech log: "Files frame." on window activation, "Starred page tab." on
 the tab list's selection change, and "Downloads. table with 3 rows 2 columns.
 b.png 9 KB." when the selected, focused row changed. Keyboard navigation
 inside Orca (its own table commands, flat review) and braille were not
-exercised. Not yet provided: text attributes and text selection, row
-headers, multi-selection policy, and a peer-to-peer application bus.
+exercised.
+
+Text was qualified the same way (at-spi2-core 2.52, libatspi through
+python `gi` Atspi) against a two-line editor: the caret offset, selectable-text
+state, `get_selection`, the empty attribute run over the whole text and the
+default attributes read correctly; `set_caret_offset`, `set_selection`,
+`remove_selection` and `add_selection` reached the application callback as
+`"5 5"`, `"8 13"`, `"13 13"` and `"0 3"`, and the republished caret and selection
+read back with matching `text-caret-moved` and `text-selection-changed` events.
+Orca 46.1, run headless against the same editor while it moved its own caret and
+selection, said "Notes entry one two thrée." on focus, "two selected" when a word
+was selected and "Text unselected." when the selection collapsed; a caret move
+without keyboard input was processed silently, as Orca does for any
+application. Not yet provided: real text attributes (fonts, colours,
+spelling), multiple selections, row headers, multi-selection policy, and a
+peer-to-peer application bus.
 
 ## Windows UI Automation
 
@@ -460,9 +515,11 @@ for testing a rendered application's complete contrast and focus appearance.
 
 Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
 and UI Automation bridges are initial adapters, with screen-reader
-qualification on real Windows, VoiceOver and NVDA, and richer semantics (text
-ranges and selection, UIA table/grid and text patterns, incremental updates)
-still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
+qualification on real Windows, VoiceOver and NVDA, and richer semantics (UIA
+table/grid patterns, incremental updates, text attributes) still open; AT-SPI
+tables, selection and text selection are covered and Orca was run headless,
+and the caret and text selection round-trip through AT-SPI, UI Automation's
+Text pattern and the ARIA mirror. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
 
 The native implementation follows Apple's
