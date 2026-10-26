@@ -407,6 +407,7 @@ What is mapped:
   - ExpandCollapse: comboboxes, and activatable nodes with the expanded
     state.
   - RangeValue: progress, read-only 0..100, from the value's leading number.
+  - Text: textboxes, below.
 - Properties: Name, HelpText and FullDescription, AutomationId (the node id),
   FrameworkId `W`, IsEnabled, IsKeyboardFocusable, HasKeyboardFocus,
   IsOffscreen (hidden), IsDialog, HeadingLevel, plus the patterns' own state
@@ -414,6 +415,34 @@ What is mapped:
 - Runtime ids are `[UiaAppendRuntimeId, id]` under a window. An unhosted tree
   uses `[process id, id]`, because UIA cannot append to a window that does not
   exist.
+
+The Text pattern (`ITextProvider`) exposes a textbox's value, caret and
+selection with single selection (`SupportedTextSelection_Single`).
+`GetSelection` returns the selection, or the degenerate caret range, as one
+range (none when the node has no caret); `DocumentRange` and `GetVisibleRanges`
+span the whole text. `RangeFromPoint` places a caret in proportion to x across
+the field, since the snapshot has no glyph geometry, and `RangeFromChild` fails
+(a textbox has no children). Each range (`ITextRangeProvider`) is its own COM
+object with its own reference count, holding its element; its endpoints count
+code points and are clamped to the current published text on every call:
+
+- `Clone`, `Compare`, `CompareEndpoints` and `MoveEndpointByRange`.
+- `ExpandToEnclosingUnit`, `Move` and `MoveEndpointByUnit` by character, word
+  (a run of non-spaces and the spaces after it), line (split after `\n`;
+  paragraph is line) and document (format and page too).
+- `FindText`, forwards or backwards, with ASCII case folding; `FindAttribute`
+  finds nothing, and `GetAttributeValue` answers `IsReadOnly` and the reserved
+  not-supported value (`UiaGetReservedNotSupportedValue`) for everything else.
+- `GetBoundingRectangles` (the field's screen rectangle), `GetEnclosingElement`,
+  `GetText` (with a maximum length in code points) and an empty `GetChildren`.
+- `Select` queues `UI_ACCESS_SET_SELECTION` for the range; `AddToSelection` and
+  `RemoveFromSelection` fail with `UIA_E_INVALIDOPERATION`, and `ScrollIntoView`
+  succeeds without doing anything.
+
+Ranges outlive publications and answer `UIA_E_ELEMENTNOTAVAILABLE` once their
+node is gone. A republication raises `UIA_Text_TextChangedEventId` and
+`UIA_Text_TextSelectionChangedEventId` for textboxes a client has seen when
+their value, or their caret or selection, changed.
 
 `graphics_ui_accessibility_uia_test` (win64, run under wine by the CI win64 leg,
 never skipped) drives the bridge in-process with wine 9's `uiautomationcore`
@@ -427,7 +456,8 @@ as the client:
   - `UiaNavigate`, with a true condition and a cache request, to the first
     child.
   - `UiaAddEvent`, which receives the focus-changed event a republication
-    raises.
+    raises, and the text-changed and text-selection-changed events (each
+    exactly once).
 - **Through the provider vtables, where wine cannot help:**
   - Navigation in every direction, and QueryInterface identity.
   - Pattern discovery by role, and every pattern read.
@@ -438,12 +468,19 @@ as the client:
   - Retained providers of removed nodes failing with
     `UIA_E_ELEMENTNOTAVAILABLE`.
   - `WM_GETOBJECT` declining non-UIA object ids.
+  - The Text pattern: discovery on textboxes only, the document and selection
+    ranges, every range method by character, word, line and document,
+    `FindText`, attributes, `Select` reaching the application as
+    `SET_SELECTION`, ranges re-clamping after a republication, reference
+    counts, and ranges of a removed node failing.
 
 Wine could not exercise the following:
 
 - Its flat pattern functions (`InvokePattern_Invoke`, `TogglePattern_Toggle`,
   `ValuePattern_SetValue`, ...) are stubs, so patterns are driven through the
-  vtables instead.
+  vtables instead. `UiaGetPatternProvider` is not implemented at all (calling it
+  aborts), so the `TextPattern_*`/`TextRange_*` functions are unreachable, and
+  `UiaGetPropertyValue` answers `IsTextPatternAvailable` with `E_NOTIMPL`.
 - Property-changed event registration is unimplemented, and
   `UiaRaiseAutomationPropertyChangedEvent` and
   `UiaRaiseStructureChangedEvent` are stubs. Its FIXME trace shows the bridge
@@ -461,7 +498,10 @@ not been run against the bridge. That is the qualification still owed.
 
 Not yet provided:
 
-- The Text pattern (caret, selection, text ranges).
+- Text pattern depth: glyph geometry (ranges are bounded by the whole field,
+  `RangeFromPoint` is proportional), text attributes beyond IsReadOnly,
+  scrolling in `GetVisibleRanges`, `ITextProvider2` (`GetCaretRange`) and
+  `ITextEditProvider`, multiple selections.
 - Selection, Grid and Table container patterns.
 - LiveSetting and notification events.
 - MSAA (`IAccessible`) for legacy clients. `WM_GETOBJECT` for OBJID_CLIENT
