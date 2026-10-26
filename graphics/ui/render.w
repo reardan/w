@@ -10,6 +10,10 @@ Vertex layout: x, y, u, v, r, g, b, a — 8 float32s, 32 bytes. One
 shader draws text, solid fills, shapes and RGBA images. Glyphs and
 AA masks sample the R8 atlas coverage in .r, solid rects sample the
 solid-white mask center, and image commands select straight RGBA.
+Color glyphs (graphics.ui.font's RGBA atlas) draw as image commands
+on the renderer-owned color_image, untinted except for the text
+color's alpha; their foreground layers draw from the R8 atlas in the
+text color, interleaved in paint order.
 Rounded rects, discs, rings, the checkmark/chevron and the shadow
 9-patch are all mask quads (graphics.ui.font documents the mask ids)
 — adjacent atlas geometry shares a draw call. Texture changes split
@@ -131,6 +135,10 @@ struct ui_renderer:
 	# graphics.ui.font's atlas generation at the last texture upload;
 	# ui_render_begin re-uploads when a runtime font has grown the atlas.
 	int32 atlas_generation
+	# The color-glyph atlas as an image (its texture and the commands
+	# drawing from it), and the color generation last uploaded.
+	ui_image* color_image
+	int32 color_generation
 	# Device pixels per logical pixel of the target (1.0 on the desktop
 	# backends; a phone browser's devicePixelRatio). Geometry stays in
 	# logical pixels, but glyphs above 1.0 are rasterized at the device
@@ -172,6 +180,9 @@ void ui_render_init_headless(ui_renderer* r):
 	r.pixel_scale = 1.0
 	ui_font_uv_sync()
 	r.atlas_generation = ui_font_atlas_generation()
+	r.color_image = new ui_image(0, 0, 0, 0, 0, 0, 1)
+	ui_font_color_uv_sync()
+	r.color_generation = 0
 
 
 # Device pixels per logical pixel (see ui_renderer.pixel_scale). Values
@@ -183,6 +194,7 @@ void ui_render_set_pixel_scale(ui_renderer* r, float32 scale):
 
 void ui_render_clear_image_commands(ui_renderer* r);
 void ui_render_upload_atlas(ui_renderer* r);
+void ui_render_upload_color_atlas(ui_renderer* r);
 void ui_render_destroy(ui_renderer* r);
 
 
@@ -202,7 +214,19 @@ void ui_render_sync_atlas(ui_renderer* r):
 			float32* batch = r.layer_verts[command.layer]
 			for i in range(command.first, command.first + command.count):
 				batch[i * 8 + 3] = batch[i * 8 + 3] * k
+	# The same for the color atlas and the commands drawing from it.
+	int old_color = ui_font_color_uv_sync()
+	int color_rows = ui_font_color_uv_rows()
+	if (old_color != color_rows):
+		float32 kc = cast(float32, old_color) / cast(float32, color_rows)
+		for command_index in range(r.commands.length):
+			ui_image_command* command = r.commands[command_index]
+			if (command.image != r.color_image): continue
+			float32* batch = r.layer_verts[command.layer]
+			for i in range(command.first, command.first + command.count):
+				batch[i * 8 + 3] = batch[i * 8 + 3] * kc
 	if (r.gl_ready && (r.atlas_generation != ui_font_atlas_generation())): ui_render_upload_atlas(r)
+	if (r.gl_ready && (r.color_generation != ui_font_color_generation())): ui_render_upload_color_atlas(r)
 
 
 # (Re)upload the atlas — baked mask rows plus the runtime glyph rows —
@@ -216,6 +240,16 @@ void ui_render_upload_atlas(ui_renderer* r):
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ui_font_atlas_w(), ui_font_atlas_rows(), 0, GL_RED, GL_UNSIGNED_BYTE, pixels)
 	free(pixels)
 	r.atlas_generation = ui_font_atlas_generation()
+
+
+# (Re)upload the color-glyph atlas into color_image's texture.
+void ui_render_upload_color_atlas(ui_renderer* r):
+	r.color_generation = ui_font_color_generation()
+	if (ui_font_color_atlas_rows() == 0): return
+	glActiveTexture(GL_TEXTURE0)
+	glBindTexture(GL_TEXTURE_2D, r.color_image.texture)
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ui_font_color_atlas_w(), ui_font_color_atlas_rows(), 0, GL_RGBA, GL_UNSIGNED_BYTE, ui_font_color_atlas_pixels())
 
 
 # Full init: shader program, vertex buffer, glyph-atlas upload.
@@ -253,6 +287,14 @@ int ui_render_init(ui_renderer* r):
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 	ui_render_upload_atlas(r)
+	glGenTextures(1, &r.color_image.texture)
+	glBindTexture(GL_TEXTURE_2D, r.color_image.texture)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+	r.color_image.gl_ready = 1
+	ui_render_upload_color_atlas(r)
 	glUniform1i(r.u_tex, 0)
 
 	r.gl_ready = 1
@@ -453,6 +495,9 @@ void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip
 	ui_render_quad(r, rect, u0, v0, u1, v1, color)
 
 
+void ui_render_color_parts(ui_renderer* r, float32 x, float32 baseline, ui_glyph* g, float32 scale, float32 skew, ui_color color);
+
+
 # The same glyph rasterized at the device size (strike ppem times
 # pixel_scale, from the glyph's own face so fallback glyphs stay
 # correct), with the pen and baseline rounded to device pixels. Layout
@@ -467,6 +512,9 @@ int ui_render_glyph_device(ui_renderer* r, float32 x, float32 y_top, ui_glyph g,
 	if (d.w <= 0): return 0
 	float32 baseline = gfx_floor((y_top + cast(float32, ui_font_strike_ascent(strike))) * s + 0.5)
 	float32 pen = gfx_floor(x * s + 0.5)
+	if (d.color > 0):
+		ui_render_color_parts(r, pen / s, baseline / s, &d, 1.0 / s, skew, color)
+		return 1
 	float32 gx = (pen + cast(float32, d.bearing_x)) / s
 	float32 gy = (baseline - cast(float32, d.bearing_top)) / s
 	float32 u0 = ui_render_u(d.x)
@@ -477,6 +525,29 @@ int ui_render_glyph_device(ui_renderer* r, float32 x, float32 y_top, ui_glyph g,
 	return 1
 
 
+# A color glyph's parts (graphics.ui.font) at pen x, baseline baseline,
+# each size scale of its texels (1 / pixel_scale for a device strike):
+# RGBA parts from the color atlas untinted but for color's alpha,
+# foreground parts from the R8 atlas in color.
+void ui_render_color_parts(ui_renderer* r, float32 x, float32 baseline, ui_glyph* g, float32 scale, float32 skew, ui_color color):
+	ui_color tint = ui_gray(1.0)
+	tint.a = color.a
+	float32 cw = cast(float32, ui_font_color_atlas_w())
+	float32 ch = cast(float32, ui_font_color_uv_rows())
+	for i in range(ui_font_color_part_count(g)):
+		ui_color_part* part = ui_font_color_part(g, i)
+		float32 gx = x + cast(float32, part.bearing_x) * scale
+		float32 gy = baseline - cast(float32, part.bearing_top) * scale
+		ui_rect rect = ui_rect_new(gx, gy, cast(float32, part.w) * scale, cast(float32, part.h) * scale)
+		if (part.foreground):
+			r.current_image = 0
+			ui_render_quad_sheared(r, rect, ui_render_u(part.x), ui_render_v(part.y), ui_render_u(part.x + part.w), ui_render_v(part.y + part.h), color, skew, baseline)
+		else:
+			r.current_image = r.color_image
+			ui_render_quad_sheared(r, rect, cast(float32, part.x) / cw, cast(float32, part.y) / ch, cast(float32, part.x + part.w) / cw, cast(float32, part.y + part.h) / ch, tint, skew, baseline)
+	r.current_image = 0
+
+
 # One glyph (codepoint ch) of strike at pen x with the line box's
 # top at y_top, leaned by skew about the baseline (0.0 upright;
 # graphics.ui.text's italic passes ui_text_italic_skew()). Returns the
@@ -484,6 +555,9 @@ int ui_render_glyph_device(ui_renderer* r, float32 x, float32 y_top, ui_glyph g,
 int ui_render_glyph_metrics(ui_renderer* r, float32 x, float32 y_top, ui_glyph g, int strike, float32 skew, ui_color color):
 	if ((g.w > 0) && (r.pixel_scale > 1.0) && (g.face >= 0)):
 		if (ui_render_glyph_device(r, x, y_top, g, strike, skew, color)): return g.advance
+	if (g.color > 0):
+		ui_render_color_parts(r, x, y_top + cast(float32, ui_font_strike_ascent(strike)), &g, 1.0, skew, color)
+		return g.advance
 	if (g.w > 0):
 		float32 baseline = y_top + cast(float32, ui_font_strike_ascent(strike))
 		float32 gx = x + cast(float32, g.bearing_x)
@@ -638,6 +712,10 @@ void ui_render_destroy(ui_renderer* r):
 	ui_render_clear_image_commands(r)
 	__w_list_free(cast(__w_list*, r.commands))
 	r.commands = 0
+	if (r.color_image != 0):
+		if (r.color_image.gl_ready): glDeleteTextures(1, &r.color_image.texture)
+		free(r.color_image)
+		r.color_image = 0
 	if (r.gl_ready):
 		glDeleteTextures(1, &r.atlas_tex)
 		glDeleteBuffers(1, &r.vbuf)

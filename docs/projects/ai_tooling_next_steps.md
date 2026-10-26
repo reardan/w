@@ -1547,6 +1547,17 @@ fixes only the files nothing earlier imported. Run the text rules for
 every named root before compiling any of them, or point users at
 `bin/wfmt -w`, which formats files without compiling them.
 
+## Zeroing a struct with `T[N]` fields (2026-10-25, issue #827)
+
+- **`mem_fill` over a local struct wipes its array fields' hidden
+  headers**, and the next `&s.field[0]` traps with "index out of range:
+  index 0, length 0" at a line that looks obviously in bounds. W0415
+  (`[malloc-array-fields]`) warns for `cast(T*, malloc(...))` but not for
+  `mem_fill[char](cast(char*, &s), 0, sizeof(T))` on a struct that has
+  `T[N]` fields. Direction: extend W0415 to byte-filling or `mem_copy`ing
+  over such a struct, or name the struct field and the header in the
+  trap message.
+
 ## Cold wtest closure cache was serial (2026-10-25, PR #831)
 
 A cold `bin/.wtest_deps_cache` ran one `bin/wv2 deps` per root, one at a

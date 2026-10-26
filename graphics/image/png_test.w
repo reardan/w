@@ -193,3 +193,18 @@ void test_png_rejects_trailing_zlib_data():
 	png_test_chunk(bytes, c"IEND", c"", 0)
 	png_test_error(bytes.data, bytes.length, 0, IMAGE_COMPRESSED_DATA)
 	string_free(bytes)
+
+
+void test_png_encode_round_trip():
+	char[24] rgba
+	for i in range(24): rgba[i] = i * 11
+	string_builder* bytes = png_encode_rgba(3, 2, &rgba[0])
+	wresult[rgba_image*]* decoded = png_decode_n(bytes.data, bytes.length, 0)
+	assert1(decoded.ok)
+	rgba_image* image = decoded.value
+	assert_equal(3, image.width)
+	assert_equal(2, image.height)
+	assert_bytes_equal(&rgba[0], image.pixels, 24)
+	rgba_image_free(image)
+	free(cast(char*, decoded))
+	string_free(bytes)

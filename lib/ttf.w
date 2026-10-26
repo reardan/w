@@ -176,9 +176,16 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 	f.loca = ttf_table(f, c"loca")
 	f.glyf = ttf_table(f, c"glyf")
 	f.hmtx = ttf_table(f, c"hmtx")
-	int outlines = (f.cff != 0) || ((f.loca != 0) && (f.glyf != 0))
+	if ((f.loca == 0) || (f.glyf == 0)):
+		f.loca = 0
+		f.glyf = 0
+	# Bitmap-only color fonts (CBDT/CBLC, sbix: Noto Color Emoji has no
+	# outlines) load too; their glyphs rasterize empty here and draw
+	# through graphics.ui.font_color.
+	int bitmaps = ((ttf_table(f, c"CBDT") != 0) && (ttf_table(f, c"CBLC") != 0)) || (ttf_table(f, c"sbix") != 0)
+	int outlines = (f.cff != 0) || (f.glyf != 0) || bitmaps
 	if ((head == 0) || (maxp == 0) || (cmap == 0) || (hhea == 0) || !outlines || (f.hmtx == 0)):
-		print_error(c"ttf: required table missing (need head/maxp/cmap/hhea/hmtx and loca/glyf or CFF)\n")
+		print_error(c"ttf: required table missing (need head/maxp/cmap/hhea/hmtx and loca/glyf, CFF or color bitmaps)\n")
 		return 0
 	f.upem = ttf_u16(f, head + 18)
 	f.loc_long = ttf_u16(f, head + 50)
@@ -549,6 +556,7 @@ int ttf_glyph_bbox(ttf_font* f, int gid, int* box):
 	for i in range(4): box[i] = 0
 	if ((gid < 0) || (gid >= f.glyph_count)): return 0
 	if (f.cff != 0): return ttf_cff_bbox(f, gid, box)
+	if (f.glyf == 0): return 0
 	int off = ttf_glyf_offset(f, gid)
 	if (ttf_glyf_offset(f, gid + 1) <= off): return 0
 	int at = f.glyf + off
@@ -852,6 +860,7 @@ int ttf_add_glyph(ttf_font* f, ttf_outline* o, int gid, ttf_xform* m, int depth)
 		print_error(c"ttf: glyph id out of range\n")
 		return 0
 	if (f.cff != 0): return ttf_cff_add(f, o, gid, m)
+	if (f.glyf == 0): return 1
 	if (depth > 8):
 		print_error(c"ttf: composite glyphs nested too deeply\n")
 		return 0

@@ -245,8 +245,9 @@ CID-keyed CJK fonts), register it with `ui_font_add_fallback` for codepoint
 text, create its strike, and shape that run (or let `graphics.ui.itemize` pick
 faces per grapheme). A single shaped run does not fall back inside itself:
 missing coverage produces the selected face's `.notdef` glyph.
-Color glyphs remain outside the rasterizer. Hinting is an opt-in strike
-option (see Hinting below); CFF hint operators are read and skipped either way.
+Color glyphs draw through `graphics.ui.font_color` (next section). Hinting is
+an opt-in strike option (see Hinting below); CFF hint operators are read and
+skipped either way.
 
 Calls accept at most 65536 source bytes and an output budget between zero and
 1048576 glyphs. Failure returns no partial glyph array. HarfBuzz owns its
@@ -255,6 +256,83 @@ no native-call timeout or allocation budget. Font bytes, strikes and atlas
 caches retain their existing process lifetime; runs must be freed
 individually. Use the UI thread, as the shared font/atlas and lazy adapter
 initialization are not synchronized.
+
+## Color glyphs
+
+`graphics.ui.font_color` reads a face's color tables, in the order HarfBuzz
+prefers them, and renders a glyph into a list of parts in paint order
+(`ttf_color_render`); pure W on every target.
+
+- **COLR version 1**: the whole paint graph. PaintColrLayers, PaintSolid,
+  linear, radial (two-point conical) and sweep gradients with pad, repeat and
+  reflect color lines (interpolated in premultiplied space), PaintGlyph,
+  PaintColrGlyph, every transform (affine, translate, scale, rotate and skew,
+  with and without a center), PaintComposite with all 28 composite modes
+  (Porter-Duff, the separable blend modes and the HSL ones), and the ClipList.
+  The canvas covers the clip box, else the transformed boxes of the glyphs the
+  graph paints. The variable formats read their default values: there is no
+  font-variation support, so deltas are ignored. A depth limit (64) and a node
+  budget stop cycles and paint bombs; a glyph whose graph fails falls back to
+  its bitmap, then its outline.
+- **COLR version 0** with CPAL: layers, each a glyph and a palette entry.
+- **CBDT/CBLC** (Noto Color Emoji): PNG image formats 17, 18 and 19 through
+  index subtable formats 1 to 5.
+- **sbix**: PNG and JPEG images, and `dupe` records.
+
+Bitmaps come from the strike nearest the size (the smallest at least as large,
+else the largest), decoded by `graphics.image.png` (or `jpeg`) and resampled to
+the strike's ppem: area-averaged when shrinking, bilinear when growing, in
+premultiplied space. Advances come from `hmtx`, so bitmap-only fonts (which
+`lib.ttf` now loads although they have no `glyf` or `CFF `) lay out like any
+other. Palette 0 is used.
+
+A part is either RGBA (straight alpha), drawn untinted, or a foreground
+coverage mask drawn in the text color: palette index `0xFFFF` on a version 0
+layer, or a top-level PaintGlyph of a solid fill in version 1. Consecutive
+non-foreground layers composite into one RGBA part. A foreground reference
+elsewhere in a version 1 graph (a gradient stop, a nested layer) cannot be
+split out of the composite and paints opaque black.
+
+`graphics.ui.font` rasterizes color glyphs into a second, RGBA atlas
+(`ui_font_color_atlas_*`, 512 texels wide, growing like the coverage rows) and
+foreground parts into the R8 atlas; a color glyph's `ui_glyph.color` names its
+parts (`ui_font_color_part`). `graphics.ui.render` draws them through a
+renderer-owned image (`color_image`) with the RGBA shader path, tinted only by
+the text color's alpha, and the foreground parts from the atlas in the text
+color, interleaved in paint order, so `ui_draw_text`, `ui_draw_shaped_run` and
+`ui_paragraph_draw` all draw color glyphs. The device-pixel path rasterizes
+color glyphs at the device size too. `ui_font_face_has_color` and
+`ui_font_face_glyph_has_color` report color faces and glyphs.
+
+**Emoji presentation** (UTS #51, `lib.emoji`, Unicode 15.0's
+Emoji_Presentation property): the itemizer gives a grapheme presented as emoji
+(VS16, or any character with Emoji_Presentation: a base emoji, a skin-tone
+modifier, a regional indicator) the first color face that covers it, and one
+presented as text (VS15) the first face without color, before the ordinary
+face choice. Codepoint text (`ui_draw_text`) prefers a color fallback for
+Emoji_Presentation characters; it has no lookahead for VS16, so a text-default
+character such as U+2764 followed by VS16 needs shaped text to switch faces.
+Codepoint text now draws default-ignorables (ZWJ, variation selectors) as
+nothing. Emoji ZWJ sequences and skin-tone modifiers form through the face's
+GSUB: the portable shaper's default rules now let an input sequence match the
+ZWJ and variation selectors it names (they were always skipped), and a font
+with no space glyph drops hidden default-ignorables, as HarfBuzz does.
+
+`tools/color_glyph_dump.w` writes rendered glyphs as PNGs and
+`tools/color_glyph_compare_hb.py` compares them with HarfBuzz's hb-raster
+(COLR) or with the PNG and metrics fontTools reads (CBDT, sbix, at a strike's
+size). Every glyph of the COLR test fonts matches HarfBuzz within
+antialiasing at 23 and 64 ppem (mean channel difference under 3 of 255), as do
+115 glyphs sampled across the COLRv1 Noto Color Emoji at 40 ppem (mean
+difference at most 4.5, at most 2% of pixels off by more than 32, the largest
+on thin lines such as a bridge's cables): the rasterizer's 4x4 subsampling
+against HarfBuzz's exact area coverage. CBDT and sbix glyphs match exactly at
+their strike sizes.
+
+Not yet supported: `SVG ` glyphs, palette selection (`CPAL` palettes other than
+0, light/dark flags), font variations for `COLR` version 1 (`Var*` paints draw
+their defaults), EBDT/EBLC monochrome and grayscale bitmaps, and CBDT image
+formats other than PNG.
 
 ## Hinting
 
@@ -377,6 +455,20 @@ and the dots of `i` and `j`.
   (`tests/data/linebreak_sample.txt`) and checks the property table, its
   defaults and flags, the UTF-8 helper, and the CJK, East Asian and Southeast
   Asian tailorings.
+- `./wbuild graphics_ui_font_color_test` (and `_64_test`) renders the color
+  test fonts from `tools/make_color_test_fonts.py` (COLR version 0, a COLR
+  version 1 graph exercising every paint type, sbix) and a Noto Color Emoji
+  subset (CBDT), checking parts, pixel colors, strike choice and resampling,
+  every composite mode, emoji presentation, a paint cycle falling back, and
+  scrambled COLR, CPAL, sbix and CBLC tables rendering without a crash.
+- `./wbuild graphics_ui_color_glyph_test` draws those fonts through
+  `ui_draw_text` and the itemizer (Latin, an emoji, a skin-tone ligature, a ZWJ
+  family and a VS16 heart) into a headless renderer, rasterizes the batch on
+  the CPU (`graphics.ui.render_soft`) and compares golden PNGs in
+  `tests/data/color_glyphs/` (`W_UPDATE_GOLDENS=1` rewrites them). It also
+  checks foreground layers take the text color while color layers ignore it
+  (but for alpha), the itemizer's color-face choice for VS16/VS15, the color
+  atlas growing mid-frame, and the device-pixel path.
 
 The native adapter uses the published HarfBuzz contracts for
 [buffers and clusters](https://harfbuzz.github.io/harfbuzz-hb-buffer.html),

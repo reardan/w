@@ -56,9 +56,10 @@ const int otl_subst_lig_base = 8
 # is skipped in backtrack/lookahead context (input ZWJ too, unless
 # manual_joiners). per_syllable keeps matches inside the starting glyph's
 # syllable. Without hb the legacy rules apply: ZWJ and variation
-# selectors are always skipped, ZWNJ never, and only the first glyph's
-# mask is checked. auto_zwnj narrows manual_joiners to ZWJ (HarfBuzz's
-# F_MANUAL_ZWJ alone): ZWNJ stays skippable in context.
+# selectors are skipped unless an input sequence names them, ZWNJ never,
+# and only the first glyph's mask is checked. auto_zwnj narrows
+# manual_joiners to ZWJ (HarfBuzz's F_MANUAL_ZWJ alone): ZWNJ stays
+# skippable in context.
 const int otl_mask_auto_zwnj = 0x08000000
 const int otl_mask_per_syllable = 0x10000000
 const int otl_mask_manual_joiners = 0x20000000
@@ -375,6 +376,18 @@ int otl_match_item(otl_ctx* c, int how, int data, int base, int k, int class_def
 	if (how == otl_match_class): return ttf_class(c.font, class_def, gid) == value
 	return ttf_coverage(c.font, base + value, gid) >= 0
 
+# Under the legacy rules, the next input glyph after at for item k: ZWJ
+# and variation selectors are skipped unless the sequence names them
+# itself (an emoji ZWJ sequence's ligature lists its joiners), as
+# HarfBuzz tries a default ignorable before skipping it.
+int otl_legacy_next_input(otl_ctx* c, int how, int data, int base, int k, int class_def, int at):
+	int j = at + 1
+	while (j < c.buffer.count):
+		if (!otl_skip(c, j)): return j
+		if (!otl_skip_props(c, j) && otl_match_item(c, how, data, base, k, class_def, j)): return j
+		j = j + 1
+	return -1
+
 int otl_lig_comp(otl_glyph* g);
 
 # HarfBuzz's match_input rule (hb matching): input glyphs cannot span
@@ -406,7 +419,7 @@ int otl_match_forward(otl_ctx* c, int how, int data, int base, int count, int cl
 	int ligbase = 0
 	for k in range(count):
 		if (c.hb): at = otl_hb_find(c, how, data, base, k, class_def, at, 1, 0)
-		else: at = otl_next_index(c, at)
+		else: at = otl_legacy_next_input(c, how, data, base, k, class_def, at)
 		if (at < 0): return 0
 		if (!otl_match_item(c, how, data, base, k, class_def, at)): return 0
 		if (c.hb && !otl_hb_lig_compatible(c, start, at, &ligbase)): return 0

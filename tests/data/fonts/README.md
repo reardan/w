@@ -1,7 +1,9 @@
-# Shaping and outline test fonts
+# Shaping, outline and color test fonts
 
 Subsets of Noto fonts for `tests/ttf_shape_test.w`,
-`tests/ttf_cff_test.w` and `graphics/ui/shape_test.w`. Each keeps only
+`tests/ttf_cff_test.w` and `graphics/ui/shape_test.w`, and color fonts
+for `graphics/ui/font_color_test.w` and `graphics/ui/color_glyph_test.w`
+(see the end of this file). Each subset keeps only
 the glyphs the test text uses (plus the presentation forms some fallback
 tests need) and the OpenType layout features the portable shaper
 applies, so the files stay small.
@@ -80,3 +82,33 @@ OTF subsets keep hinting and subroutines (no `--no-hinting`) so the CFF
 interpreter meets hintmask and callsubr/callgsubr. After replacing a
 font, regenerate `tests/data/shape_golden.txt` with that script and
 `tests/data/cff_paths.txt` with `tools/cff_paths_ref.py`.
+
+## Color fonts (issue #827)
+
+| File | Source |
+| --- | --- |
+| `NotoColorEmoji-subset.ttf` | `NotoColorEmoji.ttf` 2.047 (CBDT/CBLC, as packaged in `fonts-noto-color-emoji`) |
+| `ColorTestCOLRv0.ttf` | `tools/make_color_test_fonts.py`: COLR version 0 + CPAL |
+| `ColorTestCOLRv1.ttf` | `tools/make_color_test_fonts.py`: a COLR version 1 paint graph |
+| `ColorTestSbix.ttf` | `tools/make_color_test_fonts.py`: sbix PNG strikes |
+
+Noto Color Emoji is Copyright 2022 Google Inc. under the SIL Open Font
+License 1.1 (`OFL.txt`), with no Reserved Font Name. The subset keeps
+U+1F600, U+2764, U+1F44D, U+1F3FD, U+1F468, U+1F469, U+1F467, ZWJ and
+VS16 plus the two GSUB ligatures for the skin-toned thumbs up and the
+ZWJ family (the glyphs HarfBuzz produces for them), with no layout
+closure, so it stays about 19 KB:
+
+```sh
+pyftsubset NotoColorEmoji.ttf \
+  --unicodes=1F600,2764,FE0F,1F44D,1F3FD,1F468,200D,1F469,1F467 \
+  --glyphs=glyph02059,glyph02112 --no-layout-closure \
+  --layout-features='*' --name-IDs='*' --notdef-outline --glyph-names \
+  --output-file=NotoColorEmoji-subset.ttf
+```
+
+The three `ColorTest` fonts were made for these tests and are released
+under the same license. Rebuild them with
+`python3 tools/make_color_test_fonts.py tests/data/fonts`, then rewrite
+the goldens with `W_UPDATE_GOLDENS=1 bin/graphics_ui_color_glyph_test`
+and check the expected colors in `graphics/ui/font_color_test.w`.
