@@ -206,6 +206,89 @@ void arm64_imul_eax_int32(int v):
 	a64(op(0x9b, 0x097c00))   # mul x0,x0,x9
 
 
+######################### register-resident locals ##########################
+# Function-scoped register promotion on arm64 Linux (issue #801,
+# docs/projects/register_allocation_pgo.md §6 R4): the pre-scan
+# (compiler/regalloc_scan.w) gives the hottest word-sized locals and
+# arguments of a body the callee-saved registers x19-x27 (AAPCS64's
+# callee-saved set minus x28, which is the W stack pointer). x0-x2, x9,
+# x10, x16/x17 (FFI veneers), x28-x30 are the emitter's own; none of the
+# emitter's sequences touches x19-x27, so a promoted register lives for
+# the whole body. The prologue saves the registers it uses below the
+# frame record (arm64_regalloc_save), every framed return restores them
+# from fp-relative slots before unwinding (arm64_regalloc_restore).
+# Register numbers are the hardware ones (19..27), so the masks, the
+# symbol record's register field and DW_OP_reg<n> all agree.
+
+# mov xD,xS (orr xD,xzr,xS)
+void arm64_mov_reg_reg(int d, int s):
+	a64(op(0xaa, 0x0003e0) | (s << 16) | d)
+
+
+# add xD,xN,#v (sub for a negative v); |v| <= 4095 (add_reg_int8's
+# int8 increments).
+void arm64_add_reg_imm(int d, int n, int v):
+	if (v >= 0): a64(op(0x91, 0x000000) | (v << 10) | (n << 5) | d)   # add xD,xN,#v
+	else: a64(op(0xd1, 0x000000) | ((0 - v) << 10) | (n << 5) | d)   # sub xD,xN,#-v
+
+
+# add xD,xN,xM
+void arm64_add_reg_reg(int d, int n, int m):
+	a64(op(0x8b, 0x000000) | (m << 16) | (n << 5) | d)
+
+
+# ldr / str xT,[x29,#disp]: a promoted argument's home above the frame
+# record (positive, scaled imm12), anything else through x9. load picks
+# ldr (1) or str (0).
+void arm64_fp_word(int load, int t, int disp):
+	if ((disp >= 0) && ((disp & 7) == 0) && ((disp >> 3) <= 4095)):
+		a64(op(0xf9, load << 22) | ((disp >> 3) << 10) | (29 << 5) | t)   # ldr/str xT,[x29,#disp]
+		return
+	arm64_load_scratch(9, disp)
+	a64(op(0xf8, 0x296800 | (load << 22)) | (29 << 5) | t)   # ldr/str xT,[x29,x9]
+
+
+# The prologue's share, right after 'stp x29,x30,[x28,#-16]! ; mov
+# x29,x28': push the registers of mask in ascending pairs (an odd last
+# one alone), so pair k sits at [x29 - 16(k+1)] and a lone last
+# register at [x29 - 8n]. Returns the number of registers saved.
+int arm64_regalloc_save(int mask):
+	int saved = 0
+	int pending = 0
+	int r = 19
+	while (r <= 27):
+		if (mask & (1 << r)):
+			if (pending != 0):
+				a64(op(0xa9, 0xbf0380) | (r << 10) | pending)   # stp xP,xR,[x28,#-16]!
+				pending = 0
+			else: pending = r
+			saved = saved + 1
+		r = r + 1
+	if (pending != 0): a64(op(0xf8, 0x1f8f80) | pending)   # str xP,[x28,#-8]!
+	return saved
+
+
+# The framed return's share, before 'mov x28,x29': reload the saved
+# registers from their fp-relative slots (the layout above), whatever
+# the W stack holds at this return.
+void arm64_regalloc_restore(int mask):
+	int pending = 0
+	int pairs = 0
+	int r = 19
+	while (r <= 27):
+		if (mask & (1 << r)):
+			if (pending != 0):
+				pairs = pairs + 1
+				int imm7 = (0 - 2 * pairs) & 0x7f
+				a64(op(0xa9, 0x400000) | (imm7 << 15) | (r << 10) | (29 << 5) | pending)   # ldp xP,xR,[x29,#-16k]
+				pending = 0
+			else: pending = r
+		r = r + 1
+	if (pending != 0):
+		int imm9 = (0 - 16 * pairs - 8) & 0x1ff
+		a64(op(0xf8, 0x400000) | (imm9 << 12) | (29 << 5) | pending)   # ldur xP,[x29,#-(16k+8)]
+
+
 ############################## stack machine ################################
 
 void arm64_be_pop(int n):
@@ -336,8 +419,9 @@ void arm64_cset(int cond):
 
 
 # cmp x1,x0 ; cset x0,<cond>  (x1 is the left operand, x0 the right)
+void arm64_cmp_operands();   /* x86.w: the register shuttle's compare (#801) */
 void arm64_alu_cmp_set(int setcc):
-	a64(op(0xeb, 0x00003f))   # cmp x1, x0
+	arm64_cmp_operands()   # cmp x1, x0
 	int start = codepos
 	arm64_cset(arm64_setcc_cond(setcc))
 	be_cmp_note_record(start, setcc)
@@ -582,7 +666,7 @@ int be_frame_active
 
 # Words the current function's prologue pushed beyond the return slot:
 # the frame pointer, plus the callee-saved registers promoted locals
-# live in (x86/x64 only, regalloc_prologue_emit).
+# live in (x86/x64, and arm64 Linux below x29; regalloc_prologue_emit).
 int be_frame_words():
 	return be_frame_active + regalloc_saved_count + rg_homes
 
@@ -615,6 +699,10 @@ void be_function_prologue():
 		a64(op(0xa9, 0xbf7b9d))   # stp x29, x30, [x28, #-16]!
 		a64(op(0xaa, 0x1c03fd))   # mov x29, x28
 		be_frame_active = 1
+		# arm64 Linux (#801): save the callee-saved registers promoted
+		# locals of this body live in below the frame record; nothing
+		# when the pre-scan promoted nothing (every other arm64 target)
+		regalloc_prologue_emit()
 	elif (target_isa == 0):
 		emit(1, c"\x55")   # push ebp / push rbp
 		emit_x64_opcode()

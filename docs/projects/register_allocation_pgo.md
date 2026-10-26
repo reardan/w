@@ -812,7 +812,13 @@ corpus; if the two-register budget leaves `sha256_block_w` slow, add the
 `x19`–`x27` with `stp`/`ldp` save pairs in `be_function_prologue`, the
 same lvalue note, `verify_arm64` under qemu. Owns: `code_generator/arm64.w`,
 `sse.w` (no float promotion; confirm), `tests/regalloc_test.w` (arm64
-leg). Gates: `verify_arm64`, `tests_arm64`.
+leg). Gates: `verify_arm64`, `tests_arm64`. **Status: the arm64 Linux half
+landed 2026-10-26 (issue #801, §11 "R4 (arm64)")** with a budget of
+five registers, `x19`–`x23`, rather than nine: five fit the existing
+8-word `jmp_buf`; `tests/regalloc_arm64_test.w` and
+`tests/regalloc_arm64_structure_test.w` replace the planned
+`regalloc_test.w` leg (that file needs threads, which arm64 lacks).
+arm64_darwin/iOS/Android stay unpromoted; the x86-32 half is open.
 
 **P3 — inlining small hot leaf callees (after S2.3 of the AST plan).**
 Design-only in this document (§3.4); its unit is written when
@@ -2046,3 +2052,128 @@ esi/edi plus no loop-scoped registers, which is why x64 gains more on
 the loop-heavy rows. On x86, W remains 1.3-6.9x slower than gcc -O2
 (x86-64) in wall time, down from 2.1-7.7x on main, with `inflate_corpus`
 and `sha256_1m` furthest behind.
+
+### R4 (arm64) — function-scoped promotion on arm64 Linux (2026-10-26)
+
+Issue #801. Landed in `compiler/regalloc_scan.w` (admission),
+`code_generator/{x86,arm64,arm64_asm,dwarf_info}.w` (emission, stubs,
+DWARF), `lib/{generator,setjmp}.w`, with
+`tests/regalloc_arm64_test.w`, `tests/regalloc_arm64_structure_test.w`,
+`tests/regalloc_arm64_ffi_test.w` and an arm64 leg of
+`dwarf_variables_test`. On by default for arm64 Linux under R2's switch
+(`--no-regs`/`-O0` turn it off); arm64_darwin, iOS and Android promote
+nothing (`regalloc_target_ok`: `target_os == 0`), so admitting Darwin
+stays a separate step that needs a native Mac run.
+
+What landed, against the R4 plan:
+
+- **Registers: `x19`–`x23`, budget five.** The plan's `x19`–`x27` audit
+  holds (no emitter sequence touches `x19`–`x27`; `x28` stays the W
+  stack pointer, `x29` the frame pointer, `x9`/`x10` scratch), but the
+  `jmp_buf` has five register words (`r0..r4`), so five is what
+  `setjmp`/`longjmp` can preserve without growing `jmp_buf_words` in
+  `lib/lib.w`, `lib/setjmp.w`, `lib/stack_trace.w`, `repl/core.w` and
+  `compiler/analysis.w`'s `resume`. Going to nine is that change plus
+  the budget constant (`regalloc_arm64_budget`). The scan is R2's,
+  unchanged in what it admits, with three arm64 differences: arguments
+  are admitted in the first ranking round (an argument is loaded from
+  its home above the frame record once, in the prologue), the ranking
+  key ignores the x86 ModRM-size gain, and 4-byte narrow types are
+  refused (x86-only zero-extension paths). The x64 caller-saved
+  function region (O2) and the R3 loop-scoped registers stay x86/x64.
+- **Save/restore of only the allocated set.** After `stp x29,x30` and
+  `mov x29,x28` the prologue pushes the used registers in ascending
+  pairs (`stp x19,x20,[x28,#-16]!`, an odd last one alone with `str`),
+  so pair k sits at `[x29-16(k+1)]`; every exit
+  (`be_arm64_frame_return`) reloads them x29-relative with `ldp`/`ldr`
+  before `mov x28,x29`, so early returns, `defer` exits and the
+  trailing return all restore. `be_frame_words` counts them, which
+  keeps every local's frame offset right.
+- **Emission.** The R2/R3 x86 hooks gained arm64 branches: the register
+  lvalue note (`mov x0,xR`), `regalloc_reg_store` (a binop note
+  retargets the ALU result's destination to `xR`, an immediate becomes
+  `movz/movk xR`, a register read becomes `mov xR,xS`), `add_reg_int8`
+  (`add/sub xR,xR,#v`), and the shuttle: a register left operand and a
+  register or small-immediate right operand fold into `add/sub/mul/
+  and/orr/eor xD,xL,xR`, `add xD,xL,#v` and `cmp xL,xR` / `cmp xL,#v`
+  / `cmn` feeding the existing branch fusion. Without a register
+  involved the shuttle emits the old bytes (the note is only recorded
+  when a register is involved), so `--no-regs` and Darwin code is
+  unchanged. `sum_to`'s loop is `add x20,x20,x19; add x19,x19,#1; cmp
+  x19,x21; b.lt` (4 instructions, from 21).
+- **Runtime boundaries.** W calls into C: AAPCS64 makes `x19`–`x28`
+  callee-saved, so libc preserves them (`regalloc_arm64_ffi_test` calls
+  `snprintf`/`strtol`/`memcmp`/`strnlen` in promoted loops and
+  recursion). `setjmp` saves `x19`–`x23` in `r0..r4` and `longjmp`
+  restores them, so a frame unwound by the jump cannot leak into the
+  setjmp caller's callers; the setjmp caller itself promotes nothing.
+  `gen_switch` now pushes `x19`–`x23` with `x29` on the suspending
+  stack and pops the resumed stack's (`__w_gen_switch_regs` is 6): a
+  task suspends from inside any function it calls (`task_yield_now`
+  in a promoted loop), so without this another task's promoted locals
+  overwrote the suspended one's — the differential sweep caught nine
+  task/transport/http/websocket tests failing that way. These stub
+  changes apply to every arm64 target, so Darwin binaries differ from
+  before only in those stubs.
+- **Debug info.** Promoted locals and arguments are `DW_OP_reg19`–`23`
+  (AArch64 DWARF numbers equal the register numbers; the x64
+  renumbering is x86-only now). arm64 emits no `.debug_frame` (its
+  section is empty), so there is no CFI for the saved registers: a
+  debugger showing an *outer* frame's promoted local would read the
+  callee's current register, not the saved value. wdbg is x86/x64-only,
+  so nothing in the tree consumes this yet; arm64 CFI is a separate
+  item.
+
+Tests: `regalloc_arm64_test` (x86, x64, and `_arm64` under qemu) covers
+loop counters/accumulators, more hot locals than the budget,
+address-taken exclusions, calls in loops, recursion, early returns,
+shadowed names, setjmp/longjmp through promoted frames, generators,
+tasks yielding mid-loop, defer, goto, raw_asm, multi-assignment,
+ternaries and short-circuit operands, every ALU form, pointers,
+compound operators, range loops, f-strings, variadics and narrow/float
+locals; `regalloc_arm64_variants_test` (tests_arm64) reruns it built
+with `--no-regs`, `--streaming` and `--pac=full`.
+`regalloc_arm64_structure_test` (in `tests`, host-only) decodes the
+cross-compiled program: the exact save sets, the four-instruction
+memory-free `sum_to` loop, a restore at every `ret`, no `x24`–`x27`,
+nothing saved by the declined shapes or under `--no-regs`/`-O0`, the
+streaming front end promoting the same sets, and `arm64_darwin` output
+byte-identical with and without `--no-regs`. A local sweep compiled 401
+programs (tests/, libs/, examples) for arm64 both ways and compared
+their qemu output: all equal (10 compile in neither mode).
+
+Measurements (qemu-aarch64-static 8.2.2 user mode on an x86-64 Linux
+host — **QEMU, not native**; base = main's compiler, whose arm64 output
+equals this branch's `--no-regs` output outside the three stubs).
+Dynamic guest instruction counts (TB execution log × TB sizes):
+
+| benchmark | arg | base | promoted | change |
+|---|---|---|---|---|
+| `sum` | 10000000 | 210,213,474 | 40,131,067 | -80.9% |
+| `sieve` | 2000000 | 181,038,348 | 79,272,020 | -56.2% |
+| `sha256_1m` | 1 | 428,067,499 | 368,504,936 | -13.9% |
+| `matmul_256` | 1 | 898,063,825 | 492,441,551 | -45.2% |
+| `siphash_keys` | 20000 | 199,126,051 | 169,365,711 | -14.9% |
+| `strcmp_sort` | 20000 | 118,013,989 | 101,598,002 | -13.9% |
+| `inflate_corpus` | 200 | 187,450,577 | 162,192,059 | -13.5% |
+| `regex_backtrack` | 2 | 795,553,534 | 632,865,161 | -20.4% |
+
+Wall time at the corpus's default sizes, best of three, runs
+interleaved: `sum` 2.876 → 0.841 s, `sieve` 5.474 → 4.683 s,
+`matmul_256` 2.285 → 1.506 s; `sha256_1m` 30.41 → 30.17, `siphash_keys`
+37.86 → 37.55, `strcmp_sort` 24.76 → 24.44, `inflate_corpus` 62.23 →
+61.95, `regex_backtrack` 68.18 → 67.97 s (under 1%: QEMU's cost there is
+dominated by its per-block dispatch, calls and helpers, not by the
+guest instruction count, so the 14–20% fewer instructions do not show;
+a native run is the measurement that would). Output size: benchmarks
+shrink 1.2–3.1% (`sum` 260,944 → 252,752 bytes, `inflate_corpus`
+334,984 → 330,888); the arm64 self-hosted compiler 4,897,400 →
+4,823,672 bytes (-1.5%). Compile cost: the x86 compiler building `w.w`
+for arm64 takes 1.66 s against 1.56 s with `--no-regs` (+6%, the
+pre-scan). The arm64 compiler compiling `w.w` under qemu: 225.3 s
+(`--no-regs` build) → 218.6 s (promoted), identical output.
+
+What this does not claim: no native arm64 (Linux or Mac) timing; no
+Darwin/iOS/Android admission; the budget is five, not nine; no
+caller-saved, loop-scoped or expression registers on arm64; no arm64
+CFI for saved registers; the x86-32 half of R4 is still open.
