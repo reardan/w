@@ -67,7 +67,7 @@ ownership, host setup and the limits of the initial role/state mapping.
 
 The opt-in `graphics.ui.accessibility_atspi` bridge publishes snapshots to
 Linux AT-SPI 2 over a pure-W D-Bus client, and `graphics.ui.accessibility_uia`
-to Windows UI Automation as COM providers written in W. Immediate-mode widgets route
+to Windows UI Automation (and MSAA) as COM providers written in W. Immediate-mode widgets route
 Tab/Shift-Tab, draw a focus ring after keyboard navigation and populate
 snapshots automatically through `ui_access_capture`; page content outside the
 widgets still builds its own semantic tree and routes focus through

@@ -526,7 +526,7 @@ editing and Windows support have since advanced as recorded above.
 - **Accessibility depth** (screen readers, semantic roles, platform
   a11y APIs). Since delivered separately (#465, [accessibility](accessibility.md)):
   widget focus routing and focus ring, automatic widget semantics, and web,
-  macOS, Linux AT-SPI and Windows UI Automation bridges.
+  macOS, Linux AT-SPI and Windows UI Automation/MSAA bridges.
 - **A general animation/transition system.** Flat, static widget
   states only for v1 — matches "minimal" and avoids a whole extra
   design axis (easing, timelines) before the base widgets exist.
