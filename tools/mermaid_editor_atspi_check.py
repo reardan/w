@@ -120,14 +120,24 @@ def keycode(keysym):
     return XLIB.XKeysymToKeycode(DISPLAY, keysym)
 
 
-# Real key presses (libatspi synthesizes them with XTest).
+# Real key presses through XTest. Atspi.generate_keyboard_event drops some
+# keys on hosts whose registryd cannot map the keycode (Tab never arrived on
+# an Ubuntu 26.04 host), so synthesize them directly, as the XTest UI driver
+# does; the check is about what AT-SPI reports, not how the key was sent.
+XTST = ctypes.CDLL("libXtst.so.6")
+XTST.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+XLIB.XFlush.argtypes = [ctypes.c_void_p]
+
+
 def key(keysym, ctrl=False, shift=False):
     held = [sym for sym, on in ((0xFFE3, ctrl), (0xFFE1, shift)) if on]
     for sym in held:
-        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.PRESS)
-    Atspi.generate_keyboard_event(keycode(keysym), None, Atspi.KeySynthType.PRESSRELEASE)
+        XTST.XTestFakeKeyEvent(DISPLAY, keycode(sym), 1, 0)
+    XTST.XTestFakeKeyEvent(DISPLAY, keycode(keysym), 1, 0)
+    XTST.XTestFakeKeyEvent(DISPLAY, keycode(keysym), 0, 0)
     for sym in reversed(held):
-        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.RELEASE)
+        XTST.XTestFakeKeyEvent(DISPLAY, keycode(sym), 0, 0)
+    XLIB.XFlush(DISPLAY)
     pump(0.4)
 
 
