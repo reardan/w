@@ -202,6 +202,7 @@ struct ui_uia_bridge:
 	int options                 # ProviderOptions reported to UIA
 	int origin_x                # screen position of the tree's (0, 0)
 	int origin_y                # when there is no hwnd
+	float64 scale               # device pixels per snapshot (logical) pixel
 	ui_uia_request[64] queue
 	int queued
 
@@ -697,10 +698,12 @@ int ui_uia_bounds(int self, int out):
 	int ox = 0
 	int oy = 0
 	ui_uia_origin(ui_uia_bridge_of(e), &ox, &oy)
-	ui_uia_put_double(out, cast(float64, n.bounds.x) + cast(float64, ox))
-	ui_uia_put_double(out + 8, cast(float64, n.bounds.y) + cast(float64, oy))
-	ui_uia_put_double(out + 16, cast(float64, n.bounds.w))
-	ui_uia_put_double(out + 24, cast(float64, n.bounds.h))
+	# Snapshot bounds are logical pixels; UIA wants physical screen pixels.
+	float64 scale = ui_uia_bridge_of(e).scale
+	ui_uia_put_double(out, cast(float64, n.bounds.x) * scale + cast(float64, ox))
+	ui_uia_put_double(out + 8, cast(float64, n.bounds.y) * scale + cast(float64, oy))
+	ui_uia_put_double(out + 16, cast(float64, n.bounds.w) * scale)
+	ui_uia_put_double(out + 24, cast(float64, n.bounds.h) * scale)
 	return UIA_S_OK
 
 
@@ -751,8 +754,8 @@ int ui_uia_from_point(int self, int x_bits, int y_bits, int out):
 	int ox = 0
 	int oy = 0
 	ui_uia_origin(b, &ox, &oy)
-	float64 x = ui_uia_double_from_bits(x_bits) - cast(float64, ox)
-	float64 y = ui_uia_double_from_bits(y_bits) - cast(float64, oy)
+	float64 x = (ui_uia_double_from_bits(x_bits) - cast(float64, ox)) / b.scale
+	float64 y = (ui_uia_double_from_bits(y_bits) - cast(float64, oy)) / b.scale
 	ui_access_node* hit = ui_uia_hit(b.published.root, x, y)
 	if (hit == 0): return UIA_S_OK
 	return ui_uia_hand_out(b, hit.id, UI_UIA_FRAGMENT, out)
@@ -1187,6 +1190,7 @@ ui_uia_bridge* ui_access_uia_open(int hwnd):
 	b.options = ProviderOptions_ServerSideProvider | ProviderOptions_UseComThreading
 	b.origin_x = 0
 	b.origin_y = 0
+	b.scale = 1.0
 	b.queued = 0
 	ui_uia_active = b
 	return b
@@ -1196,6 +1200,14 @@ void ui_access_uia_set_origin(ui_uia_bridge* b, int x, int y):
 	if (b == 0): return
 	b.origin_x = x
 	b.origin_y = y
+
+
+# Device pixels per snapshot pixel: the window's DPI scale
+# (gfx_window_pixel_ratio), so bounds and hit tests use the physical
+# screen coordinates UIA clients expect. Defaults to 1.
+void ui_access_uia_set_scale(ui_uia_bridge* b, float32 scale):
+	if ((b == 0) || (scale <= 0.0)): return
+	b.scale = cast(float64, scale)
 
 
 # The root provider (IRawElementProviderSimple*, AddRef'd), 0 before the

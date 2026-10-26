@@ -6,6 +6,17 @@
 # (single and multi-selection) and kanban card moves, inspector line
 # typing, and external-change detection with refused saves, Keep mine,
 # reload and deletion.
+#
+# --wine runs the same workflows against the Windows build
+# (bin/wmermaid_editor_win.exe) under wine's X11 driver: the XTest events
+# reach the editor as real Win32 input messages (WM_KEYDOWN/WM_CHAR,
+# WM_MOUSEMOVE, button messages), and saves go through the Win32 file
+# API. tools/mermaid_editor_wine_test.sh sets up the private wine prefix.
+# --scale F multiplies every pointer coordinate by F, for a run at a
+# display scale such as 150% (--scale 1.5 with wine at 144 DPI): the
+# workflows keep their logical coordinates, the editor's window and input
+# are in physical pixels, and the final screenshot must be F times the
+# logical 1280x800.
 import tools.host_tools
 import lib.str
 import lib.format
@@ -30,6 +41,10 @@ int mu_display
 int mu_root
 int mu_window
 char* mu_path
+int mu_wine
+float mu_scale
+# Startup, quit and file-wait deadlines; wine needs longer than a native run.
+int mu_patience = 5000
 
 float mu_float(char* value):
 	int consumed = 0
@@ -88,7 +103,7 @@ void mu_move(float x, float y):
 	int32 oy = 0
 	int child = 0
 	XTranslateCoordinates(mu_display, mu_window, mu_root, 0, 0, &ox, &oy, &child)
-	XTestFakeMotionEvent(mu_display, -1, cast(int, ox) + cast(int, x), cast(int, oy) + cast(int, y), 0)
+	XTestFakeMotionEvent(mu_display, -1, cast(int, ox) + cast(int, x * mu_scale), cast(int, oy) + cast(int, y * mu_scale), 0)
 	mu_flush()
 void mu_button(int down):
 	XTestFakeButtonEvent(mu_display, 1, down, 0)
@@ -99,7 +114,7 @@ void mu_click(float x, float y):
 	mu_button(0)
 void mu_save(): mu_key(c"s", c"Control_L")
 void mu_wait(char* expected, int mode, char* message):
-	int deadline = process_monotonic_ms() + 5000
+	int deadline = process_monotonic_ms() + mu_patience
 	while (process_monotonic_ms() < deadline):
 		char* actual = ht_read(mu_path).data
 		if (mode == 0 && strcmp(actual, expected) == 0): return
@@ -137,15 +152,17 @@ process* mu_start(char* path):
 	mu_window = 0
 	spawn_options* options = spawn_options_new()
 	options.new_group = 1
-	process* editor = ht_spawn(ht_argv(c"bin/wmermaid_editor", mu_path), options)
-	int deadline = process_monotonic_ms() + 5000
+	list[char*] command = ht_argv(c"bin/wmermaid_editor", mu_path)
+	if (mu_wine): command = ht_argv(c"wine", c"bin/wmermaid_editor_win.exe", mu_path)
+	process* editor = ht_spawn(command, options)
+	int deadline = process_monotonic_ms() + mu_patience * 4
 	while (mu_window == 0 && process_monotonic_ms() < deadline):
 		mu_window = mu_find(mu_root)
 		process_sleep_ms(40)
 	ht_require(mu_window != 0, c"editor window did not appear")
 	# XWindowAttributes is 136 bytes in the x86-64 Xlib ABI; map_state at 92.
 	char[136] attributes
-	deadline = process_monotonic_ms() + 5000
+	deadline = process_monotonic_ms() + mu_patience
 	while (1):
 		if (XGetWindowAttributes(mu_display, mu_window, &attributes[0]) && load_int32(&attributes[92]) == 2): break
 		ht_require(process_monotonic_ms() < deadline, c"window did not become viewable")
@@ -157,7 +174,7 @@ process* mu_start(char* path):
 
 void mu_quit(process* editor):
 	mu_key(c"q", c"Control_L")
-	ht_require(process_wait_or_kill(editor, 5000) == 0, c"editor did not close normally")
+	ht_require(process_wait_or_kill(editor, mu_patience) == 0, c"editor did not close normally")
 	mu_window = 0
 
 # Canvas focus with nothing selected: Ctrl+D, then a click on empty canvas.
@@ -423,6 +440,54 @@ void mu_conflicts(char* work):
 	mu_wait(merged, 0, c"Keep mine did not recreate the deleted file")
 	mu_quit(editor)
 
+# Save edge cases from the desktop checklist (section 4): a folder name
+# with a space and a non-ASCII letter, a path longer than 260 characters
+# (Windows' classic MAX_PATH), CRLF bytes kept exactly around an inserted
+# line, and a read-only file that refuses the save, keeps the editor dirty
+# and saves once it is writable again.
+void mu_files(char* work):
+	char* folder = path_join(work, c"Qualification \xc3\x9c")
+	ht_require(mkdir(folder, 493) == 0, c"files: could not create the non-ASCII folder")
+	char* crlf = c"flowchart LR\r\nA[Alpha] --> B[Beta]\r\n"
+	char* path = path_join(folder, c"crlf.mmd")
+	ht_write(path, crlf, strlen(crlf))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* moved = mu_saved_change(crlf, c"files: save under a non-ASCII path failed")
+	ht_require(starts_with(moved, crlf) && contains(moved, c"@w-position"), c"files: the CRLF lines were not kept byte for byte")
+	mu_undo(crlf, c"files: undo under a non-ASCII path")
+	mu_quit(editor)
+	# Nest folders until the file's path passes 260 characters.
+	char* deep = work
+	while (strlen(deep) < 262):
+		deep = path_join(deep, c"a-long-folder-name-for-the-path-limit")
+		ht_require(mkdir(deep, 493) == 0, c"files: could not create a long folder")
+	char* original = c"flowchart LR\nA[Alpha] --> B[Beta]\n"
+	path = path_join(deep, c"long.mmd")
+	ht_require(strlen(path) > 260, c"files: the long path is not over 260 characters")
+	ht_write(path, original, strlen(original))
+	editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* long_saved = mu_saved_change(original, c"files: save of a path over 260 characters failed")
+	ht_require(contains(long_saved, c"@w-position"), c"files: long-path save lost the move")
+	mu_quit(editor)
+	path = path_join(work, c"readonly.mmd")
+	ht_write(path, original, strlen(original))
+	ht_require(chmod(path, 292) == 0, c"files: chmod a-w failed")
+	editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	mu_refused_save(original, c"files: a read-only file was overwritten")
+	ht_require(chmod(path, 420) == 0, c"files: chmod u+w failed")
+	char* writable = mu_saved_change(original, c"files: the editor did not stay dirty after a refused save")
+	ht_require(contains(writable, c"@w-position"), c"files: the retried save lost the move")
+	mu_quit(editor)
+
 void mu_flowchart(char* work):
 	char* original = c"%% keep this comment\nflowchart LR\nA[Alpha] --> B[Beta]\n"
 	char* path = path_join(work, c"diagram.mmd")
@@ -515,23 +580,53 @@ void mu_flowchart(char* work):
 	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
 	mu_quit(editor)
 	char* screenshot = c"bin/mermaid-editor-workflow.ppm"
-	ht_checked(ht_argv(c"bin/wmermaid_editor", mu_path, c"--frames", c"3", c"--screenshot", screenshot))
-	ht_require(starts_with(ht_read(screenshot).data, c"P6\n"), c"missing editor screenshot")
+	if (mu_wine):
+		screenshot = c"bin/mermaid-editor-wine-workflow.ppm"
+		ht_checked(ht_argv(c"wine", c"bin/wmermaid_editor_win.exe", mu_path, c"--frames", c"3", c"--screenshot", screenshot))
+	else: ht_checked(ht_argv(c"bin/wmermaid_editor", mu_path, c"--frames", c"3", c"--screenshot", screenshot))
+	string_builder* header = string_from(c"P6\n")
+	string_append_int(header, cast(int, 1280.0 * mu_scale))
+	string_append_char(header, ' ')
+	string_append_int(header, cast(int, 800.0 * mu_scale))
+	string_append_char(header, 10)
+	ht_require(starts_with(ht_read(screenshot).data, header.data), strjoin(c"editor screenshot is not ", header.data))
 	ht_equal_file(mu_path, renamed)
 
-int main():
+char* mu_only
+
+# --only <name> runs one workflow (for debugging a failure).
+int mu_runs(char* name):
+	return (mu_only == 0) || (strcmp(mu_only, name) == 0)
+
+int main(int argc, char** argv):
+	mu_scale = 1.0
+	int i = 1
+	while (i < argc):
+		if (strcmp(argv[i], c"--wine") == 0):
+			mu_wine = 1
+			mu_patience = 15000
+		else if ((strcmp(argv[i], c"--scale") == 0) && (i + 1 < argc)):
+			i = i + 1
+			mu_scale = mu_float(argv[i])
+		else if ((strcmp(argv[i], c"--only") == 0) && (i + 1 < argc)):
+			i = i + 1
+			mu_only = argv[i]
+		else: ht_require(0, strjoin(c"unknown argument: ", argv[i]))
+		i = i + 1
 	mu_display = XOpenDisplay(0)
 	ht_require(mu_display != 0, c"X11 unavailable; run with xvfb-run -a")
 	mu_root = XDefaultRootWindow(mu_display)
 	char* work = ht_temp()
-	mu_flowchart(work)
-	mu_families(work)
-	mu_groups(work)
-	mu_multiselect(work)
-	mu_layouts(work)
-	mu_inspector(work)
-	mu_conflicts(work)
+	if (mu_runs(c"flowchart")): mu_flowchart(work)
+	if (mu_runs(c"families")): mu_families(work)
+	if (mu_runs(c"groups")): mu_groups(work)
+	if (mu_runs(c"multiselect")): mu_multiselect(work)
+	if (mu_runs(c"layouts")): mu_layouts(work)
+	if (mu_runs(c"inspector")): mu_inspector(work)
+	if (mu_runs(c"conflicts")): mu_conflicts(work)
+	if (mu_runs(c"files")): mu_files(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()
-	println(c"Mermaid native editor workflow passed")
+	if (mu_wine): println(c"Mermaid Windows editor workflow under wine passed")
+	else: println(c"Mermaid native editor workflow passed")
 	return 0

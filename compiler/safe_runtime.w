@@ -26,7 +26,12 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/__arch__/wasm/syscalls.w")): return c"692d423a85153365205ff59d4e9fdaad144bbd42a3f1048b75d0b6e3bf671ebf"
 	if (ends_with(path, c"/lib/__arch__/win64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/win64/context.w")): return c"f046288e32fb6135d7b485b97a13beae0b44e22cd8306f9b86957c1234326c81"
-	if (ends_with(path, c"/lib/__arch__/win64/syscalls.w")): return c"546c896edff94904739f5b8ac252f248f6b19cf9ddcae11ebd0dac2a28ca13e2"
+	# Wide (UTF-16) file, directory and startup calls: each conversion buffer
+	# is a fresh VirtualAlloc released before the wrapper returns (getcwd
+	# copies into the caller's buffer only after checking its size); the
+	# startup argv/environment copies live for the process, as before. No
+	# allocator or ownership changes, and no new checked-call entry points.
+	if (ends_with(path, c"/lib/__arch__/win64/syscalls.w")): return c"cb7a286400f6bd79bf23995647931d29422d0acf4b377fc321f6c638dbc012cf"
 	if (ends_with(path, c"/code_generator/integer.w")): return c"fc29beab52cc9fc74d3db3e3bcdc99e299514b590ce1450626270e924f594bbb"
 	if (ends_with(path, c"/lib/__arch__/x64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/x64/context.w")): return c"ee3c5d5dc3c91bc1b7c13cf690bf1da4eda806216ee600b2981d5fe793fda032"

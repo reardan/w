@@ -219,3 +219,32 @@ void test_new_file_never_replaces_one_created_meanwhile():
 	assert_equal(MM_SAVE_OK, mm_editor_save_checked(e))
 	assert_strings_equal(c"flowchart LR\nMine\n", sg_read(path))
 	mm_editor_free(e)
+
+# A read-only file is never replaced: the save fails, the bytes and the
+# mode stay, nothing is staged, and the same edit saves once the file is
+# writable again. (Windows has no chmod here; the wine editor workflow
+# covers the read-only attribute, mermaid_editor_wine_test.)
+void test_read_only_file_refuses_the_save():
+	if (os_windows()): return
+	sg_reset_dir()
+	char* path = sg_path(c"readonly.mmd")
+	sg_write(path, c"flowchart LR\nA --> B\n")
+	mm_editor* e = mm_editor_open(path)
+	mm_editor_change(e, c"flowchart LR\nA --> C\n")
+	assert_equal(0, file_chmod(path, 292))
+	if (mm_disk_writable(path)):
+		# root ignores permission bits: nothing to check.
+		mm_editor_free(e)
+		return
+	assert_equal(MM_SAVE_FAILED, mm_editor_save_checked(e))
+	assert_strings_equal(c"flowchart LR\nA --> B\n", sg_read(path))
+	assert_equal(0, sg_leftovers())
+	file_stat st
+	assert_equal(0, file_stat_path(path, &st))
+	assert_equal(292, st.mode & FILE_MODE_PERM_MASK)
+	asserts(c"still dirty", mm_editor_dirty(e))
+	assert_equal(0, file_chmod(path, 420))
+	assert_equal(MM_SAVE_OK, mm_editor_save_checked(e))
+	assert_strings_equal(c"flowchart LR\nA --> C\n", sg_read(path))
+	assert_equal(0, sg_leftovers())
+	mm_editor_free(e)
