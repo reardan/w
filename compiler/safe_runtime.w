@@ -38,8 +38,11 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/hex.w")): return c"1139d5bf87e30a02ca930bb263328ae9a98de64ff4677f997beb933b091d4b8a"
 	if (ends_with(path, c"/lib/lib.w")): return c"daf4b14f5e2158d41c808a6b5da1729df00fffad23e2a4d544f305d7d5c23be3"
 	if (ends_with(path, c"/lib/linux.w")): return c"e0ba57f22d74e271a6a6db7c55cef38a2943b7fe75a446ba152f766ef36b4cf6"
-	if (ends_with(path, c"/lib/memory.w")): return c"82f5225c2eeff87f429a0268de52c84458c3c40e39918b3e384ca391c386b981"
-	if (ends_with(path, c"/lib/memory_debug.w")): return c"d4721ac9818c4889b2b01bcd67151cdb7d8743cef1abd1bc968be702f244460c"
+	# malloc_host_freelist_mode only fixes the backend choice before the
+	# first allocation; memory_debug retries a failed free-time mprotect
+	# after draining its quarantine. No allocation, bounds or output change.
+	if (ends_with(path, c"/lib/memory.w")): return c"faa38900bd8d36a0d0a7bb830bb182d15c08383087be8759892311b02a5aa1cd"
+	if (ends_with(path, c"/lib/memory_debug.w")): return c"e2ee8be6fca7a3510eb1cba141b6fd1702dc001a68a163e10600b36f906c3926"
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"

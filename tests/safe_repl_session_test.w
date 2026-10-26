@@ -190,9 +190,10 @@ void test_safe_flag_still_rejected():
 	free(cast(void*, args))
 
 
-# Threads and lock guards (#713) run without W_DEBUG_ALLOC: its two
-# mappings per block exhaust vm.max_map_count once the in-process
-# compiler retains the thread runtime. fixture is 0 for a bare session.
+# Threads and lock guards (#713) run under W_DEBUG_ALLOC too: the REPL
+# keeps its own compiler on the free list (malloc_host_freelist_mode), so
+# only the session's blocks take guard pages and a second unlock or
+# destruction faults. fixture is 0 for a bare session.
 process_result* safe_repl_thread_run(char* fixture, char* input):
 	char** args = strv_new(4)
 	strv_set(args, 0, safe_repl_build())
@@ -202,8 +203,9 @@ process_result* safe_repl_thread_run(char* fixture, char* input):
 		strv_set(args, 2, fixture)
 		count = 3
 	strv_set(args, count, 0)
-	process_result* result = process_run(args[0], args, 0, input, 300000)
-	assert1(result != 0)
+	process_result* result = safe_repl_exec(args, input)
+	assert_lacks(result.stdout_text, c"memory_debug")
+	assert_lacks(result.stderr_text, c"memory_debug")
 	free(cast(void*, args))
 	return result
 

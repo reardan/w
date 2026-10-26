@@ -64,6 +64,21 @@ void malloc_force_debug_mode():
 	malloc_debug_mode = 1
 
 
+# In-process hosts (repl/frontend.w, debugger/wdbg.w) call this before
+# they allocate: the code they compile and run links its own copy of this
+# file, so W_DEBUG_ALLOC then selects that session allocator's backend
+# while the compiler hosting the session keeps the free list. Its guard
+# pages would otherwise cover every allocation the compiler retains and
+# exhaust vm.max_map_count long before the session's own blocks do.
+# Returns 1 when the host's backend is the free list, 0 when an earlier
+# allocation (or malloc_force_debug_mode) already fixed debug mode.
+int malloc_host_freelist_mode():
+	if (malloc_mode_determined): return malloc_debug_mode == 0
+	malloc_mode_determined = 1
+	malloc_debug_mode = 0
+	return 1
+
+
 # Best-effort W_DEBUG_ALLOC check: 1 for native guards, 2 for the exact
 # value 'valgrind', 0 when absent. Reads /proc/self/environ directly (see
 # the file header for why) using the freelist backend's own allocator

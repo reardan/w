@@ -1227,6 +1227,8 @@ void wdbg_attach_compile(char* target):
 
 
 int wdbg_main(int argc, int argv):
+	# A no-op when the compiler driver ('w --debug') already allocated
+	malloc_host_freelist_mode()
 	args_init(argc, argv)
 	repl_ast_options()
 	# Quiet the compiler driver: wdbg is entered through its own main (not

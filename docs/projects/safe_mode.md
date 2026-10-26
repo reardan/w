@@ -1881,9 +1881,11 @@ forms are rejected and nothing is replaced:
 - loading `lib/thread.w` again while threads still run on a copy a rollback
   kept.
 
-Under `W_DEBUG_ALLOC` the in-process compiler's guard-page allocations
-exhaust `vm.max_map_count` once it retains the thread runtime, so these
-sessions are tested without it. wdbg still rejects `thread_local` (W0324):
+`W_DEBUG_ALLOC` selects the session's allocator only: the session image
+links its own `lib/memory.w`, and the REPL and wdbg keep the compiler that
+hosts it on the free list (`malloc_host_freelist_mode`), so thread and
+lock-guard sessions are tested under the guard allocator like the rest.
+wdbg still rejects `thread_local` (W0324):
 a debuggee that imports `lib/safe_thread.w` cannot be loaded.
 
 **Unsupported forms.** These fail explicitly instead of being

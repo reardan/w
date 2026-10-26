@@ -256,9 +256,10 @@ while an old thread might still use it:
   definition. `thread_pool_shutdown()` ends the pool's workers.
 
 wdbg and the incremental compile API still reject `thread_local`
-(W0324). Under `W_DEBUG_ALLOC` the in-process compiler's own guard-page
-allocations reach `vm.max_map_count` once it retains the thread runtime,
-so the REPL's thread tests run without it.
+(W0324). `W_DEBUG_ALLOC` applies to the session's own allocator (the
+image's `lib/memory.w` copy): the REPL keeps its compiler on the free list
+(`malloc_host_freelist_mode`), so its guard pages no longer reach
+`vm.max_map_count`, and the REPL's thread tests run under it.
 
 **Allocator** (issue #498, `lib/thread_heap.w`). Workers used to be
 barred from allocating because `lib/memory.w`'s free list and brk
