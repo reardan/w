@@ -70,7 +70,9 @@ jobs:
       - name: Install packages
         if: matrix.packages
         timeout-minutes: 15
-        run: tools/ci_apt_install.sh ${{ matrix.packages }}
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ${{ matrix.packages }}
 
       - name: Allow debugger attach tests
         if: matrix.ptrace

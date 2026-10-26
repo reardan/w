@@ -23,10 +23,14 @@ jobs:
 
       - name: Install kernel build and VM dependencies
         timeout-minutes: 15
-        run: |
-          tools/ci_apt_install.sh \
-            build-essential flex bison bc libelf-dev libssl-dev \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            build-essential flex bison bc libelf-dev libssl-dev
             qemu-system-x86 python3 curl ca-certificates xz-utils
+
+      - name: Enable KVM
+        run: |
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
 

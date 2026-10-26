@@ -111,9 +111,10 @@ jobs:
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         timeout-minutes: 15
-        run: >-
-          tools/ci_apt_install.sh --i386
-          libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -200,9 +201,10 @@ jobs:
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         timeout-minutes: 15
-        run: >-
-          tools/ci_apt_install.sh --i386
-          libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -360,9 +362,10 @@ jobs:
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         timeout-minutes: 15
-        run: >-
-          tools/ci_apt_install.sh --i386
-          libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -516,9 +519,10 @@ jobs:
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         timeout-minutes: 15
-        run: >-
-          tools/ci_apt_install.sh --i386
-          libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Enable KVM
         run: |
@@ -556,7 +560,9 @@ jobs:
 
       - name: Install qemu-user and the arm64 libc
         timeout-minutes: 15
-        run: tools/ci_apt_install.sh qemu-user-static libc6-arm64-cross
+        uses: ./.github/actions/apt-install
+        with:
+          packages: qemu-user-static libc6-arm64-cross
 
       # tests_arm64 = verify_arm64 (stage-2 self-recompile under qemu)
       # plus every arm64 run target. memfd_test_arm64 sits in
@@ -594,7 +600,9 @@ jobs:
 
       - name: Install wine
         timeout-minutes: 15
-        run: tools/ci_apt_install.sh wine
+        uses: ./.github/actions/apt-install
+        with:
+          packages: wine
 
       # tests_win64 = verify_win (wv3_win == wv4_win == wv5_win under
       # wine) plus the win64 run targets.
