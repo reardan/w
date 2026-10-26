@@ -1,7 +1,8 @@
 # Debuggee for tests/safe_session_debugger_test.w: read-only checked views
-# of borrowed records, owners carrying borrowed groups and lifetime-labeled
-# locals at 'debugger' stops, and the aggregate forms that stay hidden
-# (#713).
+# of borrowed records (including records with exclusive fields, viewed
+# through a shared twin), owners carrying borrowed groups and
+# lifetime-labeled locals at 'debugger' stops, and the aggregate forms that
+# stay hidden (#713).
 struct box:
 	int value
 
@@ -19,6 +20,11 @@ struct Pair:
 struct Exclusive:
 	refmut[field] box* item
 	int amount
+
+
+struct Nest:
+	refmut[group] Exclusive inner
+	int extra
 
 
 struct Stored:
@@ -56,6 +62,10 @@ int add(refmut Exclusive e):
 	return item.value
 
 
+int peek(ref box* item):
+	return item.value
+
+
 int look(ref Holder h):
 	debugger
 	return h.tag
@@ -73,11 +83,15 @@ int main():
 	own box* other = new box
 	other.value = 1
 	refmut[w] Exclusive e = Exclusive(other, 4)
+	own box* third = new box
+	third.value = 2
+	refmut[v] Nest n = Nest(Exclusive(third, 5), 7)
 	debugger
+	int d = n.extra
 	int a = holder_sum(h) + pair_sum(pair) + stored_sum(stored) + r.value
 	int b = add(e)
 	# h, pair and stored are past their last use here, and p is mutated.
 	p.value = 11
 	debugger
 	int c = look(Holder(q, 6))
-	return a + b + c - 13 - 30 - 120 - 20 - 5 - 6
+	return a + b + c + d - 13 - 30 - 120 - 20 - 5 - 6 - 7
