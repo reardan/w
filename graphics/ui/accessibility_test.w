@@ -166,8 +166,8 @@ void test_accessibility_caret_and_selection():
 	# Unsupported until the node offers it, then range-checked.
 	assert_equal(0, ui_access_dispatch_selection(tree, 2, 5, 2))
 	input.actions = UI_ACCESS_SET_SELECTION
-	assert_equal(0, ui_access_dispatch_selection(tree, 2, 6, 2))
 	assert_equal(0, ui_access_dispatch(tree, 2, UI_ACCESS_SET_SELECTION, c"5", 1))
+	assert_equal(0, ui_access_dispatch_selection(tree, 2, 0 - 1, 2))
 	assert_equal(1, ui_access_dispatch_selection(tree, 2, 5, 2))
 	# Read-only text can still be selected.
 	input.states = UI_ACCESS_READONLY

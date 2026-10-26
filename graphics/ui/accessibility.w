@@ -265,13 +265,14 @@ int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int
 	if ((action == UI_ACCESS_SET_VALUE) && ((node.states & UI_ACCESS_READONLY) != 0)): return 0
 	if ((length < 0) || (length > tree.max_text_bytes) || ((data == 0) && (length > 0))): return 0
 	if (!utf8_validate_bytes(data, length)): return 0
+	# Selection offsets are not checked against the node's value: a
+	# request can follow an edit queued just before it, so they count
+	# characters of a text the snapshot has not seen yet. The widget
+	# clamps them to its text when it applies them.
 	if (action == UI_ACCESS_SET_SELECTION):
-		# Offsets must fall inside the text the requester saw.
 		int anchor = 0
 		int active = 0
 		if (!ui_access_selection_parse(data, length, &anchor, &active)): return 0
-		int count = ui_access_char_count(node.value.data, node.value.length)
-		if ((anchor > count) || (active > count)): return 0
 	return tree.action(tree.context, id, action, data, length)
 
 

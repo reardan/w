@@ -7,6 +7,9 @@ c_lib "env"
 extern int gfx_access_begin(int max_nodes, int max_bytes, int snapshot)
 extern int gfx_access_add(int id, int parent, int role, int states, int actions, int level)
 extern int gfx_access_text(int id, int field, char* data, int length)
+# A text node's caret and selection, in characters of its value (after
+# its text).
+extern int gfx_access_selection(int id, int caret, int start, int end)
 extern int gfx_access_commit(int focused_id)
 extern int gfx_access_next(int snapshot, int32* metadata, char* data, int capacity)
 extern void gfx_access_close()
@@ -22,6 +25,7 @@ int ui_access_web_publish(ui_access_tree* tree):
 		if (!gfx_access_text(id, UI_ACCESS_NAME, n.name.data, n.name.length)): return gfx_access_commit(0)
 		if (!gfx_access_text(id, UI_ACCESS_VALUE, n.value.data, n.value.length)): return gfx_access_commit(0)
 		if (!gfx_access_text(id, UI_ACCESS_DESCRIPTION, n.description.data, n.description.length)): return gfx_access_commit(0)
+		if ((n.caret >= 0) && !gfx_access_selection(id, n.caret, n.selection_start, n.selection_end)): return gfx_access_commit(0)
 	return gfx_access_commit(tree.focused_id)
 
 # Host requests are revalidated against current W state. A different snapshot

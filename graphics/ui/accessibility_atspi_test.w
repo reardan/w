@@ -662,6 +662,191 @@ void check_tables(char* address):
 	dbus_close(c.conn)
 
 
+# A two-line editor: "one two\nthr\xc3\xa9e" (13 characters), the
+# caret at 7 after selecting "two" forwards from 4.
+ui_access_tree* text_tree(atspi_test_app* app, int caret, int anchor):
+	ui_access_tree* tree = ui_access_tree_new(8, 256)
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 100.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	ui_access_node* editor = ui_access_add(tree, 2, 1, UI_ACCESS_TEXTBOX, r)
+	editor.states = UI_ACCESS_FOCUSABLE
+	editor.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION | UI_ACCESS_FOCUS
+	ui_access_set_text(tree, 2, UI_ACCESS_NAME, c"Notes", 5)
+	ui_access_set_text(tree, 2, UI_ACCESS_VALUE, c"one two\nthr\xc3\xa9e", 14)
+	ui_access_set_selection(tree, 2, anchor, caret)
+	tree.focused_id = 2
+	tree.action = atspi_test_action
+	tree.context = app
+	return tree
+
+
+# Text.member(args) on node 2 answering a bool; the args are already in
+# the client's buffer.
+int atspi_test_text_bool(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, char* member, char* sig):
+	return atspi_test_bool(c, b, tree, 2, c"org.a11y.atspi.Text", member, sig)
+
+
+void check_text(char* address):
+	atspi_test_client client
+	client.log_length = 0
+	client.log[0] = 0
+	client.embeds = 0
+	client.conn = dbus_open(address)
+	asserts(c"client connects", client.conn != 0)
+	atspi_test_client* c = &client
+	dbus_message reply
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_string(out, c"type='signal',interface='org.a11y.atspi.Event.Object'")
+	assert_equal(1, dbus_call_sync(c.conn, &reply, 2000, c"org.freedesktop.DBus", c"/org/freedesktop/DBus", c"org.freedesktop.DBus", c"AddMatch", c"s"))
+	dbus_message_free(&reply)
+
+	atspi_test_app app
+	app.calls = 0
+	ui_access_tree* tree = text_tree(&app, 7, 4)
+	ui_atspi_bridge* b = ui_access_atspi_open_at(address, c"Editor")
+	asserts(c"bridge connects", b != 0)
+	assert_equal(1, ui_access_atspi_publish(b, tree))
+	char* text = c"org.a11y.atspi.Text"
+
+	# The caret, the selection and the selectable-text state.
+	assert_equal(7, atspi_test_int_property(c, b, tree, 2, text, c"CaretOffset"))
+	assert_equal(13, atspi_test_int_property(c, b, tree, 2, text, c"CharacterCount"))
+	assert_equal(1, atspi_test_u32(c, b, tree, 2, text, c"GetNSelections"))
+	int lo = 0
+	int hi = 0
+	atspi_test_state(c, b, tree, 2, &lo, &hi)
+	asserts(c"selectable text", atspi_test_has(hi, ATSPI_STATE_SELECTABLE_TEXT - 32))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetSelection", c"i", &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	assert_equal(4, dbus_read_i32(&r))
+	assert_equal(7, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetSelection", c"i", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(0, dbus_read_i32(&r))
+	assert_equal(0, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+
+	# Attributes: empty sets, one run over the whole text, and an empty
+	# string array without stray padding.
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 9)
+	dbus_put_bool(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributeRun", c"ib", &reply))
+	assert_strings_equal(c"a{ss}ii", reply.signature)
+	dbus_message_reader(&reply, &r)
+	assert_equal(0, dbus_read_u32(&r))
+	dbus_read_align(&r, 8)
+	assert_equal(0, dbus_read_i32(&r))
+	assert_equal(13, dbus_read_i32(&r))
+	assert_equal(0, r.failed)
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributes", c"i", &reply))
+	assert_strings_equal(c"a{ss}ii", reply.signature)
+	dbus_message_free(&reply)
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetDefaultAttributeSet", 0, &reply))
+	assert_strings_equal(c"as", reply.signature)
+	assert_equal(4, reply.body_length)
+	dbus_message_free(&reply)
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetDefaultAttributes", 0, &reply))
+	assert_strings_equal(c"a{ss}", reply.signature)
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_string(out, c"weight")
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributeValue", c"is", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+
+	# Caret moves and selections reach the application as
+	# SET_SELECTION "anchor active".
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 2)
+	asserts(c"caret accepted", atspi_test_text_bool(c, b, tree, c"SetCaretOffset", c"i"))
+	assert_equal(1, app.calls)
+	assert_equal(2, app.last_id)
+	assert_equal(UI_ACCESS_SET_SELECTION, app.last_action)
+	assert_strings_equal(c"2 2", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 14)
+	asserts(c"caret past the end", !atspi_test_text_bool(c, b, tree, c"SetCaretOffset", c"i"))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 3)
+	asserts(c"one selection only", !atspi_test_text_bool(c, b, tree, c"AddSelection", c"ii"))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 13)
+	dbus_put_i32(out, 8)
+	asserts(c"set selection", atspi_test_text_bool(c, b, tree, c"SetSelection", c"iii"))
+	assert_strings_equal(c"13 8", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 1)
+	asserts(c"no second selection", !atspi_test_text_bool(c, b, tree, c"SetSelection", c"iii"))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	asserts(c"remove selection", atspi_test_text_bool(c, b, tree, c"RemoveSelection", c"i"))
+	assert_strings_equal(c"7 7", &app.last_value[0])
+	assert_equal(3, app.calls)
+
+	# Republishing with the selection gone and the caret moved announces
+	# both, selection first.
+	ui_access_tree* next = text_tree(&app, 9, 9)
+	ui_access_atspi_publish(b, next)
+	ui_access_tree_free(tree)
+	tree = next
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
+	dbus_message_free(&reply)
+	char* log = &c.log[0]
+	int selection = index_of(log, c"TextSelectionChanged  /org/a11y/atspi/accessible/2\n")
+	asserts(c"selection event", selection >= 0)
+	asserts(c"caret event after it", index_of(log, c"TextCaretMoved  /org/a11y/atspi/accessible/2\n") > selection)
+	assert_equal(0, atspi_test_u32(c, b, tree, 2, text, c"GetNSelections"))
+	# Without a selection a new one can be added; an empty one cannot.
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 3)
+	asserts(c"add selection", atspi_test_text_bool(c, b, tree, c"AddSelection", c"ii"))
+	assert_strings_equal(c"0 3", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 2)
+	dbus_put_i32(out, 2)
+	asserts(c"empty selection", !atspi_test_text_bool(c, b, tree, c"AddSelection", c"ii"))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	asserts(c"nothing to remove", !atspi_test_text_bool(c, b, tree, c"RemoveSelection", c"i"))
+	# A caret move alone announces no selection change.
+	c.log_length = 0
+	c.log[0] = 0
+	next = text_tree(&app, 10, 10)
+	ui_access_atspi_publish(b, next)
+	ui_access_tree_free(tree)
+	tree = next
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
+	dbus_message_free(&reply)
+	asserts(c"caret moved", contains(log, c"TextCaretMoved  /org/a11y/atspi/accessible/2\n"))
+	asserts(c"no selection event", !contains(log, c"TextSelectionChanged"))
+	assert_equal(10, atspi_test_int_property(c, b, tree, 2, text, c"CaretOffset"))
+
+	ui_access_atspi_close(b)
+	ui_access_tree_free(tree)
+	dbus_close(c.conn)
+
+
 void test_atspi_bridge_on_a_private_bus():
 	dbus_test_bus bus
 	if (!dbus_test_bus_start(&bus)):
@@ -677,6 +862,15 @@ void test_atspi_tables_selection_and_cache():
 		test_skip(c"SKIP: dbus-daemon not available")
 		return
 	check_tables(bus.address)
+	dbus_test_bus_stop(&bus)
+
+
+void test_atspi_text_caret_selection_and_attributes():
+	dbus_test_bus bus
+	if (!dbus_test_bus_start(&bus)):
+		test_skip(c"SKIP: dbus-daemon not available")
+		return
+	check_text(bus.address)
 	dbus_test_bus_stop(&bus)
 
 

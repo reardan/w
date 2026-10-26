@@ -530,8 +530,6 @@ void test_text_caret_and_selection_round_trip():
 
 	# Select "\xc3\xa9ll" backwards: the caret lands on the anchor side.
 	assert_equal(1, ui_access_dispatch_selection(tree, 1, 4, 1))
-	# Out of range for the published text: refused before the widget.
-	assert_equal(0, ui_access_dispatch_selection(tree, 1, 0, 99))
 	ui_access_tree_free(tree)
 	tree = captured_area(ctx, &ta, &clicks)
 	area = ui_access_find(tree, 1)
@@ -553,6 +551,11 @@ void test_text_caret_and_selection_round_trip():
 	assert_equal(1, ta.caret_line)
 	assert_equal(1, ta.caret_col)
 	asserts(c"no widget selection", ui_textarea_has_selection(&ta) == 0)
+	# Offsets past the text clamp to its end.
+	assert_equal(1, ui_access_dispatch_selection(again, 1, 0, 99))
+	area_frame(ctx, &ta, &clicks)
+	assert_equal(0, ta.sel_anchor)
+	assert_equal(8, ui_textarea_caret_offset(&ta))
 	ui_access_tree_free(again)
 	ui_access_tree_free(tree)
 
