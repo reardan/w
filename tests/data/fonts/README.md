@@ -27,6 +27,8 @@ applies, so the files stay small.
 | `NotoSansBalinese-subset.ttf` | `NotoSansBalinese-Regular.ttf` 2.002 (Debian fonts-noto-core) |
 | `NotoSansTaiTham-subset.ttf` | `NotoSansTaiTham-Regular.ttf` 2.001 (Debian fonts-noto-core) |
 | `NotoSansDevanagari-dev3-subset.ttf` | `NotoSansDevanagari-Regular.ttf` 2.001 (Debian fonts-noto-core), its `dev2` script renamed `dev3` and `deva` dropped |
+| `NotoSansKhmer-subset.ttf` | `NotoSansKhmer-Regular.ttf` 2.001 (Ubuntu `fonts-noto-core`) |
+| `NotoSansMyanmar-subset.ttf` | `NotoSansMyanmar-Regular.ttf` 2.001 (Ubuntu `fonts-noto-core`) |
 | `NotoSans-cff-subset.otf` | `NotoSans-Regular.otf` (unhinted OTF), CFF with subroutines |
 | `NotoSansJP-subset.otf` | noto-cjk `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`, CID-keyed CFF |
 
@@ -48,7 +50,8 @@ pyftsubset NotoSansArabic-Regular.ttf --text-file=arabic-lines.txt \
 
 (The Hebrew subset also keeps U+FB1D..U+FB4F; NotoSans keeps only
 ccmp, locl, rvrn, liga, clig, calt, rclt, kern, mark, mkmk and dist.)
-The eight Indic subsets other than Devanagari keep only the glyphs
+The eight Indic subsets other than Devanagari, and the Khmer and
+Myanmar subsets, keep only the glyphs
 HarfBuzz passes through while shaping their golden lines with the full
 font (every intermediate GSUB buffer, collected with a buffer message
 function), plus U+25CC, ZWNJ and ZWJ, with no layout closure, so they
@@ -68,6 +71,9 @@ way, keeping every layout feature the USE shaper applies (including
 `isol`, `init`, `medi`, `fina`); the `dev3` copy of Noto Sans Devanagari
 renames the `dev2` script record with fontTools before subsetting, so
 HarfBuzz and lib/ttf_use.w shape it with the USE shaper.
+
+The Khmer and Myanmar subsets were made the same way, also keeping
+`cfar` and `rphf` in `--layout-features`.
 
 The text is the matching lines of `tools/shape_golden_hb.py`; the two
 OTF subsets keep hinting and subroutines (no `--no-hinting`) so the CFF
