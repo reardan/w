@@ -47,6 +47,7 @@ import debugger.common
 import structures.json
 import structures.json_codec
 import compiler.safe_session
+import lib.__arch__.thread_id
 
 
 # Result of one repl_eval() call. status 1: the entry compiled and ran
@@ -143,6 +144,238 @@ void repl_skip_end(int pos):
 
 
 # ---------------------------------------------------------------------------
+# Threads and thread_local storage in the interactive REPL (#713,
+# docs/projects/threads.md "In the REPL").
+#
+# A compile sizes its per-thread block once, at finish; a session cannot,
+# because entries keep declaring thread_local variables while threads
+# started by earlier entries still run. repl_threads_enable() therefore
+# gives the session a fixed 64KB block per thread: the __w_tls_size stub
+# answers the capacity, so every lib/thread.w thread reserves a whole
+# block at the bottom of its stack (zeroed by mmap, freed by thread_join's
+# munmap), the main thread's block is mapped here, and the compiler
+# rejects a declaration that would not fit (tls_reserve). Offsets are
+# never handed out twice while a thread that may hold an old value is
+# alive: a rollback rewinds them (and zeroes the main block's tail) only
+# when no other thread exists, otherwise the rolled-back code, globals and
+# thread_local offsets stay reserved (repl_keep_code) and only names roll
+# back. A compile error never ran anything, so its offsets are released
+# even then: no thread can have touched them.
+#
+# lib/thread.w's first spawn points the session allocator's hooks
+# (lib/memory.w malloc_hook_*) at lib/thread_heap.w. A rollback that
+# releases that code clears the hooks again (no other thread exists then,
+# so the main thread's allocator is the only one; a block a finished
+# worker allocated has the free-list block layout, so a later free files it
+# in the main heap and its segment is simply leaked). A rollback that keeps
+# the code keeps the hooks too, and the thread runtime they point into is
+# then the only one: loading lib/thread.w afresh while threads still run
+# on the kept copy would install a second set of hooks under them, so
+# that is rejected (repl_thread_runtime_check).
+#
+# Rules enforced against threads started by entries:
+# - a fault on such a thread ends the process (its stack is not the one
+#   repl_eval's checkpoint lives on);
+# - a fault on the main thread while a thread the entry started is still
+#   running ends the process too: that thread may borrow the abandoned
+#   entry frame (safe_thread_fork_join lends its caller's storage);
+# - a redefinition never patches call sites while another thread runs
+#   (cross-modifying code); those callers keep the previous definition.
+
+int repl_threads_enabled
+int repl_tls_block
+# Nonzero while a rollback must keep code and thread_local offsets.
+int repl_keep_code
+# Tids live when the outermost running entry started; count -1: unknown.
+int* repl_thread_snapshot
+int repl_thread_snapshot_count
+int* repl_thread_ids
+char* repl_thread_dirents
+
+const int repl_thread_ids_capacity = 256
+const int repl_tls_capacity = 65536
+
+
+int repl_gettid():
+	return arch_gettid()
+
+
+# The tids of this process's threads, from /proc/self/task, into ids.
+# Returns their count, or -1 when unreadable or beyond capacity. Allocates
+# nothing, so the fault handler can call it.
+int repl_thread_scan(int* ids):
+	int fd = open(c"/proc/self/task", 65536, 0) /* O_DIRECTORY */
+	if (fd < 0): return -1
+	int count = 0
+	int n = getdents(fd, repl_thread_dirents, 4096)
+	while (n > 0):
+		int at = 0
+		while (at < n):
+			char* record = repl_thread_dirents + at
+			int reclen = (record[2 * __word_size__] & 255) | ((record[2 * __word_size__ + 1] & 255) << 8)
+			char* name = record + 2 * __word_size__ + 2
+			if ((name[0] >= '0') && (name[0] <= '9')):
+				if (count >= repl_thread_ids_capacity):
+					close(fd)
+					return -1
+				int tid = 0
+				int k = 0
+				while ((name[k] >= '0') && (name[k] <= '9')):
+					tid = tid * 10 + (name[k] - '0')
+					k = k + 1
+				ids[count] = tid
+				count = count + 1
+			if (reclen <= 0): break
+			at = at + reclen
+		n = getdents(fd, repl_thread_dirents, 4096)
+	close(fd)
+	if (n < 0): return -1
+	return count
+
+
+# A joined thread can stay listed in /proc/self/task for a moment after
+# thread_join returns: the kernel clears its tid word before it removes
+# the task. Checks that find extra threads rescan a few times, 1ms apart,
+# so a thread that is only exiting is not reported as running. Allocates
+# nothing, so the fault handler can call it.
+const int repl_thread_settle_tries = 20
+
+
+void repl_thread_settle_pause():
+	int[2] ts
+	ts[0] = 0
+	ts[1] = 1000000
+	nanosleep(&ts[0], 0)
+
+
+# Number of live threads besides the main one (unknown counts as one).
+int repl_other_threads():
+	if (repl_threads_enabled == 0): return 0
+	int count = repl_thread_scan(repl_thread_ids)
+	int tries = 0
+	while ((count > 1) && (tries < repl_thread_settle_tries)):
+		repl_thread_settle_pause()
+		count = repl_thread_scan(repl_thread_ids)
+		tries = tries + 1
+	if (count < 1): return 1
+	return count - 1
+
+
+# 1 when a thread that was not live when the outermost entry started is
+# live now (or the answer is unknown).
+int repl_new_threads_once():
+	int count = repl_thread_scan(repl_thread_ids)
+	if ((count < 0) || (repl_thread_snapshot_count < 0)): return 1
+	for i in range(count):
+		int known = 0
+		for k in range(repl_thread_snapshot_count):
+			if (repl_thread_snapshot[k] == repl_thread_ids[i]): known = 1
+		if (known == 0): return 1
+	return 0
+
+
+int repl_new_threads():
+	int found = repl_new_threads_once()
+	int tries = 0
+	while ((found != 0) && (tries < repl_thread_settle_tries)):
+		repl_thread_settle_pause()
+		found = repl_new_threads_once()
+		tries = tries + 1
+	return found
+
+
+void repl_thread_snapshot_take():
+	if (repl_threads_enabled == 0): return;
+	repl_thread_snapshot_count = repl_thread_scan(repl_thread_snapshot)
+
+
+# Addresses of the session allocator's three hook words (lib/memory.w),
+# found once, before any entry can shadow their names.
+int* repl_hook_words
+# 1 while a rollback kept the thread runtime the hooks point into.
+int repl_thread_runtime_kept
+
+
+type __repl_tls_set_callback = fn(int) -> void
+
+
+# Give the interactive REPL per-thread storage and threads: called by the
+# front end after repl_init and before the :reset checkpoint. x86/x64
+# Linux only, like lib/thread.w.
+void repl_threads_enable():
+	if ((target_isa != 0) || (target_os != 0) || (tls_size_patch_pos == 0)): return;
+	repl_thread_snapshot = cast(int*, malloc(repl_thread_ids_capacity * __word_size__))
+	repl_thread_ids = cast(int*, malloc(repl_thread_ids_capacity * __word_size__))
+	repl_thread_dirents = cast(char*, malloc(4096))
+	repl_thread_snapshot_count = -1
+	int block = mmap(0, repl_tls_capacity, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+	asserts(c"mmap of the session's thread_local block failed", (block > 0) | (block < -4095))
+	repl_tls_block = block
+	tls_inprocess_capacity = repl_tls_capacity
+	save_int32(code + tls_size_patch_pos, repl_tls_capacity)
+	int set_symbol = sym_lookup(c"__w_tls_set")
+	asserts(c"__w_tls_set stub missing", set_symbol >= 0)
+	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, load_int(table + set_symbol + 2))
+	install(block)
+	repl_hook_words = cast(int*, malloc(3 * __word_size__))
+	repl_hook_words[0] = sym_address(c"malloc_hook_malloc")
+	repl_hook_words[1] = sym_address(c"malloc_hook_free")
+	repl_hook_words[2] = sym_address(c"malloc_hook_realloc")
+	for i in range(3): asserts(c"session allocator hooks missing", repl_hook_words[i] != 0)
+	repl_threads_enabled = 1
+
+
+# After a rollback to code position `kept_end` (everything at or above it
+# is released unless repl_keep_code): hooks that point into released code
+# are cleared; hooks into code that is kept mark the thread runtime kept.
+void repl_hooks_restore(int kept_end):
+	if (repl_hook_words == 0): return;
+	int boundary = code_offset + kept_end
+	int stale = 0
+	for i in range(3):
+		int target = load_word(cast(char*, repl_hook_words[i]))
+		if ((target != 0) && (target >= boundary) && (target < code_offset + code_size)): stale = 1
+	if (stale == 0): return;
+	if (repl_keep_code):
+		repl_thread_runtime_kept = 1
+		return;
+	for i in range(3): save_word(cast(char*, repl_hook_words[i]), 0)
+	repl_thread_runtime_kept = 0
+
+
+# Reject an entry or :load that compiled lib/thread_heap.w afresh while
+# threads still run on a copy a rollback kept (see above). Once they have
+# all finished, the fresh copy may replace the kept one.
+void repl_thread_runtime_check(int first_import):
+	if (repl_thread_runtime_kept == 0): return;
+	int fresh = 0
+	for i in range(first_import, imported_count):
+		char* path = cast(char*, load_ptr(imported_paths + i * __word_size__))
+		# registered as resolved module paths, without the .w
+		if (ends_with(path, c"/lib/thread_heap") || (strcmp(path, c"lib/thread_heap") == 0)): fresh = 1
+	if (fresh == 0): return;
+	if (repl_other_threads() > 0):
+		error(c"lib/thread.w cannot be loaded again while threads started before a rollback or :reset still run on its previous copy; restart the REPL")
+	repl_thread_runtime_kept = 0
+
+
+# Rewind the session's thread_local offsets to `to` after a rollback,
+# zeroing the main thread's copy of every released offset so a later
+# declaration starts zeroed. Released offsets were never used by another
+# thread: either none exists (fault or :reset), or the entry never ran
+# (compile error); otherwise repl_keep_code keeps them.
+void repl_tls_restore(int to):
+	if (repl_keep_code || (tls_size <= to)): return;
+	if (repl_tls_block != 0):
+		# word 0 is the block's self pointer, which every access reads
+		int first = to
+		if (first < __word_size__): first = __word_size__
+		char* bytes = cast(char*, repl_tls_block)
+		for i in range(first, tls_size): bytes[i] = 0
+	tls_size = to
+
+
+# ---------------------------------------------------------------------------
 # Late binding for redefined functions (issue #114).
 #
 # Call sites bake their target's address at compile time: sym_get_value
@@ -227,7 +460,14 @@ void repl_queue_late_bind(char* name, int address):
 # order, so with several redefinitions in one entry the last one wins.
 # Sites the same entry compiled against the new definition are in the
 # registry too; rewriting them stores the address they already hold.
+#
+# While another thread runs (repl_threads_enable), a slot whose target
+# would change is left alone: rewriting code another processor may be
+# executing is not safe without stopping it, so those callers keep the
+# previous definition and a note says so.
 void repl_apply_late_bind():
+	int others = -1
+	int kept = 0
 	int i = 0
 	while (i < repl_sites_pending_count):
 		char* rec = repl_sites_pending + i * 2 * __word_size__
@@ -240,12 +480,23 @@ void repl_apply_late_bind():
 				int slot = load_word(site + __word_size__)
 				# kind 0: an address cell; kind 1: the displacement of a
 				# direct `call rel32` (unit A4), relative to the call's end
-				if (load_word(site + 2 * __word_size__) == 0): be_addr_slot_write(slot, address)
-				else: save_int(code + slot, address - (code_offset + slot + 4))
+				int direct = load_word(site + 2 * __word_size__)
+				int target = address - (code_offset + slot + 4)
+				int current = 0
+				if (direct == 0): current = be_addr_slot_read(slot)
+				else: current = load_int32(code + slot)
+				int changes = current != target
+				if (direct == 0): changes = current != address
+				if (changes && (others < 0)): others = repl_other_threads()
+				if (changes && (others > 0)): kept = kept + 1
+				else if (direct == 0): be_addr_slot_write(slot, address)
+				else: save_int(code + slot, target)
 			k = k + 1
 		free(name)
 		i = i + 1
 	repl_sites_pending_count = 0
+	if (kept > 0):
+		println(c"note: threads started by entries are still running, so earlier call sites keep the previous definition of a redefined function")
 
 
 # Rollback support: discard the queued patches of a failed entry, and
@@ -304,6 +555,22 @@ int repl_token_is_statement():
 	return 0
 
 
+# A declaration replacing a held checked lock guard of the same name
+# releases the old guard where the checked-session transcript destroys it,
+# at the redeclaration and before the new initializer runs (which may lock
+# the same mutex again), not after the entry: the executing entry calls the
+# session's own destruction of that generation (safe_session_replace_now),
+# which marks it dropped so commit, :reset and exit never unlock it again.
+void repl_replace_guard_now(char* name):
+	if ((repl_transcript_active != 0) || (ast_retain_mode == 0) || (repl_entry_text == 0)): return;
+	int binding = safe_session_held_guard(name)
+	if (binding == 0): return;
+	push_slot_int(binding)
+	mov_eax_int(cast(int, safe_session_replace_now))
+	call_eax()
+	drop_slots(1)
+
+
 # 'name := expression' in an entry: a persistent variable whose type is
 # inferred from the initializer, mirroring the typed persistent-variable
 # path below. The initializer compiles into the entry function first
@@ -325,6 +592,7 @@ int repl_infer_declaration():
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
 	get_token() /* consume ':=' */
+	repl_replace_guard_now(name)
 	int got = expression()
 	got = promote(got)
 	int decl_type = inferred_storage_type(name, got)
@@ -368,6 +636,16 @@ void repl_entry_item(int entry_symbol):
 		else if (enum_declaration()) { }
 		else if (extern_statement()) { }
 		repl_skip_end(skip)
+		current_function_symbol = entry_symbol
+		number_of_args = 0
+		return;
+
+	# 'thread_local type name' (contextual, as at a file's top level): an
+	# offset in the session's per-thread block (repl_threads_enable); it
+	# emits no code.
+	if (peek(c"thread_local") && (type_lookup(token) < 0) && (sym_lookup(token) < 0)):
+		get_token()
+		thread_local_declaration()
 		current_function_symbol = entry_symbol
 		number_of_args = 0
 		return;
@@ -427,6 +705,7 @@ void repl_entry_item(int entry_symbol):
 		# semantic forest (compiler/safe_session.w).
 		int decl_semantic = retained_semantic_mode
 		retained_semantic_mode = 0
+		repl_replace_guard_now(decl_name)
 
 		if (accept(c"=")):
 			# compile "name = expression" into the entry function
@@ -526,6 +805,10 @@ struct repl_state:
 	int plain_count
 	int function_symbol
 	int sites_count
+	int tls_size
+	int generic_defs
+	int generic_insts
+	int generic_forwards
 
 
 # The session's retained semantic mode, as each entry starts: top-level
@@ -562,6 +845,10 @@ void repl_state_capture(repl_state* st):
 	st.plain_count = import_plain_count
 	st.function_symbol = current_function_symbol
 	st.sites_count = repl_sites_count
+	st.tls_size = tls_size
+	st.generic_defs = generic_def_count()
+	st.generic_insts = generic_inst_count()
+	st.generic_forwards = generic_forward_count()
 
 
 # Everything but current_function_symbol, which only the per-entry
@@ -576,7 +863,12 @@ void repl_state_restore(repl_state* st):
 	# record and its phases go back to the walk pools here rather than at
 	# the next walked statement.
 	if (retained_walks != 0): retained_walk_release()
-	codepos = st.codepos
+	# Threads may still run the code and use the globals and thread_local
+	# offsets this rollback would release: keep them (only names roll back).
+	if ((repl_keep_code == 0) || (codepos < st.codepos)): codepos = st.codepos
+	repl_tls_restore(st.tls_size)
+	repl_hooks_restore(st.codepos)
+	generic_registry_truncate(st.generic_defs, st.generic_insts, st.generic_forwards)
 	be_cmp_note_reset()
 	be_imm_note_reset()
 	ers_reset()
@@ -659,11 +951,22 @@ void repl_genesis_checkpoint():
 # single failed entry. Returns 0 when repl_genesis_checkpoint() was never
 # called (nothing to reset to). Only safe between entries: no entry may
 # be mid-compile or mid-execution.
+#
+# Threads started by entries may outlive them (lib/thread.w handles never
+# joined, the parallel_for pool). While any is alive the reset keeps the
+# code, globals and thread_local offsets they may use, and says so.
 int repl_reset_to_genesis():
 	if (repl_genesis == 0): return 0
+	int others = repl_other_threads()
+	repl_keep_code = others > 0
 	repl_state_restore(repl_genesis)
+	repl_keep_code = 0
 	repl_sites_truncate(repl_genesis.sites_count)
 	repl_state_clear_context()
+	if (others > 0):
+		print(c"note: ")
+		print(itoa(others))
+		println(c" thread(s) started by entries are still running; the code and thread_local storage they may use stay reserved")
 	return 1
 
 
@@ -843,6 +1146,7 @@ int repl_compile_entry(char* path):
 	# Compiler-injected runtimes are audited like a compile's (link_impl)
 	safe_trust_sources(runtime_sources)
 	close(file)
+	repl_thread_runtime_check(repl_saved.imported_count)
 	if (safe_check_requested()): repl_safe_check_entry(repl_saved.retained.nodes)
 	repl_recovery = 0
 	repl_call_site_hook = 0
@@ -1003,10 +1307,28 @@ void repl_fault_trace(int context):
 # error. Clearing repl_fault_active first means a fault inside this
 # handler (or anywhere outside an entry) takes the die-as-before path.
 void repl_fault(int sig, int context):
+	# A thread an entry started faulted: repl_eval's checkpoint lives on
+	# the main thread's stack, so there is nothing to return to.
+	if (repl_threads_enabled && (repl_gettid() != getpid())):
+		dbg_fault_banner(c"runtime fault in a thread started by an entry: ", sig, context)
+		println(c"the session cannot recover from a fault on another thread; exiting")
+		repl_fault_restore_default(sig)
+		return;
 	if (repl_fault_active == 0):
 		repl_fault_restore_default(sig)
 		return;
 	repl_fault_active = 0
+	if (repl_threads_enabled):
+		# A thread this entry started may still use the entry's frame
+		# (safe_thread_fork_join lends its caller's storage), which the
+		# long jump abandons: the session cannot continue soundly.
+		if (repl_new_threads()):
+			dbg_fault_banner(c"runtime fault: ", sig, context)
+			println(c"a thread this entry started is still running and may use the entry's stack; the session cannot recover; exiting")
+			repl_fault_restore_default(sig)
+			return;
+		# Older threads may run code this entry defined: keep it.
+		repl_keep_code = repl_other_threads() > 0
 	dbg_fault_banner(c"runtime fault: ", sig, context)
 	repl_fault_trace(context)
 	println(c"entry rolled back")
@@ -1371,7 +1693,9 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	# is needed.
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	int first_node = retained_node_count()
+	int first_import = imported_count
 	compile_input_file(path)
+	repl_thread_runtime_check(first_import)
 	repl_finish_load(first_node)
 	repl_call_site_hook = 0
 	if (run_main == 0): return 0
@@ -1456,10 +1780,13 @@ repl_result repl_eval(char* entry_text):
 		repl_nest_restore(nest)
 		return r
 
+	if (repl_eval_depth == 1): repl_thread_snapshot_take()
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):
+		# repl_fault decided whether other threads keep the entry's code
 		repl_rollback()
 		safe_session_fault()
+		repl_keep_code = 0
 		r.status = 2
 		repl_eval_finish(suspended)
 		repl_nest_restore(nest)

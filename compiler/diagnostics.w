@@ -994,7 +994,7 @@ void diag_code_table():
 	diag_code_row(c"W0321", c"extern used without any c_lib to import from")
 	diag_code_row(c"W0322", c"extern import declared before any c_lib")
 	diag_code_row(c"W0323", c"thread_local is only supported on the x86 and x64 Linux targets")
-	diag_code_row(c"W0324", c"thread_local is not supported in the REPL or debugger")
+	diag_code_row(c"W0324", c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
 	diag_code_row(c"W0325", c"thread_local fixed arrays are not supported; use a pointer")
 	diag_code_row(c"W0326", c"thread_local applies to variables, not functions")
 	diag_code_row(c"W0327", c"thread_local variables cannot have an initializer; they start zeroed")
@@ -1091,3 +1091,4 @@ void diag_code_table():
 	diag_code_row(c"W0413", c"unnecessary parentheses around a single condition [condition-parens]")
 	diag_code_row(c"W0414", c"map add does not support bfloat16 values")
 	diag_code_row(c"W0415", c"cast of malloc() memory to a struct with fixed-size array fields leaves their descriptors unset; allocate it with 'new' [malloc-array-fields]")
+	diag_code_row(c"W0416", c"thread_local storage exceeds the in-process session's 64KB per-thread block; start a new session")

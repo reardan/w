@@ -34,16 +34,6 @@ struct stored:
 	ref[item] cell* item
 
 
-# Shaped and named like lib/safe_thread.w's lock guard, which in-process
-# sessions cannot import (thread_local): session bindings refuse the name.
-struct WSafeGuard[T]:
-	own cell* inner
-	ref[m] cell* lock
-
-
-type safe_repl_guard = WSafeGuard[int]
-
-
 int safe_repl_live_cells():
 	int live = 0
 	for i in range(debug_tbl_count):
@@ -90,10 +80,6 @@ int safe_repl_stored(ref stored* s):
 int safe_repl_take_stored(own[a] stored* s):
 	ref cell* c = s.item
 	return c.value
-
-
-own[a] safe_repl_guard* safe_repl_lock(ref[a] cell* m):
-	return new safe_repl_guard(new cell, m)
 
 
 int main():

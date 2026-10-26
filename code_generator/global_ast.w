@@ -45,9 +45,7 @@ void emit_global_initializer_ast(global_declaration_ast* node):
 
 
 void emit_thread_local_ast(global_declaration_ast* node):
-	if (tls_size == 0): tls_size = word_size
-	node.address = tls_size
-	tls_size = tls_size + node.size
+	node.address = tls_reserve(node.size)
 	sym_define_global_at(node.binding, node.address)
 	sym_set_thread_local(node.binding)
 	ast_thread_locals_emitted = ast_thread_locals_emitted + 1

@@ -83,6 +83,27 @@ int entry_call_disp_pos
 # the final size when the executable is finished (0 = no stub emitted).
 int tls_size
 int tls_size_patch_pos
+# In-process sessions (the REPL front end, repl_threads_enable in
+# repl/core.w): nonzero is the byte size of the fixed per-thread block the
+# session reserves for every thread, the main thread included. 0 keeps
+# thread_local rejected in-process (wdbg, the incremental API).
+int tls_inprocess_capacity
+
+
+# Reserve size bytes of the per-thread block for one thread_local and
+# return its offset (word 0 is the block's self pointer). In-process the
+# block cannot grow after threads exist, so the session's capacity bounds
+# it; a compile's block is bounded at finish (elf_emit_tls_entry_thunk).
+int tls_reserve(int size):
+	if (tls_size == 0): tls_size = word_size
+	int offset = tls_size
+	if ((tls_inprocess_capacity > 0) && (size > tls_inprocess_capacity - offset)):
+		char* message = c"thread_local storage exceeds the in-process session's 64KB per-thread block; start a new session"
+		if (code_fixed_error_hook): (cast(code_fixed_error_callback*, code_fixed_error_hook))(message)
+		println2(message)
+		exit(1)
+	tls_size = tls_size + size
+	return offset
 
 
 void resize_code(int n):

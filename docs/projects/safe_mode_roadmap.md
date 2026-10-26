@@ -17,7 +17,8 @@ checked methods and concrete generic calls,
 owned-integer buffers, byte arenas
 and win64 support. Linux ARM64 target admission extends the same bounded
 contracts with audited runtime pins and a QEMU execution gate; wasm32/WASI
-admission does the same with a node execution gate. Android/iOS targets
+admission does the same with Node/wasmtime and headless-Chromium execution
+gates. Android/iOS targets
 remain under #712. Persistent REPL and debugger sessions (#713) check
 every entry and stop against a replayed session transcript
 ([usage](safe_mode.md#persistent-repl-and-debugger-sessions)). The remaining requirements
@@ -47,7 +48,7 @@ implementation rather than introduce a second ownership model.
 | Calls | Direct/imported/recursive calls, checked methods, concrete generic and quantified indirect calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Capturing/escaping callbacks and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction, nullable owners, tracked field partial moves/replacement and outer-function `defer`; explicit lexical `defer:` handles nested registration and loop jumps | Captured-argument thunks and deferred control-flow bodies |
 | Storage and libraries | Fixed arrays, inline checked slices, shared/exclusive borrowed structs with independent groups, mixed owned/reference structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
-| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency, persistent REPL bindings with cross-entry borrows, replacement, rollback and session-end destruction, lifetime-labeled session bindings (labeled references and slices, borrowed records, owners carrying borrowed groups), read-only checked debugger views of owners, references, optional references, inline slices, shared borrowed records and labeled locals in innermost and outer frames (#713) | Lock-guard session bindings (need in-process `thread_local`), debugger views of borrowed records with exclusive fields and of arrays of checked values |
+| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency, persistent REPL bindings with cross-entry borrows, replacement, rollback and session-end destruction, lifetime-labeled session bindings (labeled references and slices, borrowed records, owners carrying borrowed groups), read-only checked debugger views of owners, references, optional references, inline slices, shared borrowed records and labeled locals in innermost and outer frames, lock-guard and checked-thread session bindings over per-session REPL thread-local storage (#713) | `thread_local` (so `lib/safe_thread.w`) in wdbg debuggees, debugger stops on threads started by REPL entries, debugger views of borrowed records with exclusive fields and of arrays of checked values |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved
 [retained semantic records](../../compiler/retained_semantic.w). Application
@@ -69,7 +70,7 @@ IDs below identify feature requirements, not a second execution schedule.
 | Generic containers and checked iteration | [#697](https://github.com/reardan/w/issues/697) | Wave 3, after element ownership and checked generic/callback contracts |
 | Foreign boundaries and typed arenas | [#698](https://github.com/reardan/w/issues/698) | Foreign-boundary contracts in Wave 2 when ready; typed arenas in Wave 3 |
 | Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites; transfer/share rules, spawn/join and scoped fork-join landed for Linux x86/x64 ([usage](safe_mode.md#thread-transfer-and-spawnjoin)); guarded mutexes and explicit-order atomics landed for Linux x86/x64 ([usage](safe_mode.md#synchronization-guarded-mutexes-and-atomics), [ordering argument](safe_mode_contracts.md#synchronization-and-memory-ordering)); generic `WSafeMutex[T]` payloads landed, and an independent (AI) review of the memory-ordering argument found and closed a guard-declared-before-mutex cleanup hole; remaining review items (stale `lib/thread.w` plain-store argument, `thread_create` mmap/clone failure handling) are open |
-| Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
+| Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize; under #712, wasm32/WASI is admitted with WASI-host (`bin/wrun wasm`: wasmtime, else Node) and browser (`safe_wasm_browser_test`: headless Chromium) execution of the checked corpus ([usage](safe_mode.md#webassembly-runtime-contract)); Android/iOS remain rejected |
 
 Workstream #700 was split at implementation kickoff into
 [additional checked targets (#712)](https://github.com/reardan/w/issues/712),

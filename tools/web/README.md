@@ -14,7 +14,7 @@ functions at instantiation.
   out-parameters) plus the `gfx_host_*` canvas surface. Environment-
   agnostic: pass a real WebGL2 context or a fake.
 - `wasi_lite.mjs` — a browser-side WASI preview1 subset: stdout/stderr,
-  clock, `proc_exit`; no filesystem, no args. (Node hosts use
+  clock, `proc_exit`, optional argv; no filesystem. (Node hosts use
   `node:wasi` instead.)
 - `index.html` — the browser host page: canvas, input wiring, and the
   requestAnimationFrame loop that drives the module's registered frame
@@ -35,6 +35,14 @@ functions at instantiation.
   (`wasm_mobile_ui_test`).
 - `run_browser_mobile.mjs` — opt-in real-browser check of `index.html`
   in headless Chromium with phone emulation (`web_mobile_browser_test`).
+- `headless_chromium.mjs` — finds a Chromium (`CHROMIUM`, PATH, snap, or
+  a global Playwright install's build) and drives one loopback-served page
+  over the DevTools protocol.
+- `run_browser_wasi.mjs` — browser execution gate for WASI modules: runs
+  each module under `bin/wrun wasm` and in headless Chromium and compares
+  stdout, stderr and exit status (`safe_wasm_browser_test`, in
+  `tests_wasm`; prints `SKIP` without a browser unless
+  `W_REQUIRE_BROWSER=1`).
 
 ## Running the demo in a browser
 
