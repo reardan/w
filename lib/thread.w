@@ -123,6 +123,11 @@ Constraints (MVP; see threads.md for staging):
   snapshot): wrap it in a while loop that re-checks the predicate —
   the standard condvar contract. A signal with no waiter is lost, so
   the predicate itself must live in shared state under the mutex.
+- cond_signal wakes one parked waiter, whichever the kernel picks:
+  by priority, then in arrival order. When waiters on one wcond wait
+  for different predicates, a waiter that parked after the signal
+  could take that single wake while the one whose predicate became
+  true sleeps on, so use cond_broadcast there.
 
 API:
 	type thread_fn = fn(void*) -> void
@@ -320,7 +325,8 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	wthread* t = new wthread(0, func, arg, 0, 0, 1)
 	thread_spawn_lock()
 	thread_spawn_handoff = t
-	thread_spawn_ack = 0
+	# Relaxed: the clone syscall below orders it before the child runs.
+	atomic_store_relaxed(&thread_spawn_ack, 0)
 	int tid = thread_create(thread_entry)
 	# A negative tid is -errno, from a failed stack mmap or clone. The
 	# builtin reclaims its own stack on failure: it checks the mmap
@@ -699,7 +705,9 @@ void cond_init(wcond* c):
 # snapshot: either the bump lands before the park (FUTEX_WAIT returns
 # EAGAIN immediately) or the wake finds this waiter parked.
 void cond_wait(wcond* c, wmutex* m):
-	int observed = c.seq
+	# Relaxed is enough: signalers bump seq outside the mutex, so the
+	# read must be atomic, but the predicate's ordering comes from m.
+	int observed = atomic_load_relaxed(&c.seq)
 	mutex_unlock(m)
 	sys_futex(cast(int, &c.seq), thread_futex_wait_op, observed, 0)
 	mutex_lock(m)

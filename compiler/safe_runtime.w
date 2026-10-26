@@ -46,12 +46,15 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
 	if (ends_with(path, c"/lib/safe_thread.w")): return c"a064d476124a979d8d340b57a08dc64b7c62179c17466078baa7f5cfbcc591fa"
-	if (ends_with(path, c"/lib/thread.w")): return c"15a7911fab851ab513845f60445385845a8a67ec095ed215e245d6a72b222fd8"
+	# #699 review fixes: cond_wait reads seq atomically, the spawn ack reset
+	# is an explicit relaxed store, and th_register clears a partial
+	# registration; no allocation, ownership or entry-point changes.
+	if (ends_with(path, c"/lib/thread.w")): return c"a73fd03167a42f4b152918f16ad7528dbcc9f0e74cd8c96dd9dd30b9884554f5"
 	# The handler thunk also passes SysV registers (wllvm); its page and
 	# allocation are unchanged.
 	if (ends_with(path, c"/lib/signal.w")): return c"62ee27c31dbac1e17f4390b2824ca74e0279d9b039af6be8b005b67b2e148d57"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"
-	if (ends_with(path, c"/lib/thread_heap.w")): return c"0ae75c1654e73b1a5342b3cb21bbe60e4a4d62f5f2d24f44999c53a1e0a7161f"
+	if (ends_with(path, c"/lib/thread_heap.w")): return c"3f24f1928dba3f28eb26a133a807fe1bb87225b4fc643e0c2fb72ecd8953124e"
 	# st_call_site accepts LLVM's indirect call forms; reads stay bounded
 	# by the same st_base check.
 	if (ends_with(path, c"/lib/stack_trace.w")): return c"40acb1c77dba5d72aa0b2de333c115bc7284626ab1d114599c79fa4bb17a7b52"

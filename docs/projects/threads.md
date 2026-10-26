@@ -327,7 +327,10 @@ implementation details must not be assumed by portable application code:
   before `mutex_unlock` is visible to the next `mutex_lock` holder
   (lock is a `lock cmpxchg`, unlock a `lock xadd` plus, on the
   contended path, an `atomic_store` of 0 after it). Futex waits re-check their
-  word in the kernel, so wakes are never lost. Prefer a mutex (never
+  word in the kernel, so wakes are never lost. `cond_signal` wakes one
+  parked waiter of the kernel's choosing; when waiters on one `wcond`
+  wait for different predicates, use `cond_broadcast` so a later waiter
+  cannot take the wake meant for another. Prefer a mutex (never
   held across a task await) or a channel/executor to hand-rolled
   flags.
 - **One-writer/one-waiter flags** (`wthread.done`, the pool mailboxes,

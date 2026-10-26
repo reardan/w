@@ -1587,3 +1587,17 @@ that tree's test roots. Done: first attempts now run `WTEST_DEPS_JOBS`
 4m25s. Remaining: `bin/wv2 deps` still runs the whole front end over the
 closure (about 2s for a Mermaid root), so a listing-only import walk
 would make the cold pass cheaper still.
+
+## Editing a pinned runtime file hides the checked tests (2026-10-26, #699 review fixes)
+
+An edit to `lib/thread.w` (one of the sources `compiler/safe_runtime.w`
+pins by SHA-256) made `git diff --name-only HEAD | bin/wtest changed`
+leave out every checked-mode test that imports it, such as
+`safe_atomic_litmus_test` and `safe_sync_runtime_test`. `bin/wv2 deps`
+runs the safe digest check, so for those roots it exits 1 with
+"runtime implementation differs from its audited contract" and an empty
+closure. Those are exactly the tests that would report the missing
+digest update. Direction: have `deps` list the closure without
+enforcing the safe runtime pins (or report the failure and still print
+the closure), and have wtest treat a failed `deps` as "select this
+root" rather than "no imports"; see also the `binary=` entry above.
