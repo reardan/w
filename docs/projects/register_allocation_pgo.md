@@ -2140,7 +2140,11 @@ nothing saved by the declined shapes or under `--no-regs`/`-O0`, the
 streaming front end promoting the same sets, and `arm64_darwin` output
 byte-identical with and without `--no-regs`. A local sweep compiled 401
 programs (tests/, libs/, examples) for arm64 both ways and compared
-their qemu output: all equal (10 compile in neither mode).
+their qemu output: all equal (10 compile in neither mode; two runs that
+timed out or interleaved their output under load matched when rerun
+alone). `libs/asm`'s encoder learned `ldur`/`stur` for the negative
+restore displacements, keeping `asm_arm64_test`'s decode→encode
+identity over the self-hosted arm64 compiler byte-exact.
 
 Measurements (qemu-aarch64-static 8.2.2 user mode on an x86-64 Linux
 host — **QEMU, not native**; base = main's compiler, whose arm64 output
