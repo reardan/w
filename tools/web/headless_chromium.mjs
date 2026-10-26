@@ -68,37 +68,56 @@ export async function openPage({ chromium, root = resolve('.') }) {
   // A snap-confined Chromium cannot see the host /tmp or dot-directories.
   const profileBase = chromium.startsWith('/snap/') ? join(homedir(), 'snap', 'chromium', 'common') : tmpdir();
   mkdirSync(profileBase, { recursive: true });
-  const profile = await mkdtemp(join(profileBase, 'w-web-'));
-  const flags = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-    '--no-first-run', '--no-default-browser-check'];
   // The page only loads this loopback server's checkout files, so the OS
   // sandbox buys nothing here, and it cannot start as root (containers) or
   // under Ubuntu 24.04's AppArmor user-namespace restriction (CI runners).
-  flags.push('--no-sandbox');
-  const browser = spawn(chromium, [...flags, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
-  let stderr = '';
-  const close = async () => {
-    browser.kill('SIGKILL');
-    server.close();
-    await rm(profile, { recursive: true, force: true }).catch(() => {});
-  };
-  let ws;
-  try {
-    const wsUrl = await new Promise((ok, fail) => {
-      const timer = setTimeout(() => fail(new Error(`no DevTools endpoint:\n${stderr}`)), 30000);
-      browser.stderr.on('data', chunk => {
-        stderr += chunk;
-        const m = /DevTools listening on (ws:\/\/\S+)/.exec(stderr);
-        if (m) { clearTimeout(timer); ok(m[1]); }
+  const flags = ['--headless=new', '--remote-debugging-port=0',
+    '--no-first-run', '--no-default-browser-check', '--no-sandbox'];
+  // One launch: a fresh profile, then wait for the DevTools endpoint and
+  // connect. A loaded CI runner has been seen taking over 30s just to get
+  // Chromium to its first stderr line, so a launch that prints no endpoint
+  // within a minute is killed and retried from scratch, up to three times.
+  const launch = async () => {
+    const profile = await mkdtemp(join(profileBase, 'w-web-'));
+    const browser = spawn(chromium, [...flags, `--user-data-dir=${profile}`, 'about:blank'],
+      { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    const kill = async () => {
+      browser.kill('SIGKILL');
+      await rm(profile, { recursive: true, force: true }).catch(() => {});
+    };
+    try {
+      const wsUrl = await new Promise((ok, fail) => {
+        const timer = setTimeout(() => fail(new Error(`no DevTools endpoint:\n${stderr}`)), 60000);
+        browser.stderr.on('data', chunk => {
+          stderr += chunk;
+          const m = /DevTools listening on (ws:\/\/\S+)/.exec(stderr);
+          if (m) { clearTimeout(timer); ok(m[1]); }
+        });
+        browser.on('exit', code => { clearTimeout(timer); fail(new Error(`chromium exited ${code}:\n${stderr}`)); });
       });
-      browser.on('exit', code => { clearTimeout(timer); fail(new Error(`chromium exited ${code}:\n${stderr}`)); });
-    });
-    ws = new WebSocket(wsUrl);
-    await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = fail; });
-  } catch (e) {
-    await close();
-    throw e;
+      const ws = new WebSocket(wsUrl);
+      await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = fail; });
+      return { ws, kill };
+    } catch (e) {
+      await kill();
+      throw e;
+    }
+  };
+  let ws, kill;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      ({ ws, kill } = await launch());
+      break;
+    } catch (e) {
+      if (attempt >= 3) { server.close(); throw e; }
+      console.error(`headless_chromium: launch attempt ${attempt} failed (${e.message.split('\n')[0]}); retrying`);
+    }
   }
+  const close = async () => {
+    await kill();
+    server.close();
+  };
   let nextId = 1;
   let sessionId;
   const pending = new Map();
