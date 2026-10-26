@@ -255,7 +255,9 @@ while an old thread might still use it:
   may be executing). A note says those callers keep the previous
   definition. `thread_pool_shutdown()` ends the pool's workers.
 
-wdbg and the incremental compile API still reject `thread_local`
+wdbg gives its debuggee the same per-thread block, and every debuggee
+thread can stop there, one at a time (safe_mode.md, "Debugger
+evaluation"). The incremental compile API still rejects `thread_local`
 (W0324). `W_DEBUG_ALLOC` applies to the session's own allocator (the
 image's `lib/memory.w` copy): the REPL keeps its compiler on the free list
 (`malloc_host_freelist_mode`), so its guard pages no longer reach

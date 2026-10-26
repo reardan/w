@@ -13,6 +13,7 @@
 # 32-bit wdbg and the x64 twin a 64-bit one.
 import lib.testing
 import lib.process
+import lib.env
 import lib.str
 
 
@@ -180,4 +181,78 @@ void test_checked_views_of_aggregates():
 	safe_dbg_expect_order(r.stderr_text, err)
 	out.free()
 	err.free()
+	process_result_free(r)
+
+
+int safe_dbg_occurrences(char* text, char* needle):
+	int count = 0
+	int at = 0
+	while (1):
+		int found = index_of(text + at, needle)
+		if (found < 0): return count
+		count = count + 1
+		at = at + found + strlen(needle)
+	return count
+
+
+# wdbg gives the debuggee per-thread storage, so lib/safe_thread.w loads
+# (tests/safe_session_debugger_threads_fixture.w). A stop on a checked
+# worker thread is that thread's: its checked locals are viewable, its
+# thread_local copy prints and is set, expressions run on its stack (a
+# fault there rolls back the evaluation only), breakpoints and steps work
+# on it, and two threads reaching the same 'debugger' statement stop one
+# at a time. Run under the guard allocator.
+void test_checked_stops_on_threads():
+	string_builder* in = string_new()
+	string_append(in, c"p work.amount\np doubled + seen\np seen\nset seen 5\np seen_now()\np crash(0)\np doubled\nb seen_now\nc\n")
+	string_append(in, c"bt\nn\nd 1\nc\np work.amount\nc\np work.amount\nc\n")
+	char** args = strv_new(3)
+	strv_set(args, 0, safe_dbg_build())
+	strv_set(args, 1, c"tests/safe_session_debugger_threads_fixture.w")
+	spawn_options* opts = spawn_options_new()
+	opts.env = env_copy_with(env_current(), c"W_DEBUG_ALLOC", c"1")
+	process_result* r = process_run(args[0], args, opts, in.data, 300000)
+	string_free(in)
+	free(cast(void*, args))
+	assert1(r != 0)
+	assert_equal(0, r.status)
+	list[char*] out = new list[char*]
+	out.push(c"[thread ")
+	out.push(c"= 20 ")
+	out.push(c"= 61 ")
+	out.push(c"seen = 21 ")
+	out.push(c"seen = 5 ")
+	out.push(c"= 5 ")
+	out.push(c"runtime fault: SIGFPE")
+	out.push(c"entry rolled back")
+	out.push(c"doubled = 40 ")
+	out.push(c"hit breakpoint 1 at seen_now")
+	out.push(c"#1  run_job")
+	out.push(c"-> 28")
+	out.push(c"45\n100\n")
+	out.push(c"11\n100\n")
+	out.push(c"debuggee main returned -16")
+	safe_dbg_expect_order(r.stdout_text, out)
+	# The first stop, the breakpoint, the step, then one stop per thread.
+	assert_equal(5, safe_dbg_occurrences(r.stdout_text, c"[thread "))
+	# The two threads of the second round stop separately.
+	assert_equal(2, safe_dbg_occurrences(r.stdout_text, c"= 1 (") + safe_dbg_occurrences(r.stdout_text, c"= 2 ("))
+	assert_lacks(r.stdout_text, c"memory_debug")
+	assert_lacks(r.stderr_text, c"memory_debug")
+	out.free()
+	process_result_free(r)
+
+
+# A fault on a worker thread stops there for a post-mortem look.
+void test_fault_on_debuggee_thread():
+	process_result* r = safe_dbg_run_fixture(c"tests/safe_session_debugger_thread_fault_fixture.w", c"p divisor\nbt\nc\n")
+	assert_equal(1, r.status)
+	list[char*] out = new list[char*]
+	out.push(c"fatal signal: SIGFPE")
+	out.push(c"[thread ")
+	out.push(c"divisor = 0 ")
+	out.push(c"#1  thread_entry")
+	out.push(c"cannot resume after a fatal signal: exiting")
+	safe_dbg_expect_order(r.stdout_text, out)
+	out.free()
 	process_result_free(r)

@@ -966,7 +966,7 @@ int thread_local_type_needs_init(int type):
 void thread_local_declaration():
 	if ((target_isa != 0) || (target_os != 0)):
 		error(c"thread_local is only supported on the x86 and x64 Linux targets")
-	if ((data_split == 0) && (tls_inprocess_capacity == 0)): error(c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
+	if ((data_split == 0) && (tls_inprocess_capacity == 0)): error(c"thread_local is not supported in in-process compiles outside the REPL and wdbg")
 	int start = token_start_offset
 	int decl_type = type_name()
 	if (thread_local_type_needs_init(decl_type)):

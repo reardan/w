@@ -1885,8 +1885,30 @@ forms are rejected and nothing is replaced:
 links its own `lib/memory.w`, and the REPL and wdbg keep the compiler that
 hosts it on the free list (`malloc_host_freelist_mode`), so thread and
 lock-guard sessions are tested under the guard allocator like the rest.
-wdbg still rejects `thread_local` (W0324):
-a debuggee that imports `lib/safe_thread.w` cannot be loaded.
+
+wdbg gives its debuggee the same per-thread block, so a debuggee may
+declare `thread_local` and run `lib/thread.w` and `lib/safe_thread.w`
+threads (other in-process compiles still reject `thread_local`, W0324).
+Every debuggee thread can stop: a `debugger` statement, a breakpoint, a
+step, a watchpoint or a fault stops the thread that reached it, and the
+command loop runs on that thread, so `print`, conditions and `repl`
+entries see its checked locals, its `thread_local` copies and its stack,
+and a fault inside such an evaluation rolls back only that evaluation
+(`tests/safe_session_debugger_threads_fixture.w`). The prompt names the
+thread (`[thread N]`) when it is not the main one. Stops are serialized:
+the compiler and the command loop keep their state in globals, so one
+thread at a time owns a stop and a stop on another thread waits until the
+owner resumes. A resume that single-steps (a step, a breakpoint re-arm, a
+watchpoint scan) keeps ownership, so a step finishes on the thread that
+started it. Consequences:
+- other threads keep running while one is stopped;
+- a thread that reaches a breakpoint deleted while it waited runs on
+  without stopping;
+- an evaluation that waits for a thread stopped behind the current one
+  (joining it, or locking a mutex it holds) deadlocks.
+
+The REPL keeps its rule: a stop on a thread an entry started ends the
+process, because its command loop belongs to the main thread.
 
 **Unsupported forms.** These fail explicitly instead of being
 approximated: `--safe` on in-process entry points; checked declarations in
