@@ -834,9 +834,9 @@ int eventfd2(int initval, int flags):
 	return -38
 
 
-# POSIX-shaped positional I/O, truncate, openat and flock have no raw
-# win64 equivalent: these explicit ENOSYS stubs never emulate them through
-# seek + write. lib/fs.w uses lib/__arch__/win64/fs_native.w instead.
+# Positional I/O, truncate, openat and flock (lib/fs.w) are wired up on
+# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
+# IO_UNSUPPORTED here -- never an emulation through seek + write.
 int sys_pread(int fd, char* buf, int count, int offset):
 	return -38
 
