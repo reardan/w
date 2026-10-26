@@ -91,7 +91,7 @@ void ui_textbox_mark_edited(ui_textbox_state* st):
 # characters insert at the caret as UTF-8, backspace deletes and
 # left/right step over whole characters, home/end move, escape drops
 # focus. Tab reaches it in focus order, and an accessibility bridge can
-# replace its text. Returns 1 on the frame return is typed
+# replace its text and move its caret. Returns 1 on the frame return is typed
 # (the submit edge). No horizontal scroll in stage 2: glyphs past the
 # field's width are not drawn.
 int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
@@ -101,12 +101,18 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	ui_click_behavior(ctx, id, r)
 	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TEXTBOX, r, 0)
-	if (node != 0): node.actions = UI_ACCESS_SET_VALUE
+	if (node != 0): node.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION
 	ui_focus_stop(ctx, id, r, 0)
 	char* requested = ui_access_value_request(ctx, id)
 	if (requested != 0):
 		ui_textbox_set(st, requested)
 		ui_textbox_mark_edited(st)
+	# A single-line field has a caret but no selection: a request for
+	# a range moves the caret to its active end.
+	int sel_anchor = 0
+	int sel_active = 0
+	if (ui_access_selection_request(ctx, id, &sel_anchor, &sel_active)):
+		st.caret = ui_grapheme_floor(&st.text[0], ui_access_char_byte(&st.text[0], st.length, sel_active))
 
 	float32 text_x = r.x + cast(float32, ctx.theme.pad)
 	# Focus follows the press: inside claims it, any other press drops
@@ -174,4 +180,5 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	ui_text_preedit(ctx, id, r, text_x + cast(float32, ui_text_prefix_width(&st.text[0], st.caret, scale)), ty)
 	ui_text_input_declare(ctx, id, r, 0)
 	ui_access_set_value(ctx, node, &st.text[0], st.length)
+	ui_access_set_caret(ctx, node, st.caret, st.caret)
 	return submitted
