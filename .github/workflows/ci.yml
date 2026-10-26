@@ -641,8 +641,12 @@ jobs:
 
       # tests_wasm = verify_wasm, wasm_smoke_test, wasm_json_test,
       # wasm_extern_test, wasm_export_test, wasm_webgl_test,
-      # wasm_ui_test and the generated wasm twins.
+      # wasm_ui_test, safe_wasm_browser_test and the generated wasm twins.
+      # The runner image ships Google Chrome, so safe_wasm_browser_test
+      # must run the checked wasm corpus in it rather than SKIP.
       - name: Build and test
+        env:
+          W_REQUIRE_BROWSER: "1"
         run: |
           set -o pipefail
           ./wbuild tests_wasm 2>&1 | tee wbuild.log
