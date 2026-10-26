@@ -135,7 +135,7 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 				if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
 					ui_draw_rrect(ctx.rndr, row, cast(float32, ctx.theme.radius_small), ctx.theme.widget_hot)
 				if (i == selected[0]):
-					ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
+					ui_selection_marker(ctx, row)
 				ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad + 4), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
 				ui_region_claim(ctx, row)
 				y = y + row_h

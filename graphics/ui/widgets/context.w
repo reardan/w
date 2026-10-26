@@ -390,16 +390,25 @@ int ui_activate_behavior(ui_context* ctx, int id, ui_rect r):
 	return clicked
 
 
-# A 2px ring in the theme's focus token, 2px outside r so the control's
-# own fill never covers it.
-void ui_focus_ring(ui_context* ctx, ui_rect r):
-	ui_rect o = ui_rect_inset(r, 0.0 - 4.0)
-	float32 t = 2.0
-	ui_color c = ctx.theme.focus
+# A rectangle outline t pixels thick, drawn inside o.
+void ui_outline(ui_context* ctx, ui_rect o, float32 t, ui_color c):
 	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y, o.w, t), c)
 	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y + o.h - t, o.w, t), c)
 	ui_render_rect(ctx.rndr, ui_rect_new(o.x, o.y + t, t, o.h - t * 2.0), c)
 	ui_render_rect(ctx.rndr, ui_rect_new(o.x + o.w - t, o.y + t, t, o.h - t * 2.0), c)
+
+
+# A 2px ring in the theme's focus token, 2px outside r so the control's
+# own fill never covers it.
+void ui_focus_ring(ui_context* ctx, ui_rect r):
+	ui_outline(ctx, ui_rect_inset(r, 0.0 - 4.0), 2.0, ctx.theme.focus)
+
+
+# The accent bar at the left edge of a selected row (tables, trees, the
+# dropdown list). The row's tonal fill alone is under 3:1 against the
+# surface, so the bar is what carries the selected state (WCAG 1.4.11).
+void ui_selection_marker(ui_context* ctx, ui_rect row):
+	ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
 
 
 # Register id as this frame's next keyboard focus stop. A press inside r
