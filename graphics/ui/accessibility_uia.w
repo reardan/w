@@ -22,6 +22,9 @@ role: Invoke (buttons, links and other activatable nodes), Toggle
 (checkboxes, switches), Value (textboxes; read-only on comboboxes),
 SelectionItem (tabs, list items, rows, radio buttons), ExpandCollapse
 (comboboxes and expanded nodes) and RangeValue (progress, read-only).
+Live regions report LiveSetting and raise LiveRegionChanged; the
+snapshot's announcement is a notification event
+(UiaRaiseNotificationEvent, looked up at run time).
 
 Each interface is a two-word object {vtable, element}: the vtables are
 arrays of win_callback thunks (lib/__arch__/win64/syscalls.w) into the
@@ -129,11 +132,17 @@ const int UIA_ToggleToggleStatePropertyId = 30086
 const int UIA_FullDescriptionPropertyId = 30159
 const int UIA_HeadingLevelPropertyId = 30173
 const int UIA_IsDialogPropertyId = 30174
+const int UIA_LiveSettingPropertyId = 30135
 const int HeadingLevel_None = 80050
 
 # Event ids (UIA_*EventId) and StructureChangeType.
 const int UIA_StructureChangedEventId = 20002
 const int UIA_AutomationFocusChangedEventId = 20005
+const int UIA_LiveRegionChangedEventId = 20024
+const int UIA_NotificationEventId = 20035
+const int NotificationKind_Other = 4
+const int NotificationProcessing_ImportantAll = 0
+const int NotificationProcessing_All = 2
 const int StructureChangeType_ChildrenInvalidated = 2
 
 # Control type ids (UIA_*ControlTypeId).
@@ -585,7 +594,12 @@ int ui_uia_get_property(int self, int property, int out):
 		else if (n.role == UI_ACCESS_HEADING): ui_uia_variant_string(v, c"heading")
 		else if (n.role == UI_ACCESS_DIALOG): ui_uia_variant_string(v, c"dialog")
 	else if (p == UIA_NamePropertyId):
-		if (n.name.length > 0): ui_uia_variant_text(v, &n.name)
+		# Unnamed rows are named from their cells (ui_access_effective_name).
+		ui_access_text name
+		ui_access_effective_name(n, &name)
+		if (name.length > 0): ui_uia_variant_text(v, &name)
+		free(name.data)
+	else if (p == UIA_LiveSettingPropertyId): ui_uia_variant_i4(v, n.live)
 	else if ((p == UIA_HelpTextPropertyId) || (p == UIA_FullDescriptionPropertyId)):
 		if (n.description.length > 0): ui_uia_variant_text(v, &n.description)
 	else if (p == UIA_AutomationIdPropertyId):
@@ -1136,15 +1150,73 @@ void ui_uia_raise_children(ui_uia_bridge* b, ui_access_node* parent):
 	UiaRaiseStructureChangedEvent(ui_uia_simple_of(b, parent.id), StructureChangeType_ChildrenInvalidated, &runtime[0], 2)
 
 
+type ui_uia_notify_fn = fn(int, int, int, int, int) -> int
+
+int ui_uia_notify_thunk         # UiaRaiseNotificationEvent's trampoline; -1 when missing
+int ui_uia_last_notification    # its last HRESULT (1 when it is unavailable)
+
+
+# UiaRaiseNotificationEvent (Windows 10 1709+) is looked up at run time,
+# so the bridge still loads where uiautomationcore lacks it. Narrator
+# speaks the display string; polite announcements queue behind current
+# speech (NotificationProcessing_All), assertive ones are important.
+void ui_uia_raise_notification(ui_uia_bridge* b, int id, ui_access_text* text, int live):
+	if (ui_uia_notify_thunk == 0):
+		ui_uia_notify_thunk = 0 - 1
+		int module = GetModuleHandleA(c"uiautomationcore.dll")
+		int sym = 0
+		if (module != 0): sym = GetProcAddress(module, c"UiaRaiseNotificationEvent")
+		if (sym != 0): ui_uia_notify_thunk = win_c_function(sym, 5, 1)
+		if (ui_uia_notify_thunk == 0): ui_uia_notify_thunk = 0 - 1
+	if (ui_uia_notify_thunk == 0 - 1):
+		ui_uia_last_notification = 1
+		return
+	int processing = NotificationProcessing_All
+	if (live == UI_ACCESS_LIVE_ASSERTIVE): processing = NotificationProcessing_ImportantAll
+	int display = ui_uia_bstr(text.data, text.length)
+	int activity = ui_uia_bstr(c"W.Announcement", 14)
+	ui_uia_notify_fn* raise = cast(ui_uia_notify_fn*, ui_uia_notify_thunk)
+	ui_uia_last_notification = ui_uia_lo32(raise(ui_uia_simple_of(b, id), NotificationKind_Other, processing, display, activity))
+	SysFreeString(display)
+	SysFreeString(activity)
+
+
+# Live regions: one LiveRegionChanged per region whose text was added or
+# changed (Narrator then reads the region), and the snapshot's explicit
+# announcement as a notification event from the root.
+void ui_uia_raise_live(ui_uia_bridge* b, ui_access_tree* old, ui_access_tree* fresh):
+	if ((old != 0) && (old.root != 0)):
+		map[int, int] raised = new map[int, int]
+		for int id in fresh.nodes:
+			ui_access_node* n = fresh.nodes[id]
+			if (ui_access_live_change(n, ui_access_find(old, id)) != 0):
+				ui_access_node* region = ui_access_live_root(n)
+				if (!(region.id in raised)):
+					raised[region.id] = 1
+					UiaRaiseAutomationEvent(ui_uia_simple_of(b, region.id), UIA_LiveRegionChangedEventId)
+		map_free[int, int](raised)
+	if ((fresh.announcement.length > 0) && (fresh.root != 0)): ui_uia_raise_notification(b, fresh.root.id, &fresh.announcement, fresh.announcement_live)
+
+
 # Announce what changed from old to fresh (fresh is already published),
 # for elements clients have seen. Only when a client listens.
 void ui_uia_raise_changes(ui_uia_bridge* b, ui_access_tree* old, ui_access_tree* fresh):
-	if ((old == 0) || ((UiaClientsAreListening() & 255) == 0)): return
+	if ((UiaClientsAreListening() & 255) == 0): return
+	if (old == 0):
+		ui_uia_raise_live(b, old, fresh)
+		return
 	for int id in fresh.nodes:
 		ui_access_node* n = fresh.nodes[id]
 		ui_access_node* was = ui_access_find(old, id)
 		if ((was == 0) || !(id in b.elements)): continue
-		if (!ui_uia_text_same(&n.name, &was.name)): ui_uia_raise_text(b, id, UIA_NamePropertyId, &was.name, &n.name)
+		if (!ui_access_effective_name_same(n, was)):
+			ui_access_text was_name
+			ui_access_text now_name
+			ui_access_effective_name(was, &was_name)
+			ui_access_effective_name(n, &now_name)
+			ui_uia_raise_text(b, id, UIA_NamePropertyId, &was_name, &now_name)
+			free(was_name.data)
+			free(now_name.data)
 		if (ui_uia_supports(b, n, UI_UIA_VALUE) && !ui_uia_text_same(&n.value, &was.value)): ui_uia_raise_text(b, id, UIA_ValueValuePropertyId, &was.value, &n.value)
 		if (ui_uia_supports(b, n, UI_UIA_TOGGLE) && (ui_uia_checked(n) != ui_uia_checked(was))): ui_uia_raise_i4(b, id, UIA_ToggleToggleStatePropertyId, ui_uia_checked(was), ui_uia_checked(n))
 		if (ui_uia_supports(b, n, UI_UIA_SELECTION_ITEM) && (ui_uia_selected(n) != ui_uia_selected(was))): ui_uia_raise_bool(b, id, UIA_SelectionItemIsSelectedPropertyId, ui_uia_selected(was), ui_uia_selected(n))
@@ -1154,6 +1226,7 @@ void ui_uia_raise_changes(ui_uia_bridge* b, ui_access_tree* old, ui_access_tree*
 	if ((fresh.focused_id != old.focused_id) && (fresh.focused_id != 0)):
 		ui_access_node* f = ui_access_find(fresh, fresh.focused_id)
 		if ((f != 0) && (f != fresh.root) && !ui_access_inert(f)): UiaRaiseAutomationEvent(ui_uia_simple_of(b, f.id), UIA_AutomationFocusChangedEventId)
+	ui_uia_raise_live(b, old, fresh)
 
 
 # Elements whose node is gone stop answering; clients holding them are
@@ -1219,6 +1292,9 @@ int ui_access_uia_publish(ui_uia_bridge* b, ui_access_tree* tree):
 	ui_uia_clear_queue(b)
 	ui_uia_raise_changes(b, old, fresh)
 	ui_access_tree_free(old)
+	# The announcement is raised once: consumed from both trees.
+	ui_access_announcement_clear(fresh)
+	ui_access_announcement_clear(tree)
 	return 1
 
 

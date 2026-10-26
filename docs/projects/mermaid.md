@@ -253,7 +253,9 @@ screen reader announces. Assistive focus or selection (Orca, AT-SPI
 item on the next frame and moves keyboard focus to the canvas. With a
 multi-selection every member carries the selected state and the focused item
 is the focused object; assistive select replaces the selection. The status line
-is a text object. Families whose scene does not line up with document nodes
+is a text object and a polite live region, so edit results ("Saved.",
+"Changed on disk ...", "Deleted with incident connections. Ctrl+Z to undo.")
+are announced wherever focus is, without moving it. Families whose scene does not line up with document nodes
 (pie, sequence, Gantt, ...) expose the canvas summary only. At most 2,048
 items are listed; the summary says when more exist.
 
@@ -283,7 +285,12 @@ Both fail rather than skip when a dependency is missing. Qualified here
 "Diagram canvas. List with 5 items." on entering the canvas, then each node or
 edge by name with its description ("Beta. node B, 1 outgoing, 1 incoming,
 movable.") as GrabFocus, SelectChild, Tab and Shift+Tab move focus. Orca
-suppresses an edge's description when it repeats the name. Not exercised:
+suppresses an edge's description when it repeats the name. It also speaks
+the status line's announcements: "Saved." after the Save button is activated
+through AT-SPI, and "The file changed on disk. ..." when the file is modified
+behind the editor. (On the Ubuntu 24.04 host used for the live-region run,
+the later keyboard steps, synthesized with libatspi's XTest path, did not
+reach the editor; they fail the same way on unchanged main there.) Not exercised:
 braille, Orca's flat review and structural navigation commands, and
 Narrator, NVDA and VoiceOver (native runs pending). This is not a claim of
 full accessibility conformance.

@@ -41,13 +41,22 @@ export int web_test_other_snapshot():
 	ui_access_tree_free(other)
 	return result
 
+# The status line changes and an assertive announcement rides along.
+export int web_test_saved():
+	ui_access_set_text(web_test_tree, 4, UI_ACCESS_NAME, c"Saved.", 6)
+	ui_access_announce(web_test_tree, c"Exported", 8, UI_ACCESS_LIVE_ASSERTIVE)
+	return ui_access_web_publish(web_test_tree)
+
+export int web_test_announcement_length():
+	return web_test_tree.announcement.length
+
 export void web_test_close():
 	gfx_access_close()
 	ui_access_tree_free(web_test_tree)
 	web_test_tree = 0
 
 int main():
-	web_test_tree = ui_access_tree_new(4, 128)
+	web_test_tree = ui_access_tree_new(8, 160)
 	web_test_tree.action = web_test_action
 	web_test_tree.context = cast(void*, web_test_tree)
 	ui_access_add(web_test_tree, 1, 0, UI_ACCESS_DOCUMENT, ui_rect_new(0.0, 0.0, 320.0, 200.0))
@@ -60,10 +69,15 @@ int main():
 	textbox.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_FOCUS
 	assert_equal(1, ui_access_set_text(web_test_tree, 3, UI_ACCESS_NAME, c"Query", 5))
 	assert_equal(1, ui_access_set_text(web_test_tree, 3, UI_ACCESS_VALUE, c"a\0é", 4))
+	ui_access_node* status = ui_access_add(web_test_tree, 4, 1, UI_ACCESS_TEXT, ui_rect_new(10.0, 90.0, 180.0, 20.0))
+	status.live = UI_ACCESS_LIVE_POLITE
+	assert_equal(1, ui_access_set_text(web_test_tree, 4, UI_ACCESS_NAME, c"Ready.", 6))
 	assert_equal(1, ui_access_web_publish(web_test_tree))
 	return 0
 
-# wbuild: target=graphics_ui_accessibility_web_test tag=tests_wasm dep=wv2 dep=wrun
+# wbuild: target=graphics_ui_accessibility_web_test tag=tests_wasm dep=wv2 dep=wrun input=tools/web/headless_chromium.mjs
 # wbuild: step="bin/wv2 wasm graphics/ui/accessibility_web_test.w -o bin/graphics_ui_accessibility_web_test.wasm"
 # wbuild: step="bin/wrun node tools/web/accessibility_test.mjs" expect_stdout="web accessibility DOM/ABI contracts OK"
 # wbuild: step="bin/wrun node tools/web/run_accessibility_test.mjs bin/graphics_ui_accessibility_web_test.wasm" expect_stdout="web accessibility W/DOM round trip OK"
+# Real headless Chromium: DOM identity, selection, IME composition and live regions in its accessibility tree.
+# wbuild: step="bin/wrun node tools/web/run_accessibility_chromium.mjs" expect_stdout="web accessibility Chromium"

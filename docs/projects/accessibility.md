@@ -100,9 +100,14 @@ this optional capability return zero from publication and otherwise keep working
    A dispatch return value counts consumed requests, including rejected ones.
 4. Republish after semantic changes and after processing requests, including
    rejected edits/focus requests, to restore the DOM to the authoritative model.
-   Publishing copies text, drops pending old requests, and invalidates every old
-   DOM listener. Do not publish every render frame: replacement resets DOM node
-   identity, text selection and browser composition.
+   Publishing copies text and drops pending old requests. The mirror keeps one
+   DOM element per node id and updates it in place: only changed attributes and
+   text are written, only children whose position changed move, a textarea's
+   value is assigned only when it differs, and never during an IME
+   composition. Focus, text selection and a composition in progress therefore
+   survive a republish. A node that leaves the snapshot loses its element, and
+   that element's listeners stop queueing requests; a node whose role changes
+   between a textarea and anything else gets a new element.
 5. Call `gfx_access_close()` before freeing the final snapshot or removing the
    canvas. It removes the mirror, clears requests and restores the canvas's
    previous `aria-hidden` and `tabindex` attributes. Callbacks must not free the
@@ -122,7 +127,7 @@ future extensions rather than invented ARIA semantics.
 
 DOM Tab traversal, focus, button/link activation, checkbox toggling and committed
 textarea edits enter a bounded queue. Composition updates are not committed until
-an input event outside composition. There are at most 64 queued requests, and
+`compositionend` (or an input event outside composition). There are at most 64 queued requests, and
 their combined UTF-8 value bytes cannot exceed the snapshot's text budget. Nodes
 and stored text retain the snapshot budgets, with host ceilings of 100,000 nodes
 and 16 MiB. Queue overflow drops the new request. Dispatch revalidates actions
@@ -137,17 +142,36 @@ stop. Programmatic snapshot focus does not echo a request. DOM keyboard events
 stay separate from the existing canvas keyboard event queue. The application
 must paint visible focus and coordinate its canvas editor model with semantic
 focus/value callbacks. Geometry, spatial touch exploration, selection/range
-round trips, incremental updates and automatic widget semantics are not provided
-by this adapter.
+round trips and automatic widget semantics are not provided by this adapter.
+
+Live nodes (see "Live regions and announcements" below) carry `aria-live` and
+`aria-atomic="true"`. Two visually hidden live regions, one polite and one
+assertive, are created with the mirror and receive the snapshot's
+announcement, the text of a live region that appeared after the first
+publication (browsers do not announce a region inserted with its content) and
+live names or values held in attributes. Text-content changes inside a region
+the browser already knows are left to the browser, so nothing is spoken twice.
+Repeating an announcement alternates a trailing no-break space so that it is
+still a change. An announcement made with the very first publication may be
+missed, because the hidden regions only enter the page with it.
 
 `graphics_ui_accessibility_web_test` (in `tests_wasm`) runs portable DOM contract
 tests and a real
 compiled W wasm instance through the existing `makeEnv` host, checking the full
-publish/action/focus/value round trip, disabled-state revalidation and teardown.
-The Node fixture is not a browser accessibility implementation. A separate real
-Chromium development probe confirmed accessible button/textbox names and values,
-Unicode static text, input dispatch, stale listener rejection and canvas state
-restoration. Browser/screen-reader combinations still need interactive
+publish/action/focus/value round trip, disabled-state revalidation and teardown,
+element identity across publications, live attributes and announcements. The
+Node fixture is not a browser accessibility implementation, so the target also
+drives the mirror in real headless Chromium (`tools/web/run_accessibility_chromium.mjs`,
+required on the CI wasm job, a SKIP line elsewhere without a browser). Under
+Chromium 155 a republish keeps the textarea element, its focus and its
+`setSelectionRange` selection; an IME composition started through the DevTools
+`Input.imeSetComposition` command keeps its text across a republish and its
+commit is queued once; and `Accessibility.getFullAXTree` shows the status line
+as a polite atomic live region, a toast as an assertive one, and the
+announcement in the hidden polite region. Chromium was not observed speaking:
+no screen reader ran against it. An earlier development probe confirmed
+accessible button/textbox names and values, Unicode static text, input
+dispatch, stale listener rejection and canvas state restoration. Browser/screen-reader combinations still need interactive
 qualification; none of these tests establish VoiceOver, NVDA or Orca behavior.
 The role/state and keyboard mappings follow
 [WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/) and the
@@ -200,6 +224,35 @@ covers tab order and wrap, disabled skipping, the focus ring, keyboard
 activation, text-area Tab, modal hand-off, dropdown/table/tab keys, captured
 semantics and assistive actions reaching the widgets.
 
+## Live regions and announcements
+
+Text that changes away from the focus (a status line, a toast, a search
+result count) reaches screen readers through live regions. A node with
+`live` set to `UI_ACCESS_LIVE_POLITE` or `UI_ACCESS_LIVE_ASSERTIVE` is a live
+region for itself and its subtree (`ui_access_live_root`). When a later
+publication adds a node to a region, or changes a node's name (or a
+non-textbox value), every bridge announces the new text at the region's
+politeness (`ui_access_live_change`): polite waits for current speech,
+assertive interrupts it. Content present at the first publication and hidden
+nodes are not announced; unchanged republications announce nothing.
+
+`ui_access_announce(tree, text, length, live)` queues a one-shot
+announcement on a snapshot, for results with no on-screen text of their own.
+The next publication speaks it and clears it from the application's tree (a
+later call before publishing replaces it); `ui_access_tree_same` sees a
+pending announcement, so a frame loop that republishes only on change still
+publishes it. Bridges: AT-SPI `Object:Announcement`, UIA
+`UiaRaiseNotificationEvent`, and the web mirror's hidden live regions
+(details in each bridge's section). The Cocoa bridge does not publish live
+regions yet.
+
+Widgets: `ui_toast_show` marks the toast's node polite and `ui_toast_alert`
+(for errors) assertive, so a toast is announced when it appears;
+`ui_status(ctx, text)` is a muted label that is a polite live region. The
+Mermaid editor's status line is one too (see [mermaid.md](mermaid.md),
+"Screen readers"). `graphics_ui_accessibility_test` covers the model,
+`graphics_ui_toast_test` the widgets, and each bridge's test the events.
+
 ## Linux AT-SPI 2
 
 `graphics.ui.accessibility_atspi` speaks AT-SPI 2, the D-Bus protocol Orca and
@@ -217,7 +270,8 @@ format). It needs no libatspi, ATK, GLib or libdbus.
    changed since the last publication: cache additions and removals,
    children added and removed, defunct nodes, every changed state (focus
    last), selection changes on lists, tab lists and tables, names,
-   descriptions, progress values and text changes.
+   descriptions, progress values, text changes and live-region
+   announcements.
 3. Once per frame call `ui_access_atspi_dispatch(b, tree)` with the snapshot the
    application dispatches against. It answers every pending query from the
    published copy and applies queued actions through `ui_access_dispatch`; it
@@ -244,6 +298,8 @@ actions or is selected; its cells publish as table column headers and answer
 indices count data rows only, every span is 1 and a cell's index is
 `row * columns + column`. A row without a name of its own is named from its
 cells' names (as ARIA rows are), since Orca announces a focused row by name.
+That derived name (`ui_access_effective_name`) is what changes are compared
+on, so a row whose cell is renamed emits `accessible-name` itself.
 Lists, tab lists and tables implement Selection: `SelectChild` and
 `AddRowSelection` queue `ACTIVATE` on the child, as a click would (and
 return true without a call when it is already selected); deselection,
@@ -279,8 +335,23 @@ Its speech log: "Files frame." on window activation, "Starred page tab." on
 the tab list's selection change, and "Downloads. table with 3 rows 2 columns.
 b.png 9 KB." when the selected, focused row changed. Keyboard navigation
 inside Orca (its own table commands, flat review) and braille were not
-exercised. Not yet provided: text attributes and text selection, row
-headers, multi-selection policy, and a peer-to-peer application bus.
+exercised.
+
+Live regions: `GetAttributes` reports `live` (`polite` or `assertive`) on a
+live node and `container-live` on it and its descendants, the attribute names
+Gecko and Chromium use. Orca's default script ignores name and text changes
+of objects that do not have focus, so the bridge also emits
+`Object:Announcement` (at-spi2-core 2.46+, what ATK's `notification` signal
+becomes: detail1 is the politeness, 1 polite and 2 assertive, the variant the
+text) for each live change and for the snapshot's announcement, which is sent
+from the snapshot root. The Mermaid editor's qualification run
+(`mermaid_editor_orca_test`, Orca 46.1, at-spi2-core 2.52) shows Orca
+speaking its status line's edit results through these events: "Saved." after
+the Save button is activated through AT-SPI, and "The file changed on disk.
+Reload from disk discards your edits; Keep mine overwrites it on the next
+save." when another program writes the file. Not yet provided: text
+attributes and text selection, row headers, multi-selection policy, and a
+peer-to-peer application bus.
 
 ## Windows UI Automation
 
@@ -304,7 +375,9 @@ so there is no C helper, ATL or type library. It links `uiautomationcore`,
    `UiaClientsAreListening`, raises what changed for elements a client has
    already seen: Name, Value, ToggleState, IsSelected, ExpandCollapseState and
    IsEnabled property changes, `StructureChanged` (ChildrenInvalidated) when a
-   node's children differ, and `AutomationFocusChanged` for a new focus.
+   node's children differ, and `AutomationFocusChanged` for a new focus. Then
+   `LiveRegionChanged` once per live region whose text was added or changed,
+   and the snapshot's announcement as a notification event.
 4. Once per frame, after pumping messages, call
    `ui_access_uia_dispatch(b, tree)`. It applies queued actions through
    `ui_access_dispatch`. Accepted focus requests also move `tree.focused_id`.
@@ -352,7 +425,9 @@ What is mapped:
   - ExpandCollapse: comboboxes, and activatable nodes with the expanded
     state.
   - RangeValue: progress, read-only 0..100, from the value's leading number.
-- Properties: Name, HelpText and FullDescription, AutomationId (the node id),
+- Properties: Name (an unnamed row's from its cells, and its Name change
+  event follows that derived name), HelpText and FullDescription, LiveSetting
+  (Off, Polite or Assertive), AutomationId (the node id),
   FrameworkId `W`, IsEnabled, IsKeyboardFocusable, HasKeyboardFocus,
   IsOffscreen (hidden), IsDialog, HeadingLevel, plus the patterns' own state
   properties.
@@ -401,6 +476,22 @@ Wine could not exercise the following:
   the window-based runtime id, `ClientToScreen` bounds) and cross-process
   clients are only built, not run.
 
+Live regions and notifications: a live node reports `LiveSetting`, and a
+change in its region raises `UIA_LiveRegionChangedEventId` on the region's
+element, after which Narrator reads the region. The snapshot's announcement
+goes through `UiaRaiseNotificationEvent` from the root element
+(`NotificationKind_Other`; polite is `NotificationProcessing_All`, assertive
+`NotificationProcessing_ImportantAll`; activity id `W.Announcement`). That
+function only exists from Windows 10 1709, so the bridge looks it up with
+`GetProcAddress` on first use and skips the event where it is missing, rather
+than failing to load. Under wine 9 the test reads `LiveSetting` through
+`UiaGetPropertyValue` and receives both `LiveRegionChanged` events (the
+status line and a new toast) through `UiaAddEvent`, and the derived row name
+before and after a cell changes. Wine exports `UiaRaiseNotificationEvent` but
+as a stub: it returns `S_OK` and its FIXME trace shows the payload
+(`(provider, 4, 2, L"Exported", L"W.Announcement")`), while a registered
+notification handler receives nothing, so delivery is untested.
+
 Narrator, NVDA, JAWS, Accessibility Insights and Inspect on real Windows have
 not been run against the bridge. That is the qualification still owed.
 
@@ -408,7 +499,6 @@ Not yet provided:
 
 - The Text pattern (caret, selection, text ranges).
 - Selection, Grid and Table container patterns.
-- LiveSetting and notification events.
 - MSAA (`IAccessible`) for legacy clients. `WM_GETOBJECT` for OBJID_CLIENT
   falls through to the default proxy.
 - Embedded fragment roots.
@@ -461,8 +551,8 @@ for testing a rendered application's complete contrast and focus appearance.
 Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
 and UI Automation bridges are initial adapters, with screen-reader
 qualification on real Windows, VoiceOver and NVDA, and richer semantics (text
-ranges and selection, UIA table/grid and text patterns, incremental updates)
-still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
+ranges and selection, UIA table/grid and text patterns, incremental updates
+and live regions in the Cocoa bridge) still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
 
 The native implementation follows Apple's

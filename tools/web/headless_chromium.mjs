@@ -9,7 +9,8 @@
 //
 // openPage({ chromium, root }) serves `root` on a free loopback port,
 // launches the browser, attaches to one blank page on that origin and
-// returns { origin, evaluate(expression), consoleLines, close() }.
+// returns { origin, evaluate(expression), send(method, params), consoleLines,
+// close() }; send issues any DevTools protocol command on that page.
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
@@ -135,7 +136,7 @@ export async function openPage({ chromium, root = resolve('.') }) {
     await new Promise(ok => setTimeout(ok, 10));
   const version = (await send('Browser.getVersion').catch(() => ({})))?.product ?? 'Chromium';
   return {
-    origin, evaluate, consoleLines, version,
+    origin, evaluate, send, consoleLines, version,
     close: async () => { ws.close(); await close(); },
   };
 }

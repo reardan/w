@@ -855,7 +855,12 @@ int main(int argc, int argv):
 				mm_access_canvas(access_fresh, ui_access_root_id, WM_CANVAS_FOCUS, &canvas, e, preview, ctx.focus == WM_CANVAS_FOCUS)
 				char* spoken = status
 				if (e.document.error != 0): spoken = c"Syntax error in the source."
-				if (ui_access_add(access_fresh, WM_STATUS_ACCESS, ui_access_root_id, UI_ACCESS_TEXT, ui_rect_new(12.0, height - 64.0, width - 24.0, 24.0)) != 0): ui_access_set_text(access_fresh, WM_STATUS_ACCESS, UI_ACCESS_NAME, spoken, strlen(spoken))
+				# A polite live region: edit results ("Saved.", "Changed on
+				# disk ...") are announced without moving focus.
+				ui_access_node* status_node = ui_access_add(access_fresh, WM_STATUS_ACCESS, ui_access_root_id, UI_ACCESS_TEXT, ui_rect_new(12.0, height - 64.0, width - 24.0, 24.0))
+				if (status_node != 0):
+					status_node.live = UI_ACCESS_LIVE_POLITE
+					ui_access_set_text(access_fresh, WM_STATUS_ACCESS, UI_ACCESS_NAME, spoken, strlen(spoken))
 			ui_access_capture(&ctx, 0)
 			if (ui_access_tree_same(access_fresh, access_published)): ui_access_tree_free(access_fresh)
 			else:

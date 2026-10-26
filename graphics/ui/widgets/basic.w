@@ -1,6 +1,6 @@
 /*
-graphics.ui.widgets.basic: the text and button widgets — label, title,
-button (docs/projects/ui_widgets.md §3).
+graphics.ui.widgets.basic: the text and button widgets — label, status,
+title, button (docs/projects/ui_widgets.md §3).
 */
 import graphics.ui.rect
 import graphics.ui.theme
@@ -19,6 +19,18 @@ void ui_label(ui_context* ctx, char* text):
 	ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, r, text)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ui_text_color(ctx))
+
+
+# Status text: a muted label that screen readers announce whenever it
+# changes, without moving focus (a polite live region), for lines such
+# as "Saved." or "3 results". Occupies one layout row.
+void ui_status(ui_context* ctx, char* text):
+	int scale = ctx.theme.text_scale
+	ui_rect r = ui_layout_next(ctx, cast(float32, ui_text_width(text, scale)), cast(float32, ctx.theme.widget_height))
+	ui_access_node* n = ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, r, text)
+	if (n != 0): n.live = UI_ACCESS_LIVE_POLITE
+	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
+	ui_draw_text(ctx.rndr, r.x, ty, text, scale, ctx.theme.text_muted)
 
 
 # Title text: the bold title strike (scale 3) on the background.

@@ -55,22 +55,31 @@ int record_action(void* context, int id, int action, char* data, int length):
 
 
 int focus_events
+int live_events
+int notification_events
 
 
 # UiaEventCallback(UiaEventArgs* args, SAFEARRAY* requested, BSTR tree);
 # UiaEventArgs is {EventArgsType Type; int EventId}.
 void on_event(int args, int requested, int tree):
-	if (load_int32(cast(char*, args + 4)) == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+	int event = load_int32(cast(char*, args + 4))
+	if (event == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+	if (event == UIA_LiveRegionChangedEventId): live_events = live_events + 1
+	if (event == UIA_NotificationEventId): notification_events = notification_events + 1
 
 
-# Pump messages until a focus event arrived (at most ~2s).
-void wait_for_focus_event():
+# Pump messages until *counter is nonzero (at most ~2s).
+void wait_for_event(int* counter):
 	char[64] msg
 	int tries = 0
-	while ((focus_events == 0) && (tries < 40)):
+	while ((counter[0] == 0) && (tries < 40)):
 		while (PeekMessageW(&msg[0], 0, 0, 0, 1) & 255): DispatchMessageW(&msg[0])
-		if (focus_events == 0): Sleep(50)
+		if (counter[0] == 0): Sleep(50)
 		tries = tries + 1
+
+
+void wait_for_focus_event():
+	wait_for_event(&focus_events)
 
 
 int hr(int v):
@@ -262,6 +271,111 @@ int client_node_maybe(int simple):
 	int node = 0
 	if (hr(UiaNodeFromProvider(simple, &node)) != 0): return 0
 	return node
+
+
+# A polite status line, a button and a file table whose unnamed row is
+# named from its cells; the second version changes the status, a cell,
+# and adds an assertive toast.
+ui_access_tree* live_build(int second):
+	ui_access_tree* tree = ui_access_tree_new(16, 512)
+	tree.action = record_action
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 200.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	add_text(tree, 1, UI_ACCESS_NAME, c"Editor")
+	ui_access_node* status = ui_access_add(tree, 2, 1, UI_ACCESS_TEXT, r)
+	status.live = UI_ACCESS_LIVE_POLITE
+	if second: add_text(tree, 2, UI_ACCESS_NAME, c"Saved.")
+	else: add_text(tree, 2, UI_ACCESS_NAME, c"Ready.")
+	ui_access_node* button = ui_access_add(tree, 3, 1, UI_ACCESS_BUTTON, r)
+	button.actions = UI_ACCESS_ACTIVATE
+	add_text(tree, 3, UI_ACCESS_NAME, c"Save")
+	ui_access_add(tree, 5, 1, UI_ACCESS_TABLE, r)
+	ui_access_node* row = ui_access_add(tree, 6, 5, UI_ACCESS_ROW, r)
+	row.actions = UI_ACCESS_ACTIVATE
+	ui_access_add(tree, 7, 6, UI_ACCESS_CELL, r)
+	add_text(tree, 7, UI_ACCESS_NAME, c"a.txt")
+	ui_access_add(tree, 8, 6, UI_ACCESS_CELL, r)
+	if second: add_text(tree, 8, UI_ACCESS_NAME, c"4 KB")
+	else: add_text(tree, 8, UI_ACCESS_NAME, c"3 KB")
+	if second:
+		ui_access_node* toast = ui_access_add(tree, 9, 1, UI_ACCESS_TEXT, r)
+		toast.live = UI_ACCESS_LIVE_ASSERTIVE
+		add_text(tree, 9, UI_ACCESS_NAME, c"Disk full")
+	return tree
+
+
+# LiveSetting, LiveRegionChanged, the notification event and the derived
+# row name, read through wine's client API.
+void check_live():
+	ui_uia_bridge* bridge = ui_access_uia_open(0)
+	ui_access_tree* first = live_build(0)
+	assert_equal(1, ui_access_uia_publish(bridge, first))
+	int root = ui_access_uia_root(bridge)
+	int root_node = client_node(root)
+	int status = find_child(root, 2)
+	int status_node = client_node(status)
+	client_int(status_node, UIA_LiveSettingPropertyId, VT_I4, UI_ACCESS_LIVE_POLITE)
+	client_text(status_node, UIA_NamePropertyId, c"Ready.")
+	int button = find_child(root, 3)
+	int button_node = client_node(button)
+	client_int(button_node, UIA_LiveSettingPropertyId, VT_I4, 0)
+	int table = find_child(root, 5)
+	int table_fragment = fragment_of(table)
+	int row_fragment = navigate(table_fragment, NavigateDirection_FirstChild)
+	int row = simple_of(row_fragment)
+	int row_node = client_node(row)
+	client_text(row_node, UIA_NamePropertyId, c"a.txt 3 KB")
+
+	char[8] condition
+	save_int64(&condition[0], 0)
+	char[48] cache
+	for i in range(48): cache[i] = 0
+	save_int64(&cache[0], cast(int, &condition[0]))
+	save_int32(&cache[8], 1)
+	save_int32(&cache[44], 1)
+	int live_event = 0
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_LiveRegionChangedEventId, win_callback(cast(int, on_event), 3), 7, cast(int32*, 0), 0, &cache[0], &live_event)))
+	int notification_event = 0
+	int notification_hr = hr(UiaAddEvent(root_node, UIA_NotificationEventId, win_callback(cast(int, on_event), 3), 7, cast(int32*, 0), 0, &cache[0], &notification_event))
+	ui_access_tree* second = live_build(1)
+	assert_equal(1, ui_access_announce(second, c"Exported", 8, UI_ACCESS_LIVE_POLITE))
+	assert_equal(1, ui_access_uia_publish(bridge, second))
+	assert_equal(0, second.announcement.length)
+	wait_for_event(&live_events)
+	# One event per changed region: the status line and the new toast.
+	assert_equal(2, live_events)
+	client_text(status_node, UIA_NamePropertyId, c"Saved.")
+	client_text(row_node, UIA_NamePropertyId, c"a.txt 4 KB")
+	# UiaRaiseNotificationEvent is found at run time. Wine 9 exports it;
+	# whether its client delivers the event is reported, not required.
+	asserts(c"notification raised", ui_uia_last_notification != 1)
+	if (notification_hr == 0):
+		wait_for_event(&notification_events)
+		UiaRemoveEvent(notification_event)
+	print_int0(c"notification event: raise hr ", ui_uia_last_notification)
+	print_int0(c", client registration hr ", notification_hr)
+	print_int(c", delivered ", notification_events)
+	assert_equal(0, hr(UiaRemoveEvent(live_event)))
+	# Republishing unchanged text raises nothing more.
+	ui_access_tree* third = live_build(1)
+	assert_equal(1, ui_access_uia_publish(bridge, third))
+	assert_equal(2, live_events)
+
+	UiaNodeRelease(row_node)
+	UiaNodeRelease(button_node)
+	UiaNodeRelease(status_node)
+	UiaNodeRelease(root_node)
+	release(row)
+	release(row_fragment)
+	release(table_fragment)
+	release(table)
+	release(button)
+	release(status)
+	release(root)
+	ui_access_uia_close(bridge)
+	ui_access_tree_free(first)
+	ui_access_tree_free(second)
+	ui_access_tree_free(third)
 
 
 int main():
@@ -527,5 +641,6 @@ int main():
 	ui_access_uia_close(bridge)
 	ui_access_tree_free(app)
 	ui_access_tree_free(next)
+	check_live()
 	println(c"UI Automation bridge OK")
 	return 0

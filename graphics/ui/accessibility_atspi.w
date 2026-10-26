@@ -19,7 +19,9 @@ application root at /org/a11y/atspi/accessible/root. Publication copies
 the snapshot, so queries are answered from the published state however
 the application manages its own trees. Publishing again emits the
 changes as AT-SPI events (focus, checked/expanded/selected states,
-names, children added and removed) so caching clients stay current.
+names, children added and removed) so caching clients stay current, and
+live-region changes and the snapshot's announcement as
+Object:Announcement events, which Orca speaks wherever focus is.
 
 Actions arrive as Action.DoAction, Component.GrabFocus and
 EditableText calls. They are queued (at most 64, values within the
@@ -579,32 +581,23 @@ void ui_atspi_put_text(dbus_buf* out, ui_access_text* t):
 
 # A row without a name of its own is named from its cells, as ARIA
 # rows are: screen readers announce a focused row by its name and do
-# not read a row's cells themselves.
+# not read a row's cells themselves (ui_access_effective_name).
 void ui_atspi_put_name(dbus_buf* out, ui_access_node* n):
-	if ((n.role != UI_ACCESS_ROW) || (n.name.length > 0)):
-		ui_atspi_put_text(out, &n.name)
-		return
-	int length = 0
-	ui_access_node* c = n.first_child
-	while (c != 0):
-		if (c.name.length > 0): length = length + c.name.length + 1
-		c = c.next_sibling
-	if (length == 0):
-		ui_atspi_put_text(out, &n.name)
-		return
-	char* joined = cast(char*, __w_alloc(length))
-	int at = 0
-	c = n.first_child
-	while (c != 0):
-		if (c.name.length > 0):
-			if (at > 0):
-				joined[at] = ' '
-				at = at + 1
-			for i in range(c.name.length): joined[at + i] = c.name.data[i]
-			at = at + c.name.length
-		c = c.next_sibling
-	dbus_put_string_n(out, joined, at)
-	free(joined)
+	ui_access_text name
+	ui_access_effective_name(n, &name)
+	ui_atspi_put_text(out, &name)
+	free(name.data)
+
+
+char* ui_atspi_live_name(int live):
+	if (live == UI_ACCESS_LIVE_ASSERTIVE): return c"assertive"
+	return c"polite"
+
+
+void ui_atspi_put_attribute(dbus_buf* out, char* key, char* value):
+	dbus_put_struct(out)
+	dbus_put_string(out, key)
+	dbus_put_string(out, value)
 
 
 /* Queued actions, applied by ui_access_atspi_dispatch. */
@@ -990,9 +983,10 @@ int ui_atspi_call_accessible(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 			char[2] level
 			level[0] = '0' + n.heading_level
 			level[1] = 0
-			dbus_put_struct(out)
-			dbus_put_string(out, c"level")
-			dbus_put_string(out, &level[0])
+			ui_atspi_put_attribute(out, c"level", &level[0])
+		# Live regions, with the attribute names Gecko and Chromium use.
+		if ((n != 0) && (n.live != UI_ACCESS_LIVE_OFF)): ui_atspi_put_attribute(out, c"live", ui_atspi_live_name(n.live))
+		if ((n != 0) && (ui_access_live_root(n) != 0)): ui_atspi_put_attribute(out, c"container-live", ui_atspi_live_name(ui_access_live_root(n).live))
 		dbus_put_struct(out)
 		dbus_put_string(out, c"toolkit")
 		dbus_put_string(out, c"W")
@@ -1518,6 +1512,22 @@ void ui_atspi_emit_text(ui_atspi_bridge* b, int id, char* kind, ui_access_text* 
 	dbus_signal(b.bus, ui_atspi_node_path(&path[0], id), c"org.a11y.atspi.Event.Object", c"TextChanged", c"siiva{sv}")
 
 
+# Object:Announcement (at-spi2-core 2.46+, what ATK's notification signal
+# becomes): detail1 is the politeness (ATSPI_LIVE_POLITE 1, ASSERTIVE 2)
+# and the text the event's string. Orca speaks it whatever has focus,
+# which name and text changes of an unfocused object do not achieve.
+void ui_atspi_emit_announcement(ui_atspi_bridge* b, int id, ui_access_text* text, int live):
+	char[64] path
+	char* p = ui_atspi_root_path()
+	if (id > 0): p = ui_atspi_node_path(&path[0], id)
+	dbus_buf* out = dbus_body(b.bus)
+	ui_atspi_event_head(out, c"", live, 0)
+	dbus_put_sig(out, c"s")
+	ui_atspi_put_text(out, text)
+	ui_atspi_event_tail(out)
+	dbus_signal(b.bus, p, c"org.a11y.atspi.Event.Object", c"Announcement", c"siiva{sv}")
+
+
 int ui_atspi_text_same(ui_access_text* a, ui_access_text* b):
 	if (a.length != b.length): return 0
 	for i in range(a.length):
@@ -1598,7 +1608,13 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 				on = (hi >> (k - 32)) & 1
 				off = (was_hi >> (k - 32)) & 1
 			if ((on != off) && (ui_atspi_state_nick(k) != 0)): ui_atspi_emit_state(b, id, ui_atspi_state_nick(k), on)
-		if (!ui_atspi_text_same(&n.name, &was.name)): ui_atspi_emit_name(b, id, c"accessible-name", &n.name)
+		# The effective name, so a row named from its cells reports
+		# a change when a cell's name changes.
+		if (!ui_access_effective_name_same(n, was)):
+			ui_access_text name
+			ui_access_effective_name(n, &name)
+			ui_atspi_emit_name(b, id, c"accessible-name", &name)
+			free(name.data)
 		if (!ui_atspi_text_same(&n.description, &was.description)): ui_atspi_emit_name(b, id, c"accessible-description", &n.description)
 		if ((n.role == UI_ACCESS_PROGRESS) && !ui_atspi_text_same(&n.value, &was.value)): ui_atspi_emit_name(b, id, c"accessible-value", &n.value)
 		if (ui_atspi_has_text(n) && !ui_atspi_text_same(&n.value, &was.value)):
@@ -1617,6 +1633,16 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 	if (fresh.focused_id != old_focus):
 		if ((old_focus != 0) && (ui_access_find(fresh, old_focus) != 0)): ui_atspi_emit_state(b, old_focus, c"focused", 0)
 		if (fresh.focused_id != 0): ui_atspi_emit_state(b, fresh.focused_id, c"focused", 1)
+	# Live regions announce text added or changed in them (not the first
+	# publication's content, as on the web), after the focus change.
+	if ((old != 0) && (old.root != 0)):
+		walk = fresh.root
+		while (walk != 0):
+			ui_access_text* said = ui_access_live_change(walk, ui_access_find(old, walk.id))
+			if (said != 0): ui_atspi_emit_announcement(b, walk.id, said, ui_access_live_root(walk).live)
+			walk = ui_atspi_preorder_next(walk)
+	if ((fresh.announcement.length > 0) && (fresh.root != 0)):
+		ui_atspi_emit_announcement(b, fresh.root.id, &fresh.announcement, fresh.announcement_live)
 
 
 /* Connection. */
@@ -1698,6 +1724,9 @@ int ui_access_atspi_publish(ui_atspi_bridge* b, ui_access_tree* tree):
 	ui_atspi_clear_queue(b)
 	ui_atspi_emit_changes(b, old, b.published)
 	ui_access_tree_free(old)
+	# The announcement is spoken once: consumed from both trees.
+	ui_access_announcement_clear(b.published)
+	ui_access_announcement_clear(tree)
 	return b.bus.failed == 0
 
 

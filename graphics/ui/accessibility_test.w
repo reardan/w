@@ -106,3 +106,81 @@ void test_accessibility_focus_acceptance_and_order():
 	first.states = UI_ACCESS_DISABLED
 	assert_equal(13, ui_access_move_focus(tree, 0))
 	ui_access_tree_free(tree)
+
+# Live regions (#465): inherited politeness, what a change announces, the
+# one-shot announcement, and snapshot comparison/copies carrying both.
+void test_live_regions_and_announcements():
+	ui_access_tree* tree = ui_access_tree_new(8, 64)
+	ui_rect r = ui_rect_new(0.0, 0.0, 10.0, 10.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	ui_access_node* region = ui_access_add(tree, 2, 1, UI_ACCESS_GROUP, r)
+	region.live = UI_ACCESS_LIVE_ASSERTIVE
+	ui_access_node* line = ui_access_add(tree, 3, 2, UI_ACCESS_TEXT, r)
+	ui_access_set_text(tree, 3, UI_ACCESS_NAME, c"Saved", 5)
+	ui_access_node* other = ui_access_add(tree, 4, 1, UI_ACCESS_TEXT, r)
+	asserts(c"inherited region", ui_access_live_root(line) == region)
+	asserts(c"outside every region", ui_access_live_root(other) == 0)
+	asserts(c"new text announced", ui_access_live_change(line, 0) == &line.name)
+	assert_equal(0, cast(int, ui_access_live_change(line, line)))
+	assert_equal(0, cast(int, ui_access_live_change(region, 0)))
+	assert_equal(0, cast(int, ui_access_live_change(other, 0)))
+
+	ui_access_tree* copy = ui_access_tree_clone(tree)
+	assert_equal(UI_ACCESS_LIVE_ASSERTIVE, ui_access_find(copy, 2).live)
+	assert_equal(1, ui_access_tree_same(tree, copy))
+	ui_access_set_text(copy, 3, UI_ACCESS_NAME, c"Failed", 6)
+	asserts(c"changed text announced", ui_access_live_change(ui_access_find(copy, 3), line) == &ui_access_find(copy, 3).name)
+	ui_access_set_text(copy, 3, UI_ACCESS_NAME, c"Saved", 5)
+	ui_access_find(copy, 2).live = UI_ACCESS_LIVE_POLITE
+	assert_equal(0, ui_access_tree_same(tree, copy))
+	ui_access_tree_free(copy)
+	region.states = UI_ACCESS_HIDDEN
+	assert_equal(0, cast(int, ui_access_live_change(line, 0)))
+	region.states = 0
+
+	assert_equal(0, ui_access_announce(tree, c"", 0, UI_ACCESS_LIVE_POLITE))
+	assert_equal(0, ui_access_announce(tree, c"x", 1, UI_ACCESS_LIVE_OFF))
+	assert_equal(0, ui_access_announce(tree, c"\xff", 1, UI_ACCESS_LIVE_POLITE))
+	assert_equal(0, tree.announcement.length)
+	assert_equal(1, ui_access_announce(tree, c"Exported", 8, UI_ACCESS_LIVE_POLITE))
+	assert_equal(1, ui_access_announce(tree, c"Export failed", 13, UI_ACCESS_LIVE_ASSERTIVE))
+	assert_strings_equal(c"Export failed", tree.announcement.data)
+	copy = ui_access_tree_clone(tree)
+	assert_strings_equal(c"Export failed", copy.announcement.data)
+	assert_equal(UI_ACCESS_LIVE_ASSERTIVE, copy.announcement_live)
+	assert_equal(1, ui_access_tree_same(tree, copy))
+	ui_access_announcement_clear(copy)
+	assert_equal(0, ui_access_tree_same(tree, copy))
+	assert_equal(UI_ACCESS_LIVE_OFF, copy.announcement_live)
+	ui_access_tree_free(copy)
+	ui_access_tree_free(tree)
+
+# An unnamed row is named from its cells; its own name wins.
+void test_rows_are_named_from_their_cells():
+	ui_access_tree* tree = ui_access_tree_new(8, 64)
+	ui_rect r = ui_rect_new(0.0, 0.0, 10.0, 10.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_TABLE, r)
+	ui_access_node* row = ui_access_add(tree, 2, 1, UI_ACCESS_ROW, r)
+	ui_access_add(tree, 3, 2, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 3, UI_ACCESS_NAME, c"a.txt", 5)
+	ui_access_add(tree, 4, 2, UI_ACCESS_CELL, r)
+	ui_access_add(tree, 5, 2, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 5, UI_ACCESS_NAME, c"3 KB", 4)
+	ui_access_text name
+	ui_access_effective_name(row, &name)
+	assert_strings_equal(c"a.txt 3 KB", name.data)
+	assert_equal(10, name.length)
+	free(name.data)
+	ui_access_tree* copy = ui_access_tree_clone(tree)
+	assert_equal(1, ui_access_effective_name_same(row, ui_access_find(copy, 2)))
+	ui_access_set_text(copy, 5, UI_ACCESS_NAME, c"4 KB", 4)
+	assert_equal(0, ui_access_effective_name_same(row, ui_access_find(copy, 2)))
+	ui_access_set_text(tree, 2, UI_ACCESS_NAME, c"First", 5)
+	ui_access_effective_name(row, &name)
+	assert_strings_equal(c"First", name.data)
+	free(name.data)
+	ui_access_effective_name(ui_access_find(tree, 4), &name)
+	assert_equal(0, name.length)
+	assert_equal(0, cast(int, name.data))
+	ui_access_tree_free(copy)
+	ui_access_tree_free(tree)
