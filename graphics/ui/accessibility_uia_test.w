@@ -48,19 +48,24 @@ int record_action(void* context, int id, int action, char* data, int length):
 		actions_seen[action_count] = action
 		action_ids[action_count] = id
 	action_count = action_count + 1
-	if (action == UI_ACCESS_SET_VALUE):
+	if ((action == UI_ACCESS_SET_VALUE) || (action == UI_ACCESS_SET_SELECTION)):
 		for i in range(length): last_value[i] = data[i]
 		last_length = length
 	return 1
 
 
 int focus_events
+int selection_events
+int text_changed_events
 
 
 # UiaEventCallback(UiaEventArgs* args, SAFEARRAY* requested, BSTR tree);
 # UiaEventArgs is {EventArgsType Type; int EventId}.
 void on_event(int args, int requested, int tree):
-	if (load_int32(cast(char*, args + 4)) == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+	int event_id = load_int32(cast(char*, args + 4))
+	if (event_id == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+	if (event_id == UIA_Text_TextSelectionChangedEventId): selection_events = selection_events + 1
+	if (event_id == UIA_Text_TextChangedEventId): text_changed_events = text_changed_events + 1
 
 
 # Pump messages until a focus event arrived (at most ~2s).
@@ -229,6 +234,13 @@ ui_access_tree* build(int with_tabs, int checked):
 	ui_access_node* heading = ui_access_add(tree, 11, 1, UI_ACCESS_HEADING, ui_rect_new(200.0, 150.0, 90.0, 20.0))
 	heading.heading_level = 2
 	add_text(tree, 11, UI_ACCESS_NAME, c"Title")
+	if with_tabs:
+		# A multi-line notes field with a backward selection of "two\n".
+		ui_access_node* notes = ui_access_add(tree, 12, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 170.0, 200.0, 40.0))
+		notes.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION
+		add_text(tree, 12, UI_ACCESS_NAME, c"Notes")
+		add_text(tree, 12, UI_ACCESS_VALUE, c"one two\nthr\xc3\xa9e")
+		assert_equal(1, ui_access_set_selection(tree, 12, 8, 4))
 	tree.focused_id = 2
 	return tree
 
@@ -262,6 +274,341 @@ int client_node_maybe(int simple):
 	int node = 0
 	if (hr(UiaNodeFromProvider(simple, &node)) != 0): return 0
 	return node
+
+
+/* Text pattern (ITextProvider / ITextRangeProvider) on the notes field,
+id 12: "one two\nthr\xc3\xa9e" (13 characters), selection 4..8 ("two\n")
+made backwards, so the caret is at 4. */
+
+int text_range_left             # a range kept past its node's removal
+
+
+type uia_m4 = fn(int, int, int, int) -> int
+type uia_m5 = fn(int, int, int, int, int) -> int
+
+
+int call4(int object, int slot, int a, int b, int c):
+	uia_m4* f = cast(uia_m4*, method(object, slot, 4))
+	return hr(f(object, a, b, c))
+
+
+int call5(int object, int slot, int a, int b, int c, int d):
+	uia_m5* f = cast(uia_m5*, method(object, slot, 5))
+	return hr(f(object, a, b, c, d))
+
+
+# ITextRangeProvider slots (UIAutomationCore.h order).
+const int RANGE_CLONE = 3
+const int RANGE_COMPARE = 4
+const int RANGE_COMPARE_ENDPOINTS = 5
+const int RANGE_EXPAND = 6
+const int RANGE_FIND_ATTRIBUTE = 7
+const int RANGE_FIND_TEXT = 8
+const int RANGE_ATTRIBUTE = 9
+const int RANGE_RECTANGLES = 10
+const int RANGE_ENCLOSING = 11
+const int RANGE_TEXT = 12
+const int RANGE_MOVE = 13
+const int RANGE_MOVE_ENDPOINT = 14
+const int RANGE_MOVE_TO_RANGE = 15
+const int RANGE_SELECT = 16
+const int RANGE_ADD_SELECTION = 17
+const int RANGE_REMOVE_SELECTION = 18
+const int RANGE_SCROLL = 19
+const int RANGE_CHILDREN = 20
+
+
+void assert_range_text(int range, char* expect):
+	int text = 0
+	assert_equal(0, call3(range, RANGE_TEXT, 0 - 1, cast(int, &text)))
+	assert_bstr(expect, text)
+	SysFreeString(text)
+
+
+int range_compare_endpoints(int range, int endpoint, int other, int other_endpoint):
+	int32[1] result
+	assert_equal(0, call5(range, RANGE_COMPARE_ENDPOINTS, endpoint, other, other_endpoint, cast(int, &result[0])))
+	return result[0]
+
+
+int range_move(int range, int unit, int count):
+	int32[1] moved
+	assert_equal(0, call4(range, RANGE_MOVE, unit, count, cast(int, &moved[0])))
+	return moved[0]
+
+
+int range_move_endpoint(int range, int endpoint, int unit, int count):
+	int32[1] moved
+	assert_equal(0, call5(range, RANGE_MOVE_ENDPOINT, endpoint, unit, count, cast(int, &moved[0])))
+	return moved[0]
+
+
+int array_upper(int array):
+	int32[1] upper
+	assert_equal(0, hr(SafeArrayGetUBound(array, 1, &upper[0])))
+	return upper[0]
+
+
+# Element index of a VT_UNKNOWN SAFEARRAY (AddRef'd by the copy).
+int array_unknown(int array, int index):
+	int32[1] at
+	at[0] = index
+	int out = 0
+	assert_equal(0, hr(SafeArrayGetElement(array, &at[0], cast(char*, &out))))
+	return out
+
+
+int find_text(int range, char* utf8, int ignore_case):
+	int needle = ui_uia_bstr(utf8, strlen(utf8))
+	int found = 0
+	assert_equal(0, call5(range, RANGE_FIND_TEXT, needle, 0, ignore_case, cast(int, &found)))
+	SysFreeString(needle)
+	return found
+
+
+void text_pattern_checks(ui_uia_bridge* bridge, ui_access_tree* app, int root, int root_node, char* cache):
+	int notes = find_child(root, 12)
+	int field = find_child(root, 4)
+	int button = find_child(root, 2)
+	asserts(c"notes", notes != 0)
+	# Only textboxes offer the pattern, through GetPatternProvider and
+	# QueryInterface alike.
+	assert_equal(0, pattern(button, UIA_TextPatternId))
+	assert_equal(0, query(button, 10))
+	int text = pattern(notes, UIA_TextPatternId)
+	asserts(c"text pattern", text != 0)
+	int text_again = query(notes, 10)
+	assert_equal(text, text_again)
+	release(text_again)
+	int field_text = pattern(field, UIA_TextPatternId)
+	asserts(c"field text pattern", field_text != 0)
+
+	int32[1] state
+	assert_equal(0, call2(text, 8, cast(int, &state[0])))
+	assert_equal(1, state[0])                          /* SupportedTextSelection_Single */
+
+	# The element holds one reference per live range.
+	ui_uia_element* element = bridge.elements[12]
+	int element_refs = element.refs
+	int doc = 0
+	assert_equal(0, call2(text, 7, cast(int, &doc)))
+	assert_equal(element_refs + 1, element.refs)
+	assert_range_text(doc, c"one two\nthr\xc3\xa9e")
+	int limited = 0
+	assert_equal(0, call3(doc, RANGE_TEXT, 3, cast(int, &limited)))
+	assert_bstr(c"one", limited)
+	SysFreeString(limited)
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(doc, RANGE_TEXT, 0 - 2, cast(int, &limited)))
+	# QueryInterface on a range: IUnknown and ITextRangeProvider are the
+	# range itself; element interfaces are not.
+	int unknown = query(doc, 0)
+	assert_equal(doc, unknown)
+	release(unknown)
+	int as_range = query(doc, UI_UIA_TEXT_RANGE_IID)
+	assert_equal(doc, as_range)
+	release(as_range)
+	assert_equal(0, query(doc, 1))
+
+	# GetSelection: one range, the selection.
+	int selection = 0
+	assert_equal(0, call2(text, 3, cast(int, &selection)))
+	assert_equal(0, array_upper(selection))
+	int selected = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(selected, c"two\n")
+	assert_equal(4, range_compare_endpoints(selected, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	assert_equal(0 - 5, range_compare_endpoints(selected, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_End))
+	# A field without a caret has no selection ranges.
+	assert_equal(0, call2(field_text, 3, cast(int, &selection)))
+	assert_equal(0 - 1, array_upper(selection))
+	SafeArrayDestroy(selection)
+	# Visible ranges: the whole text.
+	assert_equal(0, call2(text, 4, cast(int, &selection)))
+	assert_equal(0, array_upper(selection))
+	int visible = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(visible, c"one two\nthr\xc3\xa9e")
+	release(visible)
+
+	# Clone and Compare.
+	int r = 0
+	assert_equal(0, call2(doc, RANGE_CLONE, cast(int, &r)))
+	assert_equal(0, call3(doc, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(1, state[0])
+	assert_equal(0, call3(selected, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(0, state[0])
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(doc, RANGE_COMPARE, button, cast(int, &state[0])))
+
+	# Collapse r to the start, grow it by characters, then by units.
+	assert_equal(0, call4(r, RANGE_MOVE_TO_RANGE, TextPatternRangeEndpoint_End, r, TextPatternRangeEndpoint_Start))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_Start))
+	assert_equal(5, range_move_endpoint(r, TextPatternRangeEndpoint_End, TextUnit_Character, 5))
+	assert_range_text(r, c"one t")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Word))
+	assert_range_text(r, c"one ")
+	assert_equal(1, range_move(r, TextUnit_Word, 1))
+	assert_range_text(r, c"two\n")
+	assert_equal(0, call3(selected, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(1, state[0])
+	# A whole word has to follow: the last one is as far as it goes.
+	assert_equal(1, range_move(r, TextUnit_Word, 5))
+	assert_range_text(r, c"thr\xc3\xa9e")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Line))
+	assert_range_text(r, c"thr\xc3\xa9e")
+	assert_equal(0 - 1, range_move(r, TextUnit_Paragraph, 0 - 3))
+	assert_range_text(r, c"one two\n")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Document))
+	assert_range_text(r, c"one two\nthr\xc3\xa9e")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Character))
+	assert_range_text(r, c"o")
+	# A degenerate range moves as a position, to the very end.
+	assert_equal(0, call4(r, RANGE_MOVE_TO_RANGE, TextPatternRangeEndpoint_End, r, TextPatternRangeEndpoint_Start))
+	assert_equal(13, range_move(r, TextUnit_Character, 20))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_End))
+	assert_equal(0 - 2, range_move(r, TextUnit_Character, 0 - 2))
+	assert_equal(0 - 1, range_move_endpoint(r, TextPatternRangeEndpoint_Start, TextUnit_Word, 0 - 1))
+	assert_range_text(r, c"thr")
+	# An endpoint moved past the other drags it along.
+	assert_equal(0 - 2, range_move_endpoint(r, TextPatternRangeEndpoint_End, TextUnit_Line, 0 - 2))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	assert_range_text(r, c"")
+	release(r)
+
+	# FindText inside a range, with and without ASCII case folding.
+	int found = find_text(doc, c"THR\xc3\xa9", 1)
+	asserts(c"found", found != 0)
+	assert_range_text(found, c"thr\xc3\xa9")
+	release(found)
+	assert_equal(0, find_text(doc, c"THR", 0))
+	assert_equal(0, find_text(selected, c"thr", 1))
+	found = find_text(doc, c"o", 0)
+	assert_equal(0, range_compare_endpoints(found, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	release(found)
+	found = 0
+	char[24] v
+	ui_uia_variant_clear(&v[0])
+	assert_equal(0, call5(doc, RANGE_FIND_ATTRIBUTE, UIA_IsReadOnlyAttributeId, cast(int, &v[0]), 0, cast(int, &found)))
+	assert_equal(0, found)
+
+	# Attributes: IsReadOnly, else the reserved not-supported value.
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_IsReadOnlyAttributeId, cast(int, &v[0])))
+	assert_equal(VT_BOOL, load_int16(&v[0]) & 65535)
+	assert_equal(0, load_int16(&v[8]))
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, 40005, cast(int, &v[0])))   /* FontName */
+	assert_equal(VT_UNKNOWN, load_int16(&v[0]) & 65535)
+	int unsupported = 0
+	UiaGetReservedNotSupportedValue(&unsupported)
+	asserts(c"not supported value", unsupported != 0)
+	assert_equal(unsupported, load_int64(&v[8]))
+
+	# Geometry, the enclosing element, children, selection limits.
+	int rects = 0
+	assert_equal(0, call2(selected, RANGE_RECTANGLES, cast(int, &rects)))
+	assert_equal(3, array_upper(rects))
+	int32[1] at
+	float64[1] number
+	at[0] = 0
+	assert_equal(0, hr(SafeArrayGetElement(rects, &at[0], cast(char*, &number[0]))))
+	assert_equal(1010, cast(int, number[0]))
+	at[0] = 3
+	assert_equal(0, hr(SafeArrayGetElement(rects, &at[0], cast(char*, &number[0]))))
+	assert_equal(40, cast(int, number[0]))
+	SafeArrayDestroy(rects)
+	int enclosing = 0
+	assert_equal(0, call2(selected, RANGE_ENCLOSING, cast(int, &enclosing)))
+	assert_equal(notes, enclosing)
+	release(enclosing)
+	int children = 0
+	assert_equal(0, call2(selected, RANGE_CHILDREN, cast(int, &children)))
+	assert_equal(0 - 1, array_upper(children))
+	SafeArrayDestroy(children)
+	assert_equal(cast(int, UIA_E_INVALIDOPERATION), call1(selected, RANGE_ADD_SELECTION))
+	assert_equal(cast(int, UIA_E_INVALIDOPERATION), call1(selected, RANGE_REMOVE_SELECTION))
+	assert_equal(0, call2(selected, RANGE_SCROLL, 1))
+
+	# RangeFromChild has no children to find; RangeFromPoint takes the
+	# UiaPoint by reference: past the field's right edge is its end.
+	int from = 0
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(text, 5, button, cast(int, &from)))
+	float64[2] point
+	point[0] = 5000.0
+	point[1] = 680.0
+	assert_equal(0, call3(text, 6, cast(int, &point[0]), cast(int, &from)))
+	assert_equal(0, range_compare_endpoints(from, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_End))
+	release(from)
+	point[0] = 1000.0
+	assert_equal(0, call3(text, 6, cast(int, &point[0]), cast(int, &from)))
+	assert_equal(0, range_compare_endpoints(from, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_Start))
+	release(from)
+
+	# Select queues SET_SELECTION (anchor = start, caret = end), applied
+	# through ui_access_dispatch; a field without the action refuses.
+	assert_equal(0, call1(selected, RANGE_SELECT))
+	int field_doc = 0
+	assert_equal(0, call2(field_text, 7, cast(int, &field_doc)))
+	assert_equal(cast(int, UIA_E_ELEMENTNOTENABLED), call1(field_doc, RANGE_SELECT))
+	release(field_doc)
+	int before = action_count
+	assert_equal(1, ui_access_uia_dispatch(bridge, app))
+	assert_equal(before + 1, action_count)
+	assert_equal(UI_ACCESS_SET_SELECTION, actions_seen[before])
+	assert_equal(12, action_ids[before])
+	assert_equal(3, last_length)
+	assert_bytes_equal(c"4 8", &last_value[0], 3)
+
+	# A republication that moves the caret and edits the text raises
+	# the Text pattern's events (when clients listen); ranges see the
+	# new text.
+	int selection_event = 0
+	int changed_event = 0
+	int callback = win_callback(cast(int, on_event), 3)
+	# wine delivers both events to an in-process client (TreeScope_Subtree
+	# from the root).
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_Text_TextSelectionChangedEventId, callback, 7, cast(int32*, 0), 0, cache, &selection_event)))
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_Text_TextChangedEventId, callback, 7, cast(int32*, 0), 0, cache, &changed_event)))
+	ui_access_tree* moved = ui_access_tree_clone(app)
+	moved.action = record_action
+	ui_access_set_text(moved, 12, UI_ACCESS_VALUE, c"one", 3)
+	assert_equal(1, ui_access_set_selection(moved, 12, 1, 1))
+	assert_equal(1, ui_access_uia_publish(bridge, moved))
+	char[64] msg
+	int tries = 0
+	while ((selection_events + text_changed_events < 2) && (tries < 40)):
+		while (PeekMessageW(&msg[0], 0, 0, 0, 1) & 255): DispatchMessageW(&msg[0])
+		if (selection_events + text_changed_events < 2): Sleep(50)
+		tries = tries + 1
+	assert_equal(1, selection_events)
+	assert_equal(1, text_changed_events)
+	assert_equal(0, hr(UiaRemoveEvent(selection_event)))
+	assert_equal(0, hr(UiaRemoveEvent(changed_event)))
+	assert_range_text(doc, c"one")
+	assert_equal(0, call2(text, 3, cast(int, &selection)))
+	int caret = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(caret, c"")
+	assert_equal(1, range_compare_endpoints(caret, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	release(caret)
+	assert_equal(1, ui_access_uia_publish(bridge, app))
+	ui_access_tree_free(moved)
+
+	# Ranges are freed with their last reference, giving the element's
+	# back. (Measured here: wine's client and event paths keep their own
+	# references on the element.)
+	int refs_now = element.refs
+	assert_equal(0, call2(doc, RANGE_CLONE, cast(int, &r)))
+	assert_equal(refs_now + 1, element.refs)
+	assert_equal(2, call1(r, 1))                       /* AddRef */
+	assert_equal(1, call1(r, 2))
+	assert_equal(0, call1(r, 2))
+	assert_equal(refs_now, element.refs)
+	release(selected)
+	release(text)
+	release(field_text)
+	release(field)
+	release(button)
+	release(notes)
+	# doc stays alive past the node's removal (checked by the caller).
+	text_range_left = doc
 
 
 int main():
@@ -471,6 +818,7 @@ int main():
 	assert_equal(UI_ACCESS_FOCUS, actions_seen[5])
 	assert_equal(2, app.focused_id)
 	assert_equal(0, ui_access_uia_dispatch(bridge, app))
+	text_pattern_checks(bridge, app, root, root_node, &cache[0])
 
 	# Republish without the tabs and with the checkbox cleared: property
 	# and structure events are raised (when clients listen), the tabs'
@@ -507,6 +855,14 @@ int main():
 		UiaNodeRelease(tab_node)
 	release(select)
 	release(tab_two)
+	# A text range outlives its node: it answers not-available, and its
+	# last release frees it (and the element it kept).
+	int gone_text = 0
+	assert_equal(cast(int, UIA_E_ELEMENTNOTAVAILABLE), call3(text_range_left, RANGE_TEXT, 0 - 1, cast(int, &gone_text)))
+	assert_equal(cast(int, UIA_E_ELEMENTNOTAVAILABLE), call1(text_range_left, RANGE_SELECT))
+	assert_equal(0, gone_text)
+	asserts(c"notes retired", !(12 in bridge.elements))
+	release(text_range_left)
 	release(tabs)
 
 	# WM_GETOBJECT answers only UiaRootObjectId.
