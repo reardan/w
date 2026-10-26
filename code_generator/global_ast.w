@@ -1,15 +1,20 @@
 # Visit resolved global layout trees in either image storage convention.
 void emit_global_storage_tree_ast(global_storage_ast* node):
+	int start = codepos
 	if (node.kind == 1):
 		emit_target_word(code_offset + codepos + 2 * word_size)
 		emit_target_word(node.length)
-		emit_zeros(node.size - 2 * word_size)
+		global_storage_ast* element = node.children
+		if (element):
+			for e in range(node.length): emit_global_storage_tree_ast(element)
 	else if (node.kind == 2):
 		global_storage_ast* child = node.children
 		while (child):
+			# Pad up to the field's layout offset
+			emit_zeros(start + child.offset - codepos)
 			emit_global_storage_tree_ast(child)
 			child = child.next
-	else: emit_zeros(node.size)
+	emit_zeros(start + node.size - codepos)
 
 
 void emit_data_storage_tree_ast(global_storage_ast* node, int address):
@@ -17,6 +22,9 @@ void emit_data_storage_tree_ast(global_storage_ast* node, int address):
 		save_i(data + (address - data_offset), address + 2 * word_size, word_size)
 		save_i(data + (address - data_offset + word_size), node.length, word_size)
 		rebase_note(address)
+		global_storage_ast* element = node.children
+		if (element):
+			for e in range(node.length): emit_data_storage_tree_ast(element, address + 2 * word_size + e * element.size)
 	else if (node.kind == 2):
 		global_storage_ast* child = node.children
 		while (child):

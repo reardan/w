@@ -620,6 +620,47 @@ void test_ast_global_layout_survives_type_changes():
 	global_storage_ast_free(tree)
 
 
+void ast_test_assert_header(int before, int offset, int length):
+	assert_equal(code_offset + before + offset + 2 * word_size, load_i(code + before + offset, word_size))
+	assert_equal(length, load_i(code + before + offset + word_size, word_size))
+
+
+# Issue #701: the image-storage emitters (the REPL/wdbg path, no W^X
+# split) write the header of every array an array element holds, at the
+# element's layout offset, in both the legacy and the layout-tree walk.
+void test_ast_global_layout_writes_element_headers():
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (word_size == 8): word_size_log2 = 3
+	push_basic_types()
+	int cells = type_push_array(type_lookup(c"int"), 3)
+	int leaf = type_push_size(c"ast_element_header_leaf", 0)
+	type_add_arg(leaf, c"cells", cells)
+	int leaves = type_push_array(leaf, 2)
+	int record = type_push_size(c"ast_element_header_record", 0)
+	type_add_arg(record, c"pad", type_lookup(c"char"))
+	type_add_arg(record, c"leaves", leaves)
+	int bytes = global_storage_size(record)
+	int outer = type_get_field_offset_at(record, 1)
+	int leaf_size = type_get_size(leaf)
+	global_storage_ast* tree = global_storage_ast_build(record, 0)
+	int before = codepos
+	emit_global_storage(record)
+	assert_equal(bytes, codepos - before)
+	ast_test_assert_header(before, outer, 2)
+	ast_test_assert_header(before, outer + 2 * word_size, 3)
+	ast_test_assert_header(before, outer + 2 * word_size + leaf_size, 3)
+	codepos = before
+	emit_global_storage_tree_ast(tree)
+	emit_zeros(bytes - (codepos - before))
+	assert_equal(bytes, codepos - before)
+	ast_test_assert_header(before, outer, 2)
+	ast_test_assert_header(before, outer + 2 * word_size, 3)
+	ast_test_assert_header(before, outer + 2 * word_size + leaf_size, 3)
+	codepos = before
+	global_storage_ast_free(tree)
+
+
 void test_ast_container_probe_records_are_transactional():
 	word_size = __word_size__
 	push_basic_types()
