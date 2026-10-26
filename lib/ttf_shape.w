@@ -33,6 +33,7 @@ Thai and Hebrew fonts but not their reordering.
 */
 import lib.lib
 import lib.ttf
+import lib.ttf_hangul
 import lib.ttf_indic
 import lib.ttf_khmer
 import lib.ttf_layout
@@ -50,6 +51,21 @@ const int ttf_mask_isol = 2
 const int ttf_mask_fina = 4
 const int ttf_mask_medi = 8
 const int ttf_mask_init = 16
+# Syriac's extra forms (the Arabic shaper's own bits, which only the
+# syllabic shapers use for their features).
+const int ttf_mask_fin2 = 32
+const int ttf_mask_fin3 = 64
+const int ttf_mask_med2 = 128
+# The Hangul shaper's jamo features, and its 'calt', which jamo lack.
+const int ttf_mask_ljmo = 32
+const int ttf_mask_vjmo = 64
+const int ttf_mask_tjmo = 128
+const int ttf_mask_calt = 256
+
+# Syriac's extra positional forms, after the ut_form_* ones.
+const int ttf_form_fin2 = 5
+const int ttf_form_fin3 = 6
+const int ttf_form_med2 = 7
 
 # OpenType script tags for a Unicode script id, most preferred first, as
 # 4-byte groups, always ending in the DFLT/dflt/latn fallbacks. Writes up
@@ -111,14 +127,11 @@ int ttf_code_is(char* code, char* want):
 # Scripts written right to left (HarfBuzz's hb_script_get_horizontal_direction).
 int ttf_script_is_rtl(int script):
 	char* code = ut_script_code(script)
-	char* rtl = c"ArabHebrSyrcThaaNkooSamrMandMendAdlmRohgYeziArmiAvstCprtKharPhnxLydiPhliPrtiSarbOrkhMercMeroManiNbatNarbPalmPhlpHatrSogoSogdElymChrsOugr"
+	char* rtl = c"ArabHebrSyrcThaaNkooSamrMandMendAdlmRohgYeziArmiAvstCprtKharPhnxLydiPhliPrtiSarbOrkhMercMeroManiNbatNarbPalmPhlpHatrSogoSogdElymChrsOugrGaraSidt"
 	int n = strlen(rtl) / 4
 	for k in range(n):
 		if (ttf_code_is(code, &rtl[k * 4])): return 1
 	return 0
-
-int ttf_is_joining_script(char* code):
-	return ttf_code_is(code, c"Arab") || ttf_code_is(code, c"Syrc") || ttf_code_is(code, c"Nkoo") || ttf_code_is(code, c"Mong") || ttf_code_is(code, c"Mand") || ttf_code_is(code, c"Mani") || ttf_code_is(code, c"Phag") || ttf_code_is(code, c"Adlm") || ttf_code_is(code, c"Rohg") || ttf_code_is(code, c"Sogd")
 
 # Combining class for mark reordering. Like HarfBuzz, Hebrew and Arabic
 # points are renumbered so the marks nearest the letter (dagesh, shin and
@@ -128,45 +141,130 @@ int ttf_is_joining_script(char* code):
 int ttf_modified_ccc(int cp):
 	return ttf_use_modified_ccc(cp)
 
+# A glyph's modified combining class: the one a shaper assigned, else
+# its character's (0 for a glyph without one).
+int ttf_glyph_ccc(otl_glyph* g):
+	if (g.mcc != 0): return g.mcc
+	if (g.cp < 0): return 0
+	return ttf_modified_ccc(g.cp)
+
+# Unicode's modifier combining marks (UAX #53), which the Arabic shaper
+# moves before the other marks of their class.
+int ttf_arabic_mcm(int cp):
+	if ((cp == 0x0654) || (cp == 0x0655) || (cp == 0x0658) || (cp == 0x06dc) || (cp == 0x06e3) || (cp == 0x06e7) || (cp == 0x06e8)): return 1
+	return (cp == 0x08ca) || (cp == 0x08cb) || (cp == 0x08cd) || (cp == 0x08ce) || (cp == 0x08cf) || (cp == 0x08d3) || (cp == 0x08f3)
+
+# HarfBuzz's reorder_marks_arabic for the sorted marks start..end: the
+# modifier combining marks at the head of the 220 and then the 230 run
+# move to the front, renumbered 25 and 26 (HarfBuzz's CCC22 and CCC26),
+# which keeps the sequence sorted. The clusters they cross merge.
+void ttf_arabic_reorder_marks(otl_buffer* b, int start, int end):
+	int i = start
+	for step in range(2):
+		int cc = 220 + step * 10
+		while ((i < end) && (ttf_glyph_ccc(&b.glyphs[i]) < cc)): i = i + 1
+		if (i == end): return
+		if (ttf_glyph_ccc(&b.glyphs[i]) > cc): continue
+		int j = i
+		while ((j < end) && (ttf_glyph_ccc(&b.glyphs[j]) == cc) && ttf_arabic_mcm(b.glyphs[j].cp)): j = j + 1
+		if (i == j): continue
+		otl_merge_clusters(b, start, j)
+		otl_glyph tmp
+		for m in range(j - i):
+			# Rotate glyph i + m back to start + m.
+			int k = i + m
+			while (k > start + m):
+				otl_glyph_copy(&tmp, &b.glyphs[k - 1])
+				otl_glyph_copy(&b.glyphs[k - 1], &b.glyphs[k])
+				otl_glyph_copy(&b.glyphs[k], &tmp)
+				k = k - 1
+		int new_start = start + j - i
+		int new_cc = 25
+		if (cc == 230): new_cc = 26
+		while (start < new_start):
+			b.glyphs[start].mcc = new_cc
+			start = start + 1
+		i = j
+
 # Canonical reordering of combining marks (UAX #15 / HarfBuzz's mark
-# normalization): stable-sort each run of nonzero combining classes.
-void ttf_reorder_marks(otl_buffer* b):
+# normalization): stable-sort each run of nonzero combining classes, as
+# long as a run has at most 32 marks (HB_OT_SHAPE_MAX_COMBINING_MARKS),
+# then, for the Arabic shaper, its modifier combining marks.
+void ttf_reorder_marks(otl_buffer* b, int arabic):
 	int i = 0
 	while (i < b.count):
-		if ((b.glyphs[i].cp < 0) || (ttf_modified_ccc(b.glyphs[i].cp) == 0)):
+		if (ttf_glyph_ccc(&b.glyphs[i]) == 0):
 			i = i + 1
 			continue
 		int end = i
-		while ((end < b.count) && (b.glyphs[end].cp >= 0) && (ttf_modified_ccc(b.glyphs[end].cp) != 0)): end = end + 1
+		while ((end < b.count) && (ttf_glyph_ccc(&b.glyphs[end]) != 0)): end = end + 1
+		if (end - i > 32):
+			i = end
+			continue
 		otl_glyph tmp
 		for k in range(i + 1, end):
+			# Like HarfBuzz's buffer sort, a mark that moves merges the
+			# clusters it moves across.
 			int j = k
-			while ((j > i) && (ttf_modified_ccc(b.glyphs[j - 1].cp) > ttf_modified_ccc(b.glyphs[j].cp))):
-				otl_glyph_copy(&tmp, &b.glyphs[j - 1])
-				otl_glyph_copy(&b.glyphs[j - 1], &b.glyphs[j])
-				otl_glyph_copy(&b.glyphs[j], &tmp)
-				j = j - 1
+			while ((j > i) && (ttf_glyph_ccc(&b.glyphs[j - 1]) > ttf_glyph_ccc(&b.glyphs[k]))): j = j - 1
+			if (j == k): continue
+			otl_merge_clusters(b, j, k + 1)
+			int m = k
+			while (m > j):
+				otl_glyph_copy(&tmp, &b.glyphs[m - 1])
+				otl_glyph_copy(&b.glyphs[m - 1], &b.glyphs[m])
+				otl_glyph_copy(&b.glyphs[m], &tmp)
+				m = m - 1
+		if (arabic): ttf_arabic_reorder_marks(b, i, end)
 		i = end
 
+# HarfBuzz's joining classes, the columns of its joining state machine:
+# U, L, R, D (and join-causing), then the Syriac ALAPH and DALATH RISH
+# joining groups; -1 for a transparent character.
+int ttf_join_class(int cp):
+	int type = ut_joining_type(cp)
+	if (type == ut_join_t): return -1
+	if (cp == 0x0710): return 4
+	if ((cp == 0x0715) || (cp == 0x0716) || (cp == 0x072a) || (cp == 0x072f)): return 5
+	if (type == ut_join_l): return 1
+	if (type == ut_join_r): return 2
+	if ((type == ut_join_d) || (type == ut_join_c)): return 3
+	return 0
+
+# HarfBuzz's arabic_state_table: for each of its 7 states and 6 joining
+# classes, the form the previous character takes, the form this one
+# takes (N for none; I isol, F fina, 2 fin2, 3 fin3, M medi, m med2,
+# i init) and the next state.
+char* ttf_joining_table():
+	return c"NN0NI2NI1NI2NI1NI6NN0NI2NI1NI2N25NI6NN0NI2iF1iF3iF4iF6NN0NI2MF1MF3MF4MF6NN0NI2mI1mI2m25mI6NN0NI2II1II2I25II6NN0NI2NI1NI2N35NI6"
+
+int ttf_joining_form(int action):
+	if (action == 'I'): return ut_form_isol
+	if (action == 'F'): return ut_form_fina
+	if (action == '2'): return ttf_form_fin2
+	if (action == '3'): return ttf_form_fin3
+	if (action == 'M'): return ut_form_medi
+	if (action == 'm'): return ttf_form_med2
+	if (action == 'i'): return ut_form_init
+	return ut_form_none
+
 # Shaping context (HarfBuzz's pre-context and post-context): the joining
-# types of the nearest non-transparent characters just before and after
-# the run, so that joining sees across a run boundary (a word split
-# between fonts). ut_join_u when there are none; set with
-# ttf_shape_set_context or ttf_shape_context.
+# classes (ttf_join_class) of the nearest non-transparent characters
+# just before and after the run, so that joining sees across a run
+# boundary (a word split between fonts). 0 (U) when there are none; set
+# with ttf_shape_set_context or ttf_shape_context.
 int ttf_context_before
 int ttf_context_after
 
-# The joining type of the first character of cps that is not transparent,
-# scanning from the end when backward; join-causing reads as dual.
+# The joining class of the first character of cps that is not
+# transparent, scanning from the end when backward.
 int ttf_context_join(int32* cps, int count, int backward):
 	for k in range(count):
 		int i = k
 		if (backward): i = count - 1 - k
-		int type = ut_joining_type(cps[i])
-		if (type == ut_join_t): continue
-		if (type == ut_join_c): return ut_join_d
-		return type
-	return ut_join_u
+		int type = ttf_join_class(cps[i])
+		if (type >= 0): return type
+	return 0
 
 # Sets the context for the following ttf_shape calls: pre holds the text
 # before the run in logical order (nearest last), post the text after it
@@ -175,41 +273,151 @@ void ttf_shape_set_context(int32* pre, int pre_count, int32* post, int post_coun
 	ttf_context_before = ttf_context_join(pre, pre_count, 1)
 	ttf_context_after = ttf_context_join(post, post_count, 0)
 
-# Arabic-style joining (ArabicShaping.txt): the positional form of each
-# character as ut_form_*, written to forms, with the shaping context.
+# Arabic-style joining (HarfBuzz's arabic_joining state machine over
+# ArabicShaping.txt): the positional form of each character as
+# ut_form_* or ttf_form_* (Syriac), written to forms, with the shaping
+# context. Join-causing characters (ZWJ, tatweel) join like dual-joining
+# letters and take forms too.
 void ttf_joining_forms(otl_buffer* b, int32* forms):
-	int previous = -1
-	int previous_type = ttf_context_before
+	char* table = ttf_joining_table()
+	int prev = -1
+	int state = table[ttf_context_before * 3 + 2] - '0'
 	for i in range(b.count):
 		forms[i] = ut_form_none
-		int type = ut_join_u
-		if (b.glyphs[i].cp >= 0): type = ut_joining_type(b.glyphs[i].cp)
-		if (type == ut_join_t): continue
-		# Join-causing characters (ZWJ, tatweel) join like dual-joining
-		# letters and take forms too, as in HarfBuzz.
-		if (type == ut_join_c): type = ut_join_d
-		int joins_previous = ((type == ut_join_r) || (type == ut_join_d)) && ((previous_type == ut_join_l) || (previous_type == ut_join_d))
-		if ((type == ut_join_r) || (type == ut_join_d) || (type == ut_join_l)): forms[i] = ut_form_isol
-		if (joins_previous):
-			# The previous character gains a following join.
-			if (previous >= 0):
-				if (forms[previous] == ut_form_isol): forms[previous] = ut_form_init
-				else if (forms[previous] == ut_form_fina): forms[previous] = ut_form_medi
-			if ((type == ut_join_r) || (type == ut_join_d)): forms[i] = ut_form_fina
-		previous = i
-		previous_type = type
+		int type = 0
+		if (b.glyphs[i].cp >= 0): type = ttf_join_class(b.glyphs[i].cp)
+		if (type < 0): continue
+		char* entry = &table[(state * 6 + type) * 3]
+		if ((entry[0] != 'N') && (prev >= 0)): forms[prev] = ttf_joining_form(entry[0])
+		forms[i] = ttf_joining_form(entry[1])
+		prev = i
+		state = entry[2] - '0'
 	# A following join into the post-context.
-	int after = ttf_context_after
-	if ((previous >= 0) && ((previous_type == ut_join_l) || (previous_type == ut_join_d)) && ((after == ut_join_r) || (after == ut_join_d))):
-		if (forms[previous] == ut_form_isol): forms[previous] = ut_form_init
-		else if (forms[previous] == ut_form_fina): forms[previous] = ut_form_medi
+	char* after = &table[(state * 6 + ttf_context_after) * 3]
+	if ((after[0] != 'N') && (prev >= 0)): forms[prev] = ttf_joining_form(after[0])
 
 int ttf_form_mask(int form):
 	if (form == ut_form_isol): return ttf_mask_isol
 	if (form == ut_form_fina): return ttf_mask_fina
 	if (form == ut_form_medi): return ttf_mask_medi
 	if (form == ut_form_init): return ttf_mask_init
+	if (form == ttf_form_fin2): return ttf_mask_fin2
+	if (form == ttf_form_fin3): return ttf_mask_fin3
+	if (form == ttf_form_med2): return ttf_mask_med2
 	return 0
+
+# HarfBuzz's HB_ARABIC_GENERAL_CATEGORY_IS_WORD: letters (but cased
+# ones), marks, numbers, symbols, unassigned and private use.
+int ttf_stch_word_category(int cat):
+	if ((cat == ut_cat_cn) || (cat == ut_cat_lm) || (cat == ut_cat_lo) || (cat == ut_cat_mn) || (cat == ut_cat_mc) || (cat == ut_cat_me)): return 1
+	return ((cat >= ut_cat_nd) && (cat <= 11)) || ((cat >= 19) && (cat <= 22)) || (cat == 29)
+
+# Whether glyph i is part of the word a stretch fills (HarfBuzz's
+# apply_stch context): a default ignorable or a word character. A later
+# piece of a multiple substitution has its source character's category.
+int ttf_stch_context(otl_buffer* b, int i):
+	otl_glyph* g = &b.glyphs[i]
+	if (g.stch != 0): return 0
+	int cp = g.cp
+	if (cp < 0):
+		for k in range(b.count):
+			if ((b.glyphs[k].cluster == g.cluster) && (b.glyphs[k].cp >= 0)):
+				cp = b.glyphs[k].cp
+				break
+	if (cp < 0): return 0
+	if (((g.subst & otl_subst_substituted) == 0) && otl_default_ignorable(cp)): return 1
+	return ttf_stch_word_category(ut_category(cp))
+
+# HarfBuzz's apply_stch, the Arabic shaper's postprocessing of the stch
+# feature (Syriac's SAM, U+070F): each run of stretch tiles stretches
+# across the rest of its word (the word characters after it): the
+# repeating tiles repeat to fill the word's width and every tile becomes
+# a zero-width glyph offset over it. b is in visual order.
+void ttf_apply_stch(ttf_font* f, otl_buffer* b, int rtl):
+	int any = 0
+	for i in range(b.count):
+		if (b.glyphs[i].stch != 0): any = 1
+	if (!any): return
+	if (!rtl): otl_buffer_reverse(b)
+	int extra = 0
+	otl_glyph* out = cast(otl_glyph*, 0)
+	int j = 0
+	# Two passes: measure the extra copies, then cut into a new array.
+	for step in range(2):
+		int count = b.count
+		if (step == 1):
+			out = cast(otl_glyph*, malloc((count + extra) * sizeof(otl_glyph)))
+			j = count + extra
+		int i = count
+		while (i > 0):
+			if (b.glyphs[i - 1].stch == 0):
+				if (step == 1):
+					j = j - 1
+					otl_glyph_copy(&out[j], &b.glyphs[i - 1])
+				i = i - 1
+				continue
+			int w_total = 0
+			int w_fixed = 0
+			int w_repeating = 0
+			int n_fixed = 0
+			int n_repeating = 0
+			int end = i
+			while ((i > 0) && (b.glyphs[i - 1].stch != 0)):
+				i = i - 1
+				int width = ttf_advance_units(f, b.glyphs[i].gid)
+				if (b.glyphs[i].stch == 1):
+					w_fixed = w_fixed + width
+					n_fixed = n_fixed + 1
+				else:
+					w_repeating = w_repeating + width
+					n_repeating = n_repeating + 1
+			int start = i
+			int context = i
+			while ((context > 0) && ttf_stch_context(b, context - 1)):
+				context = context - 1
+				w_total = w_total + b.glyphs[context].x_advance
+			int n_copies = 0
+			int w_remaining = w_total - w_fixed
+			if ((w_remaining > w_repeating) && (w_repeating > 0)): n_copies = w_remaining / w_repeating - 1
+			# An extra repeat squeezed together can improve the fit.
+			int overlap = 0
+			int shortfall = w_remaining - w_repeating * (n_copies + 1)
+			if ((shortfall > 0) && (n_repeating > 0)):
+				n_copies = n_copies + 1
+				int excess = (n_copies + 1) * w_repeating - w_remaining
+				if (excess > 0):
+					overlap = excess / (n_copies * n_repeating)
+					w_remaining = 0
+			# At most 256 glyphs per stretch (HarfBuzz's STCH_MAX_GLYPHS).
+			int max_copies = 0
+			if ((n_repeating > 0) && (n_fixed + n_repeating < 256)): max_copies = (256 - n_fixed - n_repeating) / n_repeating
+			if (n_copies > max_copies): n_copies = max_copies
+			if (step == 0): extra = extra + n_copies * n_repeating
+			else:
+				int x_offset = w_remaining / 2
+				int k = end
+				while (k > start):
+					otl_glyph* g = &b.glyphs[k - 1]
+					int width = ttf_advance_units(f, g.gid)
+					int repeat = 1
+					if (g.stch == 2): repeat = repeat + n_copies
+					g.x_advance = 0
+					for n in range(repeat):
+						if (rtl):
+							x_offset = x_offset - width
+							if (n > 0): x_offset = x_offset + overlap
+						g.x_offset = x_offset
+						j = j - 1
+						otl_glyph_copy(&out[j], g)
+						if (!rtl):
+							x_offset = x_offset + width
+							if (n > 0): x_offset = x_offset - overlap
+					k = k - 1
+	otl_reserve(b, b.count + extra)
+	for k in range(b.count + extra): otl_glyph_copy(&b.glyphs[k], &out[k])
+	b.count = b.count + extra
+	free(out)
+	if (!rtl): otl_buffer_reverse(b)
 
 # HarfBuzz 15's Arabic fallback shaping for fonts without positional GSUB
 # features (hb-ot-shaper-arabic-fallback): lookups synthesized from the
@@ -337,11 +545,17 @@ int ttf_mark_placement(int cp):
 	return ccc
 
 # A glyph's mark class for fallback placement (HarfBuzz's modified
-# combining class, recategorized for nonspacing marks), 0 for none.
+# combining class, recategorized for nonspacing marks), 0 for none. A
+# later piece of a multiple substitution has its character's class; a
+# ligature that starts with a nonspacing mark is a letter (class 0).
 int ttf_fallback_class(otl_glyph* g):
-	if (g.cp < 0): return 0
-	if (ut_category(g.cp) == ut_cat_mn): return ttf_mark_placement(g.cp)
-	return ttf_modified_ccc(g.cp)
+	int cp = g.cp
+	if (cp < 0): cp = g.props_cp
+	if (cp < 0): return 0
+	if (ut_category(cp) == ut_cat_mn):
+		if (!g.unicode_mark): return 0
+		return ttf_mark_placement(cp)
+	return ttf_modified_ccc(cp)
 
 # HarfBuzz's is_unicode_mark for a shaped glyph: Mn, Mc or Me (a
 # ligature formed over a nonspacing mark counts as a letter).
@@ -435,28 +649,41 @@ void ttf_fallback_around_base(ttf_font* f, otl_buffer* b, int base, int end, int
 		g.attach_dx = dx
 		g.attach_dy = dy
 
-# HarfBuzz's fallback mark positioning: in each cluster of two or more
-# glyphs, every base (a glyph that is not a mark) places the marks after
-# it, skipping default ignorables.
+# Whether HarfBuzz's fallback positioning passes over glyph g: a hidden
+# character or an unsubstituted default ignorable.
+int ttf_fallback_skips(otl_glyph* g):
+	if (g.cp < 0): return 0
+	return otl_hidden(g) || (((g.subst & otl_subst_substituted) == 0) && otl_default_ignorable(g.cp))
+
+# HarfBuzz's position_cluster: in start..end (two or more glyphs), each
+# base (a glyph that is not a mark) places the marks after it, passing
+# over hidden characters and default ignorables.
+void ttf_fallback_cluster(ttf_font* f, otl_buffer* b, int start, int end, int rtl):
+	if (end - start < 2): return
+	int i = start
+	while (i < end):
+		if (ttf_glyph_is_mark(&b.glyphs[i])):
+			i = i + 1
+			continue
+		int j = i + 1
+		while (j < end):
+			otl_glyph* g = &b.glyphs[j]
+			if (!ttf_fallback_skips(g) && !ttf_glyph_is_mark(g)): break
+			j = j + 1
+		ttf_fallback_around_base(f, b, i, j, rtl)
+		i = j
+
+# HarfBuzz's fallback mark positioning: the text splits before every
+# glyph that is no mark, hidden character or default ignorable, and each
+# piece places its marks.
 void ttf_fallback_marks(ttf_font* f, otl_buffer* b, int rtl):
 	int start = 0
-	while (start < b.count):
-		int end = start + 1
-		while ((end < b.count) && (b.glyphs[end].cluster == b.glyphs[start].cluster)): end = end + 1
-		int i = start
-		while ((end - start >= 2) && (i < end)):
-			if (ttf_glyph_is_mark(&b.glyphs[i])):
-				i = i + 1
-				continue
-			int j = i + 1
-			while (j < end):
-				otl_glyph* g = &b.glyphs[j]
-				int ignorable = (g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp)
-				if (!ignorable && !ttf_glyph_is_mark(g)): break
-				j = j + 1
-			ttf_fallback_around_base(f, b, i, j, rtl)
-			i = j
-		start = end
+	for i in range(1, b.count):
+		otl_glyph* g = &b.glyphs[i]
+		if (!ttf_glyph_is_mark(g) && !ttf_fallback_skips(g)):
+			ttf_fallback_cluster(f, b, start, i, rtl)
+			start = i
+	ttf_fallback_cluster(f, b, start, b.count, rtl)
 
 # Legacy pair kerning between consecutive non-mark glyphs. Like
 # HarfBuzz, the adjustment is split: half (rounded down) widens the first
@@ -467,7 +694,7 @@ void ttf_fallback_kern(ttf_font* f, otl_buffer* b, int rtl):
 		if (b.glyphs[i].props == otl_class_mark): continue
 		# Default ignorables (ZWJ, ZWNJ, variation selectors) never
 		# separate a kerning pair.
-		if ((b.glyphs[i].cp >= 0) && ut_default_ignorable(b.glyphs[i].cp)): continue
+		if ((b.glyphs[i].cp >= 0) && otl_default_ignorable(b.glyphs[i].cp)): continue
 		if (previous >= 0):
 			# Pairs kern in visual order: in RTL the later glyph is on the left.
 			int left = previous
@@ -558,12 +785,9 @@ void ttf_recompose(ttf_font* f, otl_buffer* b, int hebrew_forms):
 	int i = 0
 	while (i < b.count):
 		otl_glyph* g = &b.glyphs[i]
-		int ccc = 0
-		if (g.cp >= 0): ccc = ttf_modified_ccc(g.cp)
-		# Hangul V and T jamo compose with the syllable before them.
-		int jamo = (g.cp >= 0x1161) && (g.cp <= 0x11c2) && (starter >= 0) && (i == starter + 1)
+		int ccc = ttf_glyph_ccc(g)
 		int mark = (g.cp >= 0) && ttf_is_unicode_mark(g.cp)
-		if ((i > 0) && (starter >= 0) && (mark || jamo) && ((i == starter + 1) || (last_ccc < ccc))):
+		if ((i > 0) && (starter >= 0) && mark && ((i == starter + 1) || (last_ccc < ccc))):
 			otl_glyph* s = &b.glyphs[starter]
 			int composed = ut_compose(s.cp, g.cp)
 			if ((composed < 0) && hebrew_forms): composed = ttf_hebrew_compose(s.cp, g.cp)
@@ -571,6 +795,7 @@ void ttf_recompose(ttf_font* f, otl_buffer* b, int hebrew_forms):
 			if (composed >= 0): gid = ttf_glyph_id(f, composed)
 			if (gid != 0):
 				s.cp = composed
+				s.props_cp = composed
 				s.gid = gid
 				s.unicode_mark = ut_is_nonspacing_mark(composed)
 				otl_buffer_delete(b, i)
@@ -641,7 +866,8 @@ void ttf_mark_clusters(int32* cps, int count, char* kinds):
 	int i = 0
 	while (i < count):
 		int end = i + 1
-		if (!ttf_is_unicode_mark(cps[i]) && ((end >= count) || !ttf_is_unicode_mark(cps[end]))):
+		# (A mark that starts the text and no mark follows is simple too.)
+		if ((end >= count) || !ttf_is_unicode_mark(cps[end])):
 			kinds[i] = 0
 			i = end
 			continue
@@ -678,6 +904,7 @@ void ttf_indic_recompose(ttf_font* f, otl_buffer* b):
 			if (gid != 0):
 				if (g.cluster < s.cluster): s.cluster = g.cluster
 				s.cp = composed
+				s.props_cp = composed
 				s.gid = gid
 				s.unicode_mark = ut_is_nonspacing_mark(composed)
 				otl_buffer_delete(b, i)
@@ -685,10 +912,33 @@ void ttf_indic_recompose(ttf_font* f, otl_buffer* b):
 		if ((g.cp < 0) || (ttf_modified_ccc(g.cp) == 0)): starter = i
 		i = i + 1
 
-int ttf_continues_cluster(int cp):
-	int category = ut_category(cp)
-	if ((category == ut_cat_mn) || (category == ut_cat_mc) || (category == ut_cat_me)): return 1
-	return (cp == 0x200d) || ((cp >= 0x1160) && (cp <= 0x11ff)) || ((cp >= 0xfe00) && (cp <= 0xfe0f)) || ((cp >= 0xe0100) && (cp <= 0xe01ef)) || ((cp >= 0x1f3fb) && (cp <= 0x1f3ff))
+int ttf_regional_indicator(int cp):
+	return (cp >= 0x1f1e6) && (cp <= 0x1f1ff)
+
+# HarfBuzz's grapheme continuations (hb_set_unicode_props): marks (Mn,
+# Mc, Me), emoji modifiers, the second of a pair of regional indicators,
+# ZWJ and an Extended_Pictographic after it, the halfwidth katakana sound
+# marks and tags. cont[i] is 1 when cps[i] continues the grapheme before
+# it.
+void ttf_continuations(int32* cps, int count, char* cont):
+	int i = 0
+	while (i < count):
+		int cp = cps[i]
+		cont[i] = 0
+		if (cp >= 0x80):
+			int category = ut_category(cp)
+			if ((category == ut_cat_mn) || (category == ut_cat_mc) || (category == ut_cat_me)): cont[i] = 1
+			else if ((category == ut_cat_lu) || (category == ut_cat_ll) || (category == ut_cat_lt) || (category == ut_cat_lo) || (category == ut_cat_zs)): cont[i] = 0
+			else if ((cp >= 0x1f3fb) && (cp <= 0x1f3ff)): cont[i] = 1
+			else if (ttf_regional_indicator(cp)):
+				if ((i > 0) && ttf_regional_indicator(cps[i - 1]) && !cont[i - 1]): cont[i] = 1
+			else if (cp == 0x200d):
+				cont[i] = 1
+				if ((i + 1 < count) && ut_extended_pictographic(cps[i + 1])):
+					i = i + 1
+					cont[i] = 1
+			else if (((cp >= 0xff9e) && (cp <= 0xff9f)) || ((cp >= 0xe0020) && (cp <= 0xe007f))): cont[i] = 1
+		i = i + 1
 
 # HarfBuzz's fallback for a space character the font lacks: its width
 # as a fraction of the em (N for upem/N), or a special width (-1 the
@@ -724,18 +974,9 @@ int ttf_space_fallback_advance(ttf_font* f, int kind, int advance):
 	if (kind == -5): return f.upem * 4 / 18
 	return advance
 
-void ttf_shape_add(ttf_font* f, otl_buffer* b, int cp, int source, int rtl):
+void ttf_shape_add(ttf_font* f, otl_buffer* b, int cp, int cluster):
 	int gid = ttf_glyph_id(f, cp)
 	if ((gid == 0) && (ttf_space_fallback(cp) != 0)): gid = ttf_glyph_id(f, ' ')
-	if (rtl):
-		int mirror = ut_mirror(cp)
-		if (mirror != cp):
-			int mirrored = ttf_glyph_id(f, mirror)
-			if (mirrored != 0): gid = mirrored
-	# Marks and joiners continue the cluster of the character before
-	# them (HarfBuzz's default grapheme cluster level).
-	int cluster = source
-	if ((b.count > 0) && ttf_continues_cluster(cp)): cluster = b.glyphs[b.count - 1].cluster
 	otl_buffer_add(b, gid, cp, cluster, ttf_mask_global)
 	b.glyphs[b.count - 1].unicode_mark = ut_is_nonspacing_mark(cp)
 
@@ -746,9 +987,9 @@ int ttf_thai_above_mark(int cp):
 	int c = cp & ~0x80
 	return ((c >= 0x0e34) && (c <= 0x0e37)) || ((c >= 0x0e47) && (c <= 0x0e4e)) || (c == 0x0e31) || (c == 0x0e3b)
 
-void ttf_thai_sara_am(ttf_font* f, otl_buffer* b, int cp, int source):
-	ttf_shape_add(f, b, cp - 0x0e33 + 0x0e4d, source, 0)
-	ttf_shape_add(f, b, cp - 1, source, 0)
+int ttf_thai_sara_am(ttf_font* f, otl_buffer* b, int cp, int source):
+	ttf_shape_add(f, b, cp - 0x0e33 + 0x0e4d, source)
+	ttf_shape_add(f, b, cp - 1, source)
 	int end = b.count
 	int start = end - 2
 	while ((start > 0) && ttf_thai_above_mark(b.glyphs[start - 1].cp)): start = start - 1
@@ -766,11 +1007,12 @@ void ttf_thai_sara_am(ttf_font* f, otl_buffer* b, int cp, int source):
 	for k in range(from, end):
 		if (b.glyphs[k].cluster < cluster): cluster = b.glyphs[k].cluster
 	for k in range(from, end): b.glyphs[k].cluster = cluster
+	return cluster
 
 # The GSUB stages of every script but the Indic ones: ccmp/locl, Arabic-
 # style joining forms (or the presentation-form fallback), rlig, then
 # rclt/calt/liga/clig.
-void ttf_shape_gsub(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language, int joining, int arabic, int rtl, int flags):
+void ttf_shape_gsub(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language, int joining, int arabic, int hangul, int rtl, int flags):
 	int[16] tags
 	int[16] masks
 	int n = 0
@@ -781,51 +1023,78 @@ void ttf_shape_gsub(ttf_font* f, otl_buffer* b, char* scripts, int script_count,
 		ttf_joining_forms(b, early)
 		for i in range(b.count): b.glyphs[i].mask = b.glyphs[i].mask | ttf_form_mask(early[i])
 		free(early)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rvrn"), ttf_mask_global, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rvrn"), ttf_mask_global | otl_mask_hb, &n)
+	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
+	n = otl_common_features(b, &tags[0], &masks[0], 0)
 	if (!joining):
 		# HarfBuzz's default shaper has one stage after rvrn: its lookups
 		# apply in index order whatever feature they belong to.
-		otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
-		n = 0
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"ccmp"), ttf_mask_global, &n)
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"locl"), ttf_mask_global, &n)
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"rlig"), ttf_mask_global, &n)
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"rclt"), ttf_mask_global, &n)
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_global, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"ccmp"), ttf_mask_global | otl_mask_hb, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"locl"), ttf_mask_global | otl_mask_hb, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"rlig"), ttf_mask_global | otl_mask_hb, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"rclt"), ttf_mask_global | otl_mask_hb, &n)
+		if (hangul):
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"ljmo"), ttf_mask_ljmo | otl_mask_hb, &n)
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"vjmo"), ttf_mask_vjmo | otl_mask_hb, &n)
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"tjmo"), ttf_mask_tjmo | otl_mask_hb, &n)
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_calt | otl_mask_hb, &n)
+		else: ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_global | otl_mask_hb, &n)
 		if ((flags & ttf_shape_no_liga) == 0):
-			ttf_stage1(&tags[0], &masks[0], otl_tag(c"liga"), ttf_mask_global, &n)
-			ttf_stage1(&tags[0], &masks[0], otl_tag(c"clig"), ttf_mask_global, &n)
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"liga"), ttf_mask_global | otl_mask_hb, &n)
+			ttf_stage1(&tags[0], &masks[0], otl_tag(c"clig"), ttf_mask_global | otl_mask_hb, &n)
 		otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
 		return
+	# The Arabic shaper's first stage is the common features and stch,
+	# whose multiplied glyphs become stretch tiles (HarfBuzz's
+	# record_stch; ttf_apply_stch stretches them): odd components repeat.
+	int stch = otl_tag(c"stch")
+	int has_stch = otl_has_feature(f, otl_gsub, scripts, script_count, stch) || otl_has_feature(f, otl_gpos, scripts, script_count, stch)
+	ttf_stage1(&tags[0], &masks[0], stch, ttf_mask_global | otl_mask_hb, &n)
 	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
+	for i in range(b.count):
+		otl_glyph* g = &b.glyphs[i]
+		if (has_stch && ((g.subst & otl_subst_multiplied) != 0)): g.stch = 1 + (otl_lig_comp(g) % 2)
 	# HarfBuzz's Arabic shaper pauses after ccmp/locl, each positional
-	# form, rlig (then the presentation-form fallback for Arabic fonts
-	# without positional features) and rclt/calt, and adds mset.
+	# form, rlig (then, for Arabic, the presentation-form fallback for
+	# fonts without positional features) and calt; its features are
+	# F_MANUAL_ZWJ, but for rclt, which joins liga/clig/mset.
+	int manual_zwj = otl_mask_hb | otl_mask_manual_joiners | otl_mask_auto_zwnj
 	n = 0
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"ccmp"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"locl"), ttf_mask_global, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"ccmp"), ttf_mask_global | manual_zwj, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"locl"), ttf_mask_global | manual_zwj, &n)
 	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
-	char* order = c"isolfinamediinit"
+	char* order = c"isolfinafin2fin3medimed2init"
+	int[7] form_masks
+	form_masks[0] = ttf_mask_isol
+	form_masks[1] = ttf_mask_fina
+	form_masks[2] = ttf_mask_fin2
+	form_masks[3] = ttf_mask_fin3
+	form_masks[4] = ttf_mask_medi
+	form_masks[5] = ttf_mask_med2
+	form_masks[6] = ttf_mask_init
+	# Syriac's fin2, fin3 and med2 have no fallback.
 	int fallback = arabic
-	for k in range(4):
+	for k in range(7):
+		if ((k == 2) || (k == 3) || (k == 5)): continue
 		if (otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(&order[k * 4])) || otl_has_feature(f, otl_gpos, scripts, script_count, otl_tag(&order[k * 4]))): fallback = 0
-	for k in range(4):
+	for k in range(7):
 		tags[0] = otl_tag(&order[k * 4])
-		masks[0] = ttf_mask_isol << k
+		masks[0] = form_masks[k] | manual_zwj
 		otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], 1, rtl)
 	n = 0
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rlig"), ttf_mask_global, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rlig"), ttf_mask_global | manual_zwj, &n)
+	if (arabic):
+		otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
+		if (fallback): ttf_arabic_fallback(f, b)
+		n = 0
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_global | manual_zwj, &n)
 	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
-	if (fallback): ttf_arabic_fallback(f, b)
 	n = 0
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rclt"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_global, &n)
-	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
-	n = 0
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mset"), ttf_mask_global, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mset"), ttf_mask_global | manual_zwj, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rclt"), ttf_mask_global | otl_mask_hb, &n)
 	if ((flags & ttf_shape_no_liga) == 0):
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"liga"), ttf_mask_global, &n)
-		ttf_stage1(&tags[0], &masks[0], otl_tag(c"clig"), ttf_mask_global, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"liga"), ttf_mask_global | manual_zwj, &n)
+		ttf_stage1(&tags[0], &masks[0], otl_tag(c"clig"), ttf_mask_global | manual_zwj, &n)
 	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
 
 # HarfBuzz's vowel constraints (the USE spec's
@@ -894,7 +1163,7 @@ void ttf_shape_drop_ignorables(otl_buffer* b):
 	int i = 0
 	while (i < b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if ((g.cp < 0) || !ut_default_ignorable(g.cp) || ((g.subst & otl_subst_substituted) != 0)):
+		if ((g.cp < 0) || !otl_default_ignorable(g.cp) || ((g.subst & otl_subst_substituted) != 0)):
 			i = i + 1
 			continue
 		int cluster = g.cluster
@@ -916,9 +1185,112 @@ void ttf_shape_drop_ignorables(otl_buffer* b):
 				k = k + 1
 		otl_buffer_delete(b, i)
 
+# The direction HarfBuzz shapes a run of script in
+# (hb_ensure_native_direction): the script's own horizontal direction,
+# except that an LTR run of an RTL script with digits or regional
+# indicators and no letters stays LTR, and Old Hungarian, Old Italic,
+# Runic and Tifinagh take the requested one. 1 for RTL.
+int ttf_native_rtl(int script, int32* cps, int count, int rtl):
+	char* code = ut_script_code(script)
+	if (ttf_code_is(code, c"Hung") || ttf_code_is(code, c"Ital") || ttf_code_is(code, c"Runr") || ttf_code_is(code, c"Tfng")): return rtl
+	if (!ttf_script_is_rtl(script)): return 0
+	if (rtl): return 1
+	int number = 0
+	for i in range(count):
+		int category = ut_category(cps[i])
+		if ((category >= ut_cat_lu) && (category <= ut_cat_lo)): return 1
+		if ((category == ut_cat_nd) || ttf_regional_indicator(cps[i])): number = 1
+	return !number
+
+# HarfBuzz's automatic fractions: around each FRACTION SLASH with
+# decimal digits on both sides, the digits before it take 'numr' and
+# those after it 'dnom' (the other way round in RTL order), and all of
+# them 'frac'.
+void ttf_fraction_masks(otl_buffer* b, int rtl):
+	int pre = otl_mask_numr | otl_mask_frac
+	int post = otl_mask_frac | otl_mask_dnom
+	if (rtl):
+		pre = otl_mask_frac | otl_mask_dnom
+		post = otl_mask_numr | otl_mask_frac
+	int i = 0
+	while (i < b.count):
+		if (b.glyphs[i].cp != 0x2044):
+			i = i + 1
+			continue
+		int start = i
+		int end = i + 1
+		while ((start > 0) && (b.glyphs[start - 1].cp >= 0) && (ut_category(b.glyphs[start - 1].cp) == ut_cat_nd)): start = start - 1
+		while ((end < b.count) && (b.glyphs[end].cp >= 0) && (ut_category(b.glyphs[end].cp) == ut_cat_nd)): end = end + 1
+		if ((start == i) || (end == i + 1)):
+			i = i + 1
+			continue
+		for k in range(start, i): b.glyphs[k].mask = b.glyphs[k].mask | pre
+		b.glyphs[i].mask = b.glyphs[i].mask | otl_mask_frac
+		for k in range(i + 1, end): b.glyphs[k].mask = b.glyphs[k].mask | post
+		i = end
+
+otl_buffer* ttf_shape_native(ttf_font* f, int32* cps, int32* clusters, char* rtlm, int count, int rtl, int target_rtl, int script, int language, int flags);
+
+# Shape count codepoints (cps, with their clusters, in logical order) in
+# the direction rtl, as HarfBuzz does: clusters merge per grapheme, a run
+# against its script's native direction is shaped natively with its
+# graphemes reversed, and RTL text takes mirrored characters (or the
+# 'rtlm' feature). The result is in visual order.
 otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int rtl, int script, int language, int flags):
-	otl_buffer* b = otl_buffer_new(count + 4)
 	if (script < 0): script = ttf_guess_script(cps, count)
+	char* cont = cast(char*, malloc(count + 1))
+	ttf_continuations(cps, count, cont)
+	int32* merged = cast(int32*, malloc(count * 4 + 4))
+	int start = 0
+	for i in range(1, count + 1):
+		if ((i < count) && cont[i]): continue
+		int low = clusters[start]
+		for k in range(start, i):
+			if (clusters[k] < low): low = clusters[k]
+		for k in range(start, i): merged[k] = low
+		start = i
+	int native = ttf_native_rtl(script, cps, count, rtl)
+	int32* text = cast(int32*, malloc(count * 4 + 4))
+	int32* text_clusters = cast(int32*, malloc(count * 4 + 4))
+	if (native == rtl):
+		for i in range(count):
+			text[i] = cps[i]
+			text_clusters[i] = merged[i]
+	else:
+		# Reverse the graphemes, keeping each one's own order.
+		int at = 0
+		int end = count
+		while (end > 0):
+			int first = end - 1
+			while ((first > 0) && cont[first]): first = first - 1
+			for k in range(first, end):
+				text[at] = cps[k]
+				text_clusters[at] = merged[k]
+				at = at + 1
+			end = first
+	# HarfBuzz's hb_ot_rotate_chars: in RTL text a character with a
+	# mirrored form the font has becomes it; the rest take 'rtlm'.
+	char* rtlm = cast(char*, malloc(count + 1))
+	for i in range(count):
+		rtlm[i] = 0
+		if (rtl):
+			int mirror = ut_mirror(text[i])
+			if ((mirror != text[i]) && (ttf_glyph_id(f, mirror) != 0)): text[i] = mirror
+			else: rtlm[i] = 1
+	otl_buffer* b = ttf_shape_native(f, text, text_clusters, rtlm, count, native, rtl, script, language, flags)
+	free(cont)
+	free(merged)
+	free(text)
+	free(text_clusters)
+	free(rtlm)
+	return b
+
+# ttf_shape after the direction is settled: the text is in the order it
+# is shaped in, rtl that order's direction and target_rtl the requested
+# one.
+otl_buffer* ttf_shape_native(ttf_font* f, int32* cps, int32* clusters, char* rtlm, int count, int rtl, int target_rtl, int script, int language, int flags):
+	otl_buffer* b = otl_buffer_new(count + 4)
+	b.target_rtl = target_rtl
 	int space = ttf_glyph_id(f, ' ')
 	char[40] scripts
 	int script_count = ttf_script_tags(script, &scripts[0])
@@ -930,26 +1302,64 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	# The syllabic shapers: no legacy kerning or fallback positioning,
 	# and normalization without the short circuit.
 	int syllabic = indic || use || khmer || myanmar
+	# HarfBuzz's Arabic shaper: Arabic text, and Syriac unless the font's
+	# GSUB script choice falls back to DFLT. The other joining scripts
+	# shape with USE (or as default text).
+	int chosen = ttf_indic_chosen_script(f, &scripts[0], script_count)
+	int arabic_shaper = ttf_code_is(code, c"Arab") || (ttf_code_is(code, c"Syrc") && ((chosen < 0) || (otl_tag(&scripts[chosen * 4]) != otl_tag(c"DFLT"))))
+	# HarfBuzz's Hangul shaper composes and decomposes syllables first;
+	# the text it shapes is the result, with each character's jamo
+	# feature (and the rtlm bit, as bit 2).
+	int hangul = ttf_code_is(code, c"Hang")
+	char* jamo = cast(char*, 0)
+	int32* hangul_cps = cast(int32*, 0)
+	int32* hangul_clusters = cast(int32*, 0)
+	if (hangul):
+		char* bits = cast(char*, malloc(count + 1))
+		for i in range(count): bits[i] = rtlm[i] << 2
+		hangul_cps = cast(int32*, malloc(count * 12 + 4))
+		hangul_clusters = cast(int32*, malloc(count * 12 + 4))
+		jamo = cast(char*, malloc(count * 3 + 1))
+		count = ttf_hangul_preprocess(f, cps, clusters, bits, count, hangul_cps, hangul_clusters, jamo)
+		free(bits)
+		cps = hangul_cps
+		clusters = hangul_clusters
+		rtlm = cast(char*, malloc(count + 1))
+		for i in range(count):
+			rtlm[i] = jamo[i] >> 2
+			jamo[i] = jamo[i] & 3
 	char* kinds = cast(char*, malloc(count + 1))
 	ttf_mark_clusters(cps, count, kinds)
 	int32[16] parts
 	int vowel_last = -1
+	# Thai SARA AM merges its cluster into the one before; later
+	# characters of its old cluster follow (HarfBuzz's merge_out_clusters).
+	int remap_old = -1
+	int remap_new = -1
 	for i in range(count):
 		int pieces = 0
 		parts[0] = cps[i]
+		int cluster = clusters[i]
+		if (cluster == remap_old): cluster = remap_new
 		# HarfBuzz's Indic preprocessing: a dotted circle splits a vowel
 		# sequence that would read as another vowel (pairs do not overlap).
 		int split = (indic || use) && (i > 0) && (i - 1 > vowel_last) && (ttf_indic_vowel_constraint(code, cps[i - 1], cps[i]) || ttf_use_vowel_constraint(code, cps[i - 1], cps[i]))
 		if ((indic || use) && (i > 1) && (i - 2 > vowel_last) && ttf_code_is(code, c"Deva") && (cps[i - 2] == 0x0930) && (cps[i - 1] == 0x094d) && (cps[i] == 0x0907)): split = 1
 		if (split):
 			vowel_last = i
-			int circle_cluster = clusters[i]
-			if ((b.count > 0) && ttf_continues_cluster(cps[i])): circle_cluster = b.glyphs[b.count - 1].cluster
-			otl_buffer_add(b, ttf_glyph_id(f, 0x25cc), 0x25cc, circle_cluster, ttf_mask_global)
-		if ((cps[i] & ~0x80) == 0x0e33):
-			ttf_thai_sara_am(f, b, cps[i], clusters[i])
+			otl_buffer_add(b, ttf_glyph_id(f, 0x25cc), 0x25cc, cluster, ttf_mask_global)
+			b.glyphs[b.count - 1].props_cp = cps[i]
+		int added = b.count
+		if (((cps[i] & ~0x80) == 0x0e33) && (ttf_code_is(code, c"Thai") || ttf_code_is(code, c"Laoo"))):
+			remap_old = clusters[i]
+			remap_new = ttf_thai_sara_am(f, b, cps[i], cluster)
+			if (rtlm[i]): for k in range(added, b.count): b.glyphs[k].mask = b.glyphs[k].mask | otl_mask_rtlm
 			continue
 		if (kinds[i] == 2): pieces = 0
+		else if (hangul):
+			# Hangul normalizes without recomposition, always taking the
+			# font's glyph for a character when it has one.
+			if (ttf_glyph_id(f, cps[i]) == 0): pieces = ttf_decompose_for(f, cps[i], &parts[0], 0)
 		else if (indic): pieces = ttf_indic_decompose(f, cps[i], &parts[0], 0)
 		else if (use): pieces = ttf_use_decompose(f, cps[i], &parts[0], 0)
 		else if (khmer || myanmar || (kinds[i] == 1)): pieces = ttf_deep_decompose(f, cps[i], &parts[0], 0, khmer)
@@ -957,7 +1367,13 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 		if (pieces == 0):
 			parts[0] = cps[i]
 			pieces = 1
-		for p in range(pieces): ttf_shape_add(f, b, parts[p], clusters[i], rtl)
+		for p in range(pieces): ttf_shape_add(f, b, parts[p], cluster)
+		if (rtlm[i]): for k in range(added, b.count): b.glyphs[k].mask = b.glyphs[k].mask | otl_mask_rtlm
+		if (hangul):
+			for k in range(added, b.count):
+				otl_glyph* g = &b.glyphs[k]
+				if (jamo[i] != 0): g.mask = g.mask | (ttf_mask_ljmo << (jamo[i] - 1))
+				if (!ttf_hangul_is_jamo(g.cp)): g.mask = g.mask | ttf_mask_calt
 	free(kinds)
 	# Like HarfBuzz, marks are reordered and recomposed only when the text
 	# has a mark after its first character.
@@ -966,15 +1382,21 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 		if (ttf_is_unicode_mark(cps[i])): all_simple = 0
 	int hebrew_forms = ttf_code_is(code, c"Hebr") && !otl_has_feature(f, otl_gpos, &scripts[0], script_count, otl_tag(c"mark"))
 	if (!all_simple):
-		ttf_reorder_marks(b)
+		ttf_reorder_marks(b, arabic_shaper)
+	# A CGJ that blocked no reordering becomes skippable (HarfBuzz's
+	# normalizer unhides it).
+	for i in range(1, b.count - 1):
+		if ((b.glyphs[i].cp == 0x034f) && ((ttf_glyph_ccc(&b.glyphs[i + 1]) == 0) || (ttf_glyph_ccc(&b.glyphs[i - 1]) <= ttf_glyph_ccc(&b.glyphs[i + 1])))): b.glyphs[i].unhidden = 1
+	if (!all_simple):
 		if (use): ttf_use_recompose(f, b)
 		else if (syllabic): ttf_indic_recompose(f, b)
-		else: ttf_recompose(f, b, hebrew_forms)
+		else if (!hangul): ttf_recompose(f, b, hebrew_forms)
+	ttf_fraction_masks(b, rtl)
 	otl_set_classes(f, b)
 	int[16] tags
 	int[16] masks
 	int n = 0
-	int joining = ttf_is_joining_script(code) && !indic && !use
+	int joining = arabic_shaper
 	if (indic):
 		ttf_indic_plan* plan = ttf_indic_plan_new(f, ttf_indic_script(code), &scripts[0], script_count, language)
 		ttf_indic_shape(plan, b, (flags & ttf_shape_no_liga) == 0)
@@ -984,11 +1406,16 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 		if (ttf_use_joining_script(code)):
 			forms = cast(int32*, malloc(b.count * 4 + 4))
 			ttf_joining_forms(b, forms)
+			# Mongolian free variation selectors take their base's form.
+			if (ttf_code_is(code, c"Mong")):
+				for i in range(1, b.count):
+					int cp = b.glyphs[i].cp
+					if (((cp >= 0x180b) && (cp <= 0x180d)) || (cp == 0x180f)): forms[i] = forms[i - 1]
 		ttf_use_shape(f, b, &scripts[0], script_count, language, code, forms, rtl, (flags & ttf_shape_no_liga) == 0)
 		if (forms != 0): free(forms)
 	else if (khmer): ttf_khmer_shape(f, b, &scripts[0], script_count, language, (flags & ttf_shape_no_liga) == 0)
 	else if (myanmar): ttf_myanmar_shape(f, b, &scripts[0], script_count, language, (flags & ttf_shape_no_liga) == 0)
-	else: ttf_shape_gsub(f, b, &scripts[0], script_count, language, joining, ttf_code_is(code, c"Arab"), rtl, flags)
+	else: ttf_shape_gsub(f, b, &scripts[0], script_count, language, joining, ttf_code_is(code, c"Arab"), hangul, rtl, flags)
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
 		g.x_advance = ttf_advance_units(f, g.gid)
@@ -999,13 +1426,14 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 		g.attach = -1
 		g.attach_kind = 0
 	n = 0
-	if ((flags & ttf_shape_no_kern) == 0): ttf_stage1(&tags[0], &masks[0], otl_tag(c"kern"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mark"), ttf_mask_global | otl_mask_manual_joiners, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mkmk"), ttf_mask_global | otl_mask_manual_joiners, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"curs"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"dist"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"abvm"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"blwm"), ttf_mask_global, &n)
+	n = otl_common_features(b, &tags[0], &masks[0], 0)
+	if ((flags & ttf_shape_no_kern) == 0): ttf_stage1(&tags[0], &masks[0], otl_tag(c"kern"), ttf_mask_global | otl_mask_hb, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mark"), ttf_mask_global | otl_mask_hb | otl_mask_manual_joiners, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mkmk"), ttf_mask_global | otl_mask_hb | otl_mask_manual_joiners, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"curs"), ttf_mask_global | otl_mask_hb, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"dist"), ttf_mask_global | otl_mask_hb, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"abvm"), ttf_mask_global | otl_mask_hb, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"blwm"), ttf_mask_global | otl_mask_hb, &n)
 	# As in HarfBuzz, any GPOS table (even one without lookups) counts as
 	# positioning the text (no fallback marks), whether or not this
 	# script uses it.
@@ -1035,7 +1463,7 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	# by the width it loses.
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if (!syllabic && (g.props == otl_class_mark)):
+		if (!syllabic && !hangul && (g.props == otl_class_mark)):
 			if (!positioned && !rtl): g.x_offset = g.x_offset - g.x_advance
 			g.x_advance = 0
 	if (!positioned && !syllabic && !ttf_code_is(code, c"Thai") && !ttf_code_is(code, c"Laoo")): ttf_fallback_marks(f, b, rtl)
@@ -1043,14 +1471,20 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	# spaces (HarfBuzz's hide_default_ignorables).
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if ((g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp)):
+		if ((g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && otl_default_ignorable(g.cp)):
 			g.gid = space
 			g.x_advance = 0
 			g.x_offset = 0
-			g.attach_kind = 0
+			g.y_offset = 0
 	otl_position_finish(b, rtl)
 	if (space == 0): ttf_shape_drop_ignorables(b)
 	if (rtl): otl_buffer_reverse(b)
+	if (arabic_shaper): ttf_apply_stch(f, b, rtl)
+	if (hangul):
+		free(hangul_cps)
+		free(hangul_clusters)
+		free(jamo)
+		free(rtlm)
 	return b
 
 # ttf_shape with context: pre and post as for ttf_shape_set_context, which

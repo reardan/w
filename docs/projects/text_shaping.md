@@ -40,15 +40,32 @@ the same rasterizer and cache.
 
 `ttf_shape(font, cps, clusters, count, rtl, script, language, flags)` returns an
 `otl_buffer` of positioned glyphs in visual order, in font units. It follows
-HarfBuzz's default, Arabic, Hebrew, Indic, Thai/Lao and Universal Shaping
-Engine shapers:
+HarfBuzz's default, Arabic, Hebrew, Hangul, Indic, Khmer, Myanmar, Thai/Lao
+and Universal Shaping Engine shapers:
 
+- **Text preparation** as `hb_ot_shape_internal` does it: grapheme clusters
+  merged (marks, emoji modifiers and ZWJ sequences with HarfBuzz's own
+  Extended_Pictographic table, regional-indicator pairs), a run against its
+  script's native direction shaped natively with its graphemes reversed,
+  mirrored characters in RTL text (else the `rtlm` feature), the
+  `ltra`/`ltrm`/`rtla`/`rtlm` direction features and automatic fractions
+  (`frac`/`numr`/`dnom` around U+2044).
 - **Normalization** against the font's cmap (decompose, reorder by modified
-  combining class, recompose), with default ignorables hidden and RTL mirroring.
+  combining class, recompose), with default ignorables hidden, a CGJ that
+  blocked no reordering made skippable, and HarfBuzz's cluster merging when
+  marks move.
 - **GSUB** types 1-8 (`lib.ttf_layout`) with GDEF classes, mark attachment
-  classes and mark filtering sets, lookup flags, and script/language/feature
-  selection: `ccmp`/`locl`, Arabic `isol`/`fina`/`medi`/`init` from Unicode
-  joining types, `rlig`/`rclt`/`calt`/`liga`/`clig`, and for the nine Indic
+  classes and mark filtering sets, lookup flags, HarfBuzz's input matching
+  (its skippy iterator: default ignorables, hidden characters, joiner and
+  per-syllable rules), and script/language/feature selection: `ccmp`/`locl`,
+  Arabic and Syriac `isol`/`fina`/`fin2`/`fin3`/`medi`/`med2`/`init` from
+  HarfBuzz's joining state machine (with the Alaph and Dalath-Rish groups),
+  `stch` (the Syriac SAM stretched over the rest of its word), the Arabic
+  modifier combining marks reordered, `rlig`/`rclt`/`calt`/`liga`/`clig`/`mset`
+  in HarfBuzz's stages; the Hangul shaper (`lib.ttf_hangul`: syllables
+  composed or decomposed by what the font has, `ljmo`/`vjmo`/`tjmo` on Old
+  Hangul jamo, tone marks moved in front of their syllable, `calt` kept off
+  jamo); and for the nine Indic
   scripts (Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu,
   Kannada, Malayalam; `lib.ttf_indic`, new `dev2`-style and old `deva`-style
   tags) HarfBuzz's Indic shaper: its syllable machine and per-script
@@ -79,7 +96,9 @@ Engine shapers:
   sort, `rphf`/`pref`/`blwf`/`pstf` one stage each); like HarfBuzz, a
   `mymr`, DFLT or latn font shapes Myanmar as default text.
 - **GPOS** types 1-9: `kern`, mark-to-base, mark-to-ligature, mark-to-mark,
-  cursive attachment, `dist`, `abvm`/`blwm`.
+  cursive attachment (HarfBuzz's entry/exit pairing, right-to-left flag and
+  cross-stream offsets through chains), `dist`, `abvm`/`blwm`, with
+  attachment offsets propagated as `propagate_attachment_offsets` does.
 - **Fallbacks** for fonts without the tables: Arabic presentation forms
   (including lam-alef and shadda ligatures) from the font's cmap, Hebrew
   presentation compositions, legacy `kern` table pairs, and HarfBuzz's
@@ -92,9 +111,7 @@ Against the full Noto fonts the USE shaper matches HarfBuzz 15 on generated
 syllable-and-word corpora (2,000 lines each) and random-character text for
 Sinhala, Tibetan, Javanese, Balinese, Tai Tham (a `DFLT`-only font, so the
 default shaper) and Devanagari in a `dev3`-only copy of Noto Sans Devanagari,
-and on 500 generated lines for each of about 60 other USE fonts; the known
-difference is a Tai Tham ZWNJ before a mark in random text, which the default
-shaper's legacy joiner rules match differently. Against the full Noto Sans
+and on 500 generated lines for each of about 60 other USE fonts. Against the full Noto Sans
 fonts the Indic shaper matches HarfBuzz 15 on a word-and-conjunct corpus
 (about 2,000-2,600 lines per script) and on random mark/joiner stress text;
 the known difference is a syllable longer than HarfBuzz's buffer window.
@@ -107,16 +124,32 @@ installed Noto Sans/Serif Khmer and Myanmar weights, also with GSUB, GPOS
 or GDEF hidden. Across the installed system TrueType and CFF fonts,
 OpenSymbol and Unifont over a multi-script corpus (Latin, Greek and
 Cyrillic with random mark stacks, Arabic, Hebrew, Gurmukhi in a Latin
-run), with GSUB/GPOS/GDEF hidden in turn to reach every fallback, the only
-remaining differences are in symbol-encoded fonts (Webdings), whose (3,0)
-cmap HarfBuzz also reads at U+F000..U+F0FF for U+0000..U+00FF and
-`lib.ttf` does not. Fallback mark placement follows HarfBuzz's glyph
+run), with GSUB/GPOS/GDEF hidden in turn to reach every fallback, there
+are no remaining differences: `lib.ttf` picks the cmap subtable HarfBuzz
+does and, like it, reads a symbol (3,0) subtable at U+F000..U+F0FF for
+U+0000..U+00FF (Webdings). Fallback mark placement follows HarfBuzz's glyph
 extents (the hmtx left side bearing), ligature components and clusters;
 the Arabic fallback synthesizes HarfBuzz's presentation-form ligature
 lookups; ligatures carry HarfBuzz's ligature ids and component numbers,
 which later input matching checks; an unclassified GDEF glyph and a mark
 filtering set GDEF lacks filter nothing; and the default normalizer
 decomposes a letter followed by marks (Gurmukhi U+0A59 in a Latin run).
+
+The widest check (issue #825) runs generated corpora for all 192 installed
+Noto `*-Regular` fonts (264 corpora of 1,000 lines: syllable-like text and
+random runs of each font's two largest script blocks with joiners and
+dotted circles): no line differs from HarfBuzz 15, where 2,098 did before
+the parity work in that issue. The same holds for 206 other system fonts
+(DejaVu, Liberation, FreeFont, Ubuntu, Lato, Roboto, URW, msttcorefonts,
+Droid Sans Fallback; mixed scripts, mark stacks, ligatures and fractions,
+and Latin-1 text), Korean text in Noto Sans CJK KR and Droid Sans
+Fallback, and the Noto corpora again with GSUB, GPOS or GDEF hidden (each
+font with one table hidden, then another), but for two fonts without the
+hidden table: Noto Serif Ahom without GDEF (35 of 1,000 lines attach a
+mark HarfBuzz leaves unattached) and Noto Music without GPOS (11 lines of
+fallback placement over a multiple substitution that reorders marks). The
+Unicode data is 15.0, where HarfBuzz 15 has 18.0 (its Extended_Pictographic
+table is copied), so characters assigned since then can differ.
 
 ## Carets, clusters and fonts
 
@@ -416,7 +449,10 @@ and the dots of `i` and `j`.
   (`tests/data/shape_golden.txt`, regenerated by `tools/shape_golden_hb.py`)
   over Liberation Sans and the small OFL Noto subsets in `tests/data/fonts/`,
   including fonts with tables hidden, plus joining forms, normalization
-  tables, script selection, options and RTL mirroring.
+  tables, script selection, options and RTL mirroring. Its Syriac, Korean,
+  symbol-cmap and GDEF-less Gujarati subsets cover Alaph forms and `stch`,
+  the Hangul shaper, the (3,0) cmap and the classes of vowel-constraint
+  dotted circles.
 - `./wbuild ttf_cff_test` compares CFF paths with fontTools output
   (`tests/data/cff_paths.txt`, from `tools/cff_paths_ref.py`) for a name-keyed
   and a CID-keyed font, and rasterizes and shapes them.
