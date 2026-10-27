@@ -89,15 +89,17 @@ struct tile_sync_point:
 	int barrier_id
 	int scope
 
+# A dot multiplies an m-by-k tile by a k-by-n tile. Each thread holds a
+# strided fragment of every operand and of the result (see tile_plan.w).
 struct tile_dot_plan:
 	tile_node* node
 	int id
 	tile_shared_buffer* left
 	tile_shared_buffer* right
+	int m_extent
 	int k_extent
-	int stage_thread_shift
-	int row_shift
-	int col_shift
+	int n_extent
+	int fused
 	tile_sync_point* stage_ready
 	tile_sync_point* reuse_ready
 	tile_dot_plan* next
@@ -136,6 +138,26 @@ struct tile_program:
 	tile_node* body
 	tile_lowering_plan* plan
 	int plan_generation
+
+# Rank-two tiles have static dimensions from this set. A 16-by-16 thread
+# grid covers every shape, so a thread holds (rows/16)*(cols/16) elements.
+int tile_dimension_supported(int value):
+	return (value == 16) || (value == 32) || (value == 64) || (value == 128)
+
+
+# Shared staging rows are padded by 16 words when their width is a multiple
+# of 32 words, so the two tile rows a warp touches fall in disjoint banks.
+int tile_shared_row_words(int cols):
+	if (cols % 32 == 0): return cols + 16
+	return cols
+
+
+# All dots reuse one shared region: the left operand at offset zero and the
+# right operand after it. Every dot ends with a block barrier, so the next
+# dot cannot overwrite operands another thread is still reading.
+int tile_dot_shared_bytes(int m, int k, int n):
+	return (m * tile_shared_row_words(k) + k * tile_shared_row_words(n)) * 4
+
 
 # Stable binary operation codes use ASCII for arithmetic, and these for
 # comparisons/logical operators. Source spellings remain in node.name.

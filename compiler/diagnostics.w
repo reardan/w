@@ -994,7 +994,7 @@ void diag_code_table():
 	diag_code_row(c"W0321", c"extern used without any c_lib to import from")
 	diag_code_row(c"W0322", c"extern import declared before any c_lib")
 	diag_code_row(c"W0323", c"thread_local is only supported on the x86 and x64 Linux targets")
-	diag_code_row(c"W0324", c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
+	diag_code_row(c"W0324", c"thread_local is not supported in in-process compiles outside the REPL and wdbg")
 	diag_code_row(c"W0325", c"thread_local fixed arrays are not supported; use a pointer")
 	diag_code_row(c"W0326", c"thread_local applies to variables, not functions")
 	diag_code_row(c"W0327", c"thread_local variables cannot have an initializer; they start zeroed")

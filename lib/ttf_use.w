@@ -243,6 +243,7 @@ void ttf_use_recompose(ttf_font* f, otl_buffer* b):
 			if (gid != 0):
 				if (g.cluster < s.cluster): s.cluster = g.cluster
 				s.cp = composed
+				s.props_cp = composed
 				s.gid = gid
 				s.unicode_mark = ut_is_nonspacing_mark(composed)
 				otl_buffer_delete(b, i)
@@ -704,6 +705,7 @@ void ttf_use_dotted_circles(ttf_font* f, otl_buffer* b):
 		otl_glyph* g = &b.glyphs[at]
 		g.gid = circle
 		g.cp = 0x25cc
+		g.props_cp = 0x25cc
 		g.icat = ttf_use_b
 		g.props = 0
 		g.unicode_mark = 0
@@ -792,6 +794,7 @@ void ttf_use_shape(ttf_font* f, otl_buffer* b, char* scripts, int script_count, 
 	int manual_zwj = otl_mask_hb | otl_mask_per_syllable | otl_mask_manual_joiners | otl_mask_auto_zwnj
 	ttf_use_feature(&tags[0], &masks[0], &n, c"rvrn", 1 | hb)
 	ttf_use_stage(f, b, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
+	otl_apply_common(f, b, scripts, script_count, language, rtl)
 	int broken = ttf_use_find_syllables(b)
 	if (has_rphf): ttf_use_rphf_mask(b)
 	if (forms == 0): ttf_use_topographical(b, &topo[0])

@@ -19,7 +19,9 @@ application root at /org/a11y/atspi/accessible/root. Publication copies
 the snapshot, so queries are answered from the published state however
 the application manages its own trees. Publishing again emits the
 changes as AT-SPI events (focus, checked/expanded/selected states,
-names, children added and removed) so caching clients stay current.
+names, children added and removed) so caching clients stay current, and
+live-region changes and the snapshot's announcement as
+Object:Announcement events, which Orca speaks wherever focus is.
 
 Actions arrive as Action.DoAction, Component.GrabFocus and
 EditableText calls. They are queued (at most 64, values within the
@@ -27,8 +29,9 @@ snapshot's text budget) and applied by ui_access_atspi_dispatch through
 ui_access_dispatch, which revalidates them against the application's
 current tree, exactly as the Cocoa and web bridges do.
 
-Interfaces: Accessible, Application (root), Component, Action, Text and
-EditableText (textboxes) and Value (progress bars). Geometry is the
+Interfaces: Accessible, Application (root), Component, Action, Text
+(with the caret and one selection) and EditableText (textboxes) and
+Value (progress bars). Geometry is the
 snapshot's logical window coordinates; screen coordinates add the origin
 set by ui_access_atspi_set_origin.
 */
@@ -85,6 +88,7 @@ const int ATSPI_STATE_SENSITIVE = 24
 const int ATSPI_STATE_SHOWING = 25
 const int ATSPI_STATE_SINGLE_LINE = 26
 const int ATSPI_STATE_VISIBLE = 30
+const int ATSPI_STATE_SELECTABLE_TEXT = 38
 const int ATSPI_STATE_CHECKABLE = 41
 const int ATSPI_STATE_HAS_POPUP = 42
 const int ATSPI_STATE_READ_ONLY = 43
@@ -317,6 +321,7 @@ void ui_atspi_states_for(ui_access_node* n, int focused_id, int* lo, int* hi):
 	if (role == UI_ACCESS_TEXTBOX):
 		if (((n.states & UI_ACCESS_READONLY) == 0) && ((n.actions & UI_ACCESS_SET_VALUE) != 0)): s = s | (1 << ATSPI_STATE_EDITABLE)
 		else: t = t | (1 << (ATSPI_STATE_READ_ONLY - 32))
+		if ((n.actions & UI_ACCESS_SET_SELECTION) != 0): t = t | (1 << (ATSPI_STATE_SELECTABLE_TEXT - 32))
 	if (role == UI_ACCESS_DIALOG): s = s | (1 << ATSPI_STATE_MODAL)
 	if ((n.parent == 0) && (role == UI_ACCESS_DOCUMENT)): s = s | (1 << ATSPI_STATE_ACTIVE)
 	lo[0] = s
@@ -345,6 +350,7 @@ char* ui_atspi_state_nick(int k):
 	if (k == ATSPI_STATE_SHOWING): return c"showing"
 	if (k == ATSPI_STATE_VISIBLE): return c"visible"
 	if (k == ATSPI_STATE_CHECKABLE): return c"checkable"
+	if (k == ATSPI_STATE_SELECTABLE_TEXT): return c"selectable-text"
 	if (k == ATSPI_STATE_HAS_POPUP): return c"has-popup"
 	if (k == ATSPI_STATE_READ_ONLY): return c"read-only"
 	return 0
@@ -448,6 +454,12 @@ int ui_atspi_has_editable(ui_access_node* n):
 	return ui_atspi_has_text(n) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0)
 
 
+# The caret's character offset; a text without one reports 0.
+int ui_atspi_caret(ui_access_node* n):
+	if (n.caret < 0): return 0
+	return n.caret
+
+
 int ui_atspi_has_value(ui_access_node* n):
 	return (n != 0) && (n.role == UI_ACCESS_PROGRESS)
 
@@ -491,32 +503,23 @@ void ui_atspi_put_text(dbus_buf* out, ui_access_text* t):
 
 # A row without a name of its own is named from its cells, as ARIA
 # rows are: screen readers announce a focused row by its name and do
-# not read a row's cells themselves.
+# not read a row's cells themselves (ui_access_effective_name).
 void ui_atspi_put_name(dbus_buf* out, ui_access_node* n):
-	if ((n.role != UI_ACCESS_ROW) || (n.name.length > 0)):
-		ui_atspi_put_text(out, &n.name)
-		return
-	int length = 0
-	ui_access_node* c = n.first_child
-	while (c != 0):
-		if (c.name.length > 0): length = length + c.name.length + 1
-		c = c.next_sibling
-	if (length == 0):
-		ui_atspi_put_text(out, &n.name)
-		return
-	char* joined = cast(char*, __w_alloc(length))
-	int at = 0
-	c = n.first_child
-	while (c != 0):
-		if (c.name.length > 0):
-			if (at > 0):
-				joined[at] = ' '
-				at = at + 1
-			for i in range(c.name.length): joined[at + i] = c.name.data[i]
-			at = at + c.name.length
-		c = c.next_sibling
-	dbus_put_string_n(out, joined, at)
-	free(joined)
+	ui_access_text name
+	ui_access_effective_name(n, &name)
+	ui_atspi_put_text(out, &name)
+	free(name.data)
+
+
+char* ui_atspi_live_name(int live):
+	if (live == UI_ACCESS_LIVE_ASSERTIVE): return c"assertive"
+	return c"polite"
+
+
+void ui_atspi_put_attribute(dbus_buf* out, char* key, char* value):
+	dbus_put_struct(out)
+	dbus_put_string(out, key)
+	dbus_put_string(out, value)
 
 
 /* Queued actions, applied by ui_access_atspi_dispatch. */
@@ -610,9 +613,13 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 			return 1
 		return 0
 	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Text") && ui_atspi_has_text(n)):
-		if ((strcmp(prop, c"CharacterCount") == 0) || (strcmp(prop, c"CaretOffset") == 0)):
+		if (strcmp(prop, c"CharacterCount") == 0):
 			dbus_put_sig(out, c"i")
 			dbus_put_i32(out, ui_atspi_char_count(&n.value))
+			return 1
+		if (strcmp(prop, c"CaretOffset") == 0):
+			dbus_put_sig(out, c"i")
+			dbus_put_i32(out, ui_atspi_caret(n))
 			return 1
 		return 0
 	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Value") && ui_atspi_has_value(n)):
@@ -902,9 +909,10 @@ int ui_atspi_call_accessible(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 			char[2] level
 			level[0] = '0' + n.heading_level
 			level[1] = 0
-			dbus_put_struct(out)
-			dbus_put_string(out, c"level")
-			dbus_put_string(out, &level[0])
+			ui_atspi_put_attribute(out, c"level", &level[0])
+		# Live regions, with the attribute names Gecko and Chromium use.
+		if ((n != 0) && (n.live != UI_ACCESS_LIVE_OFF)): ui_atspi_put_attribute(out, c"live", ui_atspi_live_name(n.live))
+		if ((n != 0) && (ui_access_live_root(n) != 0)): ui_atspi_put_attribute(out, c"container-live", ui_atspi_live_name(ui_access_live_root(n).live))
 		dbus_put_struct(out)
 		dbus_put_string(out, c"toolkit")
 		dbus_put_string(out, c"W")
@@ -1022,6 +1030,22 @@ void ui_atspi_put_range(dbus_buf* out, ui_access_text* t, int start, int end):
 	dbus_put_string_n(out, &t.data[from], to - from)
 
 
+# An empty a{ss}.
+void ui_atspi_put_attributes(dbus_buf* out):
+	int mark = dbus_array_begin(out, 8)
+	dbus_array_end(out, mark, 8)
+
+
+# Queue a caret move (start == end) or a selection from start to end
+# (the caret at end), in characters of the published text.
+int ui_atspi_select_text(ui_atspi_bridge* b, ui_access_node* n, int start, int end):
+	int count = ui_atspi_char_count(&n.value)
+	if ((start < 0) || (end < 0) || (start > count) || (end > count)): return 0
+	char[32] payload
+	int length = ui_access_selection_format(&payload[0], start, end)
+	return ui_atspi_enqueue(b, n, UI_ACCESS_SET_SELECTION, &payload[0], length)
+
+
 int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
@@ -1057,22 +1081,58 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, start)
 		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"sii")
-	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, 0)
+	# One selection at most: the snapshot's [selection_start,
+	# selection_end) when it is not empty.
+	int selected = ui_access_has_selection(n)
+	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, selected)
 	if (ui_atspi_member(m, c"GetSelection")):
-		dbus_put_i32(out, 0)
-		dbus_put_i32(out, 0)
+		int k = dbus_read_i32(&r)
+		int start = 0
+		int end = 0
+		if ((k == 0) && selected && (r.failed == 0)):
+			start = n.selection_start
+			end = n.selection_end
+		dbus_put_i32(out, start)
+		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"ii")
-	if (ui_atspi_member(m, c"GetDefaultAttributes") || ui_atspi_member(m, c"GetDefaultAttributeSet")):
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
-		if (ui_atspi_member(m, c"GetDefaultAttributeSet")): return dbus_reply(b.bus, m, c"as")
+	if (ui_atspi_member(m, c"SetCaretOffset")):
+		int k = dbus_read_i32(&r)
+		if (r.failed): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, k, k))
+	if (ui_atspi_member(m, c"AddSelection")):
+		# A second selection is not supported; an empty one says nothing.
+		int start = dbus_read_i32(&r)
+		int end = dbus_read_i32(&r)
+		if (r.failed || selected || (start == end)): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+	if (ui_atspi_member(m, c"SetSelection")):
+		int k = dbus_read_i32(&r)
+		int start = dbus_read_i32(&r)
+		int end = dbus_read_i32(&r)
+		if (r.failed || (k != 0)): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+	if (ui_atspi_member(m, c"RemoveSelection")):
+		# Removing the selection leaves the caret where it was.
+		int k = dbus_read_i32(&r)
+		if (r.failed || (k != 0) || !selected): return ui_atspi_reply_bool(b, m, 0)
+		int caret = ui_atspi_caret(n)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, caret, caret))
+	# Text attributes: the bridge knows no fonts or colours, so every
+	# set is empty and the whole text is one run.
+	if (ui_atspi_member(m, c"GetDefaultAttributes")):
+		ui_atspi_put_attributes(out)
 		return dbus_reply(b.bus, m, c"a{ss}")
+	if (ui_atspi_member(m, c"GetDefaultAttributeSet")):
+		int mark = dbus_array_begin(out, 4)
+		dbus_array_end(out, mark, 4)
+		return dbus_reply(b.bus, m, c"as")
 	if (ui_atspi_member(m, c"GetAttributes") || ui_atspi_member(m, c"GetAttributeRun")):
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
+		ui_atspi_put_attributes(out)
 		dbus_put_i32(out, 0)
 		dbus_put_i32(out, count)
 		return dbus_reply(b.bus, m, c"a{ss}ii")
+	if (ui_atspi_member(m, c"GetAttributeValue")):
+		return ui_atspi_reply_string(b, m, c"")
 	if (ui_atspi_member(m, c"GetCharacterExtents") || ui_atspi_member(m, c"GetRangeExtents")):
 		int x = 0
 		int y = 0
@@ -1084,8 +1144,6 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, w)
 		dbus_put_i32(out, h)
 		return dbus_reply(b.bus, m, c"iiii")
-	if (ui_atspi_member(m, c"SetCaretOffset") || ui_atspi_member(m, c"AddSelection") || ui_atspi_member(m, c"RemoveSelection") || ui_atspi_member(m, c"SetSelection")):
-		return ui_atspi_reply_bool(b, m, 0)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1430,6 +1488,22 @@ void ui_atspi_emit_text(ui_atspi_bridge* b, int id, char* kind, ui_access_text* 
 	dbus_signal(b.bus, ui_atspi_node_path(&path[0], id), c"org.a11y.atspi.Event.Object", c"TextChanged", c"siiva{sv}")
 
 
+# Object:Announcement (at-spi2-core 2.46+, what ATK's notification signal
+# becomes): detail1 is the politeness (ATSPI_LIVE_POLITE 1, ASSERTIVE 2)
+# and the text the event's string. Orca speaks it whatever has focus,
+# which name and text changes of an unfocused object do not achieve.
+void ui_atspi_emit_announcement(ui_atspi_bridge* b, int id, ui_access_text* text, int live):
+	char[64] path
+	char* p = ui_atspi_root_path()
+	if (id > 0): p = ui_atspi_node_path(&path[0], id)
+	dbus_buf* out = dbus_body(b.bus)
+	ui_atspi_event_head(out, c"", live, 0)
+	dbus_put_sig(out, c"s")
+	ui_atspi_put_text(out, text)
+	ui_atspi_event_tail(out)
+	dbus_signal(b.bus, p, c"org.a11y.atspi.Event.Object", c"Announcement", c"siiva{sv}")
+
+
 int ui_atspi_text_same(ui_access_text* a, ui_access_text* b):
 	if (a.length != b.length): return 0
 	for i in range(a.length):
@@ -1510,12 +1584,26 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 				on = (hi >> (k - 32)) & 1
 				off = (was_hi >> (k - 32)) & 1
 			if ((on != off) && (ui_atspi_state_nick(k) != 0)): ui_atspi_emit_state(b, id, ui_atspi_state_nick(k), on)
-		if (!ui_atspi_text_same(&n.name, &was.name)): ui_atspi_emit_name(b, id, c"accessible-name", &n.name)
+		# The effective name, so a row named from its cells reports
+		# a change when a cell's name changes.
+		if (!ui_access_effective_name_same(n, was)):
+			ui_access_text name
+			ui_access_effective_name(n, &name)
+			ui_atspi_emit_name(b, id, c"accessible-name", &name)
+			free(name.data)
 		if (!ui_atspi_text_same(&n.description, &was.description)): ui_atspi_emit_name(b, id, c"accessible-description", &n.description)
 		if ((n.role == UI_ACCESS_PROGRESS) && !ui_atspi_text_same(&n.value, &was.value)): ui_atspi_emit_name(b, id, c"accessible-value", &n.value)
 		if (ui_atspi_has_text(n) && !ui_atspi_text_same(&n.value, &was.value)):
 			ui_atspi_emit_text(b, id, c"delete", &was.value)
 			ui_atspi_emit_text(b, id, c"insert", &n.value)
+		# The selection, then where the caret went (Orca reads the
+		# selected text on the first and the moved-over text on the
+		# second).
+		if (ui_atspi_has_text(n)):
+			if ((ui_access_has_selection(n) || ui_access_has_selection(was)) && ((n.selection_start != was.selection_start) || (n.selection_end != was.selection_end))):
+				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextSelectionChanged", c"", 0, 0)
+			if ((n.caret != was.caret) && (n.caret >= 0)):
+				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextCaretMoved", c"", n.caret, 0)
 	# One SelectionChanged per container whose selected children changed,
 	# after the per-child selected states.
 	walk = fresh.root
@@ -1529,6 +1617,16 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 	if (fresh.focused_id != old_focus):
 		if ((old_focus != 0) && (ui_access_find(fresh, old_focus) != 0)): ui_atspi_emit_state(b, old_focus, c"focused", 0)
 		if (fresh.focused_id != 0): ui_atspi_emit_state(b, fresh.focused_id, c"focused", 1)
+	# Live regions announce text added or changed in them (not the first
+	# publication's content, as on the web), after the focus change.
+	if ((old != 0) && (old.root != 0)):
+		walk = fresh.root
+		while (walk != 0):
+			ui_access_text* said = ui_access_live_change(walk, ui_access_find(old, walk.id))
+			if (said != 0): ui_atspi_emit_announcement(b, walk.id, said, ui_access_live_root(walk).live)
+			walk = ui_atspi_preorder_next(walk)
+	if ((fresh.announcement.length > 0) && (fresh.root != 0)):
+		ui_atspi_emit_announcement(b, fresh.root.id, &fresh.announcement, fresh.announcement_live)
 
 
 /* Connection. */
@@ -1610,6 +1708,9 @@ int ui_access_atspi_publish(ui_atspi_bridge* b, ui_access_tree* tree):
 	ui_atspi_clear_queue(b)
 	ui_atspi_emit_changes(b, old, b.published)
 	ui_access_tree_free(old)
+	# The announcement is spoken once: consumed from both trees.
+	ui_access_announcement_clear(b.published)
+	ui_access_announcement_clear(tree)
 	return b.bus.failed == 0
 
 

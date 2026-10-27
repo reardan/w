@@ -14,6 +14,16 @@ int sm_flag(char* name):
 int main(int argc, int argv):
 	args_init(argc, argv)
 	char* name = path_basename(args_program())
+	# The compiler mock installs itself as the compiled example driver: an
+	# example whose text names an outcome produces it, any other is accepted.
+	if (ends_with(name, c".bin")):
+		char* example = ht_read(args_get(1)).data
+		if (contains(example, c"reject")):
+			println(c"example: syntax error")
+			return 1
+		if (contains(example, c"hang")): process_sleep_ms(5000)
+		if (contains(example, c"crash")): kill(getpid(), 15)
+		return 0
 	char* mode_path = strjoin(args_program(), c".mode")
 	char* mode = c""
 	if (path_exists(mode_path)): mode = ht_read(mode_path).data
@@ -31,7 +41,12 @@ int main(int argc, int argv):
 	if (strcmp(mode, c"fail") == 0 || (strcmp(mode, c"strict_fail") == 0 && sm_flag(c"--strict"))): return 7
 	if (strcmp(mode, c"stateful_fail") == 0 && sm_flag(c"--stateful")): return 8
 	if (strcmp(mode, c"missing") == 0): return 0
-	if (strcmp(name, c"compiler") == 0): ht_require(ht_split(replace(ht_read(args_get(1)).data, c"int main():", c"|"), '|').length == 2, c"compile harness must have exactly one main")
+	if (strcmp(name, c"compiler") == 0):
+		char* program = ht_read(args_get(1)).data
+		int at = index_of(program, c"int main(")
+		ht_require(at >= 0 && index_of(program + at + 1, c"int main(") < 0, c"compile harness must have exactly one main")
+		ht_require(shutil_copy(args_program(), sm_option(c"-o")) == 0, c"cannot install example driver")
+		return 0
 	char* dependencies = sm_option(c"--dependencies")
 	if (dependencies != 0):
 		char* text = strjoin(args_get(1), c"\n")

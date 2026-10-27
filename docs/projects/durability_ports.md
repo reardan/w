@@ -2,7 +2,13 @@
 
 `lib/fs.w` has native positional I/O, truncation, directory-relative/exclusive
 creation, advisory process-lifetime locks and durability adapters on Linux
-x86/x64/ARM64 and ARM64 Darwin. ARM64 Linux native qualification remains pending. Darwin/APFS has native
+x86/x64/ARM64 and ARM64 Darwin, and a separate Windows x64 contract
+([below](#windows-x64)) whose native qualification is pending. Each target's
+adapter is `lib/__arch__/<target>/fs_native.w`: the POSIX targets forward to
+their syscall adapters (`lib/fs_native_posix.w`), Windows has its own. ARM64
+Linux runs the shared suites and the fault/crash harness under qemu-user in
+`tests_arm64`; its native qualification (a real ARM64 Linux kernel, filesystem
+and device) remains pending. Darwin/APFS has native
 process-crash and fault-injection coverage on an M3 Pro; physical power-loss
 qualification remains pending. A successful syscall
 is not evidence that a device survives power loss.
@@ -54,6 +60,23 @@ bin/qualify_native --suite durability --rounds 20 \
   --scratch /path/on/filesystem-under-test --output bin/durability-native.json
 ```
 
+A physical Android ARM64 device attached over ADB qualifies the Linux
+`arm64` adapters with the host-built static ELF fixtures, the same way the
+#607 ordered-memory evidence was collected (no Bionic, no translation):
+
+```sh
+bin/qualify_native --suite durability --adb SERIAL --pac off --rounds 20 \
+  --output bin/durability-native-android.json
+```
+
+`--pac off` is needed only on CPUs without pointer authentication. Each
+trial runs in a fresh directory under `/data/local/tmp` (usually f2fs or
+ext4 on the userdata partition, often with file-based encryption); the
+report records that directory's `df` output and the device's `/proc/mounts`
+so the filesystem, mount options (`nobarrier`, f2fs `fsync_mode`) and
+device are part of the evidence. Results apply to that filesystem and
+storage device only.
+
 The driver records hardware/OS/compiler/source hashes, flags, filesystem location
 and repetitions. It runs the fixtures under streaming, retained AST and optimized
 retained AST compilation, each in a fresh scratch directory. Use a local scratch
@@ -86,6 +109,31 @@ Both ARM64 targets cross-compile every fixture in all three compilation modes.
 The x64 Linux supplementary harness passes in all three modes. ARM64 Linux
 native qualification remains pending.
 
+ARM64 Linux runs under qemu-user in the `tests_arm64` suite (the CI `arm64`
+job): the shared `lib/fs_test.w` (15 tests: 5 GiB sparse offsets, hole
+reads, truncate, overflow rejection, concurrent positional access through a
+shared open file description while its cursor moves, exclusive and
+directory-relative creation, close-on-exec, native errno, lock contention
+and release after SIGKILL, file/directory barriers and replacement
+reports), `lib/io_test.w`, `tests/native_qualification_test.w`, the
+`native_qualification_emulated_test` run of both qualification fixtures in
+all three compilation modes, and `fs_fault_arm64_test`. That last target
+(`tools/linux_fs_qualification.w`, also run for i386 and x86-64 as
+`fs_fault_linux_test` in `tests`) is the Linux counterpart of the Darwin
+fault harness: a private import root replaces only the `fsync` and `rename`
+bodies of the target's syscall adapter with `tests/fs_linux_fault_hooks.w`,
+injects EIO, EINTR, EINVAL, EOPNOTSUPP and ENOSPC at the file barrier, the
+rename and the directory barrier, and SIGKILLs the writer immediately before
+and after each of them (18 cases per target). Each case checks the visible
+old/new contents, temp cleanup or crash leftovers, `stage`/`renamed`, the
+native errno, and a successful republication afterwards.
+
+qemu-user forwards every guest syscall to the x86_64 host kernel, so these
+runs establish the AArch64 syscall numbers, flag translation, offset ABI
+and error propagation end to end, but say nothing about ARM64 kernels,
+filesystems or storage devices. They are regression coverage, **not**
+native qualification.
+
 On 2026-10-09, native M3 Pro/macOS 26.3 tests on local internal APFS passed
 15 filesystem tests, five checked-I/O tests, and 17 injected failure/SIGKILL
 cases with recovery. File and directory full barriers succeeded on this
@@ -98,11 +146,68 @@ The existing `tools/qualify_native.w --suite durability` fixture also passed
 These results cover process crashes with a live kernel and caches, not physical
 power loss. Other filesystem/device combinations require their own evidence.
 
-Windows is a separate port, explicitly **unsupported** by this durability API.
-The win64 `sys_pread`, `sys_pwrite`, `sys_ftruncate`, `sys_openat` and `sys_flock`
-stubs continue to report `IO_UNSUPPORTED`. A future port needs explicit Windows
-handle sharing, positional/overlapped I/O, lock lifetime, flush and replacement
-semantics, not a POSIX-parity claim. wasm is likewise unsupported.
+wasm remains explicitly unsupported (ENOSYS stubs report `IO_UNSUPPORTED`).
+
+## Windows x64
+
+`lib/__arch__/win64/fs_native.w` implements the same API on kernel32 and
+ntdll. It is a **Windows contract, not POSIX parity**; the differences are
+deliberate and tested:
+
+| Operation | Windows x64 |
+|---|---|
+| Positional I/O | One `ReadFile`/`WriteFile` with an `OVERLAPPED` offset (64-bit `Offset`/`OffsetHigh`) on a synchronous handle: never seek + read/write. Windows also leaves the handle's file pointer at the end of the transfer, so do not mix positional and cursor I/O on one handle. Transfers above 1 GiB are partial. `ERROR_HANDLE_EOF` is `IO_EOF`. |
+| Truncate | `NtSetInformationFile(FileEndOfFileInformation)`: the size changes and the file pointer does not move. |
+| Create/open | `CreateFileW` with UTF-8 paths converted to UTF-16 (invalid UTF-8 is `EILSEQ`). `O_CREAT\|O_EXCL` is `CREATE_NEW` (no check-then-create race). Handles share read, write **and delete**. `O_CLOEXEC` means a non-inheritable handle, and without it the handle is inheritable. `mode` is ignored: the new file inherits the parent directory's ACL. `O_RDONLY\|O_TRUNC` and `O_DIRECTORY` combined with `O_CREAT`/`O_TRUNC` are `EINVAL`. |
+| Directory-relative open | `NtCreateFile` with `RootDirectory` set to the directory handle. This is a true handle-relative open, so renaming the directory concurrently cannot redirect it. `.` components and repeated separators are dropped; `..` is `EINVAL`, because NT does not resolve it. Absolute paths ignore the handle, as POSIX `openat` does. |
+| Lock | `LockFileEx(EXCLUSIVE\|FAIL_IMMEDIATELY)` on one byte at offset 2^62. Windows range locks are mandatory, so the locked byte sits far beyond any data and the lock file itself stays readable and writable. Locks belong to a handle: a second `fs_lock_acquire` in the same process contends. Contention (`ERROR_LOCK_VIOLATION`) is `IO_WOULD_BLOCK`/`EAGAIN`. Closing the handle releases the lock. **Release after process termination is asynchronous** on Windows, so a contender must retry rather than expect the lock the instant the owner exits. |
+| File barrier | `FlushFileBuffers`. Pipes, consoles and other non-disk handles are `EINVAL` → `IO_UNSUPPORTED`; the flush is never attempted, because it would block until a pipe reader drains. A filesystem that refuses the flush (`ERROR_INVALID_FUNCTION`/`NOT_SUPPORTED`/`INVALID_PARAMETER`) is `IO_UNSUPPORTED`. |
+| Directory sync | `fs_sync_dir` opens the directory read-write with `FILE_FLAG_BACKUP_SEMANTICS` (`FlushFileBuffers` needs write access) and flushes it. A refusal is `IO_UNSUPPORTED`, never reported as success. |
+| Publish | `MoveFileExW(MOVEFILE_REPLACE_EXISTING \| MOVEFILE_WRITE_THROUGH)`, which is atomic for a same-volume rename and asks the filesystem to commit the rename before returning. The final `sync_dir` stage of `fs_replace_durable` then flushes the replaced file through a fresh handle, because Windows has no supported directory fsync and on NTFS a file flush also commits the metadata journal holding the rename. A failure there still reports `renamed=1`. |
+
+Errors: each Win32 error becomes the POSIX-equivalent errno (Linux numbering,
+which win64's `lib/io.w` classifies), so `fs_result_exists`, `EBADF`, `ENOENT`,
+`ENOSPC`, `EAGAIN` and the `IO_*` categories behave as on POSIX targets. Codes
+with no equivalent become `EIO`. The exact Win32 code of the latest failure is
+kept in `fs_win32_last_error`. W has no Windows threads yet, so one slot per
+process is unambiguous.
+
+Assumptions: a local NTFS or ReFS volume (same-volume rename is atomic and
+journaled), a filesystem that honors write-through, and a device that honors
+flushes. Disks with write caching enabled *and* the "turn off Windows
+write-cache buffer flushing" policy set void the guarantee, and so do devices
+that lie about flush completion. FAT/exFAT (no metadata journal) and network
+shares (SMB) are excluded. Replacement fails at the `rename` stage, with the
+destination untouched and the temp file removed, while another handle holds the
+destination open without `FILE_SHARE_DELETE`. Most programs, and lib's plain
+`open`, do not pass that flag. On Windows versions or filesystems without POSIX
+rename semantics, even `FILE_SHARE_DELETE` holders may block the replacement.
+Antivirus scanners and indexers can hold files briefly and cause transient
+sharing violations (`EBUSY`/`EACCES`), so callers retry.
+
+Evidence: `fs_win64_test` (`lib/fs_win64_test.w`, `tests_win64`, the CI `win64`
+job) has 18 tests. They cover:
+
+- positional I/O and its file-pointer contract;
+- range and overflow rejection;
+- a sparse (`FSCTL_SET_SPARSE`) write at 5 GiB with hole reads;
+- truncate without pointer movement;
+- exclusive and handle-relative creation, `ENOTDIR`/`EISDIR`/`..`;
+- UTF-8 paths;
+- inheritance following `O_CLOEXEC`;
+- file and directory flush status, including the pipe refusal;
+- lock contention, plus release after `TerminateProcess` with polling;
+- concurrent positional writers in separate processes;
+- durable replacement, including its `open_temp`/`rename` failures and stale temp names;
+- the error mapping.
+
+The suite runs under **wine**, which maps these calls onto the Linux host's
+filesystem (`FlushFileBuffers` → `fsync`, `MoveFileExW` → `rename`). That
+validates the adapter, the flag and error mapping and the harness. It is **not**
+Windows qualification. Still pending: a native run on Windows 10/11 with NTFS,
+a Windows fault/crash harness (an import-root overlay of `fs_native.w`
+intercepting `FlushFileBuffers`/`MoveFileExW`, plus `TerminateProcess` at each
+boundary), and power-loss experiments.
 
 Adapter references: [Linux generic syscall table](https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/unistd.h),
 [ARM64 Linux flags](https://github.com/torvalds/linux/blob/master/arch/arm64/include/uapi/asm/fcntl.h),

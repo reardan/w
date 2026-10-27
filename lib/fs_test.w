@@ -1,6 +1,6 @@
-# wbuild: x64 arch=arm64_darwin
+# wbuild: x64 arch=arm64 arch=arm64_darwin
 # File durability primitives (lib/fs.w): positional I/O including a
-# sparse write beyond 4 GiB on x86-64 (the i386 twin checks its
+# sparse write beyond 4 GiB on 64-bit targets (the i386 twin checks its
 # documented 2^31 - 1 word limit instead), truncate, exclusive create,
 # directory sync, flock contention, and durable replace with its
 # failure stages.
@@ -10,9 +10,10 @@ import lib.file
 import lib.process
 
 
-# Per-word-size scratch paths: the 32- and 64-bit twins run in
+# Per-target scratch paths: the i386, x86-64 and ARM64 twins run in
 # parallel and must not share files. malloc'd (leaked; tests are short).
 char* fs_test_path(char* name):
+	if (__target_isa__ == 1): return strjoin(c"bin/fs_test_arm64_", name)
 	if (__word_size__ == 8): return strjoin(c"bin/fs_test_64_", name)
 	return strjoin(c"bin/fs_test_32_", name)
 

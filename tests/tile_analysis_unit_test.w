@@ -249,18 +249,19 @@ void tile_unit_assert_dot_plan(tile_lowering_plan* plan, tile_node* node, int id
 	assert1(dot != 0)
 	assert1(dot.node == node)
 	assert_equal(id, dot.id)
+	assert_equal(16, dot.m_extent)
 	assert_equal(16, dot.k_extent)
-	assert_equal(2, dot.stage_thread_shift)
-	assert_equal(6, dot.row_shift)
-	assert_equal(2, dot.col_shift)
+	assert_equal(16, dot.n_extent)
+	assert_equal(0, dot.fused)
 	assert_equal(id * 2, dot.left.id)
 	assert_equal(id * 2 + 1, dot.right.id)
-	assert_equal(id * 2048, dot.left.offset_bytes)
-	assert_equal(id * 2048 + 1024, dot.right.offset_bytes)
+	# Every dot reuses the one shared region after its reuse barrier.
+	assert_equal(0, dot.left.offset_bytes)
+	assert_equal(1024, dot.right.offset_bytes)
 	assert_equal(1024, dot.left.size_bytes)
 	assert_equal(1024, dot.right.size_bytes)
-	assert_equal(4, dot.left.alignment)
-	assert_equal(4, dot.right.alignment)
+	assert_equal(16, dot.left.alignment)
+	assert_equal(16, dot.right.alignment)
 	assert_equal(4, dot.left.element_stride)
 	assert_equal(4, dot.right.element_stride)
 	assert_equal(64, dot.left.row_stride)
@@ -296,7 +297,7 @@ void test_tile_plan_nested_dots_branches_and_reanalysis():
 	tile_analyze(program)
 	tile_lowering_plan* plan = tile_plan(program)
 	assert_equal(4, plan.dot_count)
-	assert_equal(8192, plan.shared_bytes)
+	assert_equal(2048, plan.shared_bytes)
 	assert_equal(program.shared_bytes, plan.shared_bytes)
 	assert_equal(16, plan.matrix_rows)
 	assert_equal(16, plan.matrix_cols)
@@ -369,34 +370,123 @@ void test_tile_ptx_consumes_shared_buffers_and_sync_plan():
 	tile_dot_plan* dot = plan.dots
 	# Deliberately artificial plan values prove PTX consumes the contract.
 	# This PTX is inspected only, never loaded or run on a GPU.
-	dot.left.id = 20
-	dot.right.id = 21
-	dot.left.alignment = 8
-	dot.right.alignment = 16
-	dot.left.size_bytes = 2048
-	dot.right.size_bytes = 4096
-	dot.stage_thread_shift = 3
-	dot.row_shift = 7
-	dot.col_shift = 3
-	dot.left.element_stride = 8
+	plan.shared_bytes = 12345
+	dot.left.offset_bytes = 4096
+	dot.right.offset_bytes = 8192
+	dot.left.row_stride = 72
 	dot.right.row_stride = 128
+	dot.left.element_stride = 8
+	# Three K steps: staging then covers no left/right fragment (16x3 and
+	# 3x16 are not whole fragments), so only the reduction reads appear.
 	dot.k_extent = 3
 	dot.stage_ready.barrier_id = 2
 	dot.reuse_ready.barrier_id = 3
 	int start = ptx_module_pos
 	tile_ptx_emit(program)
 	char* emitted = ptx_module_buf + start
-	assert1(contains(emitted, c".shared .align 8 .b8 __tile_a10[2048];"))
-	assert1(contains(emitted, c".shared .align 16 .b8 __tile_b10[4096];"))
-	assert1(contains(emitted, c"mov.u64 %tsa, __tile_a10;"))
-	assert1(contains(emitted, c"mov.u64 %tsb, __tile_b10;"))
-	assert1(contains(emitted, c"shl.b64 %tscratch, %ttid, 3;"))
-	assert1(contains(emitted, c"shl.b64 %tscratch, %trow, 7;"))
-	assert1(contains(emitted, c"shl.b64 %tscratch, %tcol, 3;"))
-	assert1(contains(emitted, c"ld.f32 %tfa, [%tsa+16];"))
-	assert1(contains(emitted, c"ld.f32 %tfb, [%tsb+256];"))
-	assert1(!contains(emitted, c"ld.f32 %tfa, [%tsa+24];"))
-	assert1(!contains(emitted, c"ld.f32 %tfb, [%tsb+384];"))
+	assert1(contains(emitted, c".shared .align 16 .b8 __tile_smem[12345];"))
+	assert1(contains(emitted, c"mov.u64 %tsmem, __tile_smem;"))
+	assert1(contains(emitted, c"mul.lo.u64 %tsa, %trow, 72;"))
+	assert1(contains(emitted, c"mul.lo.u64 %tsb, %trow, 128;"))
+	assert1(contains(emitted, c", [%tsa+4112];"))
+	assert1(contains(emitted, c", [%tsb+8448];"))
+	assert1(!contains(emitted, c", [%tsa+4120];"))
+	assert1(!contains(emitted, c", [%tsb+8576];"))
+	assert1(contains(emitted, c"fma.rn.f32 "))
 	assert1(contains(emitted, c"bar.sync 2;"))
 	assert1(contains(emitted, c"bar.sync 3;"))
 	assert1(!contains(emitted, c"bar.sync 0;"))
+
+
+tile_node* tile_unit_shaped_zero(int rows, int cols):
+	tile_node* node = tile_node_new(tile_zero)
+	node.args = tile_unit_literal(rows)
+	node.args.next = tile_unit_literal(cols)
+	return node
+
+
+void test_tile_plan_fragment_mapping_is_bijective():
+	tile_unit_init()
+	tile_program* program = tile_unit_program(1)
+	tile_analyze(program)
+	tile_lowering_plan* plan = tile_plan(program)
+	int[4] sizes
+	sizes[0] = 16
+	sizes[1] = 32
+	sizes[2] = 64
+	sizes[3] = 128
+	for r in range(4):
+		for c in range(4):
+			int rows = sizes[r]
+			int cols = sizes[c]
+			int fragments = tile_plan_fragments(plan, rows, cols)
+			assert_equal(rows * cols, fragments * plan.threads)
+			char* seen = tile_owned_zero(rows * cols)
+			for thread in range(plan.threads):
+				for f in range(fragments):
+					int row = tile_plan_fragment_row(plan, thread, cols, f)
+					int col = tile_plan_fragment_col(plan, thread, cols, f)
+					assert1(row >= 0 && row < rows && col >= 0 && col < cols)
+					# Adjacent threads hold adjacent columns of the same row.
+					assert_equal(tile_plan_row(plan, thread), row % 16)
+					assert_equal(tile_plan_col(plan, thread), col % 16)
+					assert_equal(0, seen[row * cols + col])
+					seen[row * cols + col] = 1
+
+
+void test_tile_plan_rectangular_dots_share_one_region():
+	tile_unit_init()
+	tile_program* program = tile_unit_program(1)
+	tile_binding* output = tile_unit_capture(program, c"output", type_get_next_pointer(float32_type))
+	# 128x16 * 16x128: left rows hold 16 words; right rows (128 words, a
+	# multiple of 32) are padded by 16 words to keep warp rows bank-disjoint.
+	tile_node* wide = tile_unit_dot(tile_unit_shaped_zero(128, 16), tile_unit_shaped_zero(16, 128))
+	tile_node* deep = tile_unit_dot(tile_unit_shaped_zero(64, 32), tile_unit_shaped_zero(32, 64))
+	tile_node* accumulator = tile_node_new(tile_declare)
+	accumulator.binding = tile_binding_new(program, c"acc", tile_binding_local, -1)
+	accumulator.left = tile_unit_shaped_zero(64, 64)
+	tile_node* add = tile_node_new(tile_assign)
+	add.op = '+'
+	add.left = tile_unit_reference(accumulator.binding)
+	add.right = deep
+	accumulator.next = add
+	add.next = tile_unit_matrix_store(output, wide)
+	program.body = accumulator
+	tile_analyze(program)
+	assert_equal(128, wide.rows)
+	assert_equal(128, wide.cols)
+	assert_equal(22528, program.shared_bytes)
+	assert_equal(tile_dot_shared_bytes(64, 32, 64), program.shared_bytes)
+	tile_lowering_plan* plan = tile_plan(program)
+	assert_equal(22528, plan.shared_bytes)
+	assert_equal(17408, tile_dot_shared_bytes(128, 16, 128))
+	tile_dot_plan* first = tile_plan_dot(plan, deep)
+	assert_equal(64, first.m_extent)
+	assert_equal(32, first.k_extent)
+	assert_equal(64, first.n_extent)
+	assert_equal(1, first.fused)
+	assert_equal(0, first.left.offset_bytes)
+	assert_equal(192, first.left.row_stride)
+	assert_equal(64 * 192, first.left.size_bytes)
+	assert_equal(64 * 192, first.right.offset_bytes)
+	assert_equal(320, first.right.row_stride)
+	assert_equal(32 * 320, first.right.size_bytes)
+	tile_dot_plan* second = tile_plan_dot(plan, wide)
+	assert_equal(0, second.fused)
+	assert_equal(16, second.k_extent)
+	assert_equal(0, second.left.offset_bytes)
+	assert_equal(64, second.left.row_stride)
+	assert_equal(8192, second.right.offset_bytes)
+	assert_equal(576, second.right.row_stride)
+	assert_equal(16, second.left.alignment)
+	assert_equal(4, second.right.element_stride)
+	assert_equal(2, plan.dot_count)
+	program.kernel_name = c"tile_rectangular_probe"
+	int start = ptx_module_pos
+	tile_ptx_emit(program)
+	char* emitted = ptx_module_buf + start
+	assert1(contains(emitted, c".shared .align 16 .b8 __tile_smem[22528];"))
+	# Fragment rows are 16 shared rows apart; columns 16 elements apart.
+	assert1(contains(emitted, c"st.shared.f32 [%taddr+8384], "))
+	assert1(contains(emitted, c"st.shared.f32 [%taddr+3072], "))
+	assert1(contains(emitted, c", [%tsb+17280];"))

@@ -605,6 +605,19 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 	char* m = insn.mnemonic
 	int is64 = asm_enc_is64(insn)
+	# [lock] cmpxchg / xadd r/m, r (0f b1 /r, 0f c1 /r)
+	int locked = 0
+	if (strcmp(m, c"lock cmpxchg") == 0 | strcmp(m, c"lock xadd") == 0): locked = 1
+	if (locked | strcmp(m, c"cmpxchg") == 0 | strcmp(m, c"xadd") == 0):
+		if (locked): asm_buffer_byte(b, 0xf0)
+		asm_enc_opsize_prefix(b, insn.op2.size)
+		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op2.reg, &insn.op1)
+		asm_buffer_byte(b, 0x0f)
+		int opcode = 0xc1
+		if (strcmp(m, c"cmpxchg") == 0 | strcmp(m, c"lock cmpxchg") == 0): opcode = 0xb1
+		asm_buffer_byte(b, opcode)
+		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
+		return 1
 	if (strcmp(m, c"movd") == 0 | strcmp(m, c"movq") == 0):
 		int w = 0
 		if (strcmp(m, c"movq") == 0): w = 1

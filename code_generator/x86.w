@@ -497,6 +497,11 @@ void emit_rex_w_r(int r):
 /* mov eax,R (x86: 89 /r with eax as r/m; x64: REX.W[+R] 89 /r) */
 void mov_eax_reg(int r):
 	regload_note_start = codepos
+	if (target_isa == 1):
+		arm64_mov_reg_reg(0, r)   # mov x0,xR
+		regload_note_end = codepos
+		regload_note_reg = r
+		return
 	if (word_size == 8): emit_rex_w_r(r)
 	emit(1, c"\x89")
 	emit_int8(0xc0 | ((r & 7) << 3))
@@ -509,6 +514,9 @@ void mov_eax_reg(int r):
    'movsxd R,eax' (REX.W 63 /r) for an int32, the truncating store and
    the extending load of the memory path in one instruction */
 void mov_reg_eax(int r):
+	if (target_isa == 1):
+		arm64_mov_reg_reg(r, 0)   # mov xR,x0
+		return
 	int kind = regalloc_reg_kind(r)
 	if (kind == 1):
 		emit_rex(0, 0, r)
@@ -536,6 +544,9 @@ void pop_reg(int r):
 /* add R,imm8 (sign-extended): 83 /0 ib; a narrow register takes the
    32-bit form (and re-extends when signed), like every writer here */
 void add_reg_int8(int r, int v):
+	if (target_isa == 1):
+		arm64_add_reg_imm(r, r, v)
+		return
 	int kind = regalloc_reg_kind(r)
 	emit_rex(kind == 0, 0, r)
 	emit(1, c"\x83")
@@ -545,6 +556,9 @@ void add_reg_int8(int r, int v):
 
 /* add R,eax: 01 /r with R as r/m */
 void add_reg_eax(int r):
+	if (target_isa == 1):
+		arm64_add_reg_reg(r, r, 0)   # add xR,xR,x0
+		return
 	int kind = regalloc_reg_kind(r)
 	emit_rex(kind == 0, 0, r)
 	emit(1, c"\x01")
@@ -685,6 +699,9 @@ void emit_alu_reg_esp_w(int wide, int ext, int dst, int disp):
    two-register ALU form emit_alu_reg_reg already carries the x64 REX
    bits for r8-r15. */
 void add_eax_reg(int r):
+	if (target_isa == 1):
+		arm64_add_reg_reg(0, 0, r)   # add x0,x0,xR
+		return
 	emit_alu_reg_reg(0, 0, r)
 
 # 'op dst,X' for the operand X a shuttle or binop note recorded (kind 1
@@ -1069,6 +1086,9 @@ void emit_ebp_disp_modrm(int r, int disp):
 		emit_int32(disp)
 
 void mov_reg_ebp_disp(int r, int disp):
+	if (target_isa == 1):
+		arm64_fp_word(1, r, disp)   # ldr xR,[x29,#disp]
+		return
 	# A narrow register (A8) loads its home at the width the memory
 	# path reads it: 'mov R32,[ebp+disp]' zero-extends a uint32,
 	# 'movsxd R,[ebp+disp]' sign-extends an int32 (the word's high half
@@ -1085,6 +1105,9 @@ void mov_reg_ebp_disp(int r, int disp):
 	emit_ebp_disp_modrm(r, disp)
 
 void mov_ebp_disp_reg(int r, int disp):
+	if (target_isa == 1):
+		arm64_fp_word(0, r, disp)   # str xR,[x29,#disp]
+		return
 	if (word_size == 8): emit_rex_w_r(r)
 	emit(1, c"\x89")
 	emit_ebp_disp_modrm(r, disp)
@@ -1150,12 +1173,15 @@ void regalloc_prologue_emit():
 		regalloc_fn_region_enter()
 		return
 	regalloc_active = 1
-	int r = 0
-	while (r < 16):
-		if (mask & (1 << r)):
-			push_reg(r)
-			regalloc_saved_count = regalloc_saved_count + 1
-		r = r + 1
+	# arm64 (#801): stp/str pairs below the frame record
+	if (target_isa == 1): regalloc_saved_count = arm64_regalloc_save(mask)
+	else:
+		int r = 0
+		while (r < 16):
+			if (mask & (1 << r)):
+				push_reg(r)
+				regalloc_saved_count = regalloc_saved_count + 1
+			r = r + 1
 	regalloc_saved_mask = mask
 	sub_rsp_words(rg_homes)
 	regalloc_prologue_args()
@@ -1947,7 +1973,12 @@ void ers_push_eax(int dead):
 void promote_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u64")
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
-	elif (target_isa == 1): arm64_promote_acc(op(0xf9, 0x400000))   # ldr x0,[x0]
+	elif (target_isa == 1):
+		# A register-resident local (#801): its "load" is 'mov x0,xR'
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
+		arm64_promote_acc(op(0xf9, 0x400000))   # ldr x0,[x0]
 	else:
 		# A register-resident local: its "load" is a register move
 		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
@@ -2451,6 +2482,13 @@ void arm64_promote_acc(int instruction):
 
 
 void arm64_push_acc():
+	# The pushed value came straight from a register-resident local
+	# ('mov x0,xR' directly before, #801): the shuttle below can take
+	# the left operand from xR itself
+	push_left_reg = 0
+	if ((regload_note_end != 0) && (regload_note_end == codepos)):
+		push_left_reg = regload_note_reg
+		push_left_start = regload_note_start
 	push_note_start = codepos
 	a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
 	push_note_end = codepos
@@ -2459,24 +2497,146 @@ void arm64_push_acc():
 # Replace push; literal/local load; pop with mov x1,x0; RHS. Only
 # the known RHS may be crossed: calls, nested pushes and labels stop
 # matching. Removing the push lowers a local's displacement by 8.
+# With register-resident locals (#801) the right operand may also be a
+# register read ('mov x0,xS', kind 3) and the left operand's 'mov
+# x0,xL' before the push is folded into 'mov x1,xL'; such a shuttle is
+# noted (shuttle_*, the x86 globals, unused on this target) so the
+# operator after it can read the registers directly (arm64_shuttle_op).
 void arm64_pop_secondary():
 	if (push_note_end != 0):
 		int kind = 0
 		int value = imm_note_value
 		int disp = load_note_disp - 8
 		int instruction = load_note_oplen
+		int reg = regload_note_reg
 		if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)): kind = 1
 		elif ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= 8)): kind = 2
+		elif ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == push_note_end)): kind = 3
 		if (kind != 0):
+			int left_reg = push_left_reg
+			int left_start = push_left_start
 			peep_rollback(push_note_start)
-			a64(op(0xaa, 0x0003e1))   # mov x1,x0
+			if (left_reg != 0): peep_rollback(left_start)
+			int start = codepos
+			if (left_reg != 0): arm64_mov_reg_reg(1, left_reg)   # mov x1,xL
+			else: a64(op(0xaa, 0x0003e1))   # mov x1,x0
 			if (kind == 1): arm64_mov_rax_int64(value)
-			else: arm64_emit_local_load(instruction, disp)
+			elif (kind == 2): arm64_emit_local_load(instruction, disp)
+			else: arm64_mov_reg_reg(0, reg)   # mov x0,xS
 			# The RHS is no longer adjacent to any outstanding push.
 			imm_note_end = 0
 			push_note_end = 0
+			if ((left_reg != 0) || (kind == 3)):
+				shuttle_start = start
+				shuttle_end = codepos
+				shuttle_kind = kind
+				shuttle_left_reg = left_reg
+				shuttle_value = value
+				shuttle_disp = disp
+				shuttle_oplen = instruction
+				shuttle_reg = reg
 			return
 	a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
+
+
+# The register shuttle (#801): 'mov x1,<left>; <right into x0>' is
+# current, with the left operand in register shuttle_left_reg (0: x0
+# held it, and does again once the shuttle is rolled back). Roll it back
+# and leave the right operand in a register -- its own (kind 3), or x9
+# for a constant (kind 1) or a local load (kind 2) -- returning that
+# register; -1 when the note is not current. The caller emits the
+# operator on (left, right) in place of the x1/x0 form.
+int arm64_shuttle_take():
+	if ((shuttle_end == 0) || (shuttle_end != codepos)): return -1
+	int kind = shuttle_kind
+	int value = shuttle_value
+	int disp = shuttle_disp
+	int instruction = shuttle_oplen
+	int reg = shuttle_reg
+	peep_rollback(shuttle_start)
+	if (kind == 3): return reg
+	if (kind == 1): arm64_load_scratch(9, value)
+	else: a64(instruction | 9 | (28 << 5) | ((disp >> ((instruction >> 30) & 3)) << 10))   # ldr x9,[x28,#disp]
+	return 9
+
+
+# The x0 definition note (#801): the instruction ending at binop_end
+# (= codepos) is one data-processing instruction whose only effect is
+# writing x0 (bits 4:0 hold its Rd), so a store of x0 into a register
+# that follows directly may retarget it (arm64_reg_store).
+void arm64_def_note():
+	binop_start = codepos - 4
+	binop_end = codepos
+
+
+# A two-register ALU operator on the operands the pop left in x1 (left)
+# and x0 (right): 'plain', the operator's usual instruction, or, on the
+# shuttle's registers directly, 'op x0,xL,xR' (base: the encoding with
+# zero register fields).
+void arm64_alu_rr(int base, int plain):
+	int left = shuttle_left_reg
+	int right = arm64_shuttle_take()
+	if (right < 0): a64(plain)
+	else: a64(base | (right << 16) | (left << 5))   # op x0,xL,xR
+	arm64_def_note()
+
+
+# 'add x0,xL,#v' / 'sub x0,xL,#v' for a shuttled constant that fits the
+# 12-bit immediate (negated for sub); otherwise arm64_alu_rr. sign is 1
+# for add, -1 for sub.
+void arm64_alu_addsub(int base, int plain, int sign):
+	if ((shuttle_end != 0) && (shuttle_end == codepos) && (shuttle_kind == 1)):
+		int v = shuttle_value * sign
+		if ((v >= -4095) && (v <= 4095)):
+			int left = shuttle_left_reg
+			peep_rollback(shuttle_start)
+			arm64_add_reg_imm(0, left, v)
+			arm64_def_note()
+			return
+	arm64_alu_rr(base, plain)
+
+
+# 'cmp x1,x0' for alu_cmp_set, or 'cmp xL,xR' / 'cmp xL,#v' / 'cmn
+# xL,#-v' on the shuttle's operands.
+void arm64_cmp_operands():
+	if ((shuttle_end != 0) && (shuttle_end == codepos) && (shuttle_kind == 1)):
+		int v = shuttle_value
+		if ((v >= -4095) && (v <= 4095)):
+			int left = shuttle_left_reg
+			peep_rollback(shuttle_start)
+			if (v >= 0): a64(op(0xf1, 0x00001f) | (v << 10) | (left << 5))   # cmp xL,#v
+			else: a64(op(0xb1, 0x00001f) | ((0 - v) << 10) | (left << 5))   # cmn xL,#-v
+			return
+	int left_reg = shuttle_left_reg
+	int right = arm64_shuttle_take()
+	if (right < 0): a64(op(0xeb, 0x00003f))   # cmp x1,x0
+	else: a64(op(0xeb, 0x00001f) | (right << 16) | (left_reg << 5))   # cmp xL,xR
+
+
+# The arm64 store into register-resident local r (#801, the twin of
+# regalloc_reg_store): 'mov xR,x0', except that with the value dead
+# after the store (keep_eax 0) a constant materializes straight into xR
+# and a register read ('mov x0,xS' just before) becomes 'mov xR,xS'.
+void arm64_reg_store(int r, int keep_eax):
+	if (keep_eax == 0):
+		# 'op x0,...; mov xR,x0' is 'op xR,...' (the x0 definition note)
+		if ((binop_end != 0) && (binop_end == codepos)):
+			int word = load_int32(code + codepos - 4)
+			if ((word & 31) == 0):
+				save_int32(code + codepos - 4, word | r)
+				binop_end = 0
+				return
+		if ((imm_note_end != 0) && (imm_note_end == codepos)):
+			int v = imm_note_value
+			peep_rollback(imm_note_start)
+			arm64_load_scratch(r, v)
+			return
+		if ((regload_note_end != 0) && (regload_note_end == codepos)):
+			int src = regload_note_reg
+			peep_rollback(regload_note_start)
+			arm64_mov_reg_reg(r, src)
+			return
+	arm64_mov_reg_reg(r, 0)   # mov xR,x0
 
 
 /* mov eax, op(0x12, 0x345678); zero is 'xor eax,eax' (A2: two bytes,
@@ -3710,7 +3870,11 @@ int shuttle_cmp(int setcc_opcode):
 # place; keep_eax asks for 'mov eax,r' after it (the expression's value
 # is used), a statement-position store leaves eax dead. Otherwise the
 # plain 'mov r,eax'. x86 family only.
+void arm64_reg_store(int r, int keep_eax);
 void regalloc_reg_store(int r, int keep_eax):
+	if (target_isa == 1):
+		arm64_reg_store(r, keep_eax)
+		return
 	int kind = regalloc_reg_kind(r)
 	if ((imm_note_end != 0) && (imm_note_end == codepos) && (keep_eax == 0) && (addr_modes_disabled == 0)):
 		# 'mov eax,imm ; mov R,eax' with eax dead: 'mov R,imm' (A2). The
@@ -3775,7 +3939,7 @@ void regalloc_reg_store(int r, int keep_eax):
 void alu_add():
 	if (target_isa == 3): ptx_alu_ax_bx(c"add.s64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x6a)
-	elif (target_isa == 1): a64(op(0x8b, 0x010000))   # add x0,x0,x1
+	elif (target_isa == 1): arm64_alu_addsub(op(0x8b, 0x000000), op(0x8b, 0x010000), 1)   # add x0,x0,x1
 	else:
 		if (shuttle_alu(0)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -3789,7 +3953,7 @@ void alu_add():
 void alu_sub():
 	if (target_isa == 3): ptx_alu_sub()
 	elif (target_isa == 2): wasm_bx_op_ax(0x6b)
-	elif (target_isa == 1): a64(op(0xcb, 0x000020))   # sub x0,x1,x0
+	elif (target_isa == 1): arm64_alu_addsub(op(0xcb, 0x000000), op(0xcb, 0x000020), -1)   # sub x0,x1,x0
 	else:
 		if (shuttle_alu(5)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -3805,7 +3969,7 @@ void alu_sub():
 void alu_imul():
 	if (target_isa == 3): ptx_alu_ax_bx(c"mul.lo.s64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x6c)
-	elif (target_isa == 1): a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
+	elif (target_isa == 1): arm64_alu_rr(op(0x9b, 0x007c00), op(0x9b, 0x017c00))   # mul x0,x0,x1
 	else:
 		if (shuttle_alu(8)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -3992,7 +4156,7 @@ void alu_shr():
 void alu_and():
 	if (target_isa == 3): ptx_alu_ax_bx(c"and.b64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x71)
-	elif (target_isa == 1): a64(op(0x8a, 0x010000))   # and x0,x0,x1
+	elif (target_isa == 1): arm64_alu_rr(op(0x8a, 0x000000), op(0x8a, 0x010000))   # and x0,x0,x1
 	else:
 		if (shuttle_alu(4)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -4006,7 +4170,7 @@ void alu_and():
 void alu_or():
 	if (target_isa == 3): ptx_alu_ax_bx(c"or.b64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x72)
-	elif (target_isa == 1): a64(op(0xaa, 0x010000))   # orr x0,x0,x1
+	elif (target_isa == 1): arm64_alu_rr(op(0xaa, 0x000000), op(0xaa, 0x010000))   # orr x0,x0,x1
 	else:
 		if (shuttle_alu(1)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -4020,7 +4184,7 @@ void alu_or():
 void alu_xor():
 	if (target_isa == 3): ptx_alu_ax_bx(c"xor.b64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x73)
-	elif (target_isa == 1): a64(op(0xca, 0x010000))   # eor x0,x0,x1
+	elif (target_isa == 1): arm64_alu_rr(op(0xca, 0x000000), op(0xca, 0x010000))   # eor x0,x0,x1
 	else:
 		if (shuttle_alu(6)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
@@ -4469,6 +4633,9 @@ void ret():
 # restores the caller's x29 and the return address and leaves x28 as it
 # was at entry, which is the modifier the prologue signed x30 with.
 void be_arm64_frame_return():
+	# the callee-saved registers of promoted locals (#801) come back
+	# from their fp-relative slots first
+	if (regalloc_saved_count != 0): arm64_regalloc_restore(regalloc_saved_mask)
 	a64(op(0xaa, 0x1d03fc))   # mov x28, x29
 	a64(op(0xa8, 0xc17b9d))   # ldp x29, x30, [x28], #16
 	if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28

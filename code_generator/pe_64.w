@@ -227,7 +227,7 @@ void pe_start_64():
 	# with argv on top) with argc = 0 and the empty block, then calls the
 	# entry function pe_finish_64() selects. lib/__arch__/win64/syscalls.w
 	# provides _win_start, which rebuilds real argc/argv from
-	# GetCommandLineA before chaining to _main.
+	# GetCommandLineW before chaining to _main.
 	save_i(code + pe_opt_header_pos + 16, codepos, 4) /* AddressOfEntryPoint */
 	emit(2, c"\x31\xc0") /* xor eax,eax */
 	emit(1, c"\x50") /* push rax: argc = 0 */

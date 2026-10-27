@@ -374,7 +374,8 @@ void at_emit(string_builder* out, char* parser_name):
 
 	if (g_parser_rule_names.length > 0):
 		string_append(out, c"start ")
-		string_append(out, g_parser_rule_names[0])
+		if (g_at_start_rule != 0): string_append(out, g_at_start_rule)
+		else: string_append(out, g_parser_rule_names[0])
 		string_append_char(out, 10)
 	string_append_char(out, 10)
 

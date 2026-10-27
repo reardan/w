@@ -10,6 +10,8 @@ import compiler.coverage_exec
 
 
 int main(int argc, int argv):
+	# W_DEBUG_ALLOC applies to the debuggee's allocator, not wdbg's
+	malloc_host_freelist_mode()
 	# $W_COVERAGE_WDBG: re-execute as a --coverage build (compiler/coverage_exec.w).
 	coverage_exec_redirect(c"W_COVERAGE_WDBG", c"wdbg", argv)
 	char** args = cast(char**, argv)

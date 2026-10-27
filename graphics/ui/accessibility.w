@@ -38,9 +38,19 @@ const int UI_ACCESS_ACTIVATE = 1
 const int UI_ACCESS_FOCUS = 2
 const int UI_ACCESS_SET_VALUE = 4
 const int UI_ACCESS_TOGGLE = 8
+# Move the caret / select text in a textbox. The payload is the ASCII
+# "anchor active" pair of character offsets built by
+# ui_access_dispatch_selection (see there).
+const int UI_ACCESS_SET_SELECTION = 16
 const int UI_ACCESS_NAME = 1
 const int UI_ACCESS_VALUE = 2
 const int UI_ACCESS_DESCRIPTION = 3
+# Live-region politeness (ui_access_node.live, ui_access_announce): how
+# urgently assistive technology reports changes. Polite waits for the
+# current speech; assertive interrupts it.
+const int UI_ACCESS_LIVE_OFF = 0
+const int UI_ACCESS_LIVE_POLITE = 1
+const int UI_ACCESS_LIVE_ASSERTIVE = 2
 
 type ui_access_action = fn(void*, int, int, char*, int) -> int
 
@@ -54,6 +64,17 @@ struct ui_access_node:
 	int states
 	int actions
 	int heading_level
+	# Live regions and notifications (#465): a node with live set is a
+	# live region; text added or changed in its subtree is announced at
+	# that politeness without moving focus (status lines, toasts).
+	int live
+	# Text caret and selection (#465), in characters (code points) of
+	# value: caret is -1 when the node shows none; the selection is
+	# [selection_start, selection_end), empty when they are equal.
+	# Set them with ui_access_set_selection.
+	int caret
+	int selection_start
+	int selection_end
 	ui_rect bounds
 	ui_access_text name
 	ui_access_text value
@@ -75,6 +96,10 @@ struct ui_access_tree:
 	int focused_id
 	ui_access_action* action
 	void* context
+	# A one-shot announcement (ui_access_announce), consumed by the next
+	# publication; announcement_live is its politeness.
+	ui_access_text announcement
+	int announcement_live
 
 ui_access_tree* ui_access_tree_new(int max_nodes, int max_text_bytes):
 	if ((max_nodes < 1) || (max_text_bytes < 0)): return 0
@@ -101,6 +126,9 @@ ui_access_node* ui_access_add(ui_access_tree* tree, int id, int parent_id, int r
 	ui_access_node* node = new ui_access_node()
 	node.id = id
 	node.role = role
+	node.caret = 0 - 1
+	node.selection_start = 0 - 1
+	node.selection_end = 0 - 1
 	node.parent = parent
 	node.bounds = bounds
 	if (parent == 0): tree.root = node
@@ -134,6 +162,106 @@ int ui_access_set_text(ui_access_tree* tree, int id, int field, char* data, int 
 	target.length = length
 	return 1
 
+# Characters (code points) in UTF-8 data[0..length).
+int ui_access_char_count(char* data, int length):
+	int count = 0
+	for i in range(length):
+		if ((data[i] & 192) != 128): count = count + 1
+	return count
+
+
+# Byte offset of character k in UTF-8 data[0..length), clamped to its
+# ends.
+int ui_access_char_byte(char* data, int length, int k):
+	if (k <= 0): return 0
+	int count = 0
+	for i in range(length):
+		if ((data[i] & 192) != 128):
+			if (count == k): return i
+			count = count + 1
+	return length
+
+
+# Character offset of byte offset at (a byte inside a character counts
+# as that character's start).
+int ui_access_byte_char(char* data, int length, int at):
+	if (at > length): at = length
+	int count = 0
+	for i in range(at):
+		if ((data[i] & 192) != 128): count = count + 1
+	if ((at < length) && (at > 0) && ((data[at] & 192) == 128)): count = count - 1
+	return count
+
+
+# Record a text node's caret and selection, in characters of its value
+# (set the value first). anchor is where the selection started and
+# active the end the caret is at, so active < anchor is a backward
+# selection; anchor == active is a bare caret. Out-of-range offsets
+# leave the node unchanged and return 0.
+int ui_access_set_selection(ui_access_tree* tree, int id, int anchor, int active):
+	ui_access_node* node = ui_access_find(tree, id)
+	if (node == 0): return 0
+	int count = ui_access_char_count(node.value.data, node.value.length)
+	if ((anchor < 0) || (active < 0) || (anchor > count) || (active > count)): return 0
+	node.caret = active
+	node.selection_start = anchor
+	node.selection_end = active
+	if (active < anchor):
+		node.selection_start = active
+		node.selection_end = anchor
+	return 1
+
+
+# 1 when the node has a non-empty text selection.
+int ui_access_has_selection(ui_access_node* node):
+	return (node != 0) && (node.selection_start >= 0) && (node.selection_end > node.selection_start)
+
+
+# Parse a SET_SELECTION payload: two decimal numbers separated by one
+# space. 0 when it is malformed.
+int ui_access_selection_parse(char* data, int length, int* anchor, int* active):
+	int values = 0
+	int current = 0
+	int digits = 0
+	for i in range(length + 1):
+		if ((i == length) || (data[i] == ' ')):
+			if ((digits == 0) || (values >= 2)): return 0
+			if (values == 0): anchor[0] = current
+			else: active[0] = current
+			values = values + 1
+			current = 0
+			digits = 0
+		else:
+			if ((data[i] < '0') || (data[i] > '9') || (digits >= 9)): return 0
+			current = current * 10 + (data[i] - '0')
+			digits = digits + 1
+	return values == 2
+
+
+# Encode a SET_SELECTION payload into out (at least 24 bytes); returns
+# its length.
+int ui_access_selection_format(char* out, int anchor, int active):
+	int n = 0
+	for half in range(2):
+		int v = anchor
+		if (half == 1):
+			out[n] = ' '
+			n = n + 1
+			v = active
+		char[12] digits
+		int k = 0
+		if (v < 0): v = 0
+		while ((v > 0) || (k == 0)):
+			digits[k] = '0' + (v % 10)
+			v = v / 10
+			k = k + 1
+		while (k > 0):
+			k = k - 1
+			out[n] = digits[k]
+			n = n + 1
+	return n
+
+
 int ui_access_inert(ui_access_node* node):
 	while (node != 0):
 		if ((node.states & (UI_ACCESS_DISABLED | UI_ACCESS_HIDDEN)) != 0): return 1
@@ -145,13 +273,31 @@ int ui_access_inert(ui_access_node* node):
 int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int length):
 	ui_access_node* node = ui_access_find(tree, id)
 	if ((node == 0) || (cast(int, tree.action) == 0)): return 0
-	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE)): return 0
+	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE) && (action != UI_ACCESS_SET_SELECTION)): return 0
 	if ((node.actions & action) == 0): return 0
 	if (ui_access_inert(node)): return 0
 	if ((action == UI_ACCESS_SET_VALUE) && ((node.states & UI_ACCESS_READONLY) != 0)): return 0
 	if ((length < 0) || (length > tree.max_text_bytes) || ((data == 0) && (length > 0))): return 0
 	if (!utf8_validate_bytes(data, length)): return 0
+	# Selection offsets are not checked against the node's value: a
+	# request can follow an edit queued just before it, so they count
+	# characters of a text the snapshot has not seen yet. The widget
+	# clamps them to its text when it applies them.
+	if (action == UI_ACCESS_SET_SELECTION):
+		int anchor = 0
+		int active = 0
+		if (!ui_access_selection_parse(data, length, &anchor, &active)): return 0
 	return tree.action(tree.context, id, action, data, length)
+
+
+# Request a caret move (anchor == active) or a selection of characters
+# between anchor and active, with the caret at active, through
+# ui_access_dispatch.
+int ui_access_dispatch_selection(ui_access_tree* tree, int id, int anchor, int active):
+	if ((anchor < 0) || (active < 0)): return 0
+	char[32] payload
+	int n = ui_access_selection_format(&payload[0], anchor, active)
+	return ui_access_dispatch(tree, id, UI_ACCESS_SET_SELECTION, &payload[0], n)
 
 # next is forward when reverse=0; otherwise previous. Insertion order
 # is caller supplied focus order, with wraparound, skipping inert nodes.
@@ -185,11 +331,118 @@ int ui_access_move_focus(ui_access_tree* tree, int reverse):
 	tree.focused_id = id
 	return id
 
+# Queue a one-shot announcement on the snapshot: the next publication
+# speaks text at politeness live (UI_ACCESS_LIVE_POLITE or _ASSERTIVE)
+# through each platform's notification channel, then clears it. A later
+# call before publication replaces it. Returns 0 (and leaves the tree
+# unchanged) for invalid UTF-8, an empty text or one past the text budget.
+int ui_access_announce(ui_access_tree* tree, char* data, int length, int live):
+	if ((tree == 0) || (length <= 0) || (data == 0) || (length > tree.max_text_bytes)): return 0
+	if ((live != UI_ACCESS_LIVE_POLITE) && (live != UI_ACCESS_LIVE_ASSERTIVE)): return 0
+	if (!utf8_validate_bytes(data, length)): return 0
+	char* owned = cast(char*, __w_alloc(__w_size_add(length, 1)))
+	for i in range(length): owned[i] = data[i]
+	owned[length] = 0
+	free(tree.announcement.data)
+	tree.announcement.data = owned
+	tree.announcement.length = length
+	tree.announcement_live = live
+	return 1
+
+
+# Drop a pending announcement; bridges call this once they published it.
+void ui_access_announcement_clear(ui_access_tree* tree):
+	if (tree == 0): return
+	free(tree.announcement.data)
+	tree.announcement.data = 0
+	tree.announcement.length = 0
+	tree.announcement_live = UI_ACCESS_LIVE_OFF
+
+
+# The live region n belongs to: n itself or its nearest ancestor with a
+# live setting; 0 outside every live region.
+ui_access_node* ui_access_live_root(ui_access_node* n):
+	while (n != 0):
+		if (n.live != UI_ACCESS_LIVE_OFF): return n
+		n = n.parent
+	return 0
+
+
+# The name assistive technology reads for n: its own name, or for an
+# unnamed ROW its cells' names joined by spaces (as ARIA computes a row's
+# name from its content; screen readers announce a focused row by name).
+# out.data is a fresh allocation the caller frees (0 for an empty name).
+void ui_access_effective_name(ui_access_node* n, ui_access_text* out):
+	out.data = 0
+	out.length = 0
+	ui_access_text* own = &n.name
+	int length = own.length
+	if ((n.role == UI_ACCESS_ROW) && (length == 0)):
+		ui_access_node* c = n.first_child
+		while (c != 0):
+			if (c.name.length > 0): length = length + c.name.length + 1
+			c = c.next_sibling
+	if (length == 0): return
+	char* joined = cast(char*, __w_alloc(__w_size_add(length, 1)))
+	int at = 0
+	if (own.length > 0):
+		for i in range(own.length): joined[i] = own.data[i]
+		at = own.length
+	else:
+		ui_access_node* c = n.first_child
+		while (c != 0):
+			if (c.name.length > 0):
+				if (at > 0):
+					joined[at] = ' '
+					at = at + 1
+				for i in range(c.name.length): joined[at + i] = c.name.data[i]
+				at = at + c.name.length
+			c = c.next_sibling
+	joined[at] = 0
+	out.data = joined
+	out.length = at
+
+
 int ui_access_text_same(ui_access_text* a, ui_access_text* b):
 	if (a.length != b.length): return 0
 	for i in range(a.length):
 		if (a.data[i] != b.data[i]): return 0
 	return 1
+
+# 1 when a and b have the same effective name (ui_access_effective_name),
+# so a row whose cells changed reports a name change.
+int ui_access_effective_name_same(ui_access_node* a, ui_access_node* b):
+	ui_access_text x
+	ui_access_text y
+	ui_access_effective_name(a, &x)
+	ui_access_effective_name(b, &y)
+	int same = ui_access_text_same(&x, &y)
+	free(x.data)
+	free(y.data)
+	return same
+
+
+int ui_access_hidden(ui_access_node* n):
+	while (n != 0):
+		if ((n.states & UI_ACCESS_HIDDEN) != 0): return 1
+		n = n.parent
+	return 0
+
+
+# What a publication announces for node n of a live region, given its
+# previous version was (0 when n is new to the snapshot): its name when
+# n is new or its name changed, else its value when that changed
+# (textboxes excepted: their edits are echoed as text changes). 0 when
+# there is nothing to announce: n is outside every live region, hidden,
+# or its new text is empty.
+ui_access_text* ui_access_live_change(ui_access_node* n, ui_access_node* was):
+	if ((ui_access_live_root(n) == 0) || ui_access_hidden(n)): return 0
+	if ((was == 0) || !ui_access_text_same(&n.name, &was.name)):
+		if (n.name.length > 0): return &n.name
+		if (was == 0): return 0
+	if ((was != 0) && (n.role != UI_ACCESS_TEXTBOX) && (n.value.length > 0) && !ui_access_text_same(&n.value, &was.value)): return &n.value
+	return 0
+
 
 # 1 when two snapshots would publish identically: same nodes in the same
 # order with equal fields, text, bounds and focus. Lets a per-frame
@@ -197,10 +450,12 @@ int ui_access_text_same(ui_access_text* a, ui_access_text* b):
 int ui_access_tree_same(ui_access_tree* a, ui_access_tree* b):
 	if ((a == 0) || (b == 0)): return a == b
 	if ((a.count != b.count) || (a.focused_id != b.focused_id)): return 0
+	if ((a.announcement_live != b.announcement_live) || !ui_access_text_same(&a.announcement, &b.announcement)): return 0
 	ui_access_node* x = a.allocations
 	ui_access_node* y = b.allocations
 	while ((x != 0) && (y != 0)):
-		if ((x.id != y.id) || (x.role != y.role) || (x.states != y.states) || (x.actions != y.actions) || (x.heading_level != y.heading_level)): return 0
+		if ((x.id != y.id) || (x.role != y.role) || (x.states != y.states) || (x.actions != y.actions) || (x.heading_level != y.heading_level) || (x.live != y.live)): return 0
+		if ((x.caret != y.caret) || (x.selection_start != y.selection_start) || (x.selection_end != y.selection_end)): return 0
 		int xp = 0
 		int yp = 0
 		if (x.parent != 0): xp = x.parent.id
@@ -226,10 +481,15 @@ ui_access_tree* ui_access_tree_clone(ui_access_tree* tree):
 			c.states = n.states
 			c.actions = n.actions
 			c.heading_level = n.heading_level
+			c.live = n.live
+			c.caret = n.caret
+			c.selection_start = n.selection_start
+			c.selection_end = n.selection_end
 			ui_access_set_text(copy, id, UI_ACCESS_NAME, n.name.data, n.name.length)
 			ui_access_set_text(copy, id, UI_ACCESS_VALUE, n.value.data, n.value.length)
 			ui_access_set_text(copy, id, UI_ACCESS_DESCRIPTION, n.description.data, n.description.length)
 	copy.focused_id = tree.focused_id
+	ui_access_announce(copy, tree.announcement.data, tree.announcement.length, tree.announcement_live)
 	return copy
 
 void ui_access_tree_free(ui_access_tree* tree):
@@ -243,4 +503,5 @@ void ui_access_tree_free(ui_access_tree* tree):
 		free(n)
 		n = next
 	map_free[int, ui_access_node*](tree.nodes)
+	free(tree.announcement.data)
 	free(tree)

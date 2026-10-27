@@ -27,7 +27,9 @@ void shape_format(ttf_font* font, char* text, int length, string_builder* out):
 		cps[count] = cp
 		count = count + 1
 		at = at + size
-		if (strong == 0):
+		# Like Python's unicodedata (shape_compare_hb.py), unassigned
+		# characters have no bidi class, not their block's default.
+		if ((strong == 0) && (ut_category(cp) != ut_cat_cn)):
 			int cls = ut_bidi_class(cp)
 			if (cls == ut_bidi_l): strong = 1
 			if ((cls == ut_bidi_r) || (cls == ut_bidi_al)): strong = 2

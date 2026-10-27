@@ -7,13 +7,18 @@ Every operation fills a caller-owned io_result (lib/io.w) and returns
 its status (open-like calls return the descriptor, or -1 with the
 status in r). The platform errno is kept in r.native_error.
 
-Architecture adapters: Linux x86/x64/ARM64 and ARM64 Darwin. Native
-ARM64 qualification is tracked in docs/projects/durability_ports.md;
+Architecture adapters (lib/__arch__/<target>/fs_native.w): Linux
+x86/x64/ARM64 and ARM64 Darwin forward to their syscall adapters; Windows
+x64 has its own kernel32/ntdll layer with a documented Windows contract
+(not POSIX parity: descriptors are HANDLEs, a positional transfer also
+moves the handle's file pointer, locks are LockFileEx ranges, and
+publication is a write-through MoveFileExW). Native ARM64 Linux and
+Windows qualification is tracked in docs/projects/durability_ports.md;
 Darwin/APFS has native process-crash coverage on Apple Silicon.
-Implementation and cross-compilation do not establish hardware durability.
-Windows and wasm remain explicitly unsupported. Positional I/O is never
-seek + write. Flags below use the portable Linux x86 numbering; Darwin
-translates them in its syscall adapter.
+Implementation, emulation and cross-compilation do not establish hardware
+durability. wasm remains explicitly unsupported. Positional I/O is never
+seek + write. Flags below use the portable Linux x86 numbering; Darwin and
+Windows translate them in their adapters.
 
 Offsets are word-sized signed byte offsets: 63 bits on 64-bit targets,
 31 bits on i386. Range overflow is rejected before invoking the kernel.
@@ -37,6 +42,7 @@ Status summary beyond lib/io.w's categories:
 import lib.lib
 import lib.io
 import lib.path
+import lib.__arch__.fs_native
 
 
 # Portable open flags; architecture adapters translate native differences.
@@ -70,7 +76,7 @@ const int FS_DEFAULT_MODE = 420
 
 # openat(2): returns the descriptor, or -1 with r describing the error.
 int fs_openat(int dirfd, char* path, int flags, int mode, io_result* r):
-	int fd = sys_openat(dirfd, path, flags, mode)
+	int fd = fs_native_openat(dirfd, path, flags, mode)
 	io_result_from_syscall(r, fd)
 	if (fd < 0): return -1
 	r.transferred = 0
@@ -110,7 +116,7 @@ int fs_pread(int fd, char* destination, int length, int offset, io_result* r):
 	if (fs_check_range(offset, length, r) != IO_OK): return r.status
 	if (length == 0): return IO_OK
 	while (1):
-		int n = sys_pread(fd, destination, length, offset)
+		int n = fs_native_pread(fd, destination, length, offset)
 		if (n == (0 - IO_ERRNO_EINTR)): continue
 		if (n == 0): return io_result_set(r, 0, IO_EOF, 0)
 		return io_result_from_syscall(r, n)
@@ -122,7 +128,7 @@ int fs_pwrite(int fd, char* source, int length, int offset, io_result* r):
 	if (fs_check_range(offset, length, r) != IO_OK): return r.status
 	if (length == 0): return IO_OK
 	while (1):
-		int n = sys_pwrite(fd, source, length, offset)
+		int n = fs_native_pwrite(fd, source, length, offset)
 		if (n == (0 - IO_ERRNO_EINTR)): continue
 		return io_result_from_syscall(r, n)
 	return IO_IO_ERROR
@@ -163,7 +169,7 @@ int fs_pwrite_all(int fd, char* source, int length, int offset, io_result* r):
 int fs_ftruncate(int fd, int length, io_result* r):
 	if (length < 0): return io_result_set(r, 0, IO_IO_ERROR, FS_EINVAL)
 	while (1):
-		int ret = sys_ftruncate(fd, length)
+		int ret = fs_native_ftruncate(fd, length)
 		if (ret == (0 - IO_ERRNO_EINTR)): continue
 		return io_result_from_syscall(r, ret)
 	return IO_IO_ERROR
@@ -174,21 +180,28 @@ int fs_ftruncate(int fd, int length, io_result* r):
 # reported as success. Not retried after a failure on purpose -- Linux
 # may already have dropped the dirty pages.
 int fs_fsync(int fd, io_result* r):
-	int ret = fsync(fd)
+	int ret = fs_native_fsync(fd)
 	if (ret == (0 - FS_EINVAL)): return io_result_set(r, 0, IO_UNSUPPORTED, FS_EINVAL)
 	return io_result_from_syscall(r, ret)
+
+
+# Closes a descriptor from this module, reporting its error. Never
+# retried (see io_close).
+int fs_close(int fd, io_result* r):
+	return io_result_from_syscall(r, fs_native_close(fd))
 
 
 # Makes the directory's entries (creates, renames, unlinks inside it)
 # durable. IO_OK means directory-entry durability was established;
 # anything else means it was not (IO_UNSUPPORTED where the filesystem
-# refuses directory fsync).
+# refuses directory fsync). Windows opens the directory read-write,
+# since FlushFileBuffers needs write access.
 int fs_sync_dir(char* dir_path, io_result* r):
-	int fd = fs_open(dir_path, FS_O_RDONLY | FS_O_DIRECTORY | FS_O_CLOEXEC, 0, r)
+	int fd = fs_open(dir_path, FS_NATIVE_DIR_SYNC_ACCESS | FS_O_DIRECTORY | FS_O_CLOEXEC, 0, r)
 	if (fd < 0): return r.status
 	int status = fs_fsync(fd, r)
 	io_result closed
-	io_close(fd, &closed)
+	fs_close(fd, &closed)
 	return status
 
 
@@ -213,12 +226,12 @@ int fs_sync_parent_dir(char* path, io_result* r):
 int fs_lock_acquire(char* path, io_result* r):
 	int fd = fs_open(path, FS_O_RDWR | FS_O_CREAT | FS_O_CLOEXEC, FS_DEFAULT_MODE, r)
 	if (fd < 0): return -1
-	int ret = sys_flock(fd, FS_LOCK_EX | FS_LOCK_NB)
-	while (ret == (0 - IO_ERRNO_EINTR)): ret = sys_flock(fd, FS_LOCK_EX | FS_LOCK_NB)
+	int ret = fs_native_flock(fd, FS_LOCK_EX | FS_LOCK_NB)
+	while (ret == (0 - IO_ERRNO_EINTR)): ret = fs_native_flock(fd, FS_LOCK_EX | FS_LOCK_NB)
 	if (ret < 0):
 		io_result_from_syscall(r, ret)
 		io_result closed
-		io_close(fd, &closed)
+		fs_close(fd, &closed)
 		return -1
 	io_result_set(r, 0, IO_OK, 0)
 	return fd
@@ -226,7 +239,7 @@ int fs_lock_acquire(char* path, io_result* r):
 
 # Releases a lock from fs_lock_acquire by closing its descriptor.
 int fs_lock_release(int fd, io_result* r):
-	return io_close(fd, r)
+	return fs_close(fd, r)
 
 
 /* Durable replace */
@@ -288,19 +301,35 @@ int fs_replace_fail(fs_replace_report* rep, int stage, int status, int native_er
 	return status
 
 
+# The barrier that makes a completed rename of path durable: an fsync of
+# the parent directory on POSIX targets. Windows has no supported
+# directory fsync; its publication is a write-through MoveFileExW, after
+# which this flushes the replaced file through a fresh handle (on NTFS a
+# file flush also commits the metadata journal holding the rename).
+int fs_publish_barrier(char* path, io_result* r):
+	if (FS_NATIVE_PUBLISH_SYNCS_DIR): return fs_sync_parent_dir(path, r)
+	int fd = fs_open(path, FS_O_WRONLY | FS_O_CLOEXEC, 0, r)
+	if (fd < 0): return r.status
+	int status = fs_fsync(fd, r)
+	io_result closed
+	fs_close(fd, &closed)
+	return status
+
+
 # Atomically and durably replaces path's contents with length bytes of
 # data, created with mode: create a temp sibling with O_EXCL, write it
-# all, fsync it, close it (checked), rename it over path, then fsync the
-# parent directory. Returns IO_OK only when every step succeeded, i.e.
-# the new contents survive a crash.
+# all (positionally, from offset 0), fsync it, close it (checked), rename
+# it over path, then run the publication barrier (fs_publish_barrier:
+# the parent directory's fsync on POSIX). Returns IO_OK only when every
+# step succeeded, i.e. the new contents survive a crash.
 #
 # On failure rep says which stage failed and whether the rename already
 # happened:
 # - renamed == 0 (open_temp .. rename): path is untouched (still the old
 #   contents, or still absent) and the temp file has been removed.
-# - renamed == 1 (sync_dir): path already names the NEW contents and
-#   readers may see them, but whether the rename survives a crash is
-#   unknown. This is not an ordinary "unchanged" failure -- the caller
+# - renamed == 1 (sync_dir, the publication barrier): path already
+#   names the NEW contents and readers may see them, but whether the
+#   rename survives a crash is unknown. This is not an ordinary "unchanged" failure -- the caller
 #   must not assume the old contents are still in place.
 int fs_replace_durable_mode(char* path, char* data, int length, int mode, fs_replace_report* rep):
 	rep.status = IO_OK
@@ -327,28 +356,28 @@ int fs_replace_durable_mode(char* path, char* data, int length, int mode, fs_rep
 	if (fd < 0): return fs_replace_fail(rep, FS_STAGE_OPEN_TEMP, r.status, r.native_error)
 
 	int stage = FS_STAGE_WRITE
-	int status = io_write_all(fd, data, length, &r)
+	int status = fs_pwrite_all(fd, data, length, 0, &r)
 	rep.transferred = r.transferred
 	if (status == IO_OK):
 		stage = FS_STAGE_SYNC_FILE
 		status = fs_fsync(fd, &r)
 	if (status != IO_OK):
 		io_result closed
-		io_close(fd, &closed)
+		fs_close(fd, &closed)
 	else:
 		stage = FS_STAGE_CLOSE
-		status = io_close(fd, &r)
+		status = fs_close(fd, &r)
 	if (status == IO_OK):
 		stage = FS_STAGE_RENAME
-		status = io_result_from_syscall(&r, rename(temp, path))
+		status = io_result_from_syscall(&r, fs_native_rename(temp, path))
 	if (status != IO_OK):
-		unlink(temp)
+		fs_native_unlink(temp)
 		free(temp)
 		return fs_replace_fail(rep, stage, status, r.native_error)
 	free(temp)
 	rep.renamed = 1
 
-	status = fs_sync_parent_dir(path, &r)
+	status = fs_publish_barrier(path, &r)
 	if (status != IO_OK): return fs_replace_fail(rep, FS_STAGE_SYNC_DIR, status, r.native_error)
 	return IO_OK
 

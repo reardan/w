@@ -325,6 +325,42 @@ void repl_threads_enable():
 	repl_threads_enabled = 1
 
 
+# wdbg's stop lock (#713). A debuggee thread that stops (a breakpoint, a
+# 'debugger' statement, a step, a watchpoint or a fault) runs the command
+# loop, the compiler and the evaluation engine on its own stack, and those
+# keep their state in plain globals: one thread at a time owns them, and a
+# stop on another thread waits in its signal handler until the owner
+# resumes. The owner keeps the lock through a resume that single-steps (its
+# trap flag is set), so a breakpoint re-arm, a step or a watchpoint scan
+# finishes before another thread can stop. A lock whose owner has exited
+# (it stepped into thread exit) is taken over. Nested stops on the owning
+# thread (a 'debugger' statement inside an evaluated expression) count
+# depth.
+int repl_host_owner
+int repl_host_depth
+
+
+void repl_host_enter():
+	int tid = repl_gettid()
+	if (repl_host_owner == tid):
+		repl_host_depth = repl_host_depth + 1
+		return;
+	while (arch_thread_cas(&repl_host_owner, 0, tid) != 0):
+		int owner = repl_host_owner
+		if ((owner != 0) && (arch_thread_alive(owner) == 0)): arch_thread_cas(&repl_host_owner, owner, 0)
+		else: repl_thread_settle_pause()
+	repl_host_depth = 1
+
+
+# Leave one stop. keep_owner: the thread resumes single-stepping, and its
+# next trap continues this tenure.
+void repl_host_leave(int keep_owner):
+	repl_host_depth = repl_host_depth - 1
+	if (repl_host_depth > 0): return;
+	if (keep_owner): return;
+	arch_thread_cas(&repl_host_owner, repl_gettid(), 0)
+
+
 # After a rollback to code position `kept_end` (everything at or above it
 # is released unless repl_keep_code): hooks that point into released code
 # are cleared; hooks into code that is kept mark the thread runtime kept.
@@ -1192,6 +1228,10 @@ int repl_compile_entry(char* path):
 # repl_eval's repl_setjmp checkpoint the fault handler jumps to.
 int repl_fault_active
 int repl_fault_jump_buffer
+# The thread whose repl_eval armed the window: a fault on any other thread
+# (a wdbg debuggee thread running while the owner of a stop evaluates)
+# cannot long-jump onto that thread's stack.
+int repl_fault_tid
 
 int repl_fault_thunk_page
 int repl_fault_thunk_pos
@@ -1306,15 +1346,22 @@ void repl_fault_trace(int context):
 # back into repl_eval, which rolls the entry back like a compile
 # error. Clearing repl_fault_active first means a fault inside this
 # handler (or anywhere outside an entry) takes the die-as-before path.
+# 1 when the fault window is armed by the calling thread.
+int repl_fault_window_mine():
+	return repl_fault_active && (repl_fault_tid == repl_gettid())
+
+
 void repl_fault(int sig, int context):
 	# A thread an entry started faulted: repl_eval's checkpoint lives on
-	# the main thread's stack, so there is nothing to return to.
-	if (repl_threads_enabled && (repl_gettid() != getpid())):
+	# the main thread's stack, so there is nothing to return to. wdbg
+	# evaluates on whichever debuggee thread stopped, so a fault inside
+	# that thread's own evaluation recovers like one on the main thread.
+	if (repl_threads_enabled && (repl_gettid() != getpid()) && (repl_fault_window_mine() == 0)):
 		dbg_fault_banner(c"runtime fault in a thread started by an entry: ", sig, context)
 		println(c"the session cannot recover from a fault on another thread; exiting")
 		repl_fault_restore_default(sig)
 		return;
-	if (repl_fault_active == 0):
+	if (repl_fault_window_mine() == 0):
 		repl_fault_restore_default(sig)
 		return;
 	repl_fault_active = 0
@@ -1781,6 +1828,7 @@ repl_result repl_eval(char* entry_text):
 		return r
 
 	if (repl_eval_depth == 1): repl_thread_snapshot_take()
+	repl_fault_tid = repl_gettid()
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):
 		# repl_fault decided whether other threads keep the entry's code

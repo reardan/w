@@ -102,7 +102,7 @@ suite** (the serial `./wbuild ast_expression_suite` runs the whole
 manifest in required mode), **byte-identical on all six image targets**,
 and gated by self-host fixpoints in every mode
 (`ast_expression_verify`, `ast_required_expression_verify`). Consumers
-of the retained forest exist: `w tree --json` (schema v2),
+of the retained forest exist: `w tree --json` (schema v3),
 `check --all-errors`, `repl/incremental.w`, and
 `compiler/module_dependencies.w`.
 

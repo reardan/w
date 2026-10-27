@@ -153,3 +153,42 @@ void test_dismiss_takes_effect_immediately():
 	ui_toast_dismiss(&st)
 	assert_equal(0, toast_frame(ctx, &st, &bg, 100))
 	ui_render_destroy(&fx.r)
+
+
+# A toast is a live region: polite for ui_toast_show, assertive for
+# ui_toast_alert; ui_status is a polite one too. Screen-reader bridges
+# announce live regions when they appear or change (#465).
+void test_toasts_and_status_lines_are_live_regions():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_toast_state st
+	ui_toast_init(&st)
+	ui_toast_show(&st, c"Saved", 1000, 2000)
+	ui_access_tree* tree = ui_access_tree_new(64, 1024)
+	ui_access_capture(ctx, tree)
+	ui_begin(ctx, 320, 240)
+	ui_status(ctx, c"3 results")
+	ui_toast(ctx, &st, 1000)
+	ui_end(ctx)
+	ui_access_capture(ctx, 0)
+	ui_access_node* status = tree.root.first_child
+	assert_equal(UI_ACCESS_TEXT, status.role)
+	assert_strings_equal(c"3 results", status.name.data)
+	assert_equal(UI_ACCESS_LIVE_POLITE, status.live)
+	ui_access_node* toast = tree.root.last_child
+	assert_strings_equal(c"Saved", toast.name.data)
+	assert_equal(UI_ACCESS_LIVE_POLITE, toast.live)
+	ui_access_tree_free(tree)
+
+	ui_toast_alert(&st, c"Disk full", 1500, 2000)
+	tree = ui_access_tree_new(64, 1024)
+	ui_access_capture(ctx, tree)
+	ui_begin(ctx, 320, 240)
+	ui_toast(ctx, &st, 1500)
+	ui_end(ctx)
+	ui_access_capture(ctx, 0)
+	toast = tree.root.last_child
+	assert_strings_equal(c"Disk full", toast.name.data)
+	assert_equal(UI_ACCESS_LIVE_ASSERTIVE, toast.live)
+	ui_access_tree_free(tree)
+	ui_render_destroy(&fx.r)

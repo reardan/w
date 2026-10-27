@@ -19,6 +19,8 @@ polling state and the graphics.event ring:
 	WM_CLOSE / WM_DESTROY       should_close (the window is not destroyed
 	                            until gfx_window_destroy)
 	WM_SIZE                     width/height + glViewport
+	WM_DPICHANGED               dpi, and the window takes the suggested
+	                            rectangle
 	WM_KEYDOWN / WM_KEYUP       KEY_DOWN / KEY_UP (code = the Win32
 	                            virtual-key code), NAV for the arrows,
 	                            Home/End, PgUp/PgDn and Delete
@@ -30,6 +32,16 @@ polling state and the graphics.event ring:
 
 One window at a time: the window procedure finds its gfx_window through
 a module global (Win32 hands it only the HWND).
+
+DPI: the process declares itself per-monitor DPI aware (v2 where the
+system has it, else system aware), so Windows never bitmap-stretches the
+window. The backend works in logical pixels, like the web backend: at
+150% (144 DPI) a 1280x800 window gets a 1920x1200 client area,
+width/height and the pointer stay in 1280x800 logical units, the GL
+viewport covers the physical pixels, and gfx_window_pixel_ratio reports
+1.5 so graphics.ui rasterizes text at device resolution. WM_DPICHANGED
+(moving to a monitor with another scale) updates the ratio and resizes
+the window to the rectangle Windows suggests.
 
 Design notes: docs/projects/graphics.md
 */
@@ -58,6 +70,8 @@ extern int GetKeyState(int virtual_key)
 extern int ScreenToClient(int hwnd, int32* point)
 extern int SetCapture(int hwnd)
 extern int ReleaseCapture()
+extern int SetWindowPos(int hwnd, int after, int x, int y, int width, int height, int flags)
+extern int GetClientRect(int hwnd, int32* rect)
 
 c_lib "imm32.dll"
 extern int ImmGetContext(int hwnd)
@@ -67,6 +81,7 @@ extern int ImmSetCompositionWindow(int context, int32* form)
 extern int ImmNotifyIME(int context, int action, int index, int value)
 
 c_lib "gdi32.dll"
+extern int GetDeviceCaps(int dc, int index)
 extern int ChoosePixelFormat(int dc, char* descriptor)
 extern int SetPixelFormat(int dc, int format, char* descriptor)
 extern int SwapBuffers(int dc)
@@ -87,6 +102,11 @@ struct gfx_window:
 	int32 text_focus
 	int32 pending_surrogate
 	int32 last_keycode
+	# dots per inch of the window's monitor (96 = 100%) and the client
+	# area in physical pixels; width/height above are logical pixels
+	int32 dpi
+	int32 pixel_width
+	int32 pixel_height
 	# per-frame event ring (graphics.event); drained by
 	# gfx_window_next_event
 	gfx_input_queue input_queue
@@ -107,6 +127,71 @@ char* gfx_win32_class_name
 # compatibility profile.
 char* gfx_shader_header():
 	return c"#version 130\n"
+
+
+# Optional user32 entry points, resolved at run time so the program
+# still loads on Windows versions without them.
+type gfx_win32_fn1 = fn(int) -> int
+type gfx_win32_fn0 = fn() -> int
+
+int gfx_win32_user32_function(char* name, int nargs):
+	int user32 = GetModuleHandleA(c"user32.dll")
+	if (user32 == 0): return 0
+	int sym = GetProcAddress(user32, name)
+	if (sym == 0): return 0
+	return win_c_function(sym, nargs, 1)
+
+
+# Declare per-monitor DPI awareness before the first window exists:
+# SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2 = -4, else
+# PER_MONITOR_AWARE = -3) on Windows 10 1703+, SetProcessDPIAware on
+# older systems.
+int gfx_win32_dpi_declared
+void gfx_win32_declare_dpi_awareness():
+	if (gfx_win32_dpi_declared): return
+	gfx_win32_dpi_declared = 1
+	gfx_win32_fn1* set_context = cast(gfx_win32_fn1*, gfx_win32_user32_function(c"SetProcessDpiAwarenessContext", 1))
+	if (set_context != 0):
+		if (set_context(0 - 4) != 0): return
+		if (set_context(0 - 3) != 0): return
+	gfx_win32_fn0* set_aware = cast(gfx_win32_fn0*, gfx_win32_user32_function(c"SetProcessDPIAware", 0))
+	if (set_aware != 0): set_aware()
+
+
+# The window's DPI: GetDpiForWindow (Windows 10 1607+), else the screen
+# DC's LOGPIXELSX (88). Never below 48, so a bad answer cannot divide by
+# zero or shrink the UI to nothing.
+int gfx_win32_window_dpi(int hwnd):
+	int dpi = 0
+	gfx_win32_fn1* for_window = cast(gfx_win32_fn1*, gfx_win32_user32_function(c"GetDpiForWindow", 1))
+	if (for_window != 0): dpi = for_window(hwnd)
+	if (dpi <= 0):
+		int dc = GetDC(0)
+		dpi = cast(int32, GetDeviceCaps(dc, 88))
+		ReleaseDC(0, dc)
+	if (dpi < 48): dpi = 96
+	return dpi
+
+
+# Physical (device) pixels to logical pixels and back at the window's DPI.
+int gfx_win32_logical(gfx_window* win, int v):
+	if (win.dpi == 96): return v
+	if (v < 0): return 0 - ((0 - v) * 96 + win.dpi - 1) / win.dpi
+	return v * 96 / win.dpi
+
+
+int gfx_win32_physical(gfx_window* win, int v):
+	if (win.dpi == 96): return v
+	return (v * win.dpi + 48) / 96
+
+
+# Apply a client size in physical pixels: logical size, GL viewport.
+void gfx_win32_client_size(gfx_window* win, int pixel_width, int pixel_height):
+	win.pixel_width = pixel_width
+	win.pixel_height = pixel_height
+	win.width = (pixel_width * 96 + win.dpi / 2) / win.dpi
+	win.height = (pixel_height * 96 + win.dpi / 2) / win.dpi
+	if (win.context != 0): glViewport(0, 0, pixel_width, pixel_height)
 
 
 # Modifier state from GetKeyState: a SHORT whose high bit means "down"
@@ -155,8 +240,8 @@ int gfx_win32_nav(int vk):
 
 
 void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
-	win.mouse_x = gfx_win32_lo16(lparam)
-	win.mouse_y = gfx_win32_hi16(lparam)
+	win.mouse_x = gfx_win32_logical(win, gfx_win32_lo16(lparam))
+	win.mouse_y = gfx_win32_logical(win, gfx_win32_hi16(lparam))
 	int bit = 1 << (button - 1)
 	if (down):
 		# Keep receiving the release when it happens outside the window.
@@ -205,9 +290,17 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		int answer = gfx_win32_getobject(hwnd, wparam, lparam)
 		if (answer != 0): return answer
 	if (m == 5):                          /* WM_SIZE */
-		win.width = lparam & 65535
-		win.height = (lparam >> 16) & 65535
-		if (win.context != 0): glViewport(0, 0, win.width, win.height)
+		gfx_win32_client_size(win, lparam & 65535, (lparam >> 16) & 65535)
+		return 0
+	if (m == 736):                        /* WM_DPICHANGED */
+		win.dpi = wparam & 65535
+		if (win.dpi < 48): win.dpi = 96
+		# lparam points at the RECT Windows suggests for the new scale.
+		char* suggested = cast(char*, lparam)
+		int left = load_int32(suggested)
+		int top = load_int32(suggested + 4)
+		SetWindowPos(hwnd, 0, left, top, load_int32(suggested + 8) - left, load_int32(suggested + 12) - top, 20)  /* SWP_NOZORDER | SWP_NOACTIVATE */
+		gfx_win32_client_size(win, win.pixel_width, win.pixel_height)
 		return 0
 	if ((m == 256) || (m == 260)):        /* WM_KEYDOWN, WM_SYSKEYDOWN */
 		int mods = gfx_win32_mods()
@@ -249,8 +342,8 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		win.pending_surrogate = 0
 		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_END, 0, win.text_focus, 0, 0)
 	if (m == 512):                        /* WM_MOUSEMOVE */
-		win.mouse_x = gfx_win32_lo16(lparam)
-		win.mouse_y = gfx_win32_hi16(lparam)
+		win.mouse_x = gfx_win32_logical(win, gfx_win32_lo16(lparam))
+		win.mouse_y = gfx_win32_logical(win, gfx_win32_hi16(lparam))
 		return 0
 	if (m == 513):                        /* WM_LBUTTONDOWN */
 		gfx_win32_button(win, 1, 1, lparam)
@@ -277,8 +370,8 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		point[0] = gfx_win32_lo16(lparam)
 		point[1] = gfx_win32_hi16(lparam)
 		ScreenToClient(hwnd, &point[0])
-		win.mouse_x = point[0]
-		win.mouse_y = point[1]
+		win.mouse_x = gfx_win32_logical(win, point[0])
+		win.mouse_y = gfx_win32_logical(win, point[1])
 		int delta = gfx_win32_hi16(wparam)
 		int wheel_mods = gfx_win32_mods()
 		while (delta >= 120):
@@ -339,6 +432,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 		print_error(c"graphics.window: the win32 backend supports one window at a time\n")
 		return 0
 	int instance = GetModuleHandleA(cast(char*, 0))
+	gfx_win32_declare_dpi_awareness()
 	if (gfx_win32_register_class(instance) == 0):
 		print_error(c"graphics.window: RegisterClassExW failed\n")
 		return 0
@@ -358,6 +452,9 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.context = 0
 	win.width = width
 	win.height = height
+	win.dpi = 96
+	win.pixel_width = width
+	win.pixel_height = height
 	win.should_close = 0
 	win.mouse_x = 0
 	win.mouse_y = 0
@@ -379,6 +476,18 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 		free(win)
 		return 0
 	win.hwnd = hwnd
+	# width x height are logical pixels: grow the window to the same
+	# logical size at its monitor's scale.
+	win.dpi = gfx_win32_window_dpi(hwnd)
+	if (win.dpi != 96):
+		rect[0] = 0
+		rect[1] = 0
+		rect[2] = gfx_win32_physical(win, width)
+		rect[3] = gfx_win32_physical(win, height)
+		AdjustWindowRect(&rect[0], style, 0)
+		SetWindowPos(hwnd, 0, 0, 0, rect[2] - rect[0], rect[3] - rect[1], 22)  /* SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE */
+	int32[4] client
+	if (cast(int32, GetClientRect(hwnd, &client[0])) != 0): gfx_win32_client_size(win, client[2] - client[0], client[3] - client[1])
 
 	int dc = GetDC(hwnd)
 	char* pfd = gfx_win32_pixel_format()
@@ -407,7 +516,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.dc = dc
 	win.context = context
 	ShowWindow(hwnd, 5)               /* SW_SHOW */
-	glViewport(0, 0, win.width, win.height)
+	glViewport(0, 0, win.pixel_width, win.pixel_height)
 	return win
 
 
@@ -437,9 +546,9 @@ void gfx_window_swap(gfx_window* win):
 
 
 # Device pixels per logical window pixel, for graphics.ui's crisp text
-# (ui_render_set_pixel_scale). This backend draws 1:1.
+# (ui_render_set_pixel_scale): the window's DPI over 96.
 float32 gfx_window_pixel_ratio(gfx_window* win):
-	return 1.0
+	return cast(float32, win.dpi) / 96.0
 
 
 void gfx_window_destroy(gfx_window* win):

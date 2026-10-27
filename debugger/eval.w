@@ -103,11 +103,99 @@ char* dbg_eval_record_name(int template):
 	return name
 
 
+char* dbg_eval_shared_record(int template, int depth);
+
+
+# "head[labels] tail", or "head tail" without labels.
+char* dbg_eval_labeled(char* head, char* labels, char* tail):
+	string_builder* out = string_new()
+	string_append(out, head)
+	if (labels != 0):
+		string_append_char(out, '[')
+		string_append(out, labels)
+		string_append_char(out, ']')
+	string_append_char(out, ' ')
+	string_append(out, tail)
+	char* result = out.data
+	free(out)
+	return result
+
+
+# The shared spelling of one field of a borrowed record template, its
+# template labels kept: 'refmut[g] T*' becomes 'ref[g] T*', 'optrefmut'
+# becomes 'optref', 'refmut[g] T[]' becomes 'ref[g] T[]' and a nested
+# 'refmut[g] R' names R's shared twin. 0 when the field has no spelling.
+char* dbg_eval_shared_field(int field, int depth):
+	int bare = type_unqualified(field)
+	if (type_safe_kind(bare) == 0): return safe_session_spell(bare)
+	int kind = type_get_kind(bare)
+	char* labels = type_record(bare).safe_lifetime
+	char* tail = 0
+	char* head = c"ref"
+	if ((kind == type_kind_ref) || (kind == type_kind_refmut) || (kind == type_kind_optref) || (kind == type_kind_optrefmut)):
+		if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): head = c"optref"
+		tail = safe_session_spell(type_safe_target(bare))
+	else if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_slicemut)):
+		char* item = safe_session_spell(type_record(bare).alias_target)
+		if (item == 0): return 0
+		tail = strjoin(item, c"[]")
+		free(item)
+	else if (kind == type_kind_safe_record):
+		char* name = dbg_eval_record_name(type_record(bare).alias_target)
+		if (name != 0): tail = strclone(name)
+	else if (kind == type_kind_safe_recordmut): tail = dbg_eval_shared_record(type_record(bare).alias_target, depth + 1)
+	if (tail == 0): return 0
+	char* result = dbg_eval_labeled(head, labels, tail)
+	free(tail)
+	return result
+
+
+# A borrowed record template with an exclusive field has no shared view
+# ('ref[a] R' is not a checked type), so a view of one names a twin
+# template with every exclusive field shared, defined ahead of the entry's
+# checked transcript (safe_session_view_type). The twin has the record's
+# layout and field names and is only ever checked against: the entry
+# itself compiles against the frame's real local. Returns the twin's name,
+# 0 when a field has no spelling.
+char* dbg_eval_shared_record(int template, int depth):
+	if (depth > 8): return 0
+	char* record = dbg_eval_record_name(template)
+	if (record == 0): return 0
+	char* twin = strjoin(c"__wdbg_shared_", record)
+	char* header = strjoin(c"struct ", twin)
+	char* opened = strjoin(header, c":\x0a")
+	free(header)
+	for i in range(safe_session_view_types.length):
+		if (starts_with(safe_session_view_types[i], opened)):
+			free(opened)
+			return twin
+	string_builder* out = string_new()
+	string_append(out, opened)
+	free(opened)
+	for i in range(type_num_args(template)):
+		char* spelled = dbg_eval_shared_field(type_get_field_type_at(template, i), depth)
+		if (spelled == 0):
+			string_free(out)
+			free(twin)
+			return 0
+		string_append_char(out, 9)
+		string_append(out, spelled)
+		string_append_char(out, ' ')
+		string_append(out, type_get_field_name_at(template, i))
+		string_append_char(out, 10)
+		free(spelled)
+	char* definition = out.data
+	free(out)
+	safe_session_view_type(definition)
+	return twin
+
+
 # The read-only view spelling of checked type: "ref T*" for owners
 # (including owners carrying borrowed groups) and references, "optref T*"
 # for optional ones, "ref T[]" for inline slices, "ref[labels] R" for an
-# inline borrowed record whose fields are all shared; 0 when it has none,
-# with the reason in dbg_eval_unviewable. Lifetime labels on pointers and
+# inline borrowed record ("ref[labels] __wdbg_shared_R" when R has
+# exclusive fields, dbg_eval_shared_record); 0 when it has none, with the
+# reason in dbg_eval_unviewable. Lifetime labels on pointers and
 # slices are dropped: the view is a parameter of the entry's own check,
 # which only reads through it. Sets *view to the view's type.
 char* dbg_eval_view_spelling(int type, int* view):
@@ -119,12 +207,13 @@ char* dbg_eval_view_spelling(int type, int* view):
 		return 0
 	if ((kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)):
 		int template = type_record(bare).alias_target
-		for i in range(type_num_args(template)):
-			if (type_safe_kind(type_get_field_type_at(template, i)) == 3):
-				dbg_eval_unviewable = c"safe: borrowed records with exclusive fields cannot be viewed read-only at a debugger stop"
-				return 0
 		char* record = dbg_eval_record_name(template)
 		if (record == 0): return 0
+		for i in range(type_num_args(template)):
+			if (type_safe_kind(type_get_field_type_at(template, i)) == 3):
+				record = dbg_eval_shared_record(template, 0)
+				if (record == 0): return 0
+				break
 		char* labels = type_record(bare).safe_lifetime
 		*view = type_get_safe_record_kind(template, labels, 2)
 		if (labels == 0): return strjoin(c"ref ", record)

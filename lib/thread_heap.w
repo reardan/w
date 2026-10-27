@@ -140,13 +140,23 @@ wheap* th_owner(int addr):
 
 
 # Counted, not compared: on x86 a segment can end exactly at the top
-# of the address space, where base + len wraps.
+# of the address space, where base + len wraps. On failure (a leaf
+# mmap refused partway through a range spanning two leaves, x64 only)
+# the entries already written are cleared again: the caller unmaps the
+# range, and a stale entry would make a later mapping there, such as a
+# main-heap mmap chunk, look like h's memory to th_free. Clearing races
+# with nothing: no block in a fresh segment has been handed out yet.
 int th_register(int base, int len, wheap* h):
 	int n = len >> th_segment_shift
 	for i in range(n):
 		int a = base + (i << th_segment_shift)
 		int* leaf = th_registry_leaf(a, 1)
-		if (leaf == 0): return 0
+		if (leaf == 0):
+			for j in range(i):
+				int b = base + (j << th_segment_shift)
+				int* written = th_registry_leaf(b, 0)
+				written[th_registry_mid(b)] = 0
+			return 0
 		leaf[th_registry_mid(a)] = cast(int, h)
 	return 1
 

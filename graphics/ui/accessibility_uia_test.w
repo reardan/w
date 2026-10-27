@@ -56,7 +56,7 @@ int record_action(void* context, int id, int action, char* data, int length):
 		actions_seen[action_count] = action
 		action_ids[action_count] = id
 	action_count = action_count + 1
-	if (action == UI_ACCESS_SET_VALUE):
+	if ((action == UI_ACCESS_SET_VALUE) || (action == UI_ACCESS_SET_SELECTION)):
 		for i in range(length): last_value[i] = data[i]
 		last_length = length
 	return 1
@@ -64,25 +64,42 @@ int record_action(void* context, int id, int action, char* data, int length):
 
 int focus_events
 int selected_events
+int live_events
+int notification_events
+int selection_events
+int text_changed_events
 
 
 # UiaEventCallback(UiaEventArgs* args, SAFEARRAY* requested, BSTR tree);
 # UiaEventArgs is {EventArgsType Type; int EventId}.
 void on_event(int args, int requested, int tree):
-	int id = load_int32(cast(char*, args + 4))
-	if (id == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
-	if (id == UIA_SelectionItem_ElementSelectedEventId): selected_events = selected_events + 1
+	int event_id = load_int32(cast(char*, args + 4))
+	if (event_id == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+	if (event_id == UIA_SelectionItem_ElementSelectedEventId): selected_events = selected_events + 1
+	if (event_id == UIA_Text_TextSelectionChangedEventId): selection_events = selection_events + 1
+	if (event_id == UIA_Text_TextChangedEventId): text_changed_events = text_changed_events + 1
+	if (event_id == UIA_LiveRegionChangedEventId): live_events = live_events + 1
+	if (event_id == UIA_NotificationEventId): notification_events = notification_events + 1
 
 
-# Pump messages until the focus and selection events arrived (at most
-# ~2s).
-void wait_for_events():
+# Pump messages until *counter is nonzero (at most ~2s).
+void wait_for_event(int* counter):
 	char[64] msg
 	int tries = 0
-	while (((focus_events == 0) || (selected_events == 0)) && (tries < 40)):
+	while ((counter[0] == 0) && (tries < 40)):
 		while (PeekMessageW(&msg[0], 0, 0, 0, 1) & 255): DispatchMessageW(&msg[0])
-		if ((focus_events == 0) || (selected_events == 0)): Sleep(50)
+		if (counter[0] == 0): Sleep(50)
 		tries = tries + 1
+
+
+void wait_for_focus_event():
+	wait_for_event(&focus_events)
+
+
+# Pump messages until the focus and selection events arrived.
+void wait_for_events():
+	wait_for_event(&focus_events)
+	wait_for_event(&selected_events)
 
 
 int hr(int v):
@@ -283,6 +300,13 @@ ui_access_tree* build(int with_tabs, int checked):
 	ui_access_node* other = ui_access_add(tree, 24, 22, UI_ACCESS_LIST_ITEM, ui_rect_new(220.0, 30.0, 70.0, 20.0))
 	other.actions = UI_ACCESS_ACTIVATE
 	add_text(tree, 24, UI_ACCESS_NAME, c"Blue")
+	if with_tabs:
+		# A multi-line notes field with a backward selection of "two\n".
+		ui_access_node* notes = ui_access_add(tree, 30, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 240.0, 200.0, 40.0))
+		notes.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION
+		add_text(tree, 30, UI_ACCESS_NAME, c"Notes")
+		add_text(tree, 30, UI_ACCESS_VALUE, c"one two\nthr\xc3\xa9e")
+		assert_equal(1, ui_access_set_selection(tree, 30, 8, 4))
 	tree.focused_id = 2
 	return tree
 
@@ -419,6 +443,438 @@ void assert_acc_variant(char* v, int expect_vt, int expect):
 		int object = load_int64(&v[8])
 		assert_equal(expect, object)
 		release(object)
+# A polite status line, a button and a file table whose unnamed row is
+# named from its cells; the second version changes the status, a cell,
+# and adds an assertive toast.
+ui_access_tree* live_build(int second):
+	ui_access_tree* tree = ui_access_tree_new(16, 512)
+	tree.action = record_action
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 200.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	add_text(tree, 1, UI_ACCESS_NAME, c"Editor")
+	ui_access_node* status = ui_access_add(tree, 2, 1, UI_ACCESS_TEXT, r)
+	status.live = UI_ACCESS_LIVE_POLITE
+	if second: add_text(tree, 2, UI_ACCESS_NAME, c"Saved.")
+	else: add_text(tree, 2, UI_ACCESS_NAME, c"Ready.")
+	ui_access_node* button = ui_access_add(tree, 3, 1, UI_ACCESS_BUTTON, r)
+	button.actions = UI_ACCESS_ACTIVATE
+	add_text(tree, 3, UI_ACCESS_NAME, c"Save")
+	ui_access_add(tree, 5, 1, UI_ACCESS_TABLE, r)
+	ui_access_node* row = ui_access_add(tree, 6, 5, UI_ACCESS_ROW, r)
+	row.actions = UI_ACCESS_ACTIVATE
+	ui_access_add(tree, 7, 6, UI_ACCESS_CELL, r)
+	add_text(tree, 7, UI_ACCESS_NAME, c"a.txt")
+	ui_access_add(tree, 8, 6, UI_ACCESS_CELL, r)
+	if second: add_text(tree, 8, UI_ACCESS_NAME, c"4 KB")
+	else: add_text(tree, 8, UI_ACCESS_NAME, c"3 KB")
+	if second:
+		ui_access_node* toast = ui_access_add(tree, 9, 1, UI_ACCESS_TEXT, r)
+		toast.live = UI_ACCESS_LIVE_ASSERTIVE
+		add_text(tree, 9, UI_ACCESS_NAME, c"Disk full")
+	return tree
+
+
+# LiveSetting, LiveRegionChanged, the notification event and the derived
+# row name, read through wine's client API.
+void check_live():
+	ui_uia_bridge* bridge = ui_access_uia_open(0)
+	ui_access_tree* first = live_build(0)
+	assert_equal(1, ui_access_uia_publish(bridge, first))
+	int root = ui_access_uia_root(bridge)
+	int root_node = client_node(root)
+	int status = find_child(root, 2)
+	int status_node = client_node(status)
+	client_int(status_node, UIA_LiveSettingPropertyId, VT_I4, UI_ACCESS_LIVE_POLITE)
+	client_text(status_node, UIA_NamePropertyId, c"Ready.")
+	int button = find_child(root, 3)
+	int button_node = client_node(button)
+	client_int(button_node, UIA_LiveSettingPropertyId, VT_I4, 0)
+	int table = find_child(root, 5)
+	int table_fragment = fragment_of(table)
+	int row_fragment = navigate(table_fragment, NavigateDirection_FirstChild)
+	int row = simple_of(row_fragment)
+	int row_node = client_node(row)
+	client_text(row_node, UIA_NamePropertyId, c"a.txt 3 KB")
+
+	char[8] condition
+	save_int64(&condition[0], 0)
+	char[48] cache
+	for i in range(48): cache[i] = 0
+	save_int64(&cache[0], cast(int, &condition[0]))
+	save_int32(&cache[8], 1)
+	save_int32(&cache[44], 1)
+	int live_event = 0
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_LiveRegionChangedEventId, win_callback(cast(int, on_event), 3), 7, cast(int32*, 0), 0, &cache[0], &live_event)))
+	int notification_event = 0
+	int notification_hr = hr(UiaAddEvent(root_node, UIA_NotificationEventId, win_callback(cast(int, on_event), 3), 7, cast(int32*, 0), 0, &cache[0], &notification_event))
+	ui_access_tree* second = live_build(1)
+	assert_equal(1, ui_access_announce(second, c"Exported", 8, UI_ACCESS_LIVE_POLITE))
+	assert_equal(1, ui_access_uia_publish(bridge, second))
+	assert_equal(0, second.announcement.length)
+	wait_for_event(&live_events)
+	# One event per changed region: the status line and the new toast.
+	assert_equal(2, live_events)
+	client_text(status_node, UIA_NamePropertyId, c"Saved.")
+	client_text(row_node, UIA_NamePropertyId, c"a.txt 4 KB")
+	# UiaRaiseNotificationEvent is found at run time. Wine 9 exports it;
+	# whether its client delivers the event is reported, not required.
+	asserts(c"notification raised", ui_uia_last_notification != 1)
+	if (notification_hr == 0):
+		wait_for_event(&notification_events)
+		UiaRemoveEvent(notification_event)
+	print_int0(c"notification event: raise hr ", ui_uia_last_notification)
+	print_int0(c", client registration hr ", notification_hr)
+	print_int(c", delivered ", notification_events)
+	assert_equal(0, hr(UiaRemoveEvent(live_event)))
+	# Republishing unchanged text raises nothing more.
+	ui_access_tree* third = live_build(1)
+	assert_equal(1, ui_access_uia_publish(bridge, third))
+	assert_equal(2, live_events)
+
+	UiaNodeRelease(row_node)
+	UiaNodeRelease(button_node)
+	UiaNodeRelease(status_node)
+	UiaNodeRelease(root_node)
+	release(row)
+	release(row_fragment)
+	release(table_fragment)
+	release(table)
+	release(button)
+	release(status)
+	release(root)
+	ui_access_uia_close(bridge)
+	ui_access_tree_free(first)
+	ui_access_tree_free(second)
+	ui_access_tree_free(third)
+
+
+/* Text pattern (ITextProvider / ITextRangeProvider) on the notes field,
+id 30: "one two\nthr\xc3\xa9e" (13 characters), selection 4..8 ("two\n")
+made backwards, so the caret is at 4. */
+
+int text_range_left             # a range kept past its node's removal
+
+
+type uia_m5 = fn(int, int, int, int, int) -> int
+
+
+int call5(int object, int slot, int a, int b, int c, int d):
+	uia_m5* f = cast(uia_m5*, method(object, slot, 5))
+	return hr(f(object, a, b, c, d))
+
+
+# ITextRangeProvider slots (UIAutomationCore.h order).
+const int RANGE_CLONE = 3
+const int RANGE_COMPARE = 4
+const int RANGE_COMPARE_ENDPOINTS = 5
+const int RANGE_EXPAND = 6
+const int RANGE_FIND_ATTRIBUTE = 7
+const int RANGE_FIND_TEXT = 8
+const int RANGE_ATTRIBUTE = 9
+const int RANGE_RECTANGLES = 10
+const int RANGE_ENCLOSING = 11
+const int RANGE_TEXT = 12
+const int RANGE_MOVE = 13
+const int RANGE_MOVE_ENDPOINT = 14
+const int RANGE_MOVE_TO_RANGE = 15
+const int RANGE_SELECT = 16
+const int RANGE_ADD_SELECTION = 17
+const int RANGE_REMOVE_SELECTION = 18
+const int RANGE_SCROLL = 19
+const int RANGE_CHILDREN = 20
+
+
+void assert_range_text(int range, char* expect):
+	int text = 0
+	assert_equal(0, call3(range, RANGE_TEXT, 0 - 1, cast(int, &text)))
+	assert_bstr(expect, text)
+	SysFreeString(text)
+
+
+int range_compare_endpoints(int range, int endpoint, int other, int other_endpoint):
+	int32[1] result
+	assert_equal(0, call5(range, RANGE_COMPARE_ENDPOINTS, endpoint, other, other_endpoint, cast(int, &result[0])))
+	return result[0]
+
+
+int range_move(int range, int unit, int count):
+	int32[1] moved
+	assert_equal(0, call4(range, RANGE_MOVE, unit, count, cast(int, &moved[0])))
+	return moved[0]
+
+
+int range_move_endpoint(int range, int endpoint, int unit, int count):
+	int32[1] moved
+	assert_equal(0, call5(range, RANGE_MOVE_ENDPOINT, endpoint, unit, count, cast(int, &moved[0])))
+	return moved[0]
+
+
+int array_upper(int array):
+	int32[1] upper
+	assert_equal(0, hr(SafeArrayGetUBound(array, 1, &upper[0])))
+	return upper[0]
+
+
+# Element index of a VT_UNKNOWN SAFEARRAY (AddRef'd by the copy).
+int array_unknown(int array, int index):
+	int32[1] at
+	at[0] = index
+	int out = 0
+	assert_equal(0, hr(SafeArrayGetElement(array, &at[0], cast(char*, &out))))
+	return out
+
+
+int find_text(int range, char* utf8, int ignore_case):
+	int needle = ui_uia_bstr(utf8, strlen(utf8))
+	int found = 0
+	assert_equal(0, call5(range, RANGE_FIND_TEXT, needle, 0, ignore_case, cast(int, &found)))
+	SysFreeString(needle)
+	return found
+
+
+void text_pattern_checks(ui_uia_bridge* bridge, ui_access_tree* app, int root, int root_node, char* cache):
+	int notes = find_child(root, 30)
+	int field = find_child(root, 4)
+	int button = find_child(root, 2)
+	asserts(c"notes", notes != 0)
+	# Only textboxes offer the pattern, through GetPatternProvider and
+	# QueryInterface alike.
+	assert_equal(0, pattern(button, UIA_TextPatternId))
+	assert_equal(0, query(button, UI_UIA_TEXT + 1))
+	int text = pattern(notes, UIA_TextPatternId)
+	asserts(c"text pattern", text != 0)
+	int text_again = query(notes, UI_UIA_TEXT + 1)
+	assert_equal(text, text_again)
+	release(text_again)
+	int field_text = pattern(field, UIA_TextPatternId)
+	asserts(c"field text pattern", field_text != 0)
+
+	int32[1] state
+	assert_equal(0, call2(text, 8, cast(int, &state[0])))
+	assert_equal(1, state[0])                          /* SupportedTextSelection_Single */
+
+	# The element holds one reference per live range.
+	ui_uia_element* element = bridge.elements[30]
+	int element_refs = element.refs
+	int doc = 0
+	assert_equal(0, call2(text, 7, cast(int, &doc)))
+	assert_equal(element_refs + 1, element.refs)
+	assert_range_text(doc, c"one two\nthr\xc3\xa9e")
+	int limited = 0
+	assert_equal(0, call3(doc, RANGE_TEXT, 3, cast(int, &limited)))
+	assert_bstr(c"one", limited)
+	SysFreeString(limited)
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(doc, RANGE_TEXT, 0 - 2, cast(int, &limited)))
+	# QueryInterface on a range: IUnknown and ITextRangeProvider are the
+	# range itself; element interfaces are not.
+	int unknown = query(doc, 0)
+	assert_equal(doc, unknown)
+	release(unknown)
+	int as_range = query(doc, UI_UIA_TEXT_RANGE_IID)
+	assert_equal(doc, as_range)
+	release(as_range)
+	assert_equal(0, query(doc, 1))
+
+	# GetSelection: one range, the selection.
+	int selection = 0
+	assert_equal(0, call2(text, 3, cast(int, &selection)))
+	assert_equal(0, array_upper(selection))
+	int selected = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(selected, c"two\n")
+	assert_equal(4, range_compare_endpoints(selected, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	assert_equal(0 - 5, range_compare_endpoints(selected, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_End))
+	# A field without a caret has no selection ranges.
+	assert_equal(0, call2(field_text, 3, cast(int, &selection)))
+	assert_equal(0 - 1, array_upper(selection))
+	SafeArrayDestroy(selection)
+	# Visible ranges: the whole text.
+	assert_equal(0, call2(text, 4, cast(int, &selection)))
+	assert_equal(0, array_upper(selection))
+	int visible = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(visible, c"one two\nthr\xc3\xa9e")
+	release(visible)
+
+	# Clone and Compare.
+	int r = 0
+	assert_equal(0, call2(doc, RANGE_CLONE, cast(int, &r)))
+	assert_equal(0, call3(doc, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(1, state[0])
+	assert_equal(0, call3(selected, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(0, state[0])
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(doc, RANGE_COMPARE, button, cast(int, &state[0])))
+
+	# Collapse r to the start, grow it by characters, then by units.
+	assert_equal(0, call4(r, RANGE_MOVE_TO_RANGE, TextPatternRangeEndpoint_End, r, TextPatternRangeEndpoint_Start))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_Start))
+	assert_equal(5, range_move_endpoint(r, TextPatternRangeEndpoint_End, TextUnit_Character, 5))
+	assert_range_text(r, c"one t")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Word))
+	assert_range_text(r, c"one ")
+	assert_equal(1, range_move(r, TextUnit_Word, 1))
+	assert_range_text(r, c"two\n")
+	assert_equal(0, call3(selected, RANGE_COMPARE, r, cast(int, &state[0])))
+	assert_equal(1, state[0])
+	# A whole word has to follow: the last one is as far as it goes.
+	assert_equal(1, range_move(r, TextUnit_Word, 5))
+	assert_range_text(r, c"thr\xc3\xa9e")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Line))
+	assert_range_text(r, c"thr\xc3\xa9e")
+	assert_equal(0 - 1, range_move(r, TextUnit_Paragraph, 0 - 3))
+	assert_range_text(r, c"one two\n")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Document))
+	assert_range_text(r, c"one two\nthr\xc3\xa9e")
+	assert_equal(0, call2(r, RANGE_EXPAND, TextUnit_Character))
+	assert_range_text(r, c"o")
+	# A degenerate range moves as a position, to the very end.
+	assert_equal(0, call4(r, RANGE_MOVE_TO_RANGE, TextPatternRangeEndpoint_End, r, TextPatternRangeEndpoint_Start))
+	assert_equal(13, range_move(r, TextUnit_Character, 20))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_End))
+	assert_equal(0 - 2, range_move(r, TextUnit_Character, 0 - 2))
+	assert_equal(0 - 1, range_move_endpoint(r, TextPatternRangeEndpoint_Start, TextUnit_Word, 0 - 1))
+	assert_range_text(r, c"thr")
+	# An endpoint moved past the other drags it along.
+	assert_equal(0 - 2, range_move_endpoint(r, TextPatternRangeEndpoint_End, TextUnit_Line, 0 - 2))
+	assert_equal(0, range_compare_endpoints(r, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	assert_range_text(r, c"")
+	release(r)
+
+	# FindText inside a range, with and without ASCII case folding.
+	int found = find_text(doc, c"THR\xc3\xa9", 1)
+	asserts(c"found", found != 0)
+	assert_range_text(found, c"thr\xc3\xa9")
+	release(found)
+	assert_equal(0, find_text(doc, c"THR", 0))
+	assert_equal(0, find_text(selected, c"thr", 1))
+	found = find_text(doc, c"o", 0)
+	assert_equal(0, range_compare_endpoints(found, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	release(found)
+	found = 0
+	char[24] v
+	ui_uia_variant_clear(&v[0])
+	assert_equal(0, call5(doc, RANGE_FIND_ATTRIBUTE, UIA_IsReadOnlyAttributeId, cast(int, &v[0]), 0, cast(int, &found)))
+	assert_equal(0, found)
+
+	# Attributes: IsReadOnly, else the reserved not-supported value.
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_IsReadOnlyAttributeId, cast(int, &v[0])))
+	assert_equal(VT_BOOL, load_int16(&v[0]) & 65535)
+	assert_equal(0, load_int16(&v[8]))
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, 40005, cast(int, &v[0])))   /* FontName */
+	assert_equal(VT_UNKNOWN, load_int16(&v[0]) & 65535)
+	int unsupported = 0
+	UiaGetReservedNotSupportedValue(&unsupported)
+	asserts(c"not supported value", unsupported != 0)
+	assert_equal(unsupported, load_int64(&v[8]))
+
+	# Geometry, the enclosing element, children, selection limits.
+	int rects = 0
+	assert_equal(0, call2(selected, RANGE_RECTANGLES, cast(int, &rects)))
+	assert_equal(3, array_upper(rects))
+	int32[1] at
+	float64[1] number
+	at[0] = 0
+	assert_equal(0, hr(SafeArrayGetElement(rects, &at[0], cast(char*, &number[0]))))
+	assert_equal(1010, cast(int, number[0]))
+	at[0] = 3
+	assert_equal(0, hr(SafeArrayGetElement(rects, &at[0], cast(char*, &number[0]))))
+	assert_equal(40, cast(int, number[0]))
+	SafeArrayDestroy(rects)
+	int enclosing = 0
+	assert_equal(0, call2(selected, RANGE_ENCLOSING, cast(int, &enclosing)))
+	assert_equal(notes, enclosing)
+	release(enclosing)
+	int children = 0
+	assert_equal(0, call2(selected, RANGE_CHILDREN, cast(int, &children)))
+	assert_equal(0 - 1, array_upper(children))
+	SafeArrayDestroy(children)
+	assert_equal(cast(int, UIA_E_INVALIDOPERATION), call1(selected, RANGE_ADD_SELECTION))
+	assert_equal(cast(int, UIA_E_INVALIDOPERATION), call1(selected, RANGE_REMOVE_SELECTION))
+	assert_equal(0, call2(selected, RANGE_SCROLL, 1))
+
+	# RangeFromChild has no children to find; RangeFromPoint takes the
+	# UiaPoint by reference: past the field's right edge is its end.
+	int from = 0
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(text, 5, button, cast(int, &from)))
+	float64[2] point
+	point[0] = 5000.0
+	point[1] = 750.0
+	assert_equal(0, call3(text, 6, cast(int, &point[0]), cast(int, &from)))
+	assert_equal(0, range_compare_endpoints(from, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_End))
+	release(from)
+	point[0] = 1000.0
+	assert_equal(0, call3(text, 6, cast(int, &point[0]), cast(int, &from)))
+	assert_equal(0, range_compare_endpoints(from, TextPatternRangeEndpoint_End, doc, TextPatternRangeEndpoint_Start))
+	release(from)
+
+	# Select queues SET_SELECTION (anchor = start, caret = end), applied
+	# through ui_access_dispatch; a field without the action refuses.
+	assert_equal(0, call1(selected, RANGE_SELECT))
+	int field_doc = 0
+	assert_equal(0, call2(field_text, 7, cast(int, &field_doc)))
+	assert_equal(cast(int, UIA_E_ELEMENTNOTENABLED), call1(field_doc, RANGE_SELECT))
+	release(field_doc)
+	int before = action_count
+	assert_equal(1, ui_access_uia_dispatch(bridge, app))
+	assert_equal(before + 1, action_count)
+	assert_equal(UI_ACCESS_SET_SELECTION, actions_seen[before])
+	assert_equal(30, action_ids[before])
+	assert_equal(3, last_length)
+	assert_bytes_equal(c"4 8", &last_value[0], 3)
+
+	# A republication that moves the caret and edits the text raises
+	# the Text pattern's events (when clients listen); ranges see the
+	# new text.
+	int selection_event = 0
+	int changed_event = 0
+	int callback = win_callback(cast(int, on_event), 3)
+	# wine delivers both events to an in-process client (TreeScope_Subtree
+	# from the root).
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_Text_TextSelectionChangedEventId, callback, 7, cast(int32*, 0), 0, cache, &selection_event)))
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_Text_TextChangedEventId, callback, 7, cast(int32*, 0), 0, cache, &changed_event)))
+	ui_access_tree* moved = ui_access_tree_clone(app)
+	moved.action = record_action
+	ui_access_set_text(moved, 30, UI_ACCESS_VALUE, c"one", 3)
+	assert_equal(1, ui_access_set_selection(moved, 30, 1, 1))
+	assert_equal(1, ui_access_uia_publish(bridge, moved))
+	char[64] msg
+	int tries = 0
+	while ((selection_events + text_changed_events < 2) && (tries < 40)):
+		while (PeekMessageW(&msg[0], 0, 0, 0, 1) & 255): DispatchMessageW(&msg[0])
+		if (selection_events + text_changed_events < 2): Sleep(50)
+		tries = tries + 1
+	assert_equal(1, selection_events)
+	assert_equal(1, text_changed_events)
+	assert_equal(0, hr(UiaRemoveEvent(selection_event)))
+	assert_equal(0, hr(UiaRemoveEvent(changed_event)))
+	assert_range_text(doc, c"one")
+	assert_equal(0, call2(text, 3, cast(int, &selection)))
+	int caret = array_unknown(selection, 0)
+	SafeArrayDestroy(selection)
+	assert_range_text(caret, c"")
+	assert_equal(1, range_compare_endpoints(caret, TextPatternRangeEndpoint_Start, doc, TextPatternRangeEndpoint_Start))
+	release(caret)
+	assert_equal(1, ui_access_uia_publish(bridge, app))
+	ui_access_tree_free(moved)
+
+	# Ranges are freed with their last reference, giving the element's
+	# back. (Measured here: wine's client and event paths keep their own
+	# references on the element.)
+	int refs_now = element.refs
+	assert_equal(0, call2(doc, RANGE_CLONE, cast(int, &r)))
+	assert_equal(refs_now + 1, element.refs)
+	assert_equal(2, call1(r, 1))                       /* AddRef */
+	assert_equal(1, call1(r, 2))
+	assert_equal(0, call1(r, 2))
+	assert_equal(refs_now, element.refs)
+	release(selected)
+	release(text)
+	release(field_text)
+	release(field)
+	release(button)
+	release(notes)
+	# doc stays alive past the node's removal (checked by the caller).
+	text_range_left = doc
 
 
 int main():
@@ -581,6 +1037,21 @@ int main():
 	release(hit)
 	assert_equal(0, hr(from_point(fragment_root, 5000.0, 5000.0, cast(int, &hit))))
 	assert_equal(0, hit)
+	# At 150% the snapshot's logical bounds become device pixels, and a
+	# device-pixel point maps back to the same node.
+	ui_access_uia_set_scale(bridge, 1.5)
+	assert_equal(0, call2(button_fragment, 5, cast(int, &rect[0])))
+	assert_equal(1015, cast(int, rect[0]))
+	assert_equal(515, cast(int, rect[1]))
+	assert_equal(120, cast(int, rect[2]))
+	assert_equal(45, cast(int, rect[3]))
+	assert_equal(0, hr(from_point(fragment_root, 1130.0, 555.0, cast(int, &hit))))
+	asserts(c"hit at 150%", hit != 0)
+	hit_simple = simple_of(hit)
+	assert_equal(2, automation_id(hit_simple))
+	release(hit_simple)
+	release(hit)
+	ui_access_uia_set_scale(bridge, 1.0)
 	int focus = 0
 	assert_equal(0, call2(fragment_root, 4, cast(int, &focus)))
 	int focus_simple = simple_of(focus)
@@ -691,7 +1162,7 @@ int main():
 	assert_equal(0, count[0])
 	assert_equal(cast(int, UIA_E_NOTIMPL), call1(acc, 6))  /* Invoke */
 	assert_equal(0, call2(acc, 8, cast(int, &count[0])))
-	assert_equal(10, count[0])
+	assert_equal(11, count[0])
 	acc_text(acc, 10, CHILDID_SELF, c"Settings")
 	assert_equal(ROLE_SYSTEM_CLIENT, acc_role(acc, CHILDID_SELF))
 	acc_text(acc, 10, 1, c"Open")
@@ -732,7 +1203,7 @@ int main():
 	char[24] child
 	char[24] answer
 	ui_uia_variant_clear(&answer[0])
-	assert_equal(cast(int, UIA_E_INVALIDARG), call3(acc, 13, cast(int, child_id(&child[0], 11)), cast(int, &answer[0])))
+	assert_equal(cast(int, UIA_E_INVALIDARG), call3(acc, 13, cast(int, child_id(&child[0], 12)), cast(int, &answer[0])))
 	assert_equal(cast(int, UIA_E_INVALIDARG), call3(acc, 13, cast(int, child_id(&child[0], 0 - 999)), cast(int, &answer[0])))
 	save_int16(&child[0], VT_BSTR)
 	assert_equal(cast(int, UIA_E_INVALIDARG), call3(acc, 13, cast(int, &child[0]), cast(int, &answer[0])))
@@ -826,6 +1297,7 @@ int main():
 	assert_equal(UI_ACCESS_FOCUS, actions_seen[5])
 	assert_equal(2, app.focused_id)
 	assert_equal(0, ui_access_uia_dispatch(bridge, app))
+	text_pattern_checks(bridge, app, root, root_node, &cache[0])
 
 	# MSAA actions go through the same queue.
 	action_count = 0
@@ -908,6 +1380,14 @@ int main():
 		UiaNodeRelease(tab_node)
 	release(select)
 	release(tab_two)
+	# A text range outlives its node: it answers not-available, and its
+	# last release frees it (and the element it kept).
+	int gone_text = 0
+	assert_equal(cast(int, UIA_E_ELEMENTNOTAVAILABLE), call3(text_range_left, RANGE_TEXT, 0 - 1, cast(int, &gone_text)))
+	assert_equal(cast(int, UIA_E_ELEMENTNOTAVAILABLE), call1(text_range_left, RANGE_SELECT))
+	assert_equal(0, gone_text)
+	asserts(c"notes retired", !(30 in bridge.elements))
+	release(text_range_left)
 	release(tabs)
 
 	# WM_GETOBJECT answers UiaRootObjectId and OBJID_CLIENT, nothing else.
@@ -947,5 +1427,6 @@ int main():
 	ui_access_uia_close(bridge)
 	ui_access_tree_free(app)
 	ui_access_tree_free(next)
+	check_live()
 	println(c"UI Automation bridge OK")
 	return 0

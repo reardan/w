@@ -18,8 +18,10 @@ void gfx_text_input(int active, int multiline, int x, int y, int width, int heig
 		if (active):
 			int32[7] form
 			form[0] = 2 # CFS_POINT; native candidate/composition window
-			form[1] = x
-			form[2] = y + height
+			# The caret rectangle arrives in logical pixels; IMM wants
+			# client-area device pixels.
+			form[1] = gfx_win32_physical(win, x)
+			form[2] = gfx_win32_physical(win, y + height)
 			for i in range(4): form[i + 3] = 0
 			ImmSetCompositionWindow(im, &form[0])
 		ImmReleaseContext(win.hwnd, im)

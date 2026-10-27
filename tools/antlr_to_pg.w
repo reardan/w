@@ -22,6 +22,10 @@ ParserGenerator .pg DSL (libs/extras/grammars/antlr_to_pg/README.md).
 
 	bin/antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME]
 		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--prediction] [--exact-lexer] [--audit FILE] [--audit-json FILE]
+		[--dependencies FILE] [--start RULE]
+
+`--start RULE` makes the ANTLR parser rule RULE the generated parser's start
+rule (the `NAME_parse` entry point); by default it is the first parser rule.
 
 `./wbuild antlr_to_pg` generates the antlr4.pg and pg.pg parsers into bin/
 and builds bin/antlr_to_pg; antlr_to_pg_test re-translates the vendored
@@ -53,7 +57,7 @@ import libs.extras.parser_generator.analysis
 # CLI entry point
 # ---------------------------------------------------------------------------
 void at_usage():
-	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--prediction] [--exact-lexer] [--audit FILE] [--audit-json FILE] [--dependencies FILE]")
+	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--prediction] [--exact-lexer] [--audit FILE] [--audit-json FILE] [--dependencies FILE] [--start RULE]")
 
 
 int main(int argc, int argv):
@@ -109,6 +113,8 @@ int main(int argc, int argv):
 	char* name_override = args_value(c"parser-name")
 	char* report_path = args_value(c"report")
 	char* matchers_path = args_value(c"matchers")
+	char* start_rule = args_value(c"start")
+	g_at_start_rule = 0
 
 	list[char*] input_paths = new list[char*]
 	int fi = 0
@@ -193,6 +199,15 @@ int main(int argc, int argv):
 		if (lowering_losses > 0):
 			println2(c"antlr_to_pg: strict lowering failed; output files left unchanged")
 			return 1
+
+	if (start_rule != 0):
+		int start_found = 0
+		for at_rule* rule in all_rules:
+			if ((rule.is_fragment == 0) && (rule.is_lexer == 0) && (strcmp(rule.name, start_rule) == 0)): start_found = 1
+		if (start_found == 0):
+			println2(cstr(f"antlr_to_pg: --start {start_rule} is not a parser rule of the grammar"))
+			return 1
+		g_at_start_rule = at_resolve_parser_rule_name(start_rule)
 
 	if (g_parser_rule_names.length == 0):
 		string_builder* report = string_new()

@@ -114,9 +114,10 @@ A parameter used only in an opaque shape or return type still needs explicit
 type arguments. A `Name[T, U]*` parameter (optionally checked-qualified, as in
 `ref[a] WSafeMutex[T]*`) binds each bare type parameter from the argument's
 generic struct instance in both emitters; composite type arguments of the
-application stay opaque and are checked by the specialized signature. Raw
-container shapes and generic struct constructors retain their existing
-inference restrictions.
+application stay opaque and are checked by the specialized signature. A
+borrowed generic record value (`ref[a] View[T]`, `refmut[a] View[T]`) binds
+the same way from its underlying instance. Raw container shapes retain their
+existing inference restrictions.
 
 Definitions must precede inferred calls. Forward generic calls still require
 explicit arguments and cannot return aggregates. The streaming emitter retains
@@ -168,6 +169,15 @@ in two files compiles once.
   unrelated global type with the same name. Checked factories preserve
   concrete constructor arity, field contracts, ownership transfers and cleanup;
   specialization does not permit default allocation of pointer-bearing records.
+- Generic record applications allocate and construct like any record:
+  `new pair[int]` (zeroed), `new pair[int](1, 2)`, `new pair[int][n]` and
+  the value constructor `pair[int](1, 2)`, also with a bound parameter
+  (`new pair[T](value)` in a specialization). A first application in
+  expression position instantiates the record; the retained parser
+  instantiates the applications of a declined expression once and retries
+  it. Checked records keep their concrete field contracts: owners transfer
+  once and are destroyed recursively, borrowed fields keep their lifetime
+  groups, and default allocation of a pointer-bearing record is rejected.
 - Instantiation before or after the definition in file order.
 - Type-argument inference at call sites (`tests/generics_inference_test.w`):
   literals, `int`/`char`/`bool` variables, pointer arguments against `T*`

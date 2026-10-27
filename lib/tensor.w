@@ -482,18 +482,20 @@ void tensor_row_max_into(tensor* out, tensor* a):
 
 ##### matmul (torch.md Stage 3 naive CPU path, Stage 4 tiled GPU path) #####
 #
-# The GPU path of all three matmul variants is a 16x16 shared-memory
-# tiled kernel (256-thread blocks, the launch-heuristic size): each
-# block stages one a-tile and one b-tile in .shared per k-step, so
-# every global element is read once per 16 output columns/rows instead
-# of once per output element -- the classic tiling that turns the naive
-# kernel's redundant global traffic into shared-memory reuse. The
-# block's x/y decomposition is done in-kernel from block_idx() (the
-# launch surface is 1-D): bx walks output column tiles, by row tiles.
-# Partial edge tiles load zeros, so any shape is correct, not just
-# multiples of 16. The k-loop product order matches the naive kernel
-# and the CPU fallback (ascending k), so all three paths accumulate in
-# the same order and agree bit-for-bit.
+# The GPU path of all three matmul variants is a register-tiled tile
+# program (tensor_matmul_tile32/64/128 below, picked by output shape):
+# 8-9x the hand-written kernel on large products. The hand-written
+# 16x16 shared-memory kernel, tensor_matmul_tiled_kernel, stays as the
+# reference (tensor_matmul_tile_edge = 16 selects it): each block stages
+# one a-tile and one b-tile in .shared per k-step, so every global
+# element is read once per 16 output columns/rows instead of once per
+# output element. The block's x/y decomposition is done in-kernel from
+# block_idx() (the launch surface is 1-D): bx walks output column tiles,
+# by row tiles. Partial edge tiles load zeros, so any shape is correct,
+# not just multiples of 16. Its k-loop product order matches the CPU
+# fallback (ascending k, separate multiply and add), so those two agree
+# bit-for-bit; the tile programs use fused multiply-add and agree to
+# float32 rounding.
 
 
 # One kernel serves all three variants through element strides: the
@@ -558,9 +560,86 @@ int tensor_matmul_blocks(int m, int n):
 	return ((m + 15) / 16) * ((n + 15) / 16)
 
 
+# Register-tiled tile programs (docs/projects/tiles.md) are the default
+# GPU matmul. Each program computes one T x T output tile; every thread
+# holds a (T/16) x (T/16) fragment and accumulates outer products of
+# shared-memory staged K slices with fused multiply-add, so results agree
+# with the CPU fallback to float32 rounding rather than bit for bit (as
+# with the cuBLAS hook). The same strides as tensor_matmul_tiled_kernel
+# select a @ b, aT @ b and a @ bT; partial edge tiles are masked.
+void tensor_matmul_tile32(float* a, float* b, float* out, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
+	int programs = ((m + 31) / 32) * ((n + 31) / 32)
+	gpu[1] for tile in range(programs):
+		int columns = (n + 31) / 32
+		int row = tile_program_id() / columns * 32
+		int col = tile_program_id() % columns * 32
+		acc := tile_zero(32, 32)
+		for int block in range((kd + 31) / 32):
+			left := tile_load(a, row, block * 32, a_rs, a_ks, m, kd, 32, 32)
+			right := tile_load(b, block * 32, col, b_ks, b_cs, kd, n, 32, 32)
+			acc += dot(left, right)
+		tile_store(out, row, col, n, 1, m, n, acc)
+
+
+void tensor_matmul_tile64(float* a, float* b, float* out, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
+	int programs = ((m + 63) / 64) * ((n + 63) / 64)
+	gpu[1] for tile in range(programs):
+		int columns = (n + 63) / 64
+		int row = tile_program_id() / columns * 64
+		int col = tile_program_id() % columns * 64
+		acc := tile_zero(64, 64)
+		for int block in range((kd + 15) / 16):
+			left := tile_load(a, row, block * 16, a_rs, a_ks, m, kd, 64, 16)
+			right := tile_load(b, block * 16, col, b_ks, b_cs, kd, n, 16, 64)
+			acc += dot(left, right)
+		tile_store(out, row, col, n, 1, m, n, acc)
+
+
+void tensor_matmul_tile128(float* a, float* b, float* out, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
+	int programs = ((m + 127) / 128) * ((n + 127) / 128)
+	gpu[1] for tile in range(programs):
+		int columns = (n + 127) / 128
+		int row = tile_program_id() / columns * 128
+		int col = tile_program_id() % columns * 128
+		acc := tile_zero(128, 128)
+		for int block in range((kd + 15) / 16):
+			left := tile_load(a, row, block * 16, a_rs, a_ks, m, kd, 128, 16)
+			right := tile_load(b, block * 16, col, b_ks, b_cs, kd, n, 16, 128)
+			acc += dot(left, right)
+		tile_store(out, row, col, n, 1, m, n, acc)
+
+
+# 0 (the default) picks the tile edge from the output shape; 16 forces
+# tensor_matmul_tiled_kernel and 32/64/128 force that tile program (A/B
+# checks and benchmarks).
+int tensor_matmul_tile_edge
+
+
+# The largest tile whose unpadded output still fills about 48 programs
+# (0.6 waves on an 80-SM RTX 4080 SUPER, where this was measured): larger
+# tiles reuse each staged element more, smaller ones keep the GPU busy on
+# small or skinny outputs. The 32 x 32 program beat the hand-tiled kernel
+# on every measured shape, down to 128 x 128 x 10.
+int tensor_matmul_edge(int m, int n):
+	if (tensor_matmul_tile_edge != 0): return tensor_matmul_tile_edge
+	if (m * n >= 48 * 128 * 128): return 128
+	if (m * n >= 48 * 64 * 64): return 64
+	return 32
+
+
+# Enqueue out (m x n) = op(a) @ op(b) with the strides described above.
+void tensor_matmul_launch(float* pa, float* pb, float* po, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
+	if ((m <= 0) || (n <= 0)): return
+	int edge = tensor_matmul_edge(m, n)
+	if (edge == 128): tensor_matmul_tile128(pa, pb, po, m, kd, n, a_rs, a_ks, b_ks, b_cs)
+	else if (edge == 64): tensor_matmul_tile64(pa, pb, po, m, kd, n, a_rs, a_ks, b_ks, b_cs)
+	else if (edge == 32): tensor_matmul_tile32(pa, pb, po, m, kd, n, a_rs, a_ks, b_ks, b_cs)
+	else: launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, a_rs, a_ks, b_ks, b_cs)
+
+
 # out = a @ b for rank-2 a (m x k), b (k x n), out (m x n). GPU path:
-# the tiled kernel above (or the opt-in tensor_matmul_hook, e.g.
-# cuBLAS); CPU fallback: the naive triple loop.
+# tensor_matmul_launch (or the opt-in tensor_matmul_hook, e.g. cuBLAS);
+# CPU fallback: the naive triple loop.
 void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2: inner dimensions must match", a.n1 == b.n0)
@@ -574,7 +653,7 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(0, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, n, 1)
+			tensor_matmul_launch(pa, pb, po, m, kd, n, kd, 1, n, 1)
 	else:
 		for i in range(m):
 			for j in range(n):
@@ -587,7 +666,7 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 # sum_p a[p,i]*b[p,j]. The backward pass of tensor_matmul2 needs exactly
 # this shape (dW = xT @ dout for a linear layer), and forming an actual
 # transpose would cost an extra full copy, so this walks a's columns
-# directly instead. GPU path: the tiled kernel above with a transposed.
+# directly instead. GPU path: tensor_matmul_launch with a transposed.
 void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_tn: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_tn: shared dimension must match", a.n0 == b.n0)
@@ -601,7 +680,7 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(1, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, 1, m, n, 1)
+			tensor_matmul_launch(pa, pb, po, m, kd, n, 1, m, n, 1)
 	else:
 		for i in range(m):
 			for j in range(n):
@@ -614,7 +693,7 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 # sum_p a[i,p]*b[j,p]. The forward pass of a linear layer wants this
 # shape directly (y = x @ WT with W stored (out_features, in_features),
 # torch's convention), and the backward pass needs it again for
-# dx = dout @ W. GPU path: the tiled kernel above with b transposed.
+# dx = dout @ W. GPU path: tensor_matmul_launch with b transposed.
 void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_nt: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_nt: shared dimension must match", a.n1 == b.n1)
@@ -628,7 +707,7 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(2, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, 1, kd)
+			tensor_matmul_launch(pa, pb, po, m, kd, n, kd, 1, 1, kd)
 	else:
 		for i in range(m):
 			for j in range(n):

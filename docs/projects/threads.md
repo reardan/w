@@ -255,10 +255,13 @@ while an old thread might still use it:
   may be executing). A note says those callers keep the previous
   definition. `thread_pool_shutdown()` ends the pool's workers.
 
-wdbg and the incremental compile API still reject `thread_local`
-(W0324). Under `W_DEBUG_ALLOC` the in-process compiler's own guard-page
-allocations reach `vm.max_map_count` once it retains the thread runtime,
-so the REPL's thread tests run without it.
+wdbg gives its debuggee the same per-thread block, and every debuggee
+thread can stop there, one at a time (safe_mode.md, "Debugger
+evaluation"). The incremental compile API still rejects `thread_local`
+(W0324). `W_DEBUG_ALLOC` applies to the session's own allocator (the
+image's `lib/memory.w` copy): the REPL keeps its compiler on the free list
+(`malloc_host_freelist_mode`), so its guard pages no longer reach
+`vm.max_map_count`, and the REPL's thread tests run under it.
 
 **Allocator** (issue #498, `lib/thread_heap.w`). Workers used to be
 barred from allocating because `lib/memory.w`'s free list and brk
@@ -327,7 +330,10 @@ implementation details must not be assumed by portable application code:
   before `mutex_unlock` is visible to the next `mutex_lock` holder
   (lock is a `lock cmpxchg`, unlock a `lock xadd` plus, on the
   contended path, an `atomic_store` of 0 after it). Futex waits re-check their
-  word in the kernel, so wakes are never lost. Prefer a mutex (never
+  word in the kernel, so wakes are never lost. `cond_signal` wakes one
+  parked waiter of the kernel's choosing; when waiters on one `wcond`
+  wait for different predicates, use `cond_broadcast` so a later waiter
+  cannot take the wake meant for another. Prefer a mutex (never
   held across a task await) or a channel/executor to hand-rolled
   flags.
 - **One-writer/one-waiter flags** (`wthread.done`, the pool mailboxes,

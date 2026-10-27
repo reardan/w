@@ -139,7 +139,8 @@ working in this repo.
   `sudo sysctl -w vm.max_map_count=1048576` (default is 65530). Prefer running
   the program under test with the env var rather than a full-suite sweep of
   every `*_test` binary — large tests under debug alloc can peg the CPU for
-  minutes.
+  minutes. In the REPL and wdbg it selects the session's allocator only;
+  their compiler stays on the free list.
 - There is **no separate linter binary**. The compiler's own type/style warnings are
   always on and asserted by the `warning_test` target; `w check --lint` adds opt-in
   lint rules for the named files and `w check --fix` rewrites their whitespace

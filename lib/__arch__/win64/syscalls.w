@@ -48,6 +48,115 @@ extern int FlushInstructionCache(int process, int addr, int size)
 extern int GetModuleHandleA(char* name)
 extern int LoadLibraryA(char* name)
 extern int GetProcAddress(int module, char* name)
+# The wide (UTF-16) entry points behind the UTF-8 file, directory and
+# startup wrappers below. W strings are UTF-8; the ANSI ("A") calls would
+# read them in the system code page instead.
+extern int CreateFileW(char* path, int access, int share, int security, int creation, int flags, int template_file)
+extern int DeleteFileW(char* path)
+extern int MoveFileW(char* oldpath, char* newpath)
+extern int CreateDirectoryW(char* path, int security)
+extern int RemoveDirectoryW(char* path)
+extern int GetCurrentDirectoryW(int size, char* buf)
+extern int SetCurrentDirectoryW(char* path)
+extern int GetFullPathNameW(char* path, int size, char* buf, int file_part)
+extern int FindFirstFileW(char* pattern, char* find_data)
+extern int FindNextFileW(int handle, char* find_data)
+extern char* GetCommandLineW()
+extern char* GetEnvironmentStringsW()
+extern int MultiByteToWideChar(int code_page, int flags, char* text, int length, char* out, int capacity)
+extern int WideCharToMultiByte(int code_page, int flags, char* text, int length, char* out, int capacity, int default_char, int used_default)
+
+
+/* UTF-8 <-> UTF-16 */
+
+# Strings cross into Win32 as UTF-16 through kernel32's own converters
+# (CP_UTF8 = 65001). Buffers come from mmap (VirtualAlloc), because this
+# module cannot assume lib/memory.w's malloc is in the program; release
+# them with win_wide_free. Win32 int results are 32-bit, so they are read
+# through cast(int32, ...).
+int mmap(int addr, int length, int prot, int flags);
+int munmap(int addr, int length);
+
+# Code units in a NUL-terminated UTF-16 string, without the NUL.
+int win_wide_length(char* wide):
+	int n = 0
+	while (load_int16(wide + n * 2) != 0): n = n + 1
+	return n
+
+
+# A NUL-terminated UTF-16 copy of NUL-terminated UTF-8 text, or 0 when it
+# does not convert or memory runs out.
+char* win_wide(char* text):
+	int units = cast(int32, MultiByteToWideChar(65001, 0, text, -1, cast(char*, 0), 0))
+	if (units <= 0): return cast(char*, 0)
+	int block = mmap(0, units * 2, 3, 34)
+	if (block < 0): return cast(char*, 0)
+	if (cast(int32, MultiByteToWideChar(65001, 0, text, -1, cast(char*, block), units)) != units):
+		munmap(block, 0)
+		return cast(char*, 0)
+	return cast(char*, block)
+
+
+void win_wide_free(char* wide):
+	if (wide != 0): munmap(cast(int, wide), 0)
+
+
+# A NUL-terminated UTF-8 copy of a NUL-terminated UTF-16 string in fresh
+# pages (free with win_wide_free), or 0.
+char* win_utf8(char* wide):
+	int size = cast(int32, WideCharToMultiByte(65001, 0, wide, -1, cast(char*, 0), 0, 0, 0))
+	if (size <= 0): return cast(char*, 0)
+	int block = mmap(0, size, 3, 34)
+	if (block < 0): return cast(char*, 0)
+	WideCharToMultiByte(65001, 0, wide, -1, cast(char*, block), size, 0, 0)
+	return cast(char*, block)
+
+
+# Writes ASCII text as UTF-16 code units at out; returns the unit count.
+int win_wide_put_ascii(char* out, char* text):
+	int n = 0
+	while (text[n] != 0):
+		save_int16(out + n * 2, text[n])
+		n = n + 1
+	return n
+
+
+# A UTF-16 path for the wide file calls, or 0. Paths of 248 code units or
+# more (CreateDirectoryW's limit) take the extended form that lifts
+# MAX_PATH: GetFullPathNameW makes them absolute (and turns '/' into a
+# backslash), then "\\?\" is prefixed, or "\\?\UNC" in place of the first
+# backslash of a \\server\share path. Shorter paths pass through as given.
+char* win_wide_path(char* path):
+	char* wide = win_wide(path)
+	if ((wide == 0) || (win_wide_length(wide) < 248)): return wide
+	if ((load_int16(wide) == 92) && (load_int16(wide + 2) == 92) && (load_int16(wide + 4) == 63)): return wide
+	int full = cast(int32, GetFullPathNameW(wide, 0, cast(char*, 0), 0))
+	if (full <= 0): return wide
+	int absolute_block = mmap(0, full * 2, 3, 34)
+	if (absolute_block < 0): return wide
+	char* absolute = cast(char*, absolute_block)
+	int got = cast(int32, GetFullPathNameW(wide, full, absolute, 0))
+	win_wide_free(wide)
+	if ((got <= 0) || (got >= full)):
+		win_wide_free(absolute)
+		return cast(char*, 0)
+	int block = mmap(0, (got + 8) * 2, 3, 34)
+	if (block < 0):
+		win_wide_free(absolute)
+		return cast(char*, 0)
+	char* out = cast(char*, block)
+	int skip = 0
+	int n = 0
+	if ((load_int16(absolute) == 92) && (load_int16(absolute + 2) == 92)):
+		n = win_wide_put_ascii(out, c"\\\\?\\UNC")
+		skip = 1
+	else: n = win_wide_put_ascii(out, c"\\\\?\\")
+	for i in range(skip, got):
+		save_int16(out + n * 2, load_int16(absolute + i * 2))
+		n = n + 1
+	save_int16(out + n * 2, 0)
+	win_wide_free(absolute)
+	return out
 
 
 /* File IO: */
@@ -84,13 +193,19 @@ int open(char *filename, int mode, int permissions):
 		# directory, as open(dir, O_RDONLY) does on Linux (existence
 		# probes rely on it); reads from such a handle simply fail.
 		flags = flags + 33554432
-	int handle = CreateFileA(filename, access, 3, 0, creation, flags, 0)
+	char* wide = win_wide_path(filename)
+	if (wide == 0): return -1
+	int handle = CreateFileW(wide, access, 3, 0, creation, flags, 0)
+	win_wide_free(wide)
 	if (handle == -1): return -1
 	return handle
 
 
 int create_file(char* filename, int permissions):
-	int handle = CreateFileA(filename, 1073741824, 3, 0, 2, 128, 0)
+	char* wide = win_wide_path(filename)
+	if (wide == 0): return -1
+	int handle = CreateFileW(wide, 1073741824, 3, 0, 2, 128, 0)
+	win_wide_free(wide)
 	if (handle == -1): return -1
 	return handle
 
@@ -119,12 +234,22 @@ int seek(int file, int offset, int reference):
 
 
 int unlink(char* path):
-	if (DeleteFileA(path) == 0): return -1
+	char* wide = win_wide_path(path)
+	if (wide == 0): return -1
+	int ok = cast(int32, DeleteFileW(wide))
+	win_wide_free(wide)
+	if (ok == 0): return -1
 	return 0
 
 
 int rename(char* oldpath, char* newpath):
-	if (MoveFileA(oldpath, newpath) == 0): return -1
+	char* wide_old = win_wide_path(oldpath)
+	char* wide_new = win_wide_path(newpath)
+	int ok = 0
+	if ((wide_old != 0) && (wide_new != 0)): ok = cast(int32, MoveFileW(wide_old, wide_new))
+	win_wide_free(wide_old)
+	win_wide_free(wide_new)
+	if (ok == 0): return -1
 	return 0
 
 
@@ -143,24 +268,51 @@ int fdatasync(int file):
 
 # Directory syscalls:
 int mkdir(char* path, int mode):
-	if (CreateDirectoryA(path, 0) == 0): return -1
+	char* wide = win_wide_path(path)
+	if (wide == 0): return -1
+	int ok = cast(int32, CreateDirectoryW(wide, 0))
+	win_wide_free(wide)
+	if (ok == 0): return -1
 	return 0
 
 
 int rmdir(char* path):
-	if (RemoveDirectoryA(path) == 0): return -1
+	char* wide = win_wide_path(path)
+	if (wide == 0): return -1
+	int ok = cast(int32, RemoveDirectoryW(wide))
+	win_wide_free(wide)
+	if (ok == 0): return -1
 	return 0
 
 
 int chdir(char* path):
-	if (SetCurrentDirectoryA(path) == 0): return -1
+	char* wide = win_wide(path)
+	if (wide == 0): return -1
+	int ok = cast(int32, SetCurrentDirectoryW(wide))
+	win_wide_free(wide)
+	if (ok == 0): return -1
 	return 0
 
 
 # Linux getcwd returns the string length including the terminator.
 int getcwd(char* buf, int size):
-	int len = GetCurrentDirectoryA(size, buf)
-	if (len == 0): return -1
+	int units = cast(int32, GetCurrentDirectoryW(0, cast(char*, 0)))
+	if (units <= 0): return -1
+	int block = mmap(0, units * 2, 3, 34)
+	if (block < 0): return -1
+	char* wide = cast(char*, block)
+	int got = cast(int32, GetCurrentDirectoryW(units, wide))
+	char* text = cast(char*, 0)
+	if ((got > 0) && (got < units)): text = win_utf8(wide)
+	win_wide_free(wide)
+	if (text == 0): return -1
+	int len = 0
+	while (text[len] != 0): len = len + 1
+	if (len + 1 > size):
+		win_wide_free(text)
+		return -1
+	for i in range(len + 1): buf[i] = text[i]
+	win_wide_free(text)
 	return len + 1
 
 
@@ -739,6 +891,20 @@ int sys_sigaltstack(int ss, int old_ss):
 
 /* Startup */
 
+# The UTF-8 form of a GetEnvironmentStringsW block (NUL-separated entries
+# ending in an empty one), in fresh pages; 0 when there is none.
+char* win_utf8_environment(char* wide):
+	if (wide == 0): return cast(char*, 0)
+	int units = 0
+	while ((load_int16(wide + units * 2) != 0) || (load_int16(wide + units * 2 + 2) != 0)): units = units + 1
+	units = units + 2
+	int size = cast(int32, WideCharToMultiByte(65001, 0, wide, units, cast(char*, 0), 0, 0, 0))
+	if (size <= 0): return cast(char*, 0)
+	int block = mmap(0, size, 3, 34)
+	if (block < 0): return cast(char*, 0)
+	WideCharToMultiByte(65001, 0, wide, units, cast(char*, block), size, 0, 0)
+	return cast(char*, block)
+
 # The PE entry stub calls _win_start (see code_generator/pe_64.w), which
 # rebuilds the W (argc, argv) contract from the Windows command line and
 # chains to _main. Memory comes from mmap directly because lib/memory.w's
@@ -750,14 +916,17 @@ int _main(int argc, int argv);
 # separated by spaces/tabs, double quotes group words. (The full
 # CommandLineToArgvW backslash rules are not implemented.) The
 # environment vector after argv's terminator points into the process
-# environment block (GetEnvironmentStringsA: NAME=value entries, each
-# NUL-terminated, the block ending in an empty entry),
-# skipping the hidden "=C:=C:\..." per-drive entries.
+# environment block (NAME=value entries, each NUL-terminated, the block
+# ending in an empty entry), skipping the hidden "=C:=C:\..." per-drive
+# entries. Both are read through the wide calls and converted to UTF-8,
+# so non-ASCII arguments and variables arrive intact whatever the system
+# code page is.
 int _win_start(int stub_argc, int stub_argv):
-	char* cmd = GetCommandLineA()
+	char* cmd = win_utf8(GetCommandLineW())
+	if (cmd == 0): cmd = c""
 	int len = 0
 	while (cmd[len] != 0): len = len + 1
-	char* env = GetEnvironmentStringsA()
+	char* env = win_utf8_environment(GetEnvironmentStringsW())
 	int env_count = 0
 	if (env != 0):
 		int e = 0

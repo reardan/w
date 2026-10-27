@@ -1,9 +1,8 @@
 # Helpers loaded into the REPL by tests/safe_repl_session_test.w (with
-# --no_main) for checked lock guards and threads in a session (#713). It
-# runs without W_DEBUG_ALLOC: the guard-page allocator's two mappings per
-# block exhaust vm.max_map_count while the in-process compiler retains the
-# thread runtime. The REPL reports the held guards it releases at :reset
-# and exit, which is how those unlocks are counted.
+# --no_main) for checked lock guards and threads in a session (#713),
+# under W_DEBUG_ALLOC like the rest of the session tests. The REPL reports
+# the held guards it releases at :reset and exit, which is how those
+# unlocks are counted.
 import lib.lib
 import lib.safe_thread
 

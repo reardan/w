@@ -122,6 +122,11 @@ int ut_bracket_canonical(int cp):
 	return cp
 
 # Bidi_Mirroring_Glyph of cp, or cp itself.
+# Extended_Pictographic, as HarfBuzz 15.0.0 has it
+# (tools/unicode/extended_pictographic_hb.txt).
+int ut_extended_pictographic(int cp):
+	return ut_range_value(utd_ext_pict(), utd_ext_pict_count(), cp) != 0
+
 int ut_mirror(int cp):
 	int mirror = ut_pair_lookup(utd_mirrors(), utd_mirrors_count(), cp)
 	if (mirror < 0): return cp
@@ -129,9 +134,16 @@ int ut_mirror(int cp):
 
 # General_Category values (the unicode_cat_* numbering) shaping looks at.
 const int ut_cat_cn = 0
+const int ut_cat_lu = 1
+const int ut_cat_ll = 2
+const int ut_cat_lt = 3
+const int ut_cat_lm = 4
+const int ut_cat_lo = 5
 const int ut_cat_mn = 6
 const int ut_cat_mc = 7
 const int ut_cat_me = 8
+const int ut_cat_nd = 9
+const int ut_cat_sk = 21
 const int ut_cat_zs = 23
 const int ut_cat_cc = 26
 const int ut_cat_cf = 27

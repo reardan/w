@@ -177,8 +177,9 @@ predicates, and unsupported options remain audited and strict-refused.
 `--prediction` emits `mode antlr`, a pure complete-input parser using bounded
 continuation search. It retains the full caller stack, source-order alternatives,
 and greedy term priority, then builds only the selected AST. It is not ANTLR's
-ALL(*) algorithm: ambiguity can take exponential work, limited by an explicit
-step budget (one million by default). Exhaustion is a sticky resource error.
+ALL(*) algorithm: rule calls are memoized by start position, but ambiguity can
+still take exponential work, limited by an explicit step budget (one million by
+default). Exhaustion is a sticky resource error.
 Every public rule entry requires complete input; native `.pg` partial parsing,
 ordered choice, and streaming remain separate modes. Prediction refuses host
 callbacks, lexical goals, recovery, parser actions/predicates, and unsupported
@@ -318,11 +319,13 @@ than as a deliverable.
 `sweep_grammars_v4.sh` runs a pinned set of **291 selected top-level grammar
 cases**, not every grammar or subdirectory variant in grammars-v4. Its native W
 driver records separate translation, parser generation, W
-compilation, and strict-translation results. Compilation appends an empty `main`
-and does **not** execute the generated parser. Strict acceptance is a conservative
-audit result, not evidence of semantic equivalence. Runtime checks belong in
-focused tests with positive/negative examples and token assertions; this sweep
-explicitly reports runtime smoke as `not_configured`.
+compilation, strict-translation and **examples** results. Compilation appends a
+small `main` that parses one file with the generated parser's start rule; the
+examples stage runs it on each grammar's pinned upstream examples (see "Runtime
+examples" below). Strict acceptance is a conservative audit result, not evidence
+of semantic equivalence, and an accepted example checks the accept/reject
+verdict only, not the parse tree. Focused tests with token and tree assertions
+remain the place for semantic checks.
 
 The initial audit at corpus commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`, measured
 with W commit `298246c6d6906650d4cd9c677e93933abd9bf619`: **196 translated,
@@ -337,14 +340,17 @@ acceptance from compiling generated W with `--strict`, and protect six independe
 configurations. The original `recorded_pass` observations remain unchanged.
 Correctness-driven reclassifications link executable ANTLR counterexamples.
 
-Run from the W checkout after obtaining the pinned corpus:
+Run from the W checkout after obtaining the pinned corpus (only the top-level
+grammars and the pinned examples are checked out):
 
 ```sh
-git clone --filter=blob:none --no-checkout https://github.com/antlr/grammars-v4 /tmp/grammars-v4
-git -C /tmp/grammars-v4 sparse-checkout init --no-cone
-git -C /tmp/grammars-v4 sparse-checkout set '/*/*.g4'
-git -C /tmp/grammars-v4 checkout --detach 89fd36482e8cb68a4e55df021a8adbc7541b52f2
-./wbuild antlr_to_pg antlr_sweep_harness_test
+./wbuild antlr_to_pg antlr_sweep antlr_sweep_harness_test
+git init /tmp/grammars-v4
+git -C /tmp/grammars-v4 remote add origin https://github.com/antlr/grammars-v4.git
+git -C /tmp/grammars-v4 config core.sparseCheckout true
+bin/antlr_sweep --sparse-patterns > /tmp/grammars-v4/.git/info/sparse-checkout
+git -C /tmp/grammars-v4 fetch --depth=1 --filter=blob:none origin 89fd36482e8cb68a4e55df021a8adbc7541b52f2
+git -C /tmp/grammars-v4 checkout --detach FETCH_HEAD
 GV4=/tmp/grammars-v4 libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90 --extended-configurations
 ```
 
@@ -369,9 +375,15 @@ the actual dependency paths and hashes, including stringtemplate's transitive
 `LexBasic`/`LexUnicode` imports. Do not replace selected roots implicitly while
 comparing coverage: review those changes separately and retain their provenance.
 
-The gate compares every case's `expected_pass` stages, so gains cannot hide
-regressions elsewhere. `recorded_pass` preserves the original audit measurement.
-After reviewing new passes, add their stages to `expected_pass`. If a correctness
+The gate compares every case's `expected_pass` stages, its per-configuration
+`expected_configurations` stages and its `expected_examples`, so gains cannot
+hide regressions elsewhere. It fails on **progressions** too: a stage or example
+that passes but is not expected. The committed baseline therefore always states
+the measured coverage, and the totals in `SWEEP_RESULTS.md` are reproducible from
+it. `recorded_pass` preserves the original audit measurement. After reviewing new
+passes, rerun with `--update-baseline`, which adds every measured progression to
+the manifest (rewritten in its existing layout) and never removes an expectation;
+a regression keeps failing the gate. If a correctness
 fix intentionally rejects a formerly accepted grammar, remove only its affected
 expectations and add a `reclassified` object mapping each removed recorded stage
 to a concrete reason. Do not lower expectations merely to make CI pass or
@@ -381,8 +393,32 @@ with upstream symbol defects remain in the denominator.
 `.github/workflows/grammar-coverage.yml` fetches the pinned sparse corpus and runs
 this gate separately from the offline suite, uploading results and diagnostics.
 `antlr_sweep_harness_test` belongs to `./wbuild tests`; its local synthetic tools
-exercise stage attribution, missing outputs, timeouts, pin validation, and
-per-case regression detection without fetching grammars or requiring ANTLR.
+exercise stage attribution, missing outputs, timeouts, pin validation, example
+selection and verdicts, and per-case regression and progression detection
+without fetching grammars or requiring ANTLR.
+
+### Runtime examples
+
+Each case's `runtime` object in `sweep_baseline.json` pins a start rule and up to
+ten upstream example files by path and SHA-256. `bin/antlr_sweep --select-examples`
+(re)derives them deterministically from the pinned revision through git, so a
+sparse checkout is enough: the start rule and input patterns come from the first
+`desc.xml` `<test>` whose `<entry-point>` the selected grammar defines, otherwise
+from `pom.xml`'s `<entryPoint>`, otherwise the first parser rule; patterns default
+to `examples/**`. `*.errors`/`*.tree` files, hidden paths, unusual path
+characters, files over 64 KiB and files with NUL bytes are skipped, and the first
+ten remaining paths in byte order are pinned. An example with a non-empty
+upstream `.errors` file must be rejected; every other example must be accepted.
+The translator receives the start rule as `--start RULE`.
+
+Each example runs in its own process with a 10-second limit. A wrong verdict, a
+hang or a crash is a measured failure of the generated parser, not an
+infrastructure error; only an unrunnable driver or unreadable input is. A
+configuration's `examples` stage passes when every pinned example of the case
+gets the expected verdict; per-example outcomes, exit codes, timings and
+diagnostic logs are in `results.json` and in an `examples/` directory beside each configuration's artifacts.
+`bin/antlr_sweep --sparse-patterns` prints the sparse-checkout patterns for the
+grammars plus exactly the pinned examples (CI uses it).
 
 ## Semantic preservation and strict imports
 

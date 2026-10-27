@@ -1535,6 +1535,11 @@ when stderr is not a terminal.
   Direction: let memory_debug retry a failed guard munmap after
   reclaiming its quarantine, as it already does for a failed mmap. Also
   name the limit in the message.
+  **Resolved (#713):** the REPL and wdbg now keep their compiler on the
+  free list (`malloc_host_freelist_mode` in `lib/memory.w`), so
+  `W_DEBUG_ALLOC` only selects the session image's allocator, and
+  memory_debug retries a failed free-time `mprotect` after draining its
+  quarantine and names `vm.max_map_count` when it gives up.
 
 ## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
 
@@ -1587,3 +1592,29 @@ that tree's test roots. Done: first attempts now run `WTEST_DEPS_JOBS`
 4m25s. Remaining: `bin/wv2 deps` still runs the whole front end over the
 closure (about 2s for a Mermaid root), so a listing-only import walk
 would make the cold pass cheaper still.
+
+## Editing a pinned runtime file hides the checked tests (2026-10-26, #699 review fixes)
+
+An edit to `lib/thread.w` (one of the sources `compiler/safe_runtime.w`
+pins by SHA-256) made `git diff --name-only HEAD | bin/wtest changed`
+leave out every checked-mode test that imports it, such as
+`safe_atomic_litmus_test` and `safe_sync_runtime_test`. `bin/wv2 deps`
+runs the safe digest check, so for those roots it exits 1 with
+"runtime implementation differs from its audited contract" and an empty
+closure. Those are exactly the tests that would report the missing
+digest update. Direction: have `deps` list the closure without
+enforcing the safe runtime pins (or report the failure and still print
+the closure), and have wtest treat a failed `deps` as "select this
+root" rather than "no imports"; see also the `binary=` entry above.
+
+## `inspect --disasm` cannot read Mach-O (2026-10-26, issue #801)
+
+`bin/wv2 inspect --disasm FUNCTION` disassembles x86, x64 and arm64 ELF
+output, but an `arm64_darwin` Mach-O answers `inspect: not an ELF file`,
+so checking that a shared-backend change left Darwin's code alone meant
+falling back to byte comparisons of whole binaries (the arm64 register
+promotion work compared `arm64_darwin` builds with and without
+`--no-regs`). `libs/asm/binary_reader.w` already recognizes Mach-O
+(`asm_is_macho64`); teaching `asm_binary_open` and `tools/inspect.w` the
+`LC_SYMTAB`/`__TEXT,__text` lookup would make per-function Darwin
+disassembly available to agents.
