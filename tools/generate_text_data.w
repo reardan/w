@@ -20,6 +20,8 @@
 #   IndicPositionalCategory.txt  Indic_Positional_Category, mapped to
 #                             HarfBuzz's Indic shaper categories and
 #                             positions (lib/ttf_indic.w)
+#   extended_pictographic_hb.txt  HarfBuzz 15.0.0's Extended_Pictographic
+#                             (newer than emoji-data.txt; lib/ttf_shape.w)
 # The files are unmodified copies of the unicodetools 15.0.0 data
 # (unicodetools/data/ucd/15.0.0/, DerivedBidiClass.txt from extracted/).
 #
@@ -202,6 +204,23 @@ char* gen_load_bidi():
 	stream_close(src)
 	for cp in range(gen_max_cp + 1):
 		if (table[cp] == 0): gen_fail(c"codepoint without a bidi class", 0)
+	return table
+
+
+# A binary property from a "range ; Property" file.
+char* gen_load_property(char* path, char* name):
+	char* table = gen_table(0)
+	wstream* src = gen_open(path)
+	string_builder* line = string_new()
+	list[char*] f = new list[char*]
+	int first = 0
+	int last = 0
+	while (stream_read_line(src, line)):
+		gen_split(line.data, f)
+		if ((f.length < 2) || (f[0][0] == 0) || (strcmp(f[1], name) != 0)): continue
+		gen_parse_range(f[0], &first, &last)
+		gen_fill(table, first, last, 1)
+	stream_close(src)
 	return table
 
 
@@ -733,6 +752,7 @@ int main(int argc, int argv):
 	gen_ranges(out, c"utd_indic_pos", indic_pos)
 	gen_pairs(out, c"utd_brackets", c"tools/unicode/BidiBrackets.txt", 1)
 	gen_pairs(out, c"utd_mirrors", c"tools/unicode/BidiMirroring.txt", 0)
+	gen_ranges(out, c"utd_ext_pict", gen_load_property(c"tools/unicode/extended_pictographic_hb.txt", c"Extended_Pictographic"))
 	stream_close(out)
 	print(f"generated {path}\n")
 	return 0

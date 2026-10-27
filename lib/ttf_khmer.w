@@ -264,6 +264,7 @@ void ttf_khmer_shape(ttf_font* f, otl_buffer* b, char* scripts, int script_count
 	tags[0] = otl_tag(c"rvrn")
 	masks[0] = 1 | otl_mask_hb
 	ttf_khmer_stage(f, b, scripts, script_count, language, &tags[0], &masks[0], 1)
+	otl_apply_common(f, b, scripts, script_count, language, 0)
 	int broken = ttf_khmer_find_syllables(b)
 	if (broken): ttf_sea_dotted_circles(f, b, ttf_khmer_broken, ttf_sea_dottedcircle)
 	# pref blwf abvf pstf cfar, 0 when the font lacks the feature.

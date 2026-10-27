@@ -66,6 +66,13 @@ const int otl_mask_manual_joiners = 0x20000000
 const int otl_mask_hb = 0x40000000
 const int otl_mask_flags = 0x78000000
 
+# HarfBuzz's is_default_ignorable: Default_Ignorable_Code_Point without
+# the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0) and the shorthand
+# format controls (U+1BCA0..U+1BCA3), which fonts draw as glyphs.
+int otl_default_ignorable(int cp):
+	if ((cp == 0x115f) || (cp == 0x1160) || (cp == 0x3164) || (cp == 0xffa0) || ((cp >= 0x1bca0) && (cp <= 0x1bca3))): return 0
+	return ut_default_ignorable(cp)
+
 struct otl_glyph:
 	int gid
 	int cluster
@@ -90,12 +97,22 @@ struct otl_glyph:
 	int subst         # otl_subst_* bits: how GSUB has changed the glyph
 	int icat          # shaper-defined character category (Indic)
 	int ipos          # shaper-defined position (Indic)
+	int mcc           # modified combining class a shaper assigned (the
+					  # Arabic shaper's reordered marks), or 0 for cp's
+	int unhidden      # a CGJ that blocked no mark reordering (otl_hidden)
+	int stch          # the Arabic shaper's stretch tile: 1 fixed, 2
+					  # repeating (ttf_apply_stch), or 0
+	int props_cp      # the character whose general category gives the
+					  # glyph class without GDEF: cp, or the one after a
+					  # dotted circle a vowel constraint inserted (HarfBuzz
+					  # copies that character's properties)
 
 struct otl_buffer:
 	int count
 	int capacity
 	otl_glyph* glyphs
 	int next_lig_id
+	int target_rtl     # the requested direction (otl_common_features)
 
 struct otl_ctx:
 	ttf_font* font
@@ -126,6 +143,7 @@ otl_buffer* otl_buffer_new(int capacity):
 	b.glyphs = cast(otl_glyph*, malloc(capacity * sizeof(otl_glyph)))
 	b.count = 0
 	b.next_lig_id = 1
+	b.target_rtl = 0
 	return b
 
 void otl_buffer_free(otl_buffer* b):
@@ -161,6 +179,10 @@ void otl_glyph_copy(otl_glyph* dst, otl_glyph* src):
 	dst.subst = src.subst
 	dst.icat = src.icat
 	dst.ipos = src.ipos
+	dst.mcc = src.mcc
+	dst.unhidden = src.unhidden
+	dst.stch = src.stch
+	dst.props_cp = src.props_cp
 
 # Append one glyph for codepoint cp at source cluster.
 void otl_buffer_add(otl_buffer* b, int gid, int cp, int cluster, int mask):
@@ -186,6 +208,10 @@ void otl_buffer_add(otl_buffer* b, int gid, int cp, int cluster, int mask):
 	g.subst = 0
 	g.icat = 0
 	g.ipos = 0
+	g.mcc = 0
+	g.unhidden = 0
+	g.stch = 0
+	g.props_cp = cp
 	b.count = b.count + 1
 
 void otl_buffer_delete(otl_buffer* b, int at):
@@ -275,7 +301,7 @@ void otl_set_classes(ttf_font* f, otl_buffer* b):
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
 		if (c.gdef_classes != 0): g.props = otl_glyph_class(&c, g)
-		else if (g.unicode_mark): g.props = otl_class_mark
+		else if ((g.props_cp >= 0) && (ut_category(g.props_cp) == ut_cat_mn) && !otl_default_ignorable(g.props_cp)): g.props = otl_class_mark
 		else: g.props = otl_class_base
 
 int otl_in_mark_set(otl_ctx* c, int set, int gid):
@@ -310,12 +336,24 @@ int otl_skip(otl_ctx* c, int i):
 	# break joining and ligatures. Positioning skips every unsubstituted
 	# default ignorable, ZWNJ included (as HarfBuzz does), except ZWJ in
 	# a manual-joiner feature ('mark', 'mkmk').
-	if ((c.kind == otl_gpos) && (g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp)): return (g.cp != 0x200d) || !c.manual_joiners
+	if ((c.kind == otl_gpos) && (g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && otl_default_ignorable(g.cp)): return (g.cp != 0x200d) || !c.manual_joiners
 	if ((g.subst & otl_subst_substituted) != 0): return 0
 	if ((g.cp == 0x200d) || ((g.cp >= 0x180b) && (g.cp <= 0x180d)) || ((g.cp >= 0xfe00) && (g.cp <= 0xfe0f)) || (g.cp == 0x2060) || (g.cp == 0xfeff)): return 1
 	return 0
 
+int otl_hb_ignorable(otl_ctx* c, otl_glyph* g, int context);
+int otl_hb_step(otl_ctx* c, int at, int dir);
+
+# HarfBuzz's hidden characters: Mongolian free variation selectors, tags
+# and CGJ (unless the normalizer unhid it), default ignorables that GSUB
+# may not skip.
+int otl_hidden(otl_glyph* g):
+	int cp = g.cp
+	if ((cp == 0x034f) && !g.unhidden): return 1
+	return ((cp >= 0x180b) && (cp <= 0x180d)) || (cp == 0x180f) || ((cp >= 0xe0020) && (cp <= 0xe007f))
+
 int otl_next_index(otl_ctx* c, int i):
+	if (c.hb): return otl_hb_step(c, i, 1)
 	int j = i + 1
 	while (j < c.buffer.count):
 		if (!otl_skip(c, j)): return j
@@ -323,6 +361,7 @@ int otl_next_index(otl_ctx* c, int i):
 	return -1
 
 int otl_prev_index(otl_ctx* c, int i):
+	if (c.hb): return otl_hb_step(c, i, -1)
 	int j = i - 1
 	while (j >= 0):
 		if (!otl_skip(c, j)): return j
@@ -337,11 +376,11 @@ int otl_prev_index(otl_ctx* c, int i):
 # hidden characters (CGJ, Mongolian variation selectors, tags) in GSUB.
 int otl_hb_ignorable(otl_ctx* c, otl_glyph* g, int context):
 	int cp = g.cp
-	if ((cp < 0) || (g.subst & otl_subst_substituted) || !ut_default_ignorable(cp)): return 0
+	if ((cp < 0) || (g.subst & otl_subst_substituted) || !otl_default_ignorable(cp)): return 0
 	if (c.kind == otl_gpos): return (cp != 0x200d) || context || !c.manual_joiners
 	if (cp == 0x200c): return context && (!c.manual_joiners || c.auto_zwnj)
 	if (cp == 0x200d): return context || !c.manual_joiners
-	if ((cp == 0x034f) || ((cp >= 0x180b) && (cp <= 0x180d)) || (cp == 0x180f) || ((cp >= 0xe0020) && (cp <= 0xe007f))): return 0
+	if (otl_hidden(g)): return 0
 	return 1
 
 int otl_match_item(otl_ctx* c, int how, int data, int base, int k, int class_def, int i);
@@ -360,6 +399,26 @@ int otl_hb_find(otl_ctx* c, int how, int data, int base, int k, int class_def, i
 		if (c.per_syllable && (c.syllable != 0) && (g.syllable != c.syllable)): ok = 0
 		if (ok && otl_match_item(c, how, data, base, k, class_def, j)): return j
 		if (!otl_hb_ignorable(c, g, context)): return -1
+		j = j + dir
+	return -1
+
+# HarfBuzz's input iterator without a match function (PairPos,
+# CursivePos, MarkMarkPos): the next glyph in direction dir that the
+# lookup flag keeps, skipping default ignorables that may be skipped or
+# that lack the lookup mask; -1 when a glyph that cannot be skipped
+# lacks the mask.
+int otl_hb_step(otl_ctx* c, int at, int dir):
+	int j = at + dir
+	while ((j >= 0) && (j < c.buffer.count)):
+		if (otl_skip_props(c, j)):
+			j = j + dir
+			continue
+		otl_glyph* g = &c.buffer.glyphs[j]
+		int ok = (g.mask & c.lookup_mask) != 0
+		if (c.per_syllable && (c.kind == otl_gsub) && (c.syllable != 0) && (g.syllable != c.syllable)): ok = 0
+		int ignorable = otl_hb_ignorable(c, g, 0)
+		if (ok && !ignorable): return j
+		if (!ignorable): return -1
 		j = j + dir
 	return -1
 
@@ -674,7 +733,6 @@ int otl_multiple_subst(otl_ctx* c, int sub, int i):
 		otl_buffer_insert_copy(c.buffer, i + k, i + k - 1)
 		otl_glyph* g = &c.buffer.glyphs[i + k]
 		g.cp = -1
-		g.unicode_mark = 0
 		otl_set_gid(c, i + k, ttf_u16(f, seq + 2 + k * 2))
 	if (n > 1):
 		# Like HarfBuzz, the outputs are numbered components (0-based) of
@@ -898,31 +956,52 @@ void otl_anchor(ttf_font* f, int anchor, int* x, int* y):
 	x[0] = ttf_s16(f, anchor + 2)
 	y[0] = ttf_s16(f, anchor + 4)
 
-int otl_cursive_pos(otl_ctx* c, int sub, int i):
+# HarfBuzz's reverse_cursive_minor_offset: before glyph i attaches to
+# new_parent, turn its old cursive chain around so that the chain's
+# glyphs now hang off i.
+void otl_reverse_cursive(otl_buffer* b, int i, int new_parent, int depth):
+	if (depth > 64): return
+	otl_glyph* g = &b.glyphs[i]
+	if ((g.attach < 0) || (g.attach_kind != otl_attach_cursive)): return
+	int j = g.attach
+	g.attach = -1
+	if ((j >= b.count) || (j == new_parent)): return
+	otl_reverse_cursive(b, j, new_parent, depth + 1)
+	otl_glyph* p = &b.glyphs[j]
+	p.y_offset = -g.y_offset
+	p.attach = i
+	p.attach_kind = otl_attach_cursive
+
+# CursivePos (3), as HarfBuzz applies it: glyph j's entry anchor joins
+# the exit anchor of the previous glyph i. The advances meet at the
+# anchors now; the cross-direction offset hangs the child (j, or i under
+# the RightToLeft lookup flag) off its parent, resolved when positioning
+# finishes.
+int otl_cursive_pos(otl_ctx* c, int sub, int j):
 	ttf_font* f = c.font
+	otl_buffer* buf = c.buffer
 	if (ttf_u16(f, sub) != 1): return 0
 	int cov = sub + ttf_u16(f, sub + 2)
 	int count = ttf_u16(f, sub + 4)
-	int exit_index = ttf_coverage(f, cov, c.buffer.glyphs[i].gid)
-	if ((exit_index < 0) || (exit_index >= count)): return 0
-	int exit_off = ttf_u16(f, sub + 6 + exit_index * 4 + 2)
-	if (exit_off == 0): return 0
-	int j = otl_next_index(c, i)
-	if (j < 0): return 0
-	int entry_index = ttf_coverage(f, cov, c.buffer.glyphs[j].gid)
-	if ((entry_index < 0) || (entry_index >= count)): return 0
-	int entry_off = ttf_u16(f, sub + 6 + entry_index * 4)
+	int this_index = ttf_coverage(f, cov, buf.glyphs[j].gid)
+	if ((this_index < 0) || (this_index >= count)): return 0
+	int entry_off = ttf_u16(f, sub + 6 + this_index * 4)
 	if (entry_off == 0): return 0
+	int i = otl_prev_index(c, j)
+	if (i < 0): return 0
+	int prev_index = ttf_coverage(f, cov, buf.glyphs[i].gid)
+	if ((prev_index < 0) || (prev_index >= count)): return 0
+	int exit_off = ttf_u16(f, sub + 6 + prev_index * 4 + 2)
+	if (exit_off == 0): return 0
 	int exit_x = 0
 	int exit_y = 0
 	int entry_x = 0
 	int entry_y = 0
 	otl_anchor(f, sub + exit_off, &exit_x, &exit_y)
 	otl_anchor(f, sub + entry_off, &entry_x, &entry_y)
-	otl_glyph* a = &c.buffer.glyphs[i]
-	otl_glyph* b = &c.buffer.glyphs[j]
+	otl_glyph* a = &buf.glyphs[i]
+	otl_glyph* b = &buf.glyphs[j]
 	if (c.rtl):
-		# Visual order puts j left of i: i's entry edge meets j's exit.
 		int d = exit_x + a.x_offset
 		a.x_advance = a.x_advance - d
 		a.x_offset = a.x_offset - d
@@ -932,8 +1011,24 @@ int otl_cursive_pos(otl_ctx* c, int sub, int i):
 		int d = entry_x + b.x_offset
 		b.x_advance = b.x_advance - d
 		b.x_offset = b.x_offset - d
-	b.y_offset = a.y_offset + exit_y - entry_y
-	c.next = j
+	int child = i
+	int parent = j
+	int y_offset = entry_y - exit_y
+	if ((c.flag & 1) == 0):
+		child = j
+		parent = i
+		y_offset = -y_offset
+	otl_reverse_cursive(buf, child, parent, 0)
+	otl_glyph* cg = &buf.glyphs[child]
+	otl_glyph* pg = &buf.glyphs[parent]
+	cg.attach = parent
+	cg.attach_kind = otl_attach_cursive
+	cg.y_offset = y_offset
+	# A parent that was attached to the child is separated from it.
+	if (pg.attach == child):
+		pg.attach = -1
+		pg.y_offset = 0
+	c.next = j + 1
 	return 1
 
 # Attach mark i to glyph target, aligning mark_anchor with base_anchor.
@@ -947,14 +1042,21 @@ void otl_attach(otl_ctx* c, int i, int target, int mark_anchor, int base_anchor)
 	otl_glyph* g = &c.buffer.glyphs[i]
 	g.attach = target
 	g.attach_kind = otl_attach_gpos_mark
-	# Like HarfBuzz, attaching replaces the mark's offset (later lookups
-	# add to it). The vertical offset is resolved now, from the base's
-	# offset at this point; only the horizontal one follows the base when
+	# Like HarfBuzz, attaching replaces the mark's offsets (later lookups
+	# add to them). The vertical one includes the base's, and those of its
+	# cursive parents, now; the base's horizontal offset is added when
 	# positioning finishes.
-	g.attach_dx = bx - mx
+	int cross = c.buffer.glyphs[target].y_offset
+	int at = target
+	int steps = 0
+	while ((c.buffer.glyphs[at].attach_kind == otl_attach_cursive) && (c.buffer.glyphs[at].attach >= 0) && (c.buffer.glyphs[at].attach < c.buffer.count) && (steps < c.buffer.count)):
+		at = c.buffer.glyphs[at].attach
+		cross = cross + c.buffer.glyphs[at].y_offset
+		steps = steps + 1
+	g.attach_dx = 0
 	g.attach_dy = 0
-	g.x_offset = 0
-	g.y_offset = by - my + c.buffer.glyphs[target].y_offset
+	g.x_offset = bx - mx
+	g.y_offset = by - my + cross
 
 # The MarkRecord of mark i in a MarkArray: its class and anchor offset.
 int otl_mark_record(otl_ctx* c, int mark_array, int index, int* anchor):
@@ -989,7 +1091,7 @@ int otl_mark_base_pos(otl_ctx* c, int sub, int i, int ligature):
 	int base_cov = sub + ttf_u16(f, sub + 4)
 	while (j >= 0):
 		otl_glyph* g = &b.glyphs[j]
-		int skip = (g.props == otl_class_mark) || ((g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp) && ((g.cp != 0x200d) || !c.manual_joiners))
+		int skip = (g.props == otl_class_mark) || ((g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && otl_default_ignorable(g.cp) && ((g.cp != 0x200d) || !c.manual_joiners))
 		# HarfBuzz attaches to the first glyph of a multiple substitution's
 		# output, unless a later one is itself a covered base.
 		if (!skip && !ligature && !otl_accept_base(b, j) && (ttf_coverage(f, base_cov, g.gid) < 0)): skip = 1
@@ -1175,6 +1277,37 @@ int otl_langsys(ttf_font* f, int table, char* scripts, int script_count, int lan
 			return 0
 	return 0
 
+# Masks of the features HarfBuzz enables for every shaper right after
+# rvrn: 'rtlm' (RTL characters without a mirrored glyph) and the
+# automatic fractions (digits around a FRACTION SLASH). Bit 0 is the
+# global mask.
+const int otl_mask_rtlm = 0x00100000
+const int otl_mask_frac = 0x00200000
+const int otl_mask_numr = 0x00400000
+const int otl_mask_dnom = 0x00800000
+
+# Append those features to a stage: 'ltra' 'ltrm' for LTR text or 'rtla'
+# 'rtlm' for RTL (the requested direction, b.target_rtl), then 'frac'
+# 'numr' 'dnom'. Returns the new feature count.
+int otl_common_features(otl_buffer* b, int* tags, int* masks, int n):
+	if (b.target_rtl):
+		tags[n] = otl_tag(c"rtla")
+		masks[n] = 1 | otl_mask_hb
+		tags[n + 1] = otl_tag(c"rtlm")
+		masks[n + 1] = otl_mask_rtlm | otl_mask_hb
+	else:
+		tags[n] = otl_tag(c"ltra")
+		masks[n] = 1 | otl_mask_hb
+		tags[n + 1] = otl_tag(c"ltrm")
+		masks[n + 1] = 1 | otl_mask_hb
+	tags[n + 2] = otl_tag(c"frac")
+	masks[n + 2] = otl_mask_frac | otl_mask_hb
+	tags[n + 3] = otl_tag(c"numr")
+	masks[n + 3] = otl_mask_numr | otl_mask_hb
+	tags[n + 4] = otl_tag(c"dnom")
+	masks[n + 4] = otl_mask_dnom | otl_mask_hb
+	return n + 5
+
 # A lookup index with the feature mask it applies under.
 struct otl_lookup_entry:
 	int index
@@ -1233,6 +1366,14 @@ int otl_apply_stage(ttf_font* f, otl_buffer* b, int kind, char* scripts, int scr
 	for e in range(n): otl_apply_lookup(&c, entries[e].index, entries[e].mask)
 	free(entries)
 	return 1
+
+# The stage of otl_common_features alone, for the syllabic shapers
+# (HarfBuzz pauses after it to find syllables).
+void otl_apply_common(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language, int rtl):
+	int[8] tags
+	int[8] masks
+	int n = otl_common_features(b, &tags[0], &masks[0], 0)
+	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
 
 # Whether any requested feature exists for the script (table kind).
 int otl_has_feature(ttf_font* f, int kind, char* scripts, int script_count, int tag):
@@ -1417,20 +1558,45 @@ void otl_merge_clusters(otl_buffer* b, int start, int end):
 
 # ---- finishing ---------------------------------------------------------
 
-# Resolve mark attachments into offsets for the final visual direction;
-# the buffer is still in logical order. Run after advances are final.
+# HarfBuzz's propagate_attachment_offsets: glyph i, attached to another
+# glyph by GPOS, adds that glyph's final offset across the line (cursive)
+# or along it (a mark, which also moves back over the advances between
+# them; its vertical offset was resolved when it attached).
+void otl_propagate_attachment(otl_buffer* b, int i, int rtl, int depth):
+	otl_glyph* g = &b.glyphs[i]
+	int j = g.attach
+	if ((j < 0) || ((g.attach_kind != otl_attach_gpos_mark) && (g.attach_kind != otl_attach_cursive))): return
+	g.attach = -1
+	if ((j >= b.count) || (depth == 0)): return
+	otl_glyph* p = &b.glyphs[j]
+	if (p.attach >= 0): otl_propagate_attachment(b, j, rtl, depth - 1)
+	if (g.attach_kind == otl_attach_cursive):
+		g.y_offset = g.y_offset + p.y_offset
+		return
+	g.x_offset = g.x_offset + p.x_offset
+	if (j < i):
+		if (rtl): for k in range(j + 1, i + 1): g.x_offset = g.x_offset + b.glyphs[k].x_advance
+		else:
+			for k in range(j, i): g.x_offset = g.x_offset - b.glyphs[k].x_advance
+	else if (rtl): for k in range(i + 1, j + 1): g.x_offset = g.x_offset - b.glyphs[k].x_advance
+	else:
+		for k in range(i, j): g.x_offset = g.x_offset + b.glyphs[k].x_advance
+
+# Resolve attachments into offsets for the final visual direction; the
+# buffer is still in logical order. Run after advances are final.
 void otl_position_finish(otl_buffer* b, int rtl):
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if (((g.attach_kind != otl_attach_mark) && (g.attach_kind != otl_attach_gpos_mark)) || (g.attach < 0) || (g.attach >= i)): continue
+		if ((g.attach_kind == otl_attach_gpos_mark) || (g.attach_kind == otl_attach_cursive)): otl_propagate_attachment(b, i, rtl, 64)
+	for i in range(b.count):
+		otl_glyph* g = &b.glyphs[i]
+		if ((g.attach_kind != otl_attach_mark) || (g.attach < 0) || (g.attach >= i)): continue
 		otl_glyph* base = &b.glyphs[g.attach]
 		int between = 0
 		if (rtl): for k in range(g.attach + 1, i + 1): between = between + b.glyphs[k].x_advance
 		else:
 			for k in range(g.attach, i): between = between - b.glyphs[k].x_advance
-		if (g.attach_kind == otl_attach_mark):
-			# A fallback placement replaces the mark's offsets and, as in
-			# HarfBuzz, ignores the base's horizontal offset.
-			g.x_offset = g.attach_dx + between
-			g.y_offset = base.y_offset + g.attach_dy
-		else: g.x_offset = base.x_offset + g.attach_dx + g.x_offset + between
+		# A fallback placement replaces the mark's offsets and, as in
+		# HarfBuzz, ignores the base's horizontal offset.
+		g.x_offset = g.attach_dx + between
+		g.y_offset = base.y_offset + g.attach_dy

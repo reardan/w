@@ -552,6 +552,7 @@ void ttf_indic_dotted_circles(ttf_font* f, otl_buffer* b):
 		otl_glyph* g = &b.glyphs[at]
 		g.gid = circle
 		g.cp = 0x25cc
+		g.props_cp = 0x25cc
 		g.icat = ut_icat_dottedcircle
 		g.ipos = ut_ipos_end
 		g.props = 0
@@ -965,6 +966,7 @@ void ttf_indic_shape(ttf_indic_plan* p, otl_buffer* b, int liga):
 	tags[0] = otl_tag(c"rvrn")
 	masks[0] = 1 | otl_mask_hb
 	ttf_indic_stage(p, b, &tags[0], &masks[0], 1)
+	otl_apply_common(p.font, b, p.scripts, p.script_count, p.language, 0)
 	int broken = ttf_indic_find_syllables(b)
 	tags[0] = otl_tag(c"locl")
 	tags[1] = otl_tag(c"ccmp")
