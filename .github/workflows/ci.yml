@@ -110,11 +110,11 @@ jobs:
         uses: ./.github/actions/setup-w
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -200,11 +200,11 @@ jobs:
         uses: ./.github/actions/setup-w
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -361,11 +361,11 @@ jobs:
           cp -a bin/coverage/. "$RUNNER_TEMP/wcoverage/"
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -518,11 +518,11 @@ jobs:
         uses: ./.github/actions/setup-w
 
       - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          i386: "true"
+          packages: libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Enable KVM
         run: |
@@ -559,9 +559,10 @@ jobs:
         uses: ./.github/actions/setup-w
 
       - name: Install qemu-user and the arm64 libc
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-user-static libc6-arm64-cross
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          packages: qemu-user-static libc6-arm64-cross
 
       # tests_arm64 = verify_arm64 (stage-2 self-recompile under qemu)
       # plus every arm64 run target. memfd_test_arm64 sits in
@@ -598,9 +599,10 @@ jobs:
         uses: ./.github/actions/setup-w
 
       - name: Install wine
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends wine
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          packages: wine
 
       # tests_win64 = verify_win (wv3_win == wv4_win == wv5_win under
       # wine) plus the win64 run targets.

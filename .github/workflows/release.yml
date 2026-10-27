@@ -69,9 +69,10 @@ jobs:
 
       - name: Install packages
         if: matrix.packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ${{ matrix.packages }}
+        timeout-minutes: 15
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ${{ matrix.packages }}
 
       - name: Allow debugger attach tests
         if: matrix.ptrace

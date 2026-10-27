@@ -1,0 +1,59 @@
+name: Install apt packages with a .deb cache
+description: Restore cached .deb files, install with tools/ci_apt_install.sh (bounded, retried), save the cache
+
+inputs:
+  packages:
+    description: Space-separated package names
+    required: true
+  i386:
+    description: "'true' to enable the i386 architecture first"
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # One cache per package set and runner image. The runner's mirror can
+    # trickle at 40-60 kB/s for every download, so a warm cache is what
+    # keeps this step at seconds; tools/ci_apt_install.sh's retries only
+    # cover a cold one. A new image version falls back to the newest
+    # cache for the same packages: debs whose version still matches are
+    # reused, and apt verifies each against the signed index either way.
+    - name: Apt cache key
+      id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        I386: ${{ inputs.i386 }}
+      run: |
+        packages_hash="$(printf '%s|%s' "$I386" "$PACKAGES" | sha256sum | cut -c1-16)"
+        prefix="w-apt-v1-${ImageOS:-unknown}-$packages_hash-"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "key=$prefix${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore apt packages
+      id: restore
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/w-apt
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    - name: Install packages
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        I386: ${{ inputs.i386 }}
+      run: |
+        flag=
+        if [ "$I386" = true ]; then flag=--i386; fi
+        # shellcheck disable=SC2086 # PACKAGES is a word list
+        W_APT_ARCHIVES="$HOME/.cache/w-apt" tools/ci_apt_install.sh $flag $PACKAGES
+
+    # Saved from any event: the content is verified by apt on every use,
+    # and a pull request's entry is only visible to that pull request.
+    - name: Save apt packages
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/w-apt
+        key: ${{ steps.key.outputs.key }}
