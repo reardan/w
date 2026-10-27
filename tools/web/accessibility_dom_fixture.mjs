@@ -11,6 +11,16 @@ export function makeDocument() {
       this.listeners = new Map();
       this.textContent = '';
       this.value = '';
+      this.selectionStart = 0;
+      this.selectionEnd = 0;
+      this.selectionDirection = 'none';
+    }
+    // Like a browser, a programmatic selection fires 'select'.
+    setSelectionRange(start, end, direction = 'none') {
+      this.selectionStart = start;
+      this.selectionEnd = end;
+      this.selectionDirection = direction;
+      this.emit('select');
     }
     setAttribute(k, v) { this.attributes.set(k, String(v)); }
     getAttribute(k) { return this.attributes.get(k) ?? null; }

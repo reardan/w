@@ -27,8 +27,9 @@ snapshot's text budget) and applied by ui_access_atspi_dispatch through
 ui_access_dispatch, which revalidates them against the application's
 current tree, exactly as the Cocoa and web bridges do.
 
-Interfaces: Accessible, Application (root), Component, Action, Text and
-EditableText (textboxes) and Value (progress bars). Geometry is the
+Interfaces: Accessible, Application (root), Component, Action, Text
+(with the caret and one selection) and EditableText (textboxes) and
+Value (progress bars). Geometry is the
 snapshot's logical window coordinates; screen coordinates add the origin
 set by ui_access_atspi_set_origin.
 */
@@ -84,6 +85,7 @@ const int ATSPI_STATE_SENSITIVE = 24
 const int ATSPI_STATE_SHOWING = 25
 const int ATSPI_STATE_SINGLE_LINE = 26
 const int ATSPI_STATE_VISIBLE = 30
+const int ATSPI_STATE_SELECTABLE_TEXT = 38
 const int ATSPI_STATE_CHECKABLE = 41
 const int ATSPI_STATE_HAS_POPUP = 42
 const int ATSPI_STATE_READ_ONLY = 43
@@ -405,6 +407,7 @@ void ui_atspi_states_for(ui_access_node* n, int focused_id, int* lo, int* hi):
 	if (role == UI_ACCESS_TEXTBOX):
 		if (((n.states & UI_ACCESS_READONLY) == 0) && ((n.actions & UI_ACCESS_SET_VALUE) != 0)): s = s | (1 << ATSPI_STATE_EDITABLE)
 		else: t = t | (1 << (ATSPI_STATE_READ_ONLY - 32))
+		if ((n.actions & UI_ACCESS_SET_SELECTION) != 0): t = t | (1 << (ATSPI_STATE_SELECTABLE_TEXT - 32))
 	if (role == UI_ACCESS_DIALOG): s = s | (1 << ATSPI_STATE_MODAL)
 	if ((n.parent == 0) && (role == UI_ACCESS_DOCUMENT)): s = s | (1 << ATSPI_STATE_ACTIVE)
 	lo[0] = s
@@ -433,6 +436,7 @@ char* ui_atspi_state_nick(int k):
 	if (k == ATSPI_STATE_SHOWING): return c"showing"
 	if (k == ATSPI_STATE_VISIBLE): return c"visible"
 	if (k == ATSPI_STATE_CHECKABLE): return c"checkable"
+	if (k == ATSPI_STATE_SELECTABLE_TEXT): return c"selectable-text"
 	if (k == ATSPI_STATE_HAS_POPUP): return c"has-popup"
 	if (k == ATSPI_STATE_READ_ONLY): return c"read-only"
 	return 0
@@ -534,6 +538,12 @@ int ui_atspi_has_text(ui_access_node* n):
 
 int ui_atspi_has_editable(ui_access_node* n):
 	return ui_atspi_has_text(n) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0)
+
+
+# The caret's character offset; a text without one reports 0.
+int ui_atspi_caret(ui_access_node* n):
+	if (n.caret < 0): return 0
+	return n.caret
 
 
 int ui_atspi_has_value(ui_access_node* n):
@@ -698,9 +708,13 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 			return 1
 		return 0
 	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Text") && ui_atspi_has_text(n)):
-		if ((strcmp(prop, c"CharacterCount") == 0) || (strcmp(prop, c"CaretOffset") == 0)):
+		if (strcmp(prop, c"CharacterCount") == 0):
 			dbus_put_sig(out, c"i")
 			dbus_put_i32(out, ui_atspi_char_count(&n.value))
+			return 1
+		if (strcmp(prop, c"CaretOffset") == 0):
+			dbus_put_sig(out, c"i")
+			dbus_put_i32(out, ui_atspi_caret(n))
 			return 1
 		return 0
 	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Value") && ui_atspi_has_value(n)):
@@ -1110,6 +1124,22 @@ void ui_atspi_put_range(dbus_buf* out, ui_access_text* t, int start, int end):
 	dbus_put_string_n(out, &t.data[from], to - from)
 
 
+# An empty a{ss}.
+void ui_atspi_put_attributes(dbus_buf* out):
+	int mark = dbus_array_begin(out, 8)
+	dbus_array_end(out, mark, 8)
+
+
+# Queue a caret move (start == end) or a selection from start to end
+# (the caret at end), in characters of the published text.
+int ui_atspi_select_text(ui_atspi_bridge* b, ui_access_node* n, int start, int end):
+	int count = ui_atspi_char_count(&n.value)
+	if ((start < 0) || (end < 0) || (start > count) || (end > count)): return 0
+	char[32] payload
+	int length = ui_access_selection_format(&payload[0], start, end)
+	return ui_atspi_enqueue(b, n, UI_ACCESS_SET_SELECTION, &payload[0], length)
+
+
 int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
@@ -1145,22 +1175,58 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, start)
 		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"sii")
-	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, 0)
+	# One selection at most: the snapshot's [selection_start,
+	# selection_end) when it is not empty.
+	int selected = ui_access_has_selection(n)
+	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, selected)
 	if (ui_atspi_member(m, c"GetSelection")):
-		dbus_put_i32(out, 0)
-		dbus_put_i32(out, 0)
+		int k = dbus_read_i32(&r)
+		int start = 0
+		int end = 0
+		if ((k == 0) && selected && (r.failed == 0)):
+			start = n.selection_start
+			end = n.selection_end
+		dbus_put_i32(out, start)
+		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"ii")
-	if (ui_atspi_member(m, c"GetDefaultAttributes") || ui_atspi_member(m, c"GetDefaultAttributeSet")):
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
-		if (ui_atspi_member(m, c"GetDefaultAttributeSet")): return dbus_reply(b.bus, m, c"as")
+	if (ui_atspi_member(m, c"SetCaretOffset")):
+		int k = dbus_read_i32(&r)
+		if (r.failed): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, k, k))
+	if (ui_atspi_member(m, c"AddSelection")):
+		# A second selection is not supported; an empty one says nothing.
+		int start = dbus_read_i32(&r)
+		int end = dbus_read_i32(&r)
+		if (r.failed || selected || (start == end)): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+	if (ui_atspi_member(m, c"SetSelection")):
+		int k = dbus_read_i32(&r)
+		int start = dbus_read_i32(&r)
+		int end = dbus_read_i32(&r)
+		if (r.failed || (k != 0)): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+	if (ui_atspi_member(m, c"RemoveSelection")):
+		# Removing the selection leaves the caret where it was.
+		int k = dbus_read_i32(&r)
+		if (r.failed || (k != 0) || !selected): return ui_atspi_reply_bool(b, m, 0)
+		int caret = ui_atspi_caret(n)
+		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, caret, caret))
+	# Text attributes: the bridge knows no fonts or colours, so every
+	# set is empty and the whole text is one run.
+	if (ui_atspi_member(m, c"GetDefaultAttributes")):
+		ui_atspi_put_attributes(out)
 		return dbus_reply(b.bus, m, c"a{ss}")
+	if (ui_atspi_member(m, c"GetDefaultAttributeSet")):
+		int mark = dbus_array_begin(out, 4)
+		dbus_array_end(out, mark, 4)
+		return dbus_reply(b.bus, m, c"as")
 	if (ui_atspi_member(m, c"GetAttributes") || ui_atspi_member(m, c"GetAttributeRun")):
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
+		ui_atspi_put_attributes(out)
 		dbus_put_i32(out, 0)
 		dbus_put_i32(out, count)
 		return dbus_reply(b.bus, m, c"a{ss}ii")
+	if (ui_atspi_member(m, c"GetAttributeValue")):
+		return ui_atspi_reply_string(b, m, c"")
 	if (ui_atspi_member(m, c"GetCharacterExtents") || ui_atspi_member(m, c"GetRangeExtents")):
 		int x = 0
 		int y = 0
@@ -1172,8 +1238,6 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, w)
 		dbus_put_i32(out, h)
 		return dbus_reply(b.bus, m, c"iiii")
-	if (ui_atspi_member(m, c"SetCaretOffset") || ui_atspi_member(m, c"AddSelection") || ui_atspi_member(m, c"RemoveSelection") || ui_atspi_member(m, c"SetSelection")):
-		return ui_atspi_reply_bool(b, m, 0)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1604,6 +1668,14 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 		if (ui_atspi_has_text(n) && !ui_atspi_text_same(&n.value, &was.value)):
 			ui_atspi_emit_text(b, id, c"delete", &was.value)
 			ui_atspi_emit_text(b, id, c"insert", &n.value)
+		# The selection, then where the caret went (Orca reads the
+		# selected text on the first and the moved-over text on the
+		# second).
+		if (ui_atspi_has_text(n)):
+			if ((ui_access_has_selection(n) || ui_access_has_selection(was)) && ((n.selection_start != was.selection_start) || (n.selection_end != was.selection_end))):
+				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextSelectionChanged", c"", 0, 0)
+			if ((n.caret != was.caret) && (n.caret >= 0)):
+				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextCaretMoved", c"", n.caret, 0)
 	# One SelectionChanged per container whose selected children changed,
 	# after the per-child selected states.
 	walk = fresh.root

@@ -71,6 +71,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_activation_count = 0
 	ctx.access_value_id = 0
 	ctx.access_value_length = 0
+	ctx.access_selection_id = 0
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
@@ -284,6 +285,7 @@ void ui_end(ui_context* ctx):
 	# Assistive requests live for exactly the frame after their dispatch.
 	ctx.access_activation_count = 0
 	ctx.access_value_id = 0
+	ctx.access_selection_id = 0
 	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
@@ -466,6 +468,26 @@ char* ui_access_value_request(ui_context* ctx, int id):
 	return &ctx.access_value[0]
 
 
+# A pending caret/selection request for id this frame: 1 with the
+# anchor and active ends (characters of the value the requester saw),
+# else 0. Apply it after any value request.
+int ui_access_selection_request(ui_context* ctx, int id, int* anchor, int* active):
+	if ((ctx.access_selection_id != id) || (id == 0) || ctx.disabled || ui_scope_blocked(ctx)): return 0
+	ctx.access_selection_id = 0
+	anchor[0] = ctx.access_selection_anchor
+	active[0] = ctx.access_selection_active
+	return 1
+
+
+# Record a text widget's caret and selection on its node, given as byte
+# offsets into the value it set (ui_access_set_value first).
+void ui_access_set_caret(ui_context* ctx, ui_access_node* n, int anchor_byte, int caret_byte):
+	if (n == 0): return
+	int anchor = ui_access_byte_char(n.value.data, n.value.length, anchor_byte)
+	int caret = ui_access_byte_char(n.value.data, n.value.length, caret_byte)
+	ui_access_set_selection(ctx.access, n.id, anchor, caret)
+
+
 # The tree action callback ui_access_capture installs: focus applies at
 # once, activation and values are held for the named widget to apply
 # (and revalidate) on the next frame.
@@ -486,6 +508,14 @@ int ui_access_widget_action(void* context, int id, int action, char* data, int l
 		ctx.access_value[length] = 0
 		ctx.access_value_length = length
 		ctx.access_value_id = id
+		return 1
+	if (action == UI_ACCESS_SET_SELECTION):
+		int anchor = 0
+		int active = 0
+		if (!ui_access_selection_parse(data, length, &anchor, &active)): return 0
+		ctx.access_selection_anchor = anchor
+		ctx.access_selection_active = active
+		ctx.access_selection_id = id
 		return 1
 	return 0
 

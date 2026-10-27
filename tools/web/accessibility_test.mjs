@@ -180,6 +180,43 @@ assert.equal(access.add(1, 0, 22, 0, 0, 0), 0, 'roles past the table are rejecte
 assert.equal(access.begin(4, 64, 11), 1);
 assert.equal(access.add(1, 0, 21, 0, 0, 0), 1);
 access.close();
+// Caret and selection: published in code points, set on the textarea in
+// UTF-16 units without echoing, and user moves queued as SET_SELECTION.
+assert.equal(access.begin(8, 256, 12), 1);
+access.add(1, 0, 1, 0, 0, 0);
+access.add(2, 1, 8, 64, 22, 0); access.text(2, 2, 'a\u{1F642}b\nc');
+assert.equal(access.selection(2, 1, 1, 3), 1);
+access.add(3, 1, 8, 80, 16, 0); access.text(3, 2, 'ro');
+access.add(4, 1, 8, 64, 6, 0); access.text(4, 2, 'plain');
+assert.equal(access.commit(0), 1);
+let [editor, readonlyEditor, plain] = children();
+assert.deepEqual([editor.selectionStart, editor.selectionEnd, editor.selectionDirection], [1, 4, 'backward']);
+assert.equal(access.next(12, 256), null, 'a published selection is not echoed');
+editor.setSelectionRange(0, 6, 'forward');
+assert.deepEqual(decode(access.next(12, 256)), { id: 2, action: 16, value: '0 5' });
+editor.emit('keyup'); editor.emit('selectionchange');
+assert.equal(access.next(12, 256), null, 'no duplicate requests');
+editor.value = 'xy'; editor.selectionStart = 2; editor.selectionEnd = 2; editor.selectionDirection = 'none';
+editor.emit('input');
+assert.deepEqual(decode(access.next(12, 256)), { id: 2, action: 4, value: 'xy' });
+assert.deepEqual(decode(access.next(12, 256)), { id: 2, action: 16, value: '2 2' }, 'the caret after an edit');
+readonlyEditor.setSelectionRange(0, 1);
+assert.deepEqual(decode(access.next(12, 256)), { id: 3, action: 16, value: '0 1' }, 'read-only text selects');
+plain.setSelectionRange(0, 2);
+assert.equal(access.next(12, 256), null, 'no SET_SELECTION action, no request');
+for (const invalid of [
+  () => access.selection(2, 1, 1, 9),
+  () => access.selection(2, 2, 1, 3),
+  () => access.selection(2, 3, 3, 1),
+  () => access.selection(9, 0, 0, 0),
+  () => access.add(5, 1, 8, 64, 32, 0),
+]) {
+  assert.equal(access.begin(8, 256, 13), 1);
+  access.add(1, 0, 1, 0, 0, 0);
+  access.add(2, 1, 8, 64, 22, 0); access.text(2, 2, 'a\u{1F642}b\nc');
+  assert.equal(invalid(), 0); assert.equal(access.commit(0), 0);
+}
+access.close();
 const absent = makeAccessibilityEnv({ memory: () => memory });
 assert.equal(absent.gfx_access_begin(1, 1, 1), 0);
 assert.equal(absent.gfx_access_next(1, 512, 1024, 1), 0);

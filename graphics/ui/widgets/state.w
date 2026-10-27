@@ -143,3 +143,7 @@ struct ui_context:
 	int32 access_value_id
 	int32 access_value_length
 	char[1024] access_value
+	# A caret/selection request (UI_ACCESS_SET_SELECTION), in characters.
+	int32 access_selection_id
+	int32 access_selection_anchor
+	int32 access_selection_active

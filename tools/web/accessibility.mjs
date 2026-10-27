@@ -8,6 +8,18 @@ const pressAction = n => (n.actions & 8) ? 8 : 1;
 const encoder = new TextEncoder();
 let nextBridgeId = 0;
 const integer = n => Number.isInteger(n) && n >= 0 && n <= 0x7fffffff;
+// Snapshot offsets count code points; the DOM's count UTF-16 units.
+const step = (text, i) => (text.codePointAt(i) > 0xffff ? 2 : 1);
+const toUnits = (text, chars) => {
+  let i = 0;
+  for (let k = 0; k < chars && i < text.length; k++) i += step(text, i);
+  return i;
+};
+const toChars = (text, units) => {
+  let k = 0;
+  for (let i = 0; i < units && i < text.length; k++) i += step(text, i);
+  return k;
+};
 
 export function createAccessibility({ document, container, canvas = null }) {
   let staging = null, current = null, queue = [], serial = 0, suppressFocus = false;
@@ -38,7 +50,7 @@ export function createAccessibility({ document, container, canvas = null }) {
       const s = staging;
       if (!s || s.failed || !integer(id) || !id || !integer(parent) ||
           !integer(role) || role < 1 || role >= roles.length ||
-          !integer(states) || states > 127 || !integer(actions) || actions > 15 ||
+          !integer(states) || states > 127 || !integer(actions) || actions > 31 ||
           !integer(level) || (role === 4 && (level < 1 || level > 6)) ||
           s.nodes.has(id) || s.nodes.size >= s.maxNodes) return fail();
       const p = s.nodes.get(parent);
@@ -57,6 +69,14 @@ export function createAccessibility({ document, container, canvas = null }) {
       if (total > s.maxBytes) return fail();
       n.text[field - 1] = value;
       s.textBytes = total;
+      return 1;
+    },
+    // caret is one end of [start, end]; the other is the anchor.
+    selection(id, caret, start, end) {
+      const s = staging, n = s?.nodes.get(id);
+      if (!s || s.failed || !n || ![caret, start, end].every(integer) || start > end ||
+          (caret !== start && caret !== end) || end > [...n.text[1]].length) return fail();
+      n.selection = [caret === start ? end : start, caret];
       return 1;
     },
     fail,
@@ -94,7 +114,24 @@ export function createAccessibility({ document, container, canvas = null }) {
           el.disabled = n.inert;
           el.setAttribute('aria-multiline', 'true');
           el.setAttribute('aria-readonly', String(el.readOnly));
-          el.addEventListener('input', e => { if (!e.isComposing) request(s, n, 4, el.value); });
+          // The caret and selection as [anchor, active] in code points:
+          // published ones are not echoed back, user moves are queued
+          // (after the edit that caused them, when there was one).
+          n.sent = n.selection;
+          const select = () => {
+            if (!(n.actions & 16) || typeof el.selectionStart !== 'number') return;
+            const text = el.value;
+            let anchor = toChars(text, el.selectionStart), active = toChars(text, el.selectionEnd);
+            if (el.selectionDirection === 'backward') [anchor, active] = [active, anchor];
+            if (n.sent && n.sent[0] === anchor && n.sent[1] === active) return;
+            if (request(s, n, 16, `${anchor} ${active}`)) n.sent = [anchor, active];
+          };
+          el.addEventListener('input', e => {
+            if (e.isComposing) return;
+            request(s, n, 4, el.value);
+            select();
+          });
+          for (const name of ['select', 'selectionchange', 'keyup', 'mouseup']) el.addEventListener(name, select);
         }
         if (!n.inert && (n.states & 64) && (n.actions & 2)) el.tabIndex = 0;
         else if (n.role === 8) el.tabIndex = -1;
@@ -133,6 +170,12 @@ export function createAccessibility({ document, container, canvas = null }) {
       queuedBytes = 0;
       current = s;
       container.replaceChildren(fragment);
+      for (const n of s.nodes.values()) {
+        if (n.role !== 8 || !n.selection) continue;
+        const [anchor, active] = n.selection, text = n.element.value;
+        n.element.setSelectionRange(toUnits(text, Math.min(anchor, active)),
+          toUnits(text, Math.max(anchor, active)), active < anchor ? 'backward' : 'forward');
+      }
       if (focused) {
         suppressFocus = true;
         try { focused.element.focus({ preventScroll: true }); }
@@ -177,6 +220,7 @@ export function makeAccessibilityEnv({ memory, access }) {
       try { return access.text(id, field, decoder.decode(new Uint8Array(memory().buffer, ptr, length))); }
       catch { return access.fail(); }
     },
+    gfx_access_selection: (...args) => access?.selection(...args) ?? 0,
     gfx_access_commit: id => access?.commit(id) ?? 0,
     gfx_access_next: (snapshot, metadata, ptr, capacity) => {
       if (!access || !valid(metadata, 12) || !valid(ptr, capacity) ||
