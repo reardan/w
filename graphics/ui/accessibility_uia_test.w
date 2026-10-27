@@ -771,6 +771,21 @@ int main():
 	release(hit)
 	assert_equal(0, hr(from_point(fragment_root, 5000.0, 5000.0, cast(int, &hit))))
 	assert_equal(0, hit)
+	# At 150% the snapshot's logical bounds become device pixels, and a
+	# device-pixel point maps back to the same node.
+	ui_access_uia_set_scale(bridge, 1.5)
+	assert_equal(0, call2(button_fragment, 5, cast(int, &rect[0])))
+	assert_equal(1015, cast(int, rect[0]))
+	assert_equal(515, cast(int, rect[1]))
+	assert_equal(120, cast(int, rect[2]))
+	assert_equal(45, cast(int, rect[3]))
+	assert_equal(0, hr(from_point(fragment_root, 1130.0, 555.0, cast(int, &hit))))
+	asserts(c"hit at 150%", hit != 0)
+	hit_simple = simple_of(hit)
+	assert_equal(2, automation_id(hit_simple))
+	release(hit_simple)
+	release(hit)
+	ui_access_uia_set_scale(bridge, 1.0)
 	int focus = 0
 	assert_equal(0, call2(fragment_root, 4, cast(int, &focus)))
 	int focus_simple = simple_of(focus)

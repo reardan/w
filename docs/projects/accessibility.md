@@ -349,6 +349,10 @@ so there is no C helper, ATL or type library. It links `uiautomationcore`,
    calling thread as a single-threaded apartment. Pass 0 for a tree hosted by
    no window (tests and embedding), and give its screen position with
    `ui_access_uia_set_origin(b, x, y)`.
+   Snapshot bounds are logical pixels. `ui_access_uia_set_scale(b, ratio)`
+   gives the window's DPI scale (`gfx_window_pixel_ratio`; the platform
+   layer sets it every frame), and bounding rectangles and
+   ElementProviderFromPoint use device pixels, as UIA clients expect.
 2. Set `gfx_win32_getobject = ui_access_uia_wm_getobject` (the optional
    `WM_GETOBJECT` hook in `graphics/window_win32.w`; nothing changes while it is
    unset). It answers `UiaRootObjectId` with `UiaReturnRawElementProvider` and

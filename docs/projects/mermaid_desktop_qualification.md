@@ -3,12 +3,62 @@
 This is the checklist for qualifying `wmermaid_editor` on real Windows and
 macOS machines (issue #822). Linux qualification runs in CI and containers
 (`mermaid_editor_ui_test`, `mermaid_editor_atspi_test`,
-`mermaid_editor_orca_test`; see [mermaid.md](mermaid.md)). Wine covers the
-Windows save path and the UI Automation provider in process, but not a real
-desktop, DPI, Explorer or a screen reader. Nothing below has been run natively
-yet; record results in the tables at the end and update the platform rows in
-[mermaid.md](mermaid.md) and [mermaid_compatibility.md](mermaid_compatibility.md)
-from them.
+`mermaid_editor_orca_test`; see [mermaid.md](mermaid.md)). The Windows build
+is also qualified under wine on a Linux host with real input events (next
+section). Wine is not a native run, though: it has no DWM, Explorer, real
+IME, OneDrive or screen reader. Nothing below has been run on real Windows or
+macOS yet. Record results in the tables at the end, and update the platform
+rows in [mermaid.md](mermaid.md) and
+[mermaid_compatibility.md](mermaid_compatibility.md) from them.
+
+## Windows build under wine (done on Linux)
+
+`./wbuild mermaid_editor_wine_test` (opt-in; needs wine, Xvfb, libX11 and
+libXtst) runs `tools/mermaid_editor_wine_test.sh`. The script starts Xvfb and
+a private wine prefix (`bin/mermaid-wine-prefix-<dpi>`; `~/.wine` is never
+used), then drives `bin/wmermaid_editor_win.exe` with
+`tools/mermaid_editor_ui_driver.w --wine`. That is the same XTest driver as
+the Linux workflow, so the pointer and key events are real X11 input. Wine's
+X11 driver turns them into Win32 messages (`WM_KEYDOWN`/`WM_CHAR`,
+`WM_MOUSEMOVE`, button messages), so this exercises:
+- the win32 window backend and WGL;
+- the wide-character file API (see [windows.md](windows.md), "UTF-8 paths");
+- the editor's compare-and-swap saves, as the Windows build runs them.
+
+It runs every workflow twice: at 96 DPI (100%), and at 144 DPI (150%,
+`LogPixels`) with every pointer coordinate scaled by 1.5. Both pass
+(wine 9.0, 2026-10-26, about 150 s for both runs):
+
+| Checklist step | Under wine |
+| --- | --- |
+| 1.1, 1.3 startup, rendering, `--screenshot` | pass (P6 at 1280x800; 1920x1200 at 150%) |
+| 2.1–2.8 click, drag, Escape cancel, Move here, Link to, Tab/Shift+Tab, arrows, Delete, rename, undo/redo chains | pass, at both scales, in flowchart, ER, class, state, groups, multi-selection (Space, Ctrl+A, Shift+drag band), C4, block, kanban and the class-member inspector |
+| 2.9 source typing | pass for ASCII; a real IME needs Windows |
+| 2.10 clipboard | not implemented on any backend (#850) |
+| 3.1–3.4 DPI | at 150%: logical layout unchanged, text rasterized at device resolution, hits land on the right node, screenshot at physical size. Per-monitor moves (`WM_DPICHANGED`) need two real monitors |
+| 4.1–4.3 saves, CRLF, non-ASCII folder ("Qualification Ü"), path over 260 characters | pass |
+| 4.4 read-only file | pass: the save is refused, the editor stays dirty, and the save succeeds once the file is writable |
+| 4.5–4.8 external change, Keep mine, Reload, deletion | pass |
+| 4.9–4.10 locked file, OneDrive, FAT | needs Windows |
+| 5 Narrator/NVDA | needs Windows; `mermaid_canvas_uia_test` reads the canvas through wine's UIA client |
+
+Running the wine workflow found three Windows bugs, all fixed:
+- **ANSI file APIs.** The win64 runtime called `CreateFileA` and friends, and
+  read argv through `GetCommandLineA`. A path outside the system code page
+  ("Qualification Ü") could not be opened. The runtime now uses the wide API
+  and the `\\?\` long-path form.
+- **Read-only files were replaced.** A save replaces the file by rename, and
+  both POSIX and Windows let a read-only file be renamed aside, so the save
+  silently replaced it (reproduced on Linux). `mm_save_cas` now refuses to
+  save over a file it cannot open for writing (`MM_SAVE_FAILED`, the editor
+  stays dirty).
+- **Bitmap-stretched windows.** The win32 backend was DPI-unaware, so Windows
+  would have stretched the window at 150%/200%. It now declares per-monitor
+  DPI awareness (v2 where available) and works in logical pixels with a
+  device-pixel viewport, like the web backend. `gfx_window_pixel_ratio`
+  reports DPI/96, the IME caret position and UI Automation bounds and hit
+  tests are scaled to device pixels, and `--screenshot` writes the physical
+  size.
 
 Each step says what to do and what should happen. A step passes only when
 everything under **Expect** happens. Note anything else under the step.
@@ -233,8 +283,14 @@ Record date, OS version, hardware, display scaling and screen reader version.
 | 5. Narrator / NVDA | pending | n/a |
 | 5. VoiceOver | n/a | pending |
 
-Known risks to look at first: Shift+Tab on Windows comes from `WM_CHAR` Tab
-with Shift held (on X11 it needed a fix; on macOS backtab is mapped); UIA
-bounds at 150%/200% scaling; Windows claim-by-rename failing while another
-program holds the file without delete sharing (step 4.9); and FAT/exFAT
-volumes without hard links (step 4.10).
+Known risks to look at first:
+- Shift+Tab on Windows comes from `WM_CHAR` Tab with Shift held. It works
+  under wine; on X11 it needed a fix, and on macOS backtab is mapped.
+- UIA bounds at 150%/200% scaling. The bridge now scales them by the window's
+  DPI, which was checked under wine but not with Inspect.
+- `WM_DPICHANGED` when a window moves between monitors with different
+  scaling.
+- Windows claim-by-rename failing while another program holds the file
+  without delete sharing (step 4.9).
+- FAT/exFAT volumes without hard links (step 4.10).
+- Retina on macOS: the Cocoa backend still reports a pixel ratio of 1.

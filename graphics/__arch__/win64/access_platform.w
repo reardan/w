@@ -14,9 +14,11 @@ int ui_access_platform_open(gfx_window* win, char* app_name):
 	if (b != 0): gfx_win32_getobject = ui_access_uia_wm_getobject
 	return cast(int, b)
 
-# The bridge maps client to screen coordinates through the window itself.
+# The bridge maps client to screen coordinates through the window itself;
+# it only needs the DPI scale between snapshot and device pixels.
 void ui_access_platform_origin(int bridge, gfx_window* win):
-	return
+	if ((bridge == 0) || (win == 0)): return
+	ui_access_uia_set_scale(cast(ui_uia_bridge*, bridge), gfx_window_pixel_ratio(win))
 
 int ui_access_platform_publish(int bridge, ui_access_tree* tree):
 	if (bridge == 0): return 0

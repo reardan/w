@@ -3,7 +3,7 @@
 # with --orca, the Orca screen reader, all headless:
 #   Xvfb + a private session bus + at-spi-bus-launcher (+ speech-dispatcher's
 #   dummy module and `orca --debug-file`).
-# Needs: xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0 (and orca
+# Needs: xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0 libxtst6 (and orca
 # speech-dispatcher for --orca). Run from the repository root after
 # `./wbuild wmermaid_editor`; `./wbuild mermaid_editor_atspi_test` does both.
 # Fails when anything is missing: a skipped run is never counted as a pass.
