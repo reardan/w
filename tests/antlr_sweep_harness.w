@@ -41,8 +41,47 @@ json_value* sh_stage(json_value* row, char* stage): return ht_field(ht_field(row
 void sh_status(json_value* row, char* stage, char* expected): ht_require(strcmp(ht_text(sh_stage(row, stage), c"status"), expected) == 0, strjoin(c"wrong stage attribution: ", stage))
 json_value* sh_summary(json_value* row): return sw_write_results(sh_work, sh_manifest(), sh_rows(row), json_object())
 
+# Pinned examples covering every verdict: expected accept and reject, a
+# wrong verdict, a hang and a crash. Only the first two pass.
+void sh_pin_examples():
+	json_value* runtime = json_parse(c"{\"entry\":\"root\",\"entry_source\":\"pom.xml\",\"examples\":[]}")
+	for char* spec in ht_command(c"ok:accept reject:reject reject-wrong:accept hang:accept crash:accept"):
+		list[char*] parts = ht_split(spec, ':')
+		char* path = strjoin(strjoin(c"ex/", parts[0]), c".txt")
+		ht_mkdir(path_join(sh_corpus, c"ex"))
+		ht_write(path_join(sh_corpus, path), parts[0], strlen(parts[0]))
+		json_value* example = vj_one(c"path", path)
+		vj_s(example, c"sha256", sw_digest(path_join(sh_corpus, path)))
+		vj_s(example, c"expect", parts[1])
+		json_array_push(ht_field(runtime, c"examples"), example)
+	json_object_set(sh_case, c"runtime", runtime)
+	sw_example_timeout_ms = 300
+
+void sh_runtime(json_value* row):
+	json_value* configs = ht_field(row, c"configurations")
+	json_value* stages = ht_field(ht_field(configs, c"default_permissive"), c"stages")
+	ht_require(sw_has(ht_field(ht_field(stages, c"translate"), c"argv"), c"--start") && sw_has(ht_field(ht_field(stages, c"translate"), c"argv"), c"root"), c"start rule not passed to the translator")
+	json_value* examples = ht_field(stages, c"examples")
+	ht_require(jc_is(ht_field(examples, c"status"), c"fail") && ht_number(examples, c"passed") == 2 && ht_number(examples, c"total") == 5, c"example verdicts not counted")
+	list[char*] outcomes = new list[char*]
+	for json_value* example in ht_field(examples, c"examples").array_values: outcomes.push(ht_text(example, c"outcome"))
+	ht_require(strcmp(join(outcomes, c" "), c"accepted rejected rejected timeout crash") == 0, strjoin(c"example outcomes: ", join(outcomes, c" ")))
+	json_object_set(sh_case, c"expected_configurations", json_parse(c"{\"default_permissive\":[\"translate\",\"generate\",\"compile\",\"compiler_strict\"]}"))
+	json_object_set(sh_case, c"expected_examples", json_parse(c"{\"default_permissive\":[\"ex/ok.txt\",\"ex/reject-wrong.txt\"]}"))
+	json_value* summary = sh_summary(row)
+	ht_require(ht_field(summary, c"infrastructure_errors").array_values.length == 0, c"parser hang or crash reported as infrastructure")
+	ht_require(jc_equal(ht_field(summary, c"regressions"), json_parse(c"[\"fixture: default_permissive/examples ex/reject-wrong.txt regressed to rejected\"]")), c"example regression not detected")
+	ht_require(ht_number(ht_field(ht_field(summary, c"examples"), c"default_permissive"), c"examples_passed") == 2, c"example totals")
+	json_value* progressions = ht_field(summary, c"progressions")
+	ht_require(sw_has(progressions, c"fixture: default_permissive/examples ex/reject.txt progressed to pass") && sw_has(progressions, c"fixture: stateful_permissive/compile progressed to pass") && !sw_has(progressions, c"fixture: default_permissive/compile progressed to pass"), c"progressions not detected")
+	json_value* accepted = ht_field(sw_accept(sh_manifest(), sh_rows(row)), c"cases").array_values[0]
+	ht_require(jc_equal(ht_field(ht_field(accepted, c"expected_examples"), c"default_permissive"), json_parse(c"[\"ex/ok.txt\",\"ex/reject.txt\",\"ex/reject-wrong.txt\"]")), c"accepting progressions dropped a regression or lost order")
+	ht_require(jc_equal(ht_field(ht_field(accepted, c"expected_configurations"), c"stateful_permissive"), json_parse(c"[\"translate\",\"generate\",\"compile\",\"compiler_strict\"]")), c"stage progressions not accepted")
+	json_value* rows = sh_rows(row)
+	ht_require(sw_progressions(sw_accept(sh_manifest(), rows), rows).array_values.length == 0, c"accepted baseline still reports progressions")
+
 void sh_scenarios():
-	for scenario in range(12):
+	for scenario in range(13):
 		sh_setup()
 		if (scenario == 1): sh_mode(c"generator", c"fail")
 		if (scenario == 2): sh_mode(c"translator", c"fail")
@@ -55,19 +94,23 @@ void sh_scenarios():
 		if (scenario == 9): sh_mode(c"translator", c"stateful_fail")
 		int timeout = 5000
 		if (scenario == 4): timeout = 200
+		if (scenario == 12): sh_pin_examples()
 		json_value* row = sh_run(timeout, scenario == 10)
 		json_value* configs = ht_field(row, c"configurations")
-		if (scenario == 0 || scenario >= 8):
+		if (scenario == 12): sh_runtime(row)
+		if (scenario == 0 || (scenario >= 8 && scenario < 12)):
 			for char* stage in sw_stages(): sh_status(row, stage, c"pass")
 		if (scenario == 0):
 			ht_require(jc_equal(ht_field(row, c"dependency_inputs"), ht_field(sh_case, c"inputs")), c"dependency closure differs")
-			ht_require(strcmp(ht_text(row, c"runtime_smoke"), c"not_configured") == 0, c"compile sweep claimed runtime evidence")
+			ht_require(jc_is(jc_get(ht_field(ht_field(ht_field(configs, c"default_permissive"), c"stages"), c"examples"), c"status"), c"no_examples"), c"examples claimed without pinned examples")
+			ht_require(contains(ht_read(path_join(sh_work, c"fixture/compile.w")).data, c"sweep_fixture_parse(source, argv[1], diagnostics)"), c"compile harness does not drive the generated parser")
 			ht_require(contains(ht_read(path_join(sh_work, c"fixture/compile.log")).data, c"commas and \"quotes\""), c"log bytes lost")
 			set[char*] programs = new set[char*]
 			for char* name in configs.object_values.keys():
 				json_value* current = ht_field(configs, name)
 				json_value* stages = ht_field(current, c"stages")
-				for char* stage in sw_build_stages(): ht_require(sw_pass(ht_field(stages, stage)), c"configuration did not build")
+				for char* stage in sw_build_stages():
+					if (strcmp(stage, c"examples") != 0): ht_require(sw_pass(ht_field(stages, stage)), c"configuration did not build")
 				json_value* compile_args = ht_field(ht_field(stages, c"compile"), c"argv")
 				json_value* strict_args = ht_field(ht_field(stages, c"compiler_strict"), c"argv")
 				programs.add(compile_args.array_values[1].string_value)
@@ -192,9 +235,62 @@ void sh_manifest_tests():
 		strict = strict + sw_has(ht_field(entry, c"recorded_pass"), c"strict")
 	ht_require(ht_field(pinned, c"cases").array_values.length == 291 && names.length == 291 && historical == 288 && compiled == 179 && strict == 10 && strcmp(ht_text(pinned, c"baseline_w_commit"), c"298246c6d6906650d4cd9c677e93933abd9bf619") == 0, c"original measurement baseline changed")
 
+void sh_file(char* root, char* path, char* text, int length):
+	ht_mkdir(path_dirname(path_join(root, path)))
+	ht_write(path_join(root, path), text, length)
+
+list[char*] sh_selected(json_value* runtime):
+	list[char*] out = new list[char*]
+	for json_value* example in ht_field(runtime, c"examples").array_values: out.push(strjoin(strjoin(ht_text(example, c"path"), c"="), ht_text(example, c"expect")))
+	return out
+
+# Example selection reads the pinned revision through git: pom/desc start
+# rules, the first desc.xml test's patterns, exclusions and byte order.
+void sh_selection_tests():
+	char* corpus = path_join(ht_temp(), c"selection")
+	sh_file(corpus, c"fx/G.g4", c"grammar G;\nroot: 'a';\n", 23)
+	sh_file(corpus, c"fx/pom.xml", c"<entryPoint>root</entryPoint>", 29)
+	for char* name in ht_command(c"examples/b.txt examples/a.txt examples/sub/d.txt examples/.hidden examples/c.tree examples/z.txt"): sh_file(corpus, strjoin(c"fx/", name), c"a", 1)
+	sh_file(corpus, c"fx/examples/b.txt.errors", c"line 1: error", 13)
+	sh_file(corpus, c"fx/examples/z.txt.errors", c"", 0)
+	sh_file(corpus, c"fx/examples/big.txt", ht_repeat('a', 101), 101)
+	sh_file(corpus, c"fx/examples/nul.txt", c"a\0b", 3)
+	sh_file(corpus, c"fx/examples/sp ace.txt", c"a", 1)
+	sh_file(corpus, c"fy/G.g4", c"grammar G;\nstart: 'a';\nother: start;\n", 37)
+	# The first test names a rule of a sibling grammar, so the second is used.
+	char* desc = c"<desc><test><entry-point>absent</entry-point><inputs>examples</inputs></test><test><entry-point>start</entry-point><inputs>more</inputs><inputs>!more/skip*</inputs></test><test><entry-point>other</entry-point><inputs>examples</inputs></test></desc>"
+	sh_file(corpus, c"fy/desc.xml", desc, strlen(desc))
+	sh_file(corpus, c"fy/pom.xml", c"<entryPoint>ignored</entryPoint>", 32)
+	for char* name in ht_command(c"more/x.txt more/skip1.txt more/deep/y.txt examples/e.txt"): sh_file(corpus, strjoin(c"fy/", name), c"a", 1)
+	sh_file(corpus, c"fz/G.g4", c"grammar G;\nstart: 'a';\n", 24)
+	sh_file(corpus, c"fz/pom.xml", c"<entryPoint>elsewhere</entryPoint>", 34)
+	sh_file(corpus, c"fz/examples/only.txt", c"a", 1)
+	ht_checked(ht_argv(c"git", c"init", c"-q", corpus))
+	ht_checked(ht_argv(c"git", c"-C", corpus, c"add", c"."))
+	ht_checked(ht_argv(c"git", c"-C", corpus, c"-c", c"user.name=Sweep Test", c"-c", c"user.email=sweep@example.invalid", c"commit", c"-qm", c"fixture"))
+	json_value* fx = sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fx/G.g4\"}]}"), corpus, 10, 100)
+	ht_require(jc_is(ht_field(fx, c"entry"), c"root") && jc_is(ht_field(fx, c"entry_source"), c"pom.xml"), c"pom.xml start rule")
+	ht_require(strcmp(join(sh_selected(fx), c" "), c"fx/examples/a.txt=accept fx/examples/b.txt=reject fx/examples/sub/d.txt=accept fx/examples/z.txt=accept") == 0, strjoin(c"default example selection: ", join(sh_selected(fx), c" ")))
+	ht_require(strcmp(ht_text(ht_field(fx, c"examples").array_values[0], c"sha256"), sw_digest(path_join(corpus, c"fx/examples/a.txt"))) == 0, c"example hash")
+	ht_require(ht_field(sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fx/G.g4\"}]}"), corpus, 1, 100), c"examples").array_values.length == 1, c"example limit")
+	json_value* fy = sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fy/G.g4\"}]}"), corpus, 10, 100)
+	ht_require(jc_is(ht_field(fy, c"entry"), c"start") && jc_is(ht_field(fy, c"entry_source"), c"desc.xml"), c"desc.xml start rule")
+	ht_require(strcmp(join(sh_selected(fy), c" "), c"fy/more/deep/y.txt=accept fy/more/x.txt=accept") == 0, strjoin(c"desc.xml input patterns: ", join(sh_selected(fy), c" ")))
+	# Files a sparse checkout omits are still read from the pinned revision.
+	unlink(path_join(corpus, c"fz/examples/only.txt"))
+	json_value* fz = sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fz/G.g4\"}]}"), corpus, 10, 100)
+	ht_require(jc_type(ht_field(fz, c"entry"), json_type_null()) && jc_is(ht_field(fz, c"entry_source"), c"first parser rule") && strcmp(join(sh_selected(fz), c" "), c"fz/examples/only.txt=accept") == 0, c"selection without metadata or checkout")
+	json_value* manifest = json_parse(c"{\"cases\":[{\"name\":\"fx\"}]}")
+	json_object_set(ht_field(manifest, c"cases").array_values[0], c"runtime", fx)
+	ht_require(strcmp(sw_sparse_patterns(manifest), c"/*/*.g4\n/fx/examples/a.txt\n/fx/examples/b.txt\n/fx/examples/sub/d.txt\n/fx/examples/z.txt\n") == 0, c"sparse patterns")
+	ht_require(strcmp(sw_pretty(json_parse(c"{\"a\":[],\"b\":{\"c\":[1,\"x\"]},\"d\":{}}")), c"{\n  \"a\": [],\n  \"b\": {\n    \"c\": [\n      1,\n      \"x\"\n    ]\n  },\n  \"d\": {}\n}\n") == 0, c"pretty baseline layout")
+	char* pinned = ht_read(c"libs/extras/grammars/antlr_to_pg/sweep_baseline.json").data
+	ht_require(strcmp(sw_pretty(json_parse(pinned)), pinned) == 0, c"committed baseline is not in the rewritten layout")
+
 int main():
 	sh_scenarios()
 	sh_manifest_tests()
+	sh_selection_tests()
 	ht_cleanup()
 	println(c"ANTLR sweep harness checks OK")
 	return 0

@@ -23,7 +23,7 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
       - name: Build translator and test sweep harness
-        run: ./wbuild antlr_to_pg antlr_sweep_harness_test antlr_differential_harness_test antlr_differential_test
+        run: ./wbuild antlr_to_pg antlr_sweep antlr_sweep_harness_test antlr_differential_harness_test antlr_differential_test
       - name: Fetch the pinned corpus
         env:
           GV4: ${{ runner.temp }}/grammars-v4
@@ -32,7 +32,8 @@ jobs:
           git init "$GV4"
           git -C "$GV4" remote add origin https://github.com/antlr/grammars-v4.git
           git -C "$GV4" config core.sparseCheckout true
-          printf '/*/*.g4\n' > "$GV4/.git/info/sparse-checkout"
+          # Every top-level grammar plus exactly the pinned runtime examples.
+          bin/antlr_sweep --sparse-patterns > "$GV4/.git/info/sparse-checkout"
           git -C "$GV4" -c protocol.version=2 fetch --depth=1 --filter=blob:none origin "$revision"
           git -C "$GV4" checkout --detach FETCH_HEAD
       - name: Compare every pinned grammar and stage
@@ -58,8 +59,11 @@ jobs:
                   for configuration, stages in data.get('configurations', {}).items():
                       for stage, count in stages.items():
                           summary.write(f'{configuration}/{stage} | {count}/{data["cases"]}\n')
-                  summary.write('\nCompilation uses an empty main. Generated parsers are not executed by this sweep.\n\n')
-                  for error in data['regressions'] + data['infrastructure_errors']:
+                  summary.write('\nExamples | Passed / run (cases with every example passing)\n--- | ---\n')
+                  for configuration, counts in data.get('examples', {}).items():
+                      summary.write(f'{configuration} | {counts["examples_passed"]}/{counts["examples_run"]} ({counts["cases_all_passed"]}/{counts["cases_run"]})\n')
+                  summary.write('\nThe examples stage parses pinned grammars-v4 examples with the generated parser; it checks accept/reject verdicts, not parse trees.\n\n')
+                  for error in data['regressions'] + data.get('progressions', []) + data['infrastructure_errors']:
                       summary.write(f'- {error}\n')
           PY
       - name: Upload results and complete diagnostic logs
@@ -75,6 +79,7 @@ jobs:
             bin/grammar_coverage_ci/**/*.report
             bin/grammar_coverage_ci/**/*.pg
             bin/grammar_coverage_ci/**/*.inputs
+            bin/grammar_coverage_ci/**/examples/*.log
           retention-days: 14
 
   pinned-runtime-oracle:

@@ -22,7 +22,16 @@ int main(int argc, int argv):
 	argparse_arg_default(argparse_add_float(parser, c"--timeout", c"SECONDS", c"per stage"), c"90")
 	argparse_add_list(parser, c"--case", c"NAME", c"selected pinned cases")
 	argparse_add_flag(parser, c"--extended-configurations", c"also measure exact lexer/prediction")
+	argparse_add_flag(parser, c"--update-baseline", c"after the run, add measured progressions to the manifest")
+	argparse_add_flag(parser, c"--select-examples", c"(re)pin each case's start rule and runtime examples, then exit")
+	argparse_arg_default(argparse_add_int(parser, c"--max-examples", c"N", c"examples pinned per case"), c"10")
+	argparse_arg_default(argparse_add_int(parser, c"--max-bytes", c"N", c"largest pinned example"), c"65536")
+	argparse_add_flag(parser, c"--sparse-patterns", c"print the corpus sparse-checkout patterns the manifest needs, then exit")
 	arg_namespace* args = argparse_parse_or_exit(parser, argc, argv)
+	char* manifest_path = argparse_get(args, c"manifest")
+	if (argparse_get_bool(args, c"sparse_patterns")):
+		print(sw_sparse_patterns(ht_json(manifest_path)))
+		return 0
 	ht_require(argparse_get(args, c"corpus") != 0, c"set GV4 or pass --corpus")
 	int jobs = argparse_get_int(args, c"jobs")
 	float seconds = argparse_get_float(args, c"timeout")
@@ -30,7 +39,33 @@ int main(int argc, int argv):
 	int timeout = cast(int, seconds * 1000.0)
 	char* corpus = ht_resolve(argparse_get(args, c"corpus"))
 	char* repo = ht_resolve(c".")
-	char* manifest_path = argparse_get(args, c"manifest")
+	if (argparse_get_bool(args, c"select_examples")):
+		json_value* pinned = ht_json(manifest_path)
+		ht_require(strcmp(sw_git(corpus, ht_command(c"rev-parse HEAD")), ht_text(pinned, c"corpus_commit")) == 0, c"corpus revision mismatch")
+		ht_require(sw_git(corpus, ht_command(c"status --porcelain"))[0] == 0, c"corpus checkout must be clean to pin examples")
+		int max_examples = argparse_get_int(args, c"max_examples")
+		int max_bytes = argparse_get_int(args, c"max_bytes")
+		json_value* rule = json_object()
+		vj_i(rule, c"max_examples", max_examples)
+		vj_i(rule, c"max_bytes", max_bytes)
+		vj_s(rule, c"note", c"bin/antlr_sweep --select-examples; selection rules are documented at sw_select_runtime in tools/antlr_sweep_lib.w")
+		json_object_set(pinned, c"runtime_selection", rule)
+		for json_value* pinned_case in ht_field(pinned, c"cases").array_values:
+			json_value* runtime = sw_select_runtime(pinned_case, corpus, max_examples, max_bytes)
+			json_object_set(pinned_case, c"runtime", runtime)
+			json_value* expected = jc_get(pinned_case, c"expected_examples")
+			if (expected == 0): continue
+			set[char*] kept = new set[char*]
+			for json_value* example in ht_field(runtime, c"examples").array_values: kept.add(ht_text(example, c"path"))
+			for char* configuration in expected.object_values.keys():
+				json_value* paths = json_array()
+				for json_value* path in ht_field(expected, configuration).array_values:
+					if (path.string_value in kept): json_array_push(paths, path)
+				json_object_set(expected, configuration, paths)
+		char* text = sw_pretty(pinned)
+		ht_write(manifest_path, text, strlen(text))
+		println(strjoin(c"pinned runtime examples in ", manifest_path))
+		return 0
 	json_value* manifest = sw_load(manifest_path, corpus)
 	if (manifest == 0):
 		println2(strjoin(c"sweep: ", sw_error))
@@ -43,7 +78,7 @@ int main(int argc, int argv):
 		set[char*] found = new set[char*]
 		for json_value* entry in cases.array_values:
 			if (ht_text(entry, c"name") in selected):
-				json_array_push(chosen, entry)
+				json_array_push(chosen, vj_copy(entry))
 				found.add(ht_text(entry, c"name"))
 		for char* name in selected: ht_require(name in found, strjoin(c"unknown case: ", name))
 		cases = chosen
@@ -78,7 +113,8 @@ int main(int argc, int argv):
 	else: vj_s(provenance, c"selection", c"all pinned cases")
 	json_object_set(provenance, c"configurations", configurations)
 	vj_f(provenance, c"timeout_seconds", seconds)
-	vj_s(provenance, c"compile_harness", c"empty main; generated parser is not executed")
+	vj_s(provenance, c"compile_harness", c"driver main parses one file with the start rule; examples stage runs each pinned example")
+	vj_i(provenance, c"example_timeout_ms", sw_example_timeout_ms)
 	println(strjoin(c"Artifacts: ", work))
 	map[int, json_value*] active = new map[int, json_value*]
 	map[char*, json_value*] completed = new map[char*, json_value*]
@@ -111,7 +147,6 @@ int main(int argc, int argv):
 				result = vj_one(c"name", name)
 				json_object_set(result, c"inputs", ht_field(entry, c"inputs"))
 				vj_b(result, c"historical_288", jc_get(entry, c"historical_288") != 0 && ht_field(entry, c"historical_288").int_value)
-				vj_s(result, c"runtime_smoke", c"not_configured")
 				json_object_set(result, c"configurations", sw_empty_configs(configurations, c"error"))
 				json_object_set(result, c"stages", sw_empty(sw_stages(), c"error"))
 				vj_s(result, c"error", c"case worker failed; see terminal diagnostics")
@@ -132,4 +167,9 @@ int main(int argc, int argv):
 	json_object_set(provenance, c"infrastructure_errors", errors)
 	json_value* summary = sw_write_results(work, manifest, results, provenance, argparse_get(args, c"csv"))
 	println(json_stringify(summary))
-	return ht_field(summary, c"regressions").array_values.length > 0 || ht_field(summary, c"infrastructure_errors").array_values.length > 0
+	if (argparse_get_bool(args, c"update_baseline")):
+		char* text = sw_pretty(sw_accept(ht_json(manifest_path), results))
+		ht_write(manifest_path, text, strlen(text))
+		println(strjoin(c"recorded progressions in ", manifest_path))
+		return ht_field(summary, c"regressions").array_values.length > 0 || ht_field(summary, c"infrastructure_errors").array_values.length > 0
+	return ht_field(summary, c"regressions").array_values.length > 0 || ht_field(summary, c"progressions").array_values.length > 0 || ht_field(summary, c"infrastructure_errors").array_values.length > 0
