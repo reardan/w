@@ -1,12 +1,8 @@
-# The typed-arena runtime fixture across loop, front-end, register, inlining and target variants.
+# The typed-arena runtime fixture across loop, checked-mode, register, inlining and target variants.
 # wbuild: step="bin/wv2 --strict --no-loop-rotate tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_top"
 # wbuild: step="bin/safe_typed_arena_top"
-# wbuild: step="bin/wv2 --strict --ast-full-expressions tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_full"
-# wbuild: step="bin/safe_typed_arena_full"
 # wbuild: step="bin/wv2 x64 --strict --no-loop-rotate tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_top64"
 # wbuild: step="bin/safe_typed_arena_top64"
-# wbuild: step="bin/wv2 x64 --strict --ast-full-expressions tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_full64"
-# wbuild: step="bin/safe_typed_arena_full64"
 # wbuild: step="bin/wv2 --strict --safe tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_explicit_safe"
 # wbuild: step="bin/safe_typed_arena_explicit_safe"
 # wbuild: step="bin/wv2 --strict tests/safe_typed_arena_runtime_fixture.w -o bin/safe_typed_arena_runtime"

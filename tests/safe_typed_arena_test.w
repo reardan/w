@@ -220,9 +220,9 @@ void test_typed_arena_38():
 	typed_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\nstruct Inner:\n\town int* value\nstruct Job:\n\town WTypedArena[Inner]* objects\ntype Worker = fn[](own Job*) -> int\nint run_job(own Job* job):\n\treturn typed_arena_length[Inner](job.objects)\nint main():\n\town Job* job = new Job(typed_arena_new[Inner](-1))\n\ttyped_arena_insert[Inner](job.objects, new Inner(new int))\n\tWorker* entry = run_job\n\toptown WSafeThread* thread = safe_thread_spawn(entry, job)\n\tif (!thread): return 1\n\town WSafeThread* started = thread\n\treturn safe_thread_join(started) - 1\n", 0)
 
 
-# Scoped sharing inspects the arena's object graph.
+# A typed arena is never shared across threads, whatever its objects.
 void test_typed_arena_39():
-	typed_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\nstruct Inner:\n\tint count\n\tWThreadUnshared marker\ntype Read = fn[](ref WTypedArena[Inner]*) -> int\nint count(ref WTypedArena[Inner]* objects):\n\treturn typed_arena_length[Inner](objects)\nint main():\n\town WTypedArena[Inner]* left = typed_arena_new[Inner](-1)\n\town WTypedArena[Inner]* right = typed_arena_new[Inner](-1)\n\tref WTypedArena[Inner]* first = left\n\tref WTypedArena[Inner]* second = right\n\tRead* entry = count\n\treturn safe_thread_fork_join(entry, first, second)\n", c"explicitly unshareable across threads")
+	typed_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\nstruct Inner:\n\tint count\n\tWThreadUnshared marker\ntype Read = fn[](ref WTypedArena[Inner]*) -> int\nint count(ref WTypedArena[Inner]* objects):\n\treturn typed_arena_length[Inner](objects)\nint main():\n\town WTypedArena[Inner]* left = typed_arena_new[Inner](-1)\n\town WTypedArena[Inner]* right = typed_arena_new[Inner](-1)\n\tref WTypedArena[Inner]* first = left\n\tref WTypedArena[Inner]* second = right\n\tRead* entry = count\n\treturn safe_thread_fork_join(entry, first, second)\n", c"scoped thread argument has unsynchronized interior mutation")
 
 
 # Shared allocation keeps earlier views alive: objects never move.
