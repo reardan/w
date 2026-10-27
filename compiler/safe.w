@@ -2828,7 +2828,8 @@ void safe_function_check(int function):
 					binding.scope = 'L'
 					binding.owner = function
 					binding.parameters = new list[int]
-					safe_local_index[retained_bindings.length] = safe_locals.length
+					int slot = retained_bindings.length
+					safe_local_index[slot] = safe_locals.length
 					safe_iterator_locals[id] = safe_locals.length
 					safe_locals.push(retained_bindings.length)
 					retained_bindings.push(binding)
