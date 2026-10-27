@@ -94,6 +94,7 @@ void safe_reset():
 	safe_bounds_disabled = 0
 	if (safe_trusted_sources != 0): safe_trusted_sources.free()
 	safe_trusted_sources = 0
+	import_attest_reset()
 	if (safe_contains_seen != 0): free(cast(char*, safe_contains_seen))
 	safe_contains_seen = 0
 	safe_contains_generation = 0
@@ -112,6 +113,8 @@ void safe_trust_sources(int first):
 	for i in range(first, retained_sources.length): safe_trusted_sources[i] = 1
 
 
+# 1 for the audited runtime, 2 for a module trusted through an import
+# attestation (safe_audit_attestations), else 0.
 int safe_trusted(int source):
 	if ((source < 0) || (safe_trusted_sources == 0)): return 0
 	if (source >= safe_trusted_sources.length): return 0
@@ -511,8 +514,18 @@ int safe_hash_opaque(int type):
 	return (value >= 0) && (retained_types[value].size > 0) && safe_plain(value, 0) && (safe_has_array(value, 0) == 0)
 
 
+# The audited WForeign[T] owner of a foreign object (lib/safe_foreign_owner.w).
+int safe_foreign_record(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 2): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	return ends_with(retained_sources[record.source].path, c"/lib/safe_foreign_owner.w") && starts_with(record.name, c"WForeign$")
+
+
 int safe_opaque(int type):
-	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type)): return 1
+	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type) || safe_foreign_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
@@ -531,8 +544,25 @@ int safe_opaque(int type):
 	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0) || (strcmp(record.name, c"WByteArena") == 0)
 
 
+# A function of an attested module is a checked contract when every value
+# crossing it is a plain scalar or record, a checked pointer, slice or view,
+# or a quantified function contract. Raw pointers stay inside unsafe blocks.
+int safe_attested_value(int type):
+	if (type < 0): return 1
+	return safe_plain(type, 0) || safe_kind(type) || (safe_callable_signature(type) >= 0)
+
+
+int safe_attested_contract(retained_binding* binding):
+	if (safe_attested_value(binding.return_type) == 0): return 0
+	for i in range(binding.parameters.length):
+		if (safe_attested_value(binding.parameters[i]) == 0): return 0
+	return 1
+
+
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if (safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_foreign_owner.w")):
+		return starts_with(name, c"foreign_close$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_typed_arena.w")):
 		# Allocation copies a plain initial value into the new object.
 		if (starts_with(name, c"typed_arena_alloc$") || starts_with(name, c"typed_arena_alloc_shared$") || starts_with(name, c"budget_arena_alloc$") || starts_with(name, c"budget_arena_try_alloc$")):
@@ -569,7 +599,7 @@ int safe_thread_sealed(int type):
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
 	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
-	if (safe_budget_arena_element(type) >= 0): return 0
+	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -607,6 +637,8 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
+	# Foreign libraries state their own threading rules; none is audited.
+	if (safe_foreign_record(type)): return c"is a foreign object without a thread contract"
 	# A shared typed arena could allocate on two threads at once
 	# (typed_arena_alloc_shared mutates through a shared borrow).
 	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
@@ -2269,7 +2301,10 @@ void safe_implementation_check(int id, int binding, int callable):
 			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
 	if (callable && implementation.callable_excluded):
 		safe_error(id, c"safe: checked function values require ordinary W functions", -1)
-	if (safe_trusted(implementation.source)):
+	if (safe_trusted(implementation.source) == 2):
+		if (safe_attested_contract(implementation) == 0):
+			safe_error(id, c"safe: audited module function has a raw signature; call it inside an unsafe block", -1)
+	else if (safe_trusted(implementation.source)):
 		if (safe_runtime_call(implementation) == 0):
 			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
 		safe_keyed_map_check(id, implementation)
@@ -3142,23 +3177,46 @@ void safe_function_check(int function):
 	free(cast(char*, safe_moved_at))
 
 
+int safe_digest_matches(retained_source* source, char* expected):
+	char[32] digest
+	sha256(source.bytes, source.length, &digest[0])
+	char* digits = c"0123456789abcdef"
+	int matches = 1
+	for j in range(32):
+		int value = digest[j] & 255
+		if ((expected[j * 2] != digits[value >> 4]) || (expected[j * 2 + 1] != digits[value & 15])): matches = 0
+	return matches
+
+
+# An attested import trusts the file it resolved to while its bytes hash to
+# the attested digest. A changed file, or another file shadowing the module
+# name, fails at the import. Pinned runtime files keep their own pins.
+void safe_audit_attestations():
+	if (import_attested_paths == 0): return
+	for k in range(import_attested_paths.length):
+		int found = -1
+		for i in range(retained_sources.length):
+			char* key = retained_sources[i].import_key
+			if ((key != 0) && (strcmp(key, import_attested_paths[k]) == 0)): found = i
+		# Without a retained module nothing becomes trusted (fail closed).
+		if (found < 0): continue
+		int at = import_attested_nodes[k]
+		if (at < 0): at = retained_sources[found].root
+		if (safe_digest_matches(retained_sources[found], import_attested_digests[k]) == 0): safe_error(at, c"safe: audited module differs from its attestation", -1)
+		if (safe_trusted_sources[found] == 0): safe_trusted_sources[found] = 2
+
+
 void safe_audit_runtime():
 	while (safe_trusted_sources.length < retained_sources.length): safe_trusted_sources.push(0)
 	for i in range(retained_sources.length):
 		retained_source* source = retained_sources[i]
 		char* expected = safe_runtime_digest(source.path)
 		if (expected == 0):
-			if (safe_trusted(i)): safe_error(source.root, c"safe: injected runtime has no audited implementation", -1)
+			if (safe_trusted(i) == 1): safe_error(source.root, c"safe: injected runtime has no audited implementation", -1)
 			continue
-		char[32] digest
-		sha256(source.bytes, source.length, &digest[0])
-		char* digits = c"0123456789abcdef"
-		int matches = 1
-		for j in range(32):
-			int value = digest[j] & 255
-			if ((expected[j * 2] != digits[value >> 4]) || (expected[j * 2 + 1] != digits[value & 15])): matches = 0
-		if (matches == 0): safe_error(source.root, c"safe: runtime implementation differs from its audited contract", -1)
+		if (safe_digest_matches(source, expected) == 0): safe_error(source.root, c"safe: runtime implementation differs from its audited contract", -1)
 		safe_trusted_sources[i] = 1
+	safe_audit_attestations()
 
 
 void safe_check_finish():
