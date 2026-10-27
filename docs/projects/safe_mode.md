@@ -1965,19 +1965,29 @@ re-analyzes that frame's function and reads its flow state:
   borrowed groups) and references, `optref T*` for optional ones
   (dereferencing still requires a presence check in the entry), `ref T[]`
   for slices (element writes are `safe: write through a shared
-  reference`), and `ref[labels] R` for a borrowed record whose fields are
-  all shared, `ref` or `refmut` (fields read through it, field writes are
-  `safe: write through a shared reference`). Labels of pointers and slices
-  are dropped: the view only reads, and its loans end with the entry;
+  reference`), and `ref[labels] R` for a borrowed record, `ref` or
+  `refmut` (fields read through it, field writes are `safe: write through
+  a shared reference`). A shared view of a record with `refmut` fields is
+  not a valid checked type, so such a record (directly or through a nested
+  `refmut[g] Inner` field) is viewed as `ref[labels] __wdbg_shared_R`: a
+  twin of R's template with the same layout, field names and labels, every
+  exclusive field made shared (`refmut` to `ref`, `optrefmut` to `optref`,
+  a nested exclusive record to its own twin). The twin is defined ahead of
+  the entry's checked transcript only; the entry still compiles against
+  the frame's real local. Passing the view where `refmut R` is expected
+  reports `safe: cannot make a mutable borrow from a shared reference`
+  (after a type-mismatch warning naming the twin). Labels of pointers and
+  slices are dropped: the view only reads, and its loans end with the
+  entry;
 - other checked locals are hidden; naming one reports why (`safe: this
   checked local is not definitely initialized and live at this debugger
   stop`; in an outer frame, `safe: this checked local is lent exclusively
   to the call this frame is suspended in` for a local, or the root of a
   reborrow, that the statement passes as `refmut` or as an owned record's
-  exclusive group; `safe: borrowed records with exclusive fields cannot be
-  viewed read-only at a debugger stop`, since a shared view of a record
-  with `refmut` fields is not a valid checked type; `safe: arrays of
-  checked values cannot be viewed at a debugger stop`; `safe: this checked
+  exclusive group; `safe: arrays of checked values cannot be viewed at a
+  debugger stop`, which is defensive: checked code cannot declare such an
+  array (`safe: unsupported type or reference-bearing aggregate`); `safe:
+  this checked
   local's type has no read-only view spelling at a debugger stop (generic
   or redefined target)`; `safe: checked locals are only available in
   analyzed functions at a debugger stop` when the frame is not in an

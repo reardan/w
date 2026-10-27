@@ -3,13 +3,13 @@
 # 'repl' entries see the checked locals the checker proves usable there as
 # read-only shared views: owners and references as 'ref T*', optional ones
 # as 'optref T*' (presence check still required), inline slices as
-# 'ref T[]', borrowed records whose fields are shared as 'ref[..] R' and
-# owners carrying borrowed groups as 'ref R*' (labels dropped), in the
-# innermost frame and in outer frames suspended in a call. Moved owners (including those moved into the call in progress),
-# borrows past their last use, locals lent exclusively to the call in
-# progress, borrowed records with exclusive fields, writes through views,
-# moves out of a view
-# and raw 'set' writes are rejected explicitly. The 32-bit test drives a
+# 'ref T[]', borrowed records as 'ref[..] R' (a shared twin of R's
+# template when R has exclusive fields) and owners carrying borrowed groups
+# as 'ref R*' (labels dropped), in the innermost frame and in outer frames
+# suspended in a call. Moved owners (including those moved into the call in
+# progress), borrows past their last use, locals lent exclusively to the
+# call in progress, writes through views, moves out of a view and raw 'set'
+# writes are rejected explicitly. The 32-bit test drives a
 # 32-bit wdbg and the x64 twin a 64-bit one.
 import lib.testing
 import lib.process
@@ -152,10 +152,16 @@ void test_checked_views_of_frames_optionals_and_slices():
 
 # Borrowed records, owners carrying borrowed groups and labeled locals
 # (tests/safe_session_debugger_aggregates_fixture.w): viewable while live,
-# hidden past their last use, and exclusive records never.
+# hidden past their last use; records with exclusive fields through a
+# shared twin of their template.
 void test_checked_views_of_aggregates():
 	string_builder* in = string_new()
-	string_append(in, c"p h.tag + holder_sum(h)\np pair_sum(pair)\np stored_sum(stored)\np r.value\np e.amount\nrepl\nh.tag = 9\n:end\nset h 0\nc\n")
+	string_append(in, c"p h.tag + holder_sum(h)\np pair_sum(pair)\np stored_sum(stored)\np r.value\n")
+	# Records with exclusive fields (e, and n through its nested record)
+	# are viewed through shared twins: reads work, a mutable borrow or a
+	# field write is rejected.
+	string_append(in, c"p peek(e.item) + e.amount\np n.extra + n.inner.amount + peek(n.inner.item)\np add(e)\n")
+	string_append(in, c"repl\nh.tag = 9\ne.amount = 9\nn.inner.amount = 9\n:end\nset h 0\nset e 0\nc\n")
 	# Past the last uses of h, pair and stored, after p was mutated.
 	string_append(in, c"p h.tag\np stored_sum(stored)\np pair_sum(pair)\nc\n")
 	# A record parameter of the innermost frame.
@@ -168,12 +174,17 @@ void test_checked_views_of_aggregates():
 	out.push(c"= 30")
 	out.push(c"= 120")
 	out.push(c"= 20")
+	out.push(c"= 5 ")
+	out.push(c"= 14 ")
+	out.push(c"set: checked variables cannot be written by the debugger")
 	out.push(c"set: checked variables cannot be written by the debugger")
 	out.push(c"= 32")
 	out.push(c"debuggee main returned 0")
 	safe_dbg_expect_order(r.stdout_text, out)
 	list[char*] err = new list[char*]
-	err.push(c"borrowed records with exclusive fields cannot be viewed read-only at a debugger stop")
+	err.push(c"safe: cannot make a mutable borrow from a shared reference")
+	err.push(c"write through a shared reference")
+	err.push(c"write through a shared reference")
 	err.push(c"write through a shared reference")
 	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
 	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
