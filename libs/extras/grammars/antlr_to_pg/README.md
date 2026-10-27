@@ -177,8 +177,9 @@ predicates, and unsupported options remain audited and strict-refused.
 `--prediction` emits `mode antlr`, a pure complete-input parser using bounded
 continuation search. It retains the full caller stack, source-order alternatives,
 and greedy term priority, then builds only the selected AST. It is not ANTLR's
-ALL(*) algorithm: ambiguity can take exponential work, limited by an explicit
-step budget (one million by default). Exhaustion is a sticky resource error.
+ALL(*) algorithm: rule calls are memoized by start position, but ambiguity can
+still take exponential work, limited by an explicit step budget (one million by
+default). Exhaustion is a sticky resource error.
 Every public rule entry requires complete input; native `.pg` partial parsing,
 ordered choice, and streaming remain separate modes. Prediction refuses host
 callbacks, lexical goals, recovery, parser actions/predicates, and unsupported

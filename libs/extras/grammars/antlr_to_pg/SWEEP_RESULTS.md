@@ -2,11 +2,15 @@
 
 ## Current pinned measurement
 
-Measured W `08775258` plus the runtime examples stage (#679) against corpus
+Measured W `08775258` plus the runtime examples stage and memoized prediction
+calls (#679) against corpus
 commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`. The same 291 roots and
 original grammar bytes are used in every configuration. Translation, generation
 and compilation are unchanged from the compile-only measurement of clean commit
 `b1887a858969ba341fb1449793dfd69ed4113677`; the examples column is new.
+Memoizing prediction calls moved the exact examples from 215/244 cases and
+1088/1190 files (permissive) and 187/200 and 886/913 (strict) to the totals
+below; no example verdict regressed.
 
 | Configuration | Translation | Generation | W compile | W compile `--strict` | Examples: cases | Examples: files |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -14,8 +18,8 @@ and compilation are unchanged from the compile-only measurement of clean commit
 | Default translator `--strict` | 10 | 10 | 10 | 10 | 8/8 | 39/39 |
 | Stateful permissive | 218 | 214 | 214 | 214 | 95/194 | 523/913 |
 | Stateful translator `--strict` | 28 | 28 | 28 | 28 | 27/27 | 105/105 |
-| Exact permissive | 267 | 267 | **267** | **267** | **215/244** | **1088/1190** |
-| Exact translator `--strict` | 218 | 218 | **218** | **218** | **187/200** | **886/913** |
+| Exact permissive | 267 | 267 | **267** | **267** | **223/244** | **1118/1190** |
+| Exact translator `--strict` | 218 | 218 | **218** | **218** | **194/200** | **905/913** |
 
 Stage cells are out of 291. Exact means `--exact-lexer --prediction`; stateful
 means `--stateful`. Translator `--strict` refuses reported semantic gaps.
@@ -26,17 +30,18 @@ files per case (1,315 files across 262 cases; 29 cases have no usable examples)
 and checks the accept/reject verdict, not the parse tree. "Cases" counts compiled
 cases with examples whose every example got the expected verdict; "files" counts
 example files. No example hung, crashed or hit an infrastructure error; the
-slowest took 4.2 seconds of its 10-second limit.
+slowest took 3.6 seconds of its 10-second limit.
 
-Exact-mode example failures fall into two groups. **43 files in 16 cases** exceed
-the one-million-step parser prediction budget (agc, algol60, arden, corundum,
-cpp, erlang, html, ixml, javadoc, objc, orwell, pegen, php, powerbuilder, scss
-and tinyos_nesc): the predictor's backtracking search re-parses the
-same rule at the same position under many continuations, which even a 50-byte
-Orwell example exhausts. **47 files in 15 cases** are syntax errors (bcpl,
-bencoding, bison, gdscript, haskell, javadoc, langium, lua, mumps, php, pike,
-properties, stringtemplate, tinyos_nesc, wren); these are not yet triaged, and
-several of these grammars rely on host predicates, actions or a lexer superclass. SDL's examples are not UTF-8.
+Exact permissive example failures: **9 files in 7 cases** still exceed the
+one-million-step parser prediction budget (agc, arden, cpp, html, objc, php and
+tinyos_nesc; 43 files in 16 cases before calls were memoized). **51 files in 15
+cases** are syntax errors (bcpl, bencoding, bison, gdscript, haskell, javadoc,
+langium, lua, mumps, php, pike, properties, stringtemplate, tinyos_nesc, wren),
+two Lua files hit an invalid token, and SDL's ten examples are not UTF-8. Four
+files that used to exhaust the budget now finish and are rejected as syntax
+errors. These are not yet triaged; several of these grammars rely on host
+predicates, actions or a lexer superclass. Exact strict fails only 8 files: 5
+over budget (agc, arden, html) and 3 syntax errors (mumps, pike, properties).
 Default-mode failures are dominated by its approximate lexer lowering (93 files
 rejected with `invalid character`, e.g. JSON's negative numbers) and ordered-choice
 parsing without continuation (370 syntax errors).

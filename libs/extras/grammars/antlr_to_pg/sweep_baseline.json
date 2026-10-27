@@ -626,13 +626,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -683,11 +685,21 @@
         "stateful_strict": [],
         "exact_permissive": [
           "algol60/examples/003_bairstow2.alg",
-          "algol60/examples/fbench.alg"
+          "algol60/examples/ei.alg",
+          "algol60/examples/euler.a60",
+          "algol60/examples/fbench.alg",
+          "algol60/examples/jensen.a60",
+          "algol60/examples/nqueen.a60",
+          "algol60/examples/primes.a60"
         ],
         "exact_strict": [
           "algol60/examples/003_bairstow2.alg",
-          "algol60/examples/fbench.alg"
+          "algol60/examples/ei.alg",
+          "algol60/examples/euler.a60",
+          "algol60/examples/fbench.alg",
+          "algol60/examples/jensen.a60",
+          "algol60/examples/nqueen.a60",
+          "algol60/examples/primes.a60"
         ]
       }
     },
@@ -4923,13 +4935,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -4948,8 +4962,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "corundum/examples/test.rb"
+        ],
+        "exact_strict": [
+          "corundum/examples/test.rb"
+        ]
       }
     },
     {
@@ -7567,13 +7585,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -7609,11 +7629,13 @@
         "stateful_strict": [],
         "exact_permissive": [
           "erlang/examples/fac.P",
+          "erlang/examples/getty.P",
           "erlang/examples/helloword.P",
           "erlang/examples/map.P"
         ],
         "exact_strict": [
           "erlang/examples/fac.P",
+          "erlang/examples/getty.P",
           "erlang/examples/helloword.P",
           "erlang/examples/map.P"
         ]
@@ -10238,8 +10260,10 @@
         "stateful_strict": [],
         "exact_permissive": [
           "html/examples/abc.com.html",
+          "html/examples/antlr.html",
           "html/examples/attvalues.html",
           "html/examples/freebsd.html",
+          "html/examples/github.html",
           "html/examples/gnu.html",
           "html/examples/html4.html",
           "html/examples/script1.html",
@@ -10247,8 +10271,10 @@
         ],
         "exact_strict": [
           "html/examples/abc.com.html",
+          "html/examples/antlr.html",
           "html/examples/attvalues.html",
           "html/examples/freebsd.html",
+          "html/examples/github.html",
           "html/examples/gnu.html",
           "html/examples/html4.html",
           "html/examples/script1.html",
@@ -11347,13 +11373,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -11425,7 +11453,9 @@
           "ixml/examples/ixml/samples/ISO-8601-2004/iso8601-list.ixml",
           "ixml/examples/ixml/samples/ISO-8601-2004/iso8601.ixml",
           "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.0.ixml",
-          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.ixml"
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.1.ixml",
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.ixml",
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.test.ixml"
         ],
         "exact_strict": [
           "ixml/examples/ixml.ixml",
@@ -11435,7 +11465,9 @@
           "ixml/examples/ixml/samples/ISO-8601-2004/iso8601-list.ixml",
           "ixml/examples/ixml/samples/ISO-8601-2004/iso8601.ixml",
           "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.0.ixml",
-          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.ixml"
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.1.ixml",
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.ixml",
+          "ixml/examples/ixml/samples/Oberon/Grammars/Oberon.test.ixml"
         ]
       }
     },
@@ -16145,6 +16177,7 @@
         "stateful_strict": [],
         "exact_permissive": [
           "objc/examples/BoxPhoto.h",
+          "objc/examples/BoxPhoto.m",
           "objc/examples/ClassInterfaceTest.h",
           "objc/examples/Enums.h",
           "objc/examples/FSBaseViewController.h",
@@ -16422,13 +16455,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -16459,11 +16494,13 @@
         "stateful_strict": [],
         "exact_permissive": [
           "orwell/examples/example1.txt",
-          "orwell/examples/example2.txt"
+          "orwell/examples/example2.txt",
+          "orwell/examples/example3.txt"
         ],
         "exact_strict": [
           "orwell/examples/example1.txt",
-          "orwell/examples/example2.txt"
+          "orwell/examples/example2.txt",
+          "orwell/examples/example3.txt"
         ]
       }
     },
@@ -17190,7 +17227,8 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": []
       },
@@ -17220,7 +17258,11 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "pegen/examples/python-10.gram",
+          "pegen/examples/python-11-from-md.gram",
+          "pegen/examples/python-11.gram"
+        ],
         "exact_strict": []
       }
     },
@@ -17757,7 +17799,11 @@
         "stateful_permissive": [],
         "stateful_strict": [],
         "exact_permissive": [
+          "php/examples/array.php",
+          "php/examples/arrayDestruction.php",
+          "php/examples/arrowFunction.php",
           "php/examples/attribute.php",
+          "php/examples/callables.php",
           "php/examples/classConstInit.php",
           "php/examples/classConstVisibility.php"
         ],
@@ -18481,13 +18527,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -18556,14 +18604,24 @@
           "powerbuilder/examples/example2.txt",
           "powerbuilder/examples/example4.txt",
           "powerbuilder/examples/misth_kratapod_desckratapod.srf",
-          "powerbuilder/examples/w_misth_ypal_newklimakio.srw"
+          "powerbuilder/examples/w_app.srw",
+          "powerbuilder/examples/w_misth_ypal_newklimakio.srw",
+          "powerbuilder/examples/w_misth_ypal_search.srw",
+          "powerbuilder/examples/w_misth_zpepidom_form.srw",
+          "powerbuilder/examples/w_misth_zpepidom_list.srw",
+          "powerbuilder/examples/w_misth_zpidikot_grid.srw"
         ],
         "exact_strict": [
           "powerbuilder/examples/example1.txt",
           "powerbuilder/examples/example2.txt",
           "powerbuilder/examples/example4.txt",
           "powerbuilder/examples/misth_kratapod_desckratapod.srf",
-          "powerbuilder/examples/w_misth_ypal_newklimakio.srw"
+          "powerbuilder/examples/w_app.srw",
+          "powerbuilder/examples/w_misth_ypal_newklimakio.srw",
+          "powerbuilder/examples/w_misth_ypal_search.srw",
+          "powerbuilder/examples/w_misth_zpepidom_form.srw",
+          "powerbuilder/examples/w_misth_zpepidom_list.srw",
+          "powerbuilder/examples/w_misth_zpidikot_grid.srw"
         ]
       }
     },
@@ -21632,13 +21690,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -21705,9 +21765,11 @@
         "exact_permissive": [
           "scss/examples/basic.scss",
           "scss/examples/bootstrap/_accordion.scss",
+          "scss/examples/bootstrap/_alert.scss",
           "scss/examples/bootstrap/_badge.scss",
           "scss/examples/bootstrap/_breadcrumb.scss",
           "scss/examples/bootstrap/_button-group.scss",
+          "scss/examples/bootstrap/_buttons.scss",
           "scss/examples/bootstrap/_card.scss",
           "scss/examples/bootstrap/_carousel.scss",
           "scss/examples/bootstrap/_close.scss"
@@ -21715,9 +21777,11 @@
         "exact_strict": [
           "scss/examples/basic.scss",
           "scss/examples/bootstrap/_accordion.scss",
+          "scss/examples/bootstrap/_alert.scss",
           "scss/examples/bootstrap/_badge.scss",
           "scss/examples/bootstrap/_breadcrumb.scss",
           "scss/examples/bootstrap/_button-group.scss",
+          "scss/examples/bootstrap/_buttons.scss",
           "scss/examples/bootstrap/_card.scss",
           "scss/examples/bootstrap/_carousel.scss",
           "scss/examples/bootstrap/_close.scss"
@@ -25167,7 +25231,11 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "tinyos_nesc/examples/Blink/BlinkAppC.nc",
+          "tinyos_nesc/examples/Blink/BlinkC.nc",
+          "tinyos_nesc/examples/Sense/SenseAppC.nc"
+        ],
         "exact_strict": []
       }
     },
@@ -28523,7 +28591,7 @@
     }
   ],
   "current_measurement": {
-    "source_state": "W 08775258 plus the runtime examples stage (#679); translation, generation and compile results equal the compile-only measurement",
+    "source_state": "W 08775258 plus the runtime examples stage and memoized prediction calls (#679); translation, generation and compile results equal the compile-only measurement",
     "passing": {
       "translate": 218,
       "generate": 214,
@@ -28564,14 +28632,14 @@
         "generate": 267,
         "compile": 267,
         "compiler_strict": 267,
-        "examples": 215
+        "examples": 223
       },
       "exact_strict": {
         "translate": 218,
         "generate": 218,
         "compile": 218,
         "compiler_strict": 218,
-        "examples": 187
+        "examples": 194
       }
     },
     "examples": {
@@ -28601,15 +28669,15 @@
       },
       "exact_permissive": {
         "cases_run": 244,
-        "cases_all_passed": 215,
+        "cases_all_passed": 223,
         "examples_run": 1190,
-        "examples_passed": 1088
+        "examples_passed": 1118
       },
       "exact_strict": {
         "cases_run": 200,
-        "cases_all_passed": 187,
+        "cases_all_passed": 194,
         "examples_run": 913,
-        "examples_passed": 886
+        "examples_passed": 905
       }
     },
     "historical_288_compiled": 212,

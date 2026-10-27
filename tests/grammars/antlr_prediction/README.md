@@ -36,7 +36,10 @@ accepts an explicit caller budget; exhaustion produces a sticky resource error,
 never a syntax rejection. A program records steps, peak pending branches,
 allocated frames and retained events for measurement. Time and temporary space
 are bounded by the budget, but unresolved ambiguity can require exponential
-work. This implementation deliberately has no DFA cache or unbounded fallback.
+work. Rule calls are memoized by (rule, start position): once a call's first
+exploration is exhausted, later calls replay its distinct end positions in
+discovery order, so derivation choice and AST shape are unchanged while repeated
+sub-parses under different continuations cost one step per recorded end. This implementation deliberately has no DFA cache or unbounded fallback.
 It is appropriate for the demonstrated subset; broader promotion requires the
 independent differential corpus and resource measurements.
 
