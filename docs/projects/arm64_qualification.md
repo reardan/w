@@ -34,7 +34,10 @@ non-ARM64 kernels, emulator/native-bridge properties, and fewer than two online
 CPUs in the shell's allowed CPU set. Use physical hardware: these checks alone
 cannot prove the absence of virtualization.
 
-ADB mode supports only `--suite atomic`. It verifies the pushed executable's
+ADB mode runs `--suite atomic`, `--suite durability` or both (`all`); the
+durability fixture's trials run in fresh directories under
+`/data/local/tmp`, and the report records that directory's `df` output and
+`/proc/mounts` (see [durability ports](durability_ports.md)). It verifies the pushed executable's
 SHA256, records device hardware/OS/CPU restrictions separately from the build
 host, and records each repetition's exit status and elapsed time (including ADB
 overhead). Each trial has a device-side watchdog and a separate process group;

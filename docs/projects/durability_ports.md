@@ -2,7 +2,10 @@
 
 `lib/fs.w` has native positional I/O, truncation, directory-relative/exclusive
 creation, advisory process-lifetime locks and durability adapters on Linux
-x86/x64/ARM64 and ARM64 Darwin. ARM64 Linux native qualification remains pending. Darwin/APFS has native
+x86/x64/ARM64 and ARM64 Darwin. ARM64 Linux runs the shared suites and the
+fault/crash harness under qemu-user in `tests_arm64`; its native
+qualification (a real ARM64 Linux kernel, filesystem and device) remains
+pending. Darwin/APFS has native
 process-crash and fault-injection coverage on an M3 Pro; physical power-loss
 qualification remains pending. A successful syscall
 is not evidence that a device survives power loss.
@@ -54,6 +57,23 @@ bin/qualify_native --suite durability --rounds 20 \
   --scratch /path/on/filesystem-under-test --output bin/durability-native.json
 ```
 
+A physical Android ARM64 device attached over ADB qualifies the Linux
+`arm64` adapters with the host-built static ELF fixtures, the same way the
+#607 ordered-memory evidence was collected (no Bionic, no translation):
+
+```sh
+bin/qualify_native --suite durability --adb SERIAL --pac off --rounds 20 \
+  --output bin/durability-native-android.json
+```
+
+`--pac off` is needed only on CPUs without pointer authentication. Each
+trial runs in a fresh directory under `/data/local/tmp` (usually f2fs or
+ext4 on the userdata partition, often with file-based encryption); the
+report records that directory's `df` output and the device's `/proc/mounts`
+so the filesystem, mount options (`nobarrier`, f2fs `fsync_mode`) and
+device are part of the evidence. Results apply to that filesystem and
+storage device only.
+
 The driver records hardware/OS/compiler/source hashes, flags, filesystem location
 and repetitions. It runs the fixtures under streaming, retained AST and optimized
 retained AST compilation, each in a fresh scratch directory. Use a local scratch
@@ -85,6 +105,31 @@ to a complete old or new record. Do not label SIGKILL or QEMU as that evidence.
 Both ARM64 targets cross-compile every fixture in all three compilation modes.
 The x64 Linux supplementary harness passes in all three modes. ARM64 Linux
 native qualification remains pending.
+
+ARM64 Linux runs under qemu-user in the `tests_arm64` suite (the CI `arm64`
+job): the shared `lib/fs_test.w` (15 tests: 5 GiB sparse offsets, hole
+reads, truncate, overflow rejection, concurrent positional access through a
+shared open file description while its cursor moves, exclusive and
+directory-relative creation, close-on-exec, native errno, lock contention
+and release after SIGKILL, file/directory barriers and replacement
+reports), `lib/io_test.w`, `tests/native_qualification_test.w`, the
+`native_qualification_emulated_test` run of both qualification fixtures in
+all three compilation modes, and `fs_fault_arm64_test`. That last target
+(`tools/linux_fs_qualification.w`, also run for i386 and x86-64 as
+`fs_fault_linux_test` in `tests`) is the Linux counterpart of the Darwin
+fault harness: a private import root replaces only the `fsync` and `rename`
+bodies of the target's syscall adapter with `tests/fs_linux_fault_hooks.w`,
+injects EIO, EINTR, EINVAL, EOPNOTSUPP and ENOSPC at the file barrier, the
+rename and the directory barrier, and SIGKILLs the writer immediately before
+and after each of them (18 cases per target). Each case checks the visible
+old/new contents, temp cleanup or crash leftovers, `stage`/`renamed`, the
+native errno, and a successful republication afterwards.
+
+qemu-user forwards every guest syscall to the x86_64 host kernel, so these
+runs establish the AArch64 syscall numbers, flag translation, offset ABI
+and error propagation end to end, but say nothing about ARM64 kernels,
+filesystems or storage devices. They are regression coverage, **not**
+native qualification.
 
 On 2026-10-09, native M3 Pro/macOS 26.3 tests on local internal APFS passed
 15 filesystem tests, five checked-I/O tests, and 17 injected failure/SIGKILL

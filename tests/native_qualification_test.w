@@ -1,5 +1,5 @@
 # Errno classification shared by native I/O and cooperative task results.
-# wbuild: x64
+# wbuild: x64 arch=arm64
 import lib.testing
 import lib.io
 import lib.io_wait
@@ -22,6 +22,8 @@ void test_native_errno_categories_preserve_native_values():
 # wbuild: step="bin/wv2 arm64_darwin tests/native_qualification_test.w -o bin/native_errno_darwin_test"
 # wbuild: target=native_qualification_host_test tag=tests dep=wv2 dep=qualify_native
 # wbuild: step="bin/qualify_native --host-smoke --rounds 1"
+# wbuild: target=native_qualification_emulated_test tag=tests_arm64 dep=wv2 dep=qualify_native dep=wrun
+# wbuild: step="bin/qualify_native --emulated --rounds 1 --output bin/qualification_arm64_emulated.json"
 
 void test_arm64_openat_flag_translation():
 	assert_equal(16384, arm64_fs_open_flags(65536))
