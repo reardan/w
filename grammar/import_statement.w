@@ -181,6 +181,30 @@ int import_plain_imported(char* file_path):
 	return 0
 
 
+# Generic bodies compile at the end-of-file drain, re-parsed from their
+# definition's file while the current (root) file's aliases and plain
+# imports are still registered. Those belong to the current file, so hide
+# them for a body defined in another file (including any call it inlines
+# from a third file); otherwise an inlined parameter could be reported as
+# an unqualified use of an alias. A body defined in the current file keeps
+# its own aliases.
+int import_hidden_alias_base
+int import_hidden_plain_base
+
+
+void import_scope_hide(char* definition_file):
+	import_hidden_alias_base = import_alias_base
+	import_hidden_plain_base = import_plain_base
+	if ((filename != 0) && (definition_file != 0) && (strcmp(filename, definition_file) == 0)): return
+	import_alias_base = import_alias_count
+	import_plain_base = import_plain_count
+
+
+void import_scope_restore():
+	import_alias_base = import_hidden_alias_base
+	import_plain_base = import_hidden_plain_base
+
+
 # Unqualified reference to a symbol whose module was imported only through
 # an alias in this file: still legal (the symbol table is global), but
 # probably an oversight, so warn. Cheap when no aliases are in scope.
