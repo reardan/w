@@ -114,7 +114,7 @@ void test_owned_tree_query():
 			source_count = jfield_int(row, c"sources", -1)
 			type_count = jfield_int(row, c"types", -1)
 			binding_count = jfield_int(row, c"bindings", -1)
-			assert_equal(2, jfield_int(row, c"version", -1))
+			assert_equal(3, jfield_int(row, c"version", -1))
 		if (strcmp(record, c"node") == 0):
 			assert_equal(nodes, jfield_int(row, c"id", -1))
 			nodes = nodes + 1

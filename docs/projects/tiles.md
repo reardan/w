@@ -187,11 +187,23 @@ target and streaming-grammar release/seed gate are not prerequisites for tiles.
 
 The new targets are `tile_ast_test` / `tile_ast_64_test`,
 `tile_analysis_unit_test` / `tile_analysis_unit_64_test`,
-`tile_diagnostics_test`, and `tile_ptx_test`. `tile_gpu_compile_test` and
+`tile_diagnostics_test`, `tile_ptx_test` and `tile_tree_query_test`.
+`tile_gpu_compile_test` and
 `tile_ops_gpu_compile_test` exercise both GPU fixtures without running CUDA;
 `tile_gpu_test` and `tile_ops_gpu_test` execute them on a real device.
-Tree queries expose the tile syntax hierarchy and source locations; analyzed
-shape and binding information currently lives in the retained tile payload.
+`w tree --json` (schema version 3) exposes the tile syntax hierarchy, source
+locations and the analysis. Each tile node record carries `tile_op`,
+`tile_type` (a compiler type name such as `float32*`), `tile_rank`,
+`tile_rows`, `tile_cols`, `tile_uniform`, `tile_masked`, `tile_effect` (its
+memory-effect order, or 0) and `tile_binding` (a binding ID, or -1). The
+owning `gpu` statement's record is followed by a `tile_program` record
+(`node`, `kernel`, `width`, `analyzed`, `matrix`, `shared_bytes`,
+`captures`, `bindings`, and once planned `threads`, `lane_passes`, `dots`),
+one `tile_binding` record per binding (`program`, `id`, `name`, `kind`,
+`type`, `rank`, `rows`, `cols`, `uniform`, `capture_slot`), and one
+`tile_dot` record per planned dot (`program`, `node`, `m`, `k`, `n`,
+`fused`, and the buffer offsets and row strides). Every record carries
+`source`. `tile_tree_query_test` covers the format.
 
 The first 16 by 16 implementation measured about 121 microseconds per 512x512
 product on an RTX 4080 SUPER, against 110 microseconds for the hand-tiled
