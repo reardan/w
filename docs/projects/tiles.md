@@ -164,6 +164,39 @@ and PTX spelling remain emitter responsibilities. Changing the plan is not yet
 a supported public tuning interface: its current invariants are established by
 analysis and the planner, and tests with artificial plans inspect text only.
 
+## Tensor library
+
+`lib/tensor.w` uses tile programs for the GPU path of `tensor_matmul2`,
+`tensor_matmul2_tn` and `tensor_matmul2_nt`, and so for every `lib/autograd.w`
+and `lib/nn.w` linear layer. `tensor_matmul_launch` passes each variant's
+element strides to one of three programs. `tensor_matmul_tile32` uses 32 by
+32 output tiles and 32-deep K slices. `tensor_matmul_tile64` and
+`tensor_matmul_tile128` use 64 and 128 square output tiles with 16-deep
+slices. `tensor_matmul_edge` picks the largest tile whose unpadded output
+still gives about 48 programs, 0.6 waves on the 80-SM GPU where this was
+measured. Setting `tensor_matmul_tile_edge` to 16, 32, 64 or 128 forces a
+path; 16 selects the hand-written `tensor_matmul_tiled_kernel`. The opt-in
+cuBLAS hook still takes precedence.
+
+Best of five batches of ten launches, in microseconds, on the RTX 4080 SUPER:
+
+| m x k x n | hand-written 16 | tile 32 | tile 64 | tile 128 |
+| --------- | --------------- | ------- | ------- | -------- |
+| 64 x 784 x 128 | 28 | 23 | 44 | 100 |
+| 256 x 256 x 256 | 23 | 9 | 16 | 35 |
+| 512 x 512 x 512 | 110 | 45 | 30 | 68 |
+| 1024 x 1024 x 1024 | 807 | 266 | 163 | 121 |
+| 512 x 768 x 3072 | 980 | 359 | 150 | 160 |
+| 32 x 4096 x 4096 | 533 | 174 | 236 | 486 |
+| 8192 x 768 x 768 | 4,283 | 1,567 | 735 | 564 |
+| 4096 x 4096 x 4096 | 73,924 | 24,561 | 12,533 | 7,777 |
+
+The 32 by 32 program beats the hand-written kernel at every measured shape.
+The tile programs accumulate with fused multiply-add, so GPU products agree
+with the CPU fallback to float32 rounding, not bit for bit. That matches the
+cuBLAS hook. `tensor_gpu_test` checks every forced path and the automatic
+choice on ragged multi-tile shapes for all three variants.
+
 ## Scope and validation
 
 Supported scalar/control syntax is intentionally narrower than a general W

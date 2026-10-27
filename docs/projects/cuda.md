@@ -611,7 +611,11 @@ path, fenced off so nothing that does not ask for it changes behavior.
   `tensor_matmul2` square products, per call after warm-up:
   256^3 tiled ~22-25 us vs cuBLAS ~6-7 us (3-3.5x); 1024^3 ~790-870 us
   (~2.5 TFLOP/s) vs ~76-81 us (~27 TFLOP/s, ~10-11x); 2048^3 ~6.2-7.0 ms
-  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x).
+  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x). Since #480 the default
+  path is a tile program instead (`tensor_matmul_launch`, see
+  [tiles.md](tiles.md)): 256^3 ~9 us, 1024^3 ~120 us (~18 TFLOP/s),
+  2048^3 ~1.1 ms (~15 TFLOP/s), so cuBLAS leads by 1.5-2x rather than
+  10-13x.
 
 ## Execution notes (gpu pointer qualifier)
 
