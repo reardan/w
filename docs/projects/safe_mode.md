@@ -1203,6 +1203,41 @@ trust manual borrow-registration counters in the legacy `lib.arena` API.
 Typed arena allocation, attached budgets, nonmoving concurrent allocation,
 and general raw/foreign-to-checked conversions remain separate work.
 
+### Generic pointer-free buffers
+
+`import lib.safe_vector` provides the distinct checked owner
+`own WBuffer[T]*`. `T` may be a sized pointer-free scalar or record without
+fixed-array fields. Raw pointers, references, owners, zero-sized elements
+and records containing fixed arrays are rejected. Legacy `list[T]` keeps
+its existing behavior.
+
+`buffer_new[T]()` creates an empty buffer. `buffer_length[T]`,
+`buffer_get[T]` and `buffer_view[T]` borrow it shared; `buffer_push[T]`,
+`buffer_set[T]`, `buffer_pop[T]`, `buffer_clear[T]` and
+`buffer_view_mut[T]` borrow it exclusively. Explicit method calls such as
+`values.buffer_push[int](7)` and module aliases are accepted. Type
+arguments are explicit where a concrete buffer specialization cannot
+uniquely invert its generic argument shape.
+
+Shared and mutable views are checked inline slices tied to the buffer's
+borrow. A live view blocks every exclusive operation, including a push
+that would fit spare capacity. Mutation resumes after the last use.
+Moving the owner transfers the descriptor and allocation together; its
+scope-exit destructor releases both. Metadata is opaque and cannot be
+constructed, copied or modified from checked code. Get/set bounds, empty
+pop and allocation overflow are fatal checks. Allocation failure currently
+traps; fallible insertion with ownership recovery remains a separate gate.
+
+This is an audited runtime boundary: the compiler binds the accepted API
+and destructor to the exact resolved `lib/safe_vector.w` contents. The
+runtime uses private raw storage and descriptor construction; checked
+callers cannot invoke its private helpers. Explicit contracts have the
+same semantics without `--safe`.
+
+This step covers pointer-free sequential storage in #697. Owned-element
+storage, maps/sets, checked iteration and fallible insertion remain required;
+it does not close #697 or #644.
+
 ## Synchronous foreign byte I/O
 
 `import lib.safe_foreign` exposes two audited entry points:
@@ -2025,42 +2060,6 @@ stops on entry threads, wdbg's `thread_local` rejection, every other
 unsupported form above, an imported-source edit across `:reset`, and the
 debugger views (innermost and outer frames, optional, slice, record and
 labeled views), conditions and rejections.
-
-
-### Generic pointer-free buffers
-
-`import lib.safe_vector` provides the distinct checked owner
-`own WBuffer[T]*`. `T` may be a sized pointer-free scalar or record without
-fixed-array fields. Raw pointers, references, owners, zero-sized elements
-and records containing fixed arrays are rejected. Legacy `list[T]` keeps
-its existing behavior.
-
-`buffer_new[T]()` creates an empty buffer. `buffer_length[T]`,
-`buffer_get[T]` and `buffer_view[T]` borrow it shared; `buffer_push[T]`,
-`buffer_set[T]`, `buffer_pop[T]`, `buffer_clear[T]` and
-`buffer_view_mut[T]` borrow it exclusively. Explicit method calls such as
-`values.buffer_push[int](7)` and module aliases are accepted. Type
-arguments are explicit where a concrete buffer specialization cannot
-uniquely invert its generic argument shape.
-
-Shared and mutable views are checked inline slices tied to the buffer's
-borrow. A live view blocks every exclusive operation, including a push
-that would fit spare capacity. Mutation resumes after the last use.
-Moving the owner transfers the descriptor and allocation together; its
-scope-exit destructor releases both. Metadata is opaque and cannot be
-constructed, copied or modified from checked code. Get/set bounds, empty
-pop and allocation overflow are fatal checks. Allocation failure currently
-traps; fallible insertion with ownership recovery remains a separate gate.
-
-This is an audited runtime boundary: the compiler binds the accepted API
-and destructor to the exact resolved `lib/safe_vector.w` contents. The
-runtime uses private raw storage and descriptor construction; checked
-callers cannot invoke its private helpers. Explicit contracts have the
-same semantics without `--safe`.
-
-This step covers pointer-free sequential storage in #697. Owned-element
-storage, maps/sets, checked iteration and fallible insertion remain required;
-it does not close #697 or #644.
 
 ## Entry points, diagnostics and costs
 
