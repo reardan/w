@@ -20,12 +20,11 @@
 #   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH, followed by a
 #   flush of the replaced file (FS_NATIVE_PUBLISH_SYNCS_DIR is 0).
 
+# CreateFileW, DeleteFileW and MultiByteToWideChar come from the win64
+# runtime (lib/__arch__/win64/syscalls.w), which every program imports.
 c_lib "kernel32.dll"
-extern int CreateFileW(char* path, int access, int share, char* security, int creation, int flags, int template_file)
 extern int MoveFileExW(char* oldpath, char* newpath, int flags)
-extern int DeleteFileW(char* path)
 extern int GetFileAttributesW(char* path)
-extern int MultiByteToWideChar(int codepage, int flags, char* source, int source_length, char* destination, int destination_length)
 extern int GetFileInformationByHandle(int handle, char* info)
 extern int GetFileType(int handle)
 extern int LockFileEx(int handle, int flags, int reserved, int length_low, int length_high, char* overlapped)
@@ -174,7 +173,7 @@ int fs_native_open_path(char* path, int flags):
 	security[2] = 1   # bInheritHandle
 	char* inherit = cast(char*, &security[0])
 	if (flags & 524288): inherit = 0
-	int handle = CreateFileW(wide, fs_native_access(flags), 7, inherit, fs_native_creation(flags), attributes, 0)
+	int handle = CreateFileW(wide, fs_native_access(flags), 7, cast(int, inherit), fs_native_creation(flags), attributes, 0)
 	if (handle == -1):
 		int code = GetLastError()
 		# Linux reports a write open of a directory as EISDIR.

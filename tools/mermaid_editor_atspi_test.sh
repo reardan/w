@@ -20,12 +20,16 @@ ROOT=$(pwd)
 # Short paths: AT-SPI and speech-dispatcher sockets live under these.
 WORK=$(mktemp -d /tmp/wma.XXXXXX)
 export HOME="$WORK" XDG_RUNTIME_DIR="$WORK/r" XDG_CONFIG_HOME="$WORK/c"
+# Keep GIO off gvfs: Orca's session would otherwise start gvfsd-fuse, whose
+# mount under $XDG_RUNTIME_DIR can outlive the bus and break the cleanup.
+export GIO_USE_VFS=local
 mkdir -m 700 "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME"
 PIDS=""
 cleanup() {
 	for pid in $PIDS; do kill "$pid" 2>/dev/null || true; done
 	if [ -n "${DBUS_SESSION_BUS_PID:-}" ]; then kill "$DBUS_SESSION_BUS_PID" 2>/dev/null || true; fi
-	if [ -z "${KEEP:-}" ]; then rm -rf "$WORK"; else echo "kept $WORK" >&2; fi
+	if [ -d "$XDG_RUNTIME_DIR/gvfs" ]; then fusermount -u -z "$XDG_RUNTIME_DIR/gvfs" 2>/dev/null || true; fi
+	if [ -z "${KEEP:-}" ]; then rm -rf "$WORK" 2>/dev/null || true; else echo "kept $WORK" >&2; fi
 }
 trap cleanup EXIT INT TERM
 DISPLAY_NUMBER=$((90 + $$ % 100))
