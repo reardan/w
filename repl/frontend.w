@@ -1041,6 +1041,9 @@ char* repl_shell_options(int argc, int argv):
 
 
 int repl_main(int argc, int argv, int initial_shell):
+	# W_DEBUG_ALLOC applies to the session's allocator, not this
+	# compiler's (lib/memory.w malloc_host_freelist_mode)
+	malloc_host_freelist_mode()
 	# Preserve the launcher's startup mode when re-executing for coverage.
 	if (initial_shell): coverage_exec_redirect(c"W_COVERAGE_WSH", c"wsh", argv)
 	else: coverage_exec_redirect(c"W_COVERAGE_REPL", c"repl", argv)

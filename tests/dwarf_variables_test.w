@@ -23,7 +23,11 @@ program, which parses each ELF from disk with a small DIE walker over
    live in distinct caller-saved registers of the function region (unit
    O2): DW_OP_reg<n> in the DWARF numbering (rsi=4, rdi=5, r8-r11), with
    no DW_OP_fbreg;
- - .debug_frame holds a CIE and an FDE starting at scale's low_pc.
+ - .debug_frame holds a CIE and an FDE starting at scale's low_pc;
+ - on arm64 Linux (issue #801), accumulate's i and total are
+   DW_OP_reg19-23 (the callee-saved x19-x23 promotion hands out), and
+   with --no-regs they are DW_OP_fbreg again. arm64 emits no
+   .debug_frame yet, so its FDE is not checked.
 */
 import lib.lib
 import lib.assert
@@ -456,8 +460,40 @@ void check_binary(char* path, int word_size):
 	println(path)
 
 
+# arm64 Linux: accumulate's loop locals in x19-x23 when promoted, in the
+# frame under --no-regs; scale's locals stay in the frame either way.
+void check_arm64_binary(char* path, int promoted):
+	word = 8
+	asm_binary* binary = asm_binary_open(path)
+	asserts(c"arm64 fixture opens as ELF", cast(int, binary) != 0)
+	assert_equal(ASM_EM_AARCH64, binary.machine)
+	char* data = binary.data
+	int info_size = 0
+	int info = section_find(data, binary.elf_class, c".debug_info", &info_size)
+	int abbrev_size = 0
+	int abbrev = section_find(data, binary.elf_class, c".debug_abbrev", &abbrev_size)
+	parse_dies(data, info, abbrev, abbrev_size)
+	int scale = find_die(46, c"scale", 0)
+	asserts(c"scale's sx in the frame", dies[find_die_under(52, c"sx", scale)].has_fbreg)
+	int accumulate = find_die(46, c"accumulate", 0)
+	die* i = dies[find_die_under(52, c"i", accumulate)]
+	die* total = dies[find_die_under(52, c"total", accumulate)]
+	if (promoted):
+		asserts(c"arm64 promoted locals have no DW_OP_fbreg", (i.has_fbreg == 0) && (total.has_fbreg == 0))
+		asserts(c"arm64 promoted i in x19-x23", (i.reg >= 19) && (i.reg <= 23))
+		asserts(c"arm64 promoted total in x19-x23", (total.reg >= 19) && (total.reg <= 23))
+		asserts(c"i and total in different registers", i.reg != total.reg)
+	else:
+		asserts(c"--no-regs locals in the frame", i.has_fbreg && total.has_fbreg)
+		assert_equal(-1, i.reg)
+		assert_equal(-1, total.reg)
+	println(path)
+
+
 int main():
 	check_binary(c"bin/dwarf_variables_fixture_32", 4)
 	check_binary(c"bin/dwarf_variables_fixture_64", 8)
+	check_arm64_binary(c"bin/dwarf_variables_fixture_arm64", 1)
+	check_arm64_binary(c"bin/dwarf_variables_fixture_arm64_noregs", 0)
 	println(c"dwarf_variables_test passed")
 	return 0

@@ -818,6 +818,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		store_ebx_word()
 		pop_eax_slot()
 		drop_slots(1)
+		init_array_element_descriptors(tree.value[id], 0)
 		return
 	if (op == 'D'):
 		int base = tree.value[id]

@@ -96,6 +96,18 @@ import compiler.type_table
 import compiler.symbol_table
 import compiler.inline_table
 
+# The targets that promote: x86/x64 Linux, and arm64 Linux (issue #801:
+# function-scoped promotion into x19-x27; Darwin, Android, win64 and
+# wasm keep every local on the stack).
+int regalloc_target_ok():
+	if (target_os != 0): return 0
+	return (target_isa == 0) || (target_isa == 1)
+
+# arm64's callee-saved budget: x19 up to x(18 + budget). The registers
+# setjmp saves and longjmp restores (code_generator/arm64_asm.w) are the
+# same set, which jmp_buf's register words bound (lib/setjmp.w).
+const int regalloc_arm64_budget = 5
+
 void rs_lp_reset();
 void rl_reset();
 int rs_run_assigns(int n, int first, int second, int last);
@@ -1854,7 +1866,11 @@ int rs_args_rank():
 int rs_assign_registers():
 	int budget = 2
 	int first_reg = 6   # esi, edi
-	if (word_size == 8):
+	int arm64 = target_isa == 1
+	if (arm64):
+		budget = regalloc_arm64_budget
+		first_reg = 19  # x19-x27
+	elif (word_size == 8):
 		budget = 4
 		first_reg = 12  # r12-r15
 	int mask = 0
@@ -1876,10 +1892,16 @@ int rs_assign_registers():
 				best = i
 				best_uses = rs_gain(i)
 			elif (round == 0):
-				if ((rs_decls[i] != 1) || (rs_uses[i] - rs_base[i] <= 7)): continue
+				if (rs_uses[i] - rs_base[i] <= 7): continue
+				if (rs_decls[i] != 1):
+					# arm64 (#801): an argument read is a load like any
+					# local's (no memory operands), so arguments rank
+					# with the scalars
+					if ((arm64 == 0) || (rs_decls[i] != 0)): continue
+					if (rs_arg_record(i) < 0): continue
 				# x64 (O2): ranked by the scalar uses plus the register gain
 				int key = rs_uses[i] - rs_base[i]
-				if (word_size == 8): key = key + rs_gain(i)
+				if ((word_size == 8) && (arm64 == 0)): key = key + rs_gain(i)
 				if (key <= best_uses): continue
 				best = i
 				best_uses = key
@@ -2040,7 +2062,7 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	if ((file >= 0) && (file < GETCHAR_MAX_FD)): profile_class = rs_profile_begin(symbol)
 	else: profile_use_function_prepare(symbol, sym_record_name(symbol))
 	if (regalloc_disabled): return;
-	if ((target_isa != 0) || (target_os != 0)): return;
+	if (regalloc_target_ok() == 0): return;
 	if (is_variadic): return;
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return;
 	if (token[0] == 0): return;
@@ -2056,8 +2078,9 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	rs_mode = 0
 	if (profile_class == 2): rs_mode = 1   # P2: hot
 	# O2: on x64 every body is ranked (loop-free ones too, rs_fn_rank
-	# and rs_assign_registers), so there is no probe for a loop
-	if (word_size == 8): rs_mode = 1
+	# and rs_assign_registers), so there is no probe for a loop; arm64
+	# (#801) ranks loop bodies only, as x86 does
+	if ((word_size == 8) && (target_isa == 0)): rs_mode = 1
 	int probe = 2
 	if ((rs_mode == 0) && (brace_body == 0)): probe = rs_probe_lines()
 	if (probe == 2):
@@ -2118,6 +2141,9 @@ int regalloc_type_ok(int type):
 	int canonical = type_canonical(type)
 	if (type_get_size(type) == 4):
 		if (narrow_regs_disabled): return 0
+		# arm64 (#801) keeps the word-sized locals only: its writers
+		# have no 32-bit register forms yet
+		if (target_isa != 0): return 0
 		if (canonical == uint32_type): return 1
 		if (canonical == type_lookup(c"int32")): return 1
 	if (type_get_size(type) != word_size): return 0
@@ -2144,7 +2170,7 @@ int regalloc_reg_kind_of_type(int type):
 # block, a loop variable) keeps the stack.
 int regalloc_declare(int t, char* name, int type):
 	if (regalloc_active == 0): return 0
-	if (target_isa != 0): return 0
+	if (regalloc_target_ok() == 0): return 0
 	# The locals of a body inlined at a call site (unit A5) are not in
 	# the scan: plain stack slots, whatever their names
 	if (inline_depth != 0): return 0

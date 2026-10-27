@@ -2,23 +2,49 @@
 
 ## Current pinned measurement
 
-Measured clean W implementation commit `b1887a858969ba341fb1449793dfd69ed4113677`
-against corpus commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
-The same 291 roots and original grammar bytes are used in every configuration.
+Measured W `08775258` plus the runtime examples stage and memoized prediction
+calls (#679) against corpus
+commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`. The same 291 roots and
+original grammar bytes are used in every configuration. Translation, generation
+and compilation are unchanged from the compile-only measurement of clean commit
+`b1887a858969ba341fb1449793dfd69ed4113677`; the examples column is new.
+Memoizing prediction calls moved the exact examples from 215/244 cases and
+1088/1190 files (permissive) and 187/200 and 886/913 (strict) to the totals
+below; no example verdict regressed.
 
-| Configuration | Translation | Generation | W compile | W compile `--strict` |
-| --- | ---: | ---: | ---: | ---: |
-| Default permissive | 218 | 214 | **214** | **214** |
-| Default translator `--strict` | 10 | 10 | 10 | 10 |
-| Stateful permissive | 218 | 214 | 214 | 214 |
-| Stateful translator `--strict` | 28 | 28 | 28 | 28 |
-| Exact permissive | 267 | 267 | **267** | **267** |
-| Exact translator `--strict` | 218 | 218 | **218** | **218** |
+| Configuration | Translation | Generation | W compile | W compile `--strict` | Examples: cases | Examples: files |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Default permissive | 218 | 214 | **214** | **214** | 66/194 | 431/913 |
+| Default translator `--strict` | 10 | 10 | 10 | 10 | 8/8 | 39/39 |
+| Stateful permissive | 218 | 214 | 214 | 214 | 95/194 | 523/913 |
+| Stateful translator `--strict` | 28 | 28 | 28 | 28 | 27/27 | 105/105 |
+| Exact permissive | 267 | 267 | **267** | **267** | **223/244** | **1118/1190** |
+| Exact translator `--strict` | 218 | 218 | **218** | **218** | **194/200** | **905/913** |
 
-Every cell is out of 291. Exact means `--exact-lexer --prediction`; stateful
+Stage cells are out of 291. Exact means `--exact-lexer --prediction`; stateful
 means `--stateful`. Translator `--strict` refuses reported semantic gaps.
-W compiler `--strict` separately rejects warnings in generated W. The sweep
-passes an empty main; compilation does not demonstrate runtime equivalence.
+W compiler `--strict` separately rejects warnings in generated W.
+
+The examples stage runs the compiled parser on up to ten pinned upstream example
+files per case (1,315 files across 262 cases; 29 cases have no usable examples)
+and checks the accept/reject verdict, not the parse tree. "Cases" counts compiled
+cases with examples whose every example got the expected verdict; "files" counts
+example files. No example hung, crashed or hit an infrastructure error; the
+slowest took 3.6 seconds of its 10-second limit.
+
+Exact permissive example failures: **9 files in 7 cases** still exceed the
+one-million-step parser prediction budget (agc, arden, cpp, html, objc, php and
+tinyos_nesc; 43 files in 16 cases before calls were memoized). **51 files in 15
+cases** are syntax errors (bcpl, bencoding, bison, gdscript, haskell, javadoc,
+langium, lua, mumps, php, pike, properties, stringtemplate, tinyos_nesc, wren),
+two Lua files hit an invalid token, and SDL's ten examples are not UTF-8. Four
+files that used to exhaust the budget now finish and are rejected as syntax
+errors. These are not yet triaged; several of these grammars rely on host
+predicates, actions or a lexer superclass. Exact strict fails only 8 files: 5
+over budget (agc, arden, html) and 3 syntax errors (mumps, pike, properties).
+Default-mode failures are dominated by its approximate lexer lowering (93 files
+rejected with `invalid character`, e.g. JSON's negative numbers) and ordered-choice
+parsing without continuation (370 syntax errors).
 
 The merged #689 → #690 → #692 baseline compiled 212 cases, of which only 49
 passed W compiler `--strict`. All original 212 now compile without warnings.
@@ -29,9 +55,9 @@ Exact mode adds **55 of the original 79 compile misses**, reaching 267/291
 the original 276 strict misses**, reaching 218/291 (74.9%). No exact-mode case
 is lost between successful translation and strict W compilation.
 
-All six configurations completed with **zero infrastructure errors and zero
-regressions against the reviewed baseline**. The longest measured stage was
-7.176 seconds. The historical 288-name subset now compiles 212 cases in default
+The compile-only measurement completed all six configurations with **zero
+infrastructure errors and zero regressions against the reviewed baseline**; its
+longest stage took 7.176 seconds. The historical 288-name subset now compiles 212 cases in default
 mode; this is a separate denominator from the current 291-root matrix.
 
 Per-case stages and diagnostic counts are in
@@ -40,7 +66,9 @@ Per-case stages and diagnostic counts are in
 current outcomes, first failed stages, and deduplicated findings with source
 locations. [sweep_baseline.json](sweep_baseline.json) preserves original
 `recorded_pass` and `pre_compatibility_expected_pass`, pins input and tool hashes,
-and independently protects the measured stages of all six configurations.
+and independently protects the measured stages of all six configurations and
+every pinned example's verdict. The gate fails on unexpected passes as well as on
+regressions, so these totals are exactly what the committed baseline expects.
 The complete pre-implementation matrix is retained in
 [sweep_pre_compatibility_results.csv](sweep_pre_compatibility_results.csv).
 

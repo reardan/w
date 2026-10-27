@@ -1,4 +1,4 @@
-# wbuild: x64 arch=arm64_darwin
+# wbuild: x64 arch=arm64 arch=arm64_darwin
 import lib.testing
 import lib.io
 import lib.process

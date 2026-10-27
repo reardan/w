@@ -5,6 +5,8 @@
 # wbuild: step="bin/wv2 arm64_darwin --import-root tools/mac/access_cocoa tools/wmermaid_editor.w -o bin/wmermaid_editor_darwin_voiceover"
 # wbuild: target=mermaid_editor_ui_test dep=wmermaid_editor dep=wmermaid dep=mermaid_editor_ui_driver
 # wbuild: step="xvfb-run -a bin/mermaid_editor_ui_driver"
+# wbuild: target=mermaid_editor_wine_test dep=mermaid_editor_platforms dep=wmermaid dep=mermaid_editor_ui_driver
+# wbuild: step="sh tools/mermaid_editor_wine_test.sh"
 # wbuild: target=mermaid_editor_atspi_test dep=wmermaid_editor
 # wbuild: step="sh tools/mermaid_editor_atspi_test.sh"
 # wbuild: target=mermaid_editor_orca_test dep=wmermaid_editor
@@ -855,7 +857,12 @@ int main(int argc, int argv):
 				mm_access_canvas(access_fresh, ui_access_root_id, WM_CANVAS_FOCUS, &canvas, e, preview, ctx.focus == WM_CANVAS_FOCUS)
 				char* spoken = status
 				if (e.document.error != 0): spoken = c"Syntax error in the source."
-				if (ui_access_add(access_fresh, WM_STATUS_ACCESS, ui_access_root_id, UI_ACCESS_TEXT, ui_rect_new(12.0, height - 64.0, width - 24.0, 24.0)) != 0): ui_access_set_text(access_fresh, WM_STATUS_ACCESS, UI_ACCESS_NAME, spoken, strlen(spoken))
+				# A polite live region: edit results ("Saved.", "Changed on
+				# disk ...") are announced without moving focus.
+				ui_access_node* status_node = ui_access_add(access_fresh, WM_STATUS_ACCESS, ui_access_root_id, UI_ACCESS_TEXT, ui_rect_new(12.0, height - 64.0, width - 24.0, 24.0))
+				if (status_node != 0):
+					status_node.live = UI_ACCESS_LIVE_POLITE
+					ui_access_set_text(access_fresh, WM_STATUS_ACCESS, UI_ACCESS_NAME, spoken, strlen(spoken))
 			ui_access_capture(&ctx, 0)
 			if (ui_access_tree_same(access_fresh, access_published)): ui_access_tree_free(access_fresh)
 			else:
@@ -872,7 +879,11 @@ int main(int argc, int argv):
 			char* shot = args_value(c"screenshot")
 			if (shot != 0):
 				glFinish()
-				if (wm_editor_ppm(shot, win.width, win.height) == 0): exit_status = 1
+				# The framebuffer is in device pixels (HiDPI windows).
+				float32 ratio = gfx_window_pixel_ratio(win)
+				int shot_w = cast(int, cast(float32, win.width) * ratio)
+				int shot_h = cast(int, cast(float32, win.height) * ratio)
+				if (wm_editor_ppm(shot, shot_w, shot_h) == 0): exit_status = 1
 			finished = 1
 		gfx_window_swap(win)
 		sleep_ms(16)

@@ -174,7 +174,7 @@ int compile_attempt(char* fn):
 
 
 # Normalize path separators in-place: replace every '\' (92) with '/' (47).
-# Windows GetCurrentDirectoryA returns backslash-separated paths; the rest
+# Windows GetCurrentDirectoryW returns backslash-separated paths; the rest
 # of the path logic uses '/' uniformly so cross-platform paths just work.
 # Only active on Windows: on Unix a backslash is an ordinary filename
 # character and must be left alone.
@@ -533,7 +533,7 @@ int compile_relative_path(char* fn):
 	int max_path_size = 4096
 	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
-	# Normalize backslashes from Windows GetCurrentDirectoryA to forward slashes
+	# Normalize backslashes from Windows GetCurrentDirectoryW to forward slashes
 	path_normalize_sep(cwd)
 
 	if (compile_search_upward(cwd, fn)):
@@ -953,7 +953,7 @@ int link_option(char* arg, int apply):
 		if (apply): sym_index_selfcheck = 1
 		return 1
 	# Register promotion of hot locals (docs/projects/register_allocation_pgo.md
-	# §2.2) is on by default on x86/x64 Linux; --no-regs (alias -O0) keeps
+	# §2.2) is on by default on x86/x64/arm64 Linux; --no-regs (alias -O0) keeps
 	# every local on the stack, which is the reference for
 	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
 	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):

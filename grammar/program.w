@@ -622,6 +622,12 @@ void emit_data_global_storage(int type, int vaddr):
 		# the arm64 writers emit the table; for the fixed-base x86/x64/
 		# win64 splits the note is a harmless no-op (nothing walks it).
 		rebase_note(vaddr)
+		# Elements that hold arrays carry their own headers (issue #701)
+		int element_type = type_get_element_type(type)
+		if (type_has_array_field(element_type)):
+			int element_size = type_get_size(element_type)
+			for e in range(type_get_array_length(type)):
+				emit_data_global_storage(element_type, vaddr + 2 * word_size + e * element_size)
 	else if (type_num_args(type) > 0):
 		int i = 0
 		while (i < type_num_args(type)):
@@ -767,12 +773,22 @@ void emit_global_type_storage(int type):
 	if (type_is_array(type)):
 		emit_target_word(code_offset + codepos + 2 * word_size)
 		emit_target_word(type_get_array_length(type))
-		emit_zeros(type_get_size(type) - 2 * word_size)
-	else if (type_num_args(type) > 0):
+		int element_type = type_get_element_type(type)
+		if (type_has_array_field(element_type) == 0):
+			emit_zeros(type_get_size(type) - 2 * word_size)
+			return
+		# Elements that hold arrays carry their own headers (issue #701)
+		for e in range(type_get_array_length(type)):
+			emit_global_type_storage(element_type)
+	else if (type_has_array_field(type)):
+		int start = codepos
 		int i = 0
 		while (i < type_num_args(type)):
+			# Pad up to the field's layout offset, then to the record's size
+			emit_zeros(start + type_get_field_offset_at(type, i) - codepos)
 			emit_global_type_storage(type_get_field_type_at(type, i))
 			i = i + 1
+		emit_zeros(start + type_get_size(type) - codepos)
 	else: emit_zeros(type_get_size(type))
 
 
@@ -966,7 +982,7 @@ int thread_local_type_needs_init(int type):
 void thread_local_declaration():
 	if ((target_isa != 0) || (target_os != 0)):
 		error(c"thread_local is only supported on the x86 and x64 Linux targets")
-	if ((data_split == 0) && (tls_inprocess_capacity == 0)): error(c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
+	if ((data_split == 0) && (tls_inprocess_capacity == 0)): error(c"thread_local is not supported in in-process compiles outside the REPL and wdbg")
 	int start = token_start_offset
 	int decl_type = type_name()
 	if (thread_local_type_needs_init(decl_type)):

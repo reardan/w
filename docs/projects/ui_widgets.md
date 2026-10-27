@@ -650,6 +650,11 @@ That is the answer to open question 3, and it generalizes: **UI code
 should not read clocks.** Anything time-dependent takes the time as an
 argument, which is also the only way it stays headless-testable.
 
+A toast's semantic node is a live region, so screen readers announce it
+without it taking focus: polite for `ui_toast_show`, assertive for
+`ui_toast_alert` (errors). `ui_status` is the matching polite status
+line (accessibility.md, "Live regions and announcements").
+
 ### 9.4 Staging
 
 1. **Foundation** — right-button input, the scroll id fix, the two

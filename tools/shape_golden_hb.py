@@ -110,6 +110,8 @@ SECTIONS = [
     ]),
     ("tests/data/fonts/NotoSansThai-subset.ttf", [
         "สวัสดีครับ ภาษาไทย น้ำ ที่",
+        # SARA AM decomposes only in Thai (and Lao) text.
+        "a\u0e33",
     ]),
     # The Universal Shaping Engine (lib/ttf_use.w): Sinhala, Tibetan,
     # Javanese and Balinese, with broken clusters and a Sinhala vowel
@@ -158,6 +160,36 @@ SECTIONS = [
         "သင်္ချိုင်း ဗုဒ္ဓ ပုဂ္ဂိုလ် ဥက္ကဋ္ဌ ကမ္ဘာ",
         "စြှို ဆြွး နြွှော ကြည့် ငြုံ ချစ်",
         "က\ufe00ေ ေ\ufe00ကါ ိ ် ၂၀၂၆ ႀကိဳး",
+    ]),
+    # Syriac through the Arabic shaper: Alaph's fin2/fin3/med2 forms and
+    # the SAM (U+070F) stretched by 'stch' over the word after it.
+    ("tests/data/fonts/NotoSansSyriac-subset.ttf", [
+        "ܫܠܡܐ ܥܠܡܐ",
+        "ܐܒܐ ܕܐ ܘܐ ܒܐܒ ܪܐ ܐܐ",
+        "܏ܡܪܢ ܏ܦܰ܂ܳ",
+        "ܹܕ܏ܬ ܏ܕܚܝ ܏ܐ",
+        "ܡܫܝܚܐ ܀ ܂",
+    ]),
+    # The Hangul shaper: syllables compose when the font has them, Old
+    # Hangul jamo take ljmo/vjmo/tjmo, tone marks move in front.
+    ("tests/data/fonts/NotoSansCJKkr-subset.otf", [
+        "한국어 키보드",
+        "ᄒᆞᆫ글 ᄀᆞᇫ ᄫᆡ",
+        "각 난 가 난 가ᇫ",
+        "한〮글〯 〮 ᄒᆞᆫ〮",
+    ]),
+    # A symbol-encoded (3,0) cmap at U+F020..U+F0FF also maps U+0020..
+    # U+00FF.
+    ("tests/data/fonts/NotoSans-symbol-subset.ttf", [
+        "AVATAR Wolf To. Ty, LT",
+        "office fluffy",
+        "\uf041\uf056 \u00e9",
+    ]),
+    # Without GDEF a dotted circle a vowel constraint inserts takes the
+    # class of the mark after it.
+    ("tests/data/fonts/NotoSansGujarati-nogdef-subset.ttf", [
+        "અૅ્ અૈૂર",
+        "કર્મ ધર્મ",
     ]),
     # Hidden tables reach the fallbacks: legacy kern and mark placement
     # without GPOS (marks ignore a kerned base's offset), presentation

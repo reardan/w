@@ -721,3 +721,6 @@ c7442408e8030000|mov dword [esp+8],0x3e8
 817c030e40420f00|cmp dword [ebx+eax*1+0xe],0xf4240
 837c030a07|cmp dword [ebx+eax*1+0xa],7
 837c030efb|cmp dword [ebx+eax*1+0xe],-5
+# code_generator/x86.w alu_atomic_add / alu_atomic_cas (atomic_add, atomic_cas)
+f00fc103|lock xadd [ebx],eax
+f00fb10b|lock cmpxchg [ebx],ecx

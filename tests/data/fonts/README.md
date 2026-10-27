@@ -33,6 +33,10 @@ applies, so the files stay small.
 | `NotoSansMyanmar-subset.ttf` | `NotoSansMyanmar-Regular.ttf` 2.001 (Ubuntu `fonts-noto-core`) |
 | `NotoSans-cff-subset.otf` | `NotoSans-Regular.otf` (unhinted OTF), CFF with subroutines |
 | `NotoSansJP-subset.otf` | noto-cjk `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`, CID-keyed CFF |
+| `NotoSansSyriac-subset.ttf` | `NotoSansSyriac-Regular.ttf` 2.000 (Ubuntu `fonts-noto-core`) |
+| `NotoSansCJKkr-subset.otf` | Noto Sans CJK KR 2.004, font 1 of `NotoSansCJK-Regular.ttc` (Ubuntu `fonts-noto-cjk`), CID-keyed CFF |
+| `NotoSans-symbol-subset.ttf` | `NotoSans-subset.ttf` above, its U+0020..U+00FF re-encoded as a symbol (3,0) cmap at U+F020..U+F0FF |
+| `NotoSansGujarati-nogdef-subset.ttf` | `NotoSansGujarati-Regular.ttf` 2.001 (Ubuntu `fonts-noto-core`), without its GDEF table |
 
 The fonts are Copyright 2015-2024 Google LLC / The Noto Project Authors and licensed
 under the SIL Open Font License 1.1 (`OFL.txt`); these Noto fonts
@@ -73,6 +77,14 @@ way, keeping every layout feature the USE shaper applies (including
 `isol`, `init`, `medi`, `fina`); the `dev3` copy of Noto Sans Devanagari
 renames the `dev2` script record with fontTools before subsetting, so
 HarfBuzz and lib/ttf_use.w shape it with the USE shaper.
+
+The Syriac, Korean and GDEF-less Gujarati subsets (issue #825) were
+made the same way with `--layout-features='*'` (the Korean one from Noto
+Sans CJK KR saved out of the collection with fontTools, with
+`--desubroutinize`; the Gujarati one with `--drop-tables+=GDEF`). The
+symbol subset was written with fontTools: a single format-4 (3,0) cmap
+subtable mapping U+F000 + c to the glyph of each character c of
+U+0020..U+00FF in `NotoSans-subset.ttf`.
 
 The Khmer and Myanmar subsets were made the same way, also keeping
 `cfar` and `rphf` in `--layout-features`.

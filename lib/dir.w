@@ -4,7 +4,7 @@ Directory listing, recursive walk and recursive removal.
 dir_read lists one directory's entries with their kinds; the record
 decoding is per target (lib/__arch__/<target>/dirent.w: the legacy
 Linux getdents layout on x86/x64, getdents64 on arm64,
-getdirentries64 on arm64_darwin, FindFirstFileA on win64; wasm has no
+getdirentries64 on arm64_darwin, FindFirstFileW on win64; wasm has no
 listing). dir_walk_files and dir_remove_all build on it.
 */
 import lib.lib

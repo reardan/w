@@ -3,7 +3,7 @@
 # with --orca, the Orca screen reader, all headless:
 #   Xvfb + a private session bus + at-spi-bus-launcher (+ speech-dispatcher's
 #   dummy module and `orca --debug-file`).
-# Needs: xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0 (and orca
+# Needs: xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0 libxtst6 (and orca
 # speech-dispatcher for --orca). Run from the repository root after
 # `./wbuild wmermaid_editor`; `./wbuild mermaid_editor_atspi_test` does both.
 # Fails when anything is missing: a skipped run is never counted as a pass.
@@ -20,12 +20,16 @@ ROOT=$(pwd)
 # Short paths: AT-SPI and speech-dispatcher sockets live under these.
 WORK=$(mktemp -d /tmp/wma.XXXXXX)
 export HOME="$WORK" XDG_RUNTIME_DIR="$WORK/r" XDG_CONFIG_HOME="$WORK/c"
+# Keep GIO off gvfs: Orca's session would otherwise start gvfsd-fuse, whose
+# mount under $XDG_RUNTIME_DIR can outlive the bus and break the cleanup.
+export GIO_USE_VFS=local
 mkdir -m 700 "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME"
 PIDS=""
 cleanup() {
 	for pid in $PIDS; do kill "$pid" 2>/dev/null || true; done
 	if [ -n "${DBUS_SESSION_BUS_PID:-}" ]; then kill "$DBUS_SESSION_BUS_PID" 2>/dev/null || true; fi
-	if [ -z "${KEEP:-}" ]; then rm -rf "$WORK"; else echo "kept $WORK" >&2; fi
+	if [ -d "$XDG_RUNTIME_DIR/gvfs" ]; then fusermount -u -z "$XDG_RUNTIME_DIR/gvfs" 2>/dev/null || true; fi
+	if [ -z "${KEEP:-}" ]; then rm -rf "$WORK" 2>/dev/null || true; else echo "kept $WORK" >&2; fi
 }
 trap cleanup EXIT INT TERM
 DISPLAY_NUMBER=$((90 + $$ % 100))

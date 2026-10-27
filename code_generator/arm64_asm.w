@@ -140,7 +140,12 @@ void define_asm_functions_arm64():
 	a64_asm(c"ret")
 
 	# repl_setjmp(buf): save the return address, W stack pointer and frame
-	# pointer into a 3-word buffer and return 0. repl_longjmp resumes here.
+	# pointer into the first 3 words of the buffer, then the callee-saved
+	# registers register promotion keeps locals in (x19-x23,
+	# compiler/regalloc_scan.w, #801) in words 3-7 (jmp_buf's r0-r4,
+	# lib/setjmp.w), and return 0: a frame below the setjmp caller that
+	# promoted a register and is unwound by longjmp must not leak its
+	# value into the setjmp caller's callers. repl_longjmp resumes here.
 	# pac=full: the resume address rests in the buffer signed with the
 	# buffer address as discriminator (arm64.md D6), so a scribbled or
 	# replayed buffer fails authentication in repl_longjmp.
@@ -152,6 +157,7 @@ void define_asm_functions_arm64():
 		# Sign a copy: x30 itself must stay plain for the ret below.
 		a64_asm(c"mov x10,x30; pacia x10,x9; str x10,[x9]")
 	else: a64_asm(c"str x30,[x9]")
+	a64_asm(c"stp x19,x20,[x9,#24]; stp x21,x22,[x9,#40]; str x23,[x9,#56]")
 	a64_asm(c"str x28,[x9,#8]; str x29,[x9,#16]; movz x0,#0; ret")
 
 	# repl_longjmp(buf, val): restore the saved state and branch back to the
@@ -162,19 +168,22 @@ void define_asm_functions_arm64():
 	a64_asm(c"ldr x0,[x28]")   # val
 	a64_asm(c"ldr x9,[x28,#8]")   # buf
 	a64_asm(c"ldr x30,[x9]")
+	a64_asm(c"ldp x19,x20,[x9,#24]; ldp x21,x22,[x9,#40]; ldr x23,[x9,#56]")
 	if (arm64_pac == 2): a64_asm(c"autia x30,x9")
 	a64_asm(c"ldr x28,[x9,#8]; ldr x29,[x9,#16]; ret")
 
 	# gen_switch(int* save_wsp_here, int restore_wsp): the generator context
-	# switch (docs/projects/iteration.md), AArch64 flavor. W keeps no live
-	# values in callee-saved registers across calls, so only the resume
+	# switch (docs/projects/iteration.md), AArch64 flavor. The resume
 	# address (x30), the frame pointer (x29: every framed function's
-	# return unwinds through it) and the W stack pointer (x28) must be
-	# preserved. Push the resume address and x29 on the current stack,
-	# store x28 through arg1, load arg2 into x28, pop the x29 and resume
-	# address saved there and return on it. lib/generator.w seeds a fresh
-	# generator stack with a zero x29 (__w_gen_switch_regs), so the
-	# body's frame chain ends there.
+	# return unwinds through it), the callee-saved registers register
+	# promotion keeps locals in (x19-x23, #801: a task suspends from
+	# inside any function it calls, lib/task.w, so another stack's code
+	# runs before this one's resumes) and the W stack pointer (x28) must
+	# be preserved. Push the resume address, x29 and x19-x23 on the
+	# current stack, store x28 through arg1, load arg2 into x28, pop the
+	# registers and resume address saved there and return on it.
+	# lib/generator.w seeds a fresh generator stack with zeros for x29 and
+	# x19-x23 (__w_gen_switch_regs), so the body's frame chain ends there.
 	# pac=full: the pushed resume address is signed with ZERO discriminator
 	# (paciza/autiza), not the stack address — __w_gen_create seeds a fresh
 	# generator stack with the body's entry address exactly as it received
@@ -187,8 +196,10 @@ void define_asm_functions_arm64():
 	if (arm64_pac == 2): a64_asm(c"paciza x30")
 	a64_asm(c"str x30,[x28,#-8]!")   # push resume address
 	a64_asm(c"str x29,[x28,#-8]!")   # push frame pointer
+	a64_asm(c"stp x19,x20,[x28,#-16]!; stp x21,x22,[x28,#-16]!; str x23,[x28,#-8]!")
 	a64_asm(c"str x28,[x9]")   # *save_wsp_here = x28
 	a64_asm(c"mov x28,x10")   # switch stacks
+	a64_asm(c"ldr x23,[x28],#8; ldp x21,x22,[x28],#16; ldp x19,x20,[x28],#16")
 	a64_asm(c"ldr x29,[x28],#8")   # pop frame pointer
 	a64_asm(c"ldr x30,[x28],#8")   # pop resume address
 	if (arm64_pac == 2): a64_asm(c"autiza x30")

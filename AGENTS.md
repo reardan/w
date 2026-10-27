@@ -139,7 +139,8 @@ working in this repo.
   `sudo sysctl -w vm.max_map_count=1048576` (default is 65530). Prefer running
   the program under test with the env var rather than a full-suite sweep of
   every `*_test` binary — large tests under debug alloc can peg the CPU for
-  minutes.
+  minutes. In the REPL and wdbg it selects the session's allocator only;
+  their compiler stays on the free list.
 - There is **no separate linter binary**. The compiler's own type/style warnings are
   always on and asserted by the `warning_test` target; `w check --lint` adds opt-in
   lint rules for the named files and `w check --fix` rewrites their whitespace
@@ -218,7 +219,9 @@ working in this repo.
  self-signs its output, so no qemu or codesign step is needed (issue #210).
 - The win64 PE backend (`docs/projects/windows.md`) needs `wine` to run its test
  binaries (`./wbuild tests_win64`; the win64_header_test
- structural check, plain W, works without it). On a Windows host,
+ structural check, plain W, works without it). The window-hosted
+ accessibility test (`graphics_ui_accessibility_uia_window_test`) also needs
+ an X display for wine (`xvfb-run -a ./wbuild ...`); without one it skips. On a Windows host,
  `wbuild.cmd tests_win64` / `verify_win` run natively. Like qemu for ARM64, wine should be baked
  into the Cursor Cloud VM snapshot rather than installed ad hoc; if it is missing,
  run an env setup agent from Cursor web at https://cursor.com/onboard with a

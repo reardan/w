@@ -116,6 +116,8 @@ list[char*] g_token_matchers
 list[char*] g_skip_names
 list[char*] g_skip_matchers
 list[char*] g_parser_rule_names
+# Emitted name of the `--start` rule; 0 starts at the first parser rule.
+char* g_at_start_rule
 list[char*] g_report_lines
 char* g_grammar_name
 char* g_any_token_name

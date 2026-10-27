@@ -237,12 +237,15 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 		st.focused = index
 		ctx.focus = st.tree_id
 
-	if (st.selected == index): ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+	if (st.selected == index):
+		ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+		ui_selection_marker(ctx, row)
 	else if (ctx.hot == id): ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
 	# The keyboard cursor is drawn even when it is not the selection, so
-	# arrowing around without pressing Enter is visible.
+	# arrowing around without pressing Enter is visible. It is an outline,
+	# so it never reads as the selection's left marker.
 	if ((st.focused == index) && (ctx.focus == st.tree_id) && (st.selected != index)):
-		ui_render_rect(ctx.rndr, ui_rect_new(row.x, row.y, 2.0, row.h), ctx.theme.focus)
+		ui_outline(ctx, row, 2.0, ctx.theme.focus)
 
 	float32 marker = ui_tree_marker()
 	float32 x = row.x + cast(float32, ctx.theme.pad) + ui_tree_indent(ctx, st) * cast(float32, st.depth)

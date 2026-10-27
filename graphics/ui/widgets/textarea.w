@@ -82,6 +82,19 @@ void ui_textarea_set_caret(ui_textarea_state* st, int offset):
 	st.caret_col = offset - ui_text_buffer_line_start(&st.buf, st.caret_line)
 
 
+# Select the characters (code points) between anchor and active with
+# the caret at active, or just place the caret when they are equal —
+# what an accessibility bridge's selection request does. Offsets clamp
+# to the text and snap back to grapheme boundaries.
+void ui_textarea_select(ui_textarea_state* st, int anchor, int active):
+	int a = ui_grapheme_floor(st.buf.data, ui_access_char_byte(st.buf.data, st.buf.length, anchor))
+	int c = ui_grapheme_floor(st.buf.data, ui_access_char_byte(st.buf.data, st.buf.length, active))
+	ui_textarea_set_caret(st, c)
+	st.caret_goal_col = st.caret_col
+	st.sel_anchor = 0 - 1
+	if (a != c): st.sel_anchor = a
+
+
 int ui_textarea_line_height(ui_context* ctx):
 	return ui_text_height(ctx.theme.text_scale) + 2
 
@@ -231,13 +244,17 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	# Plain Tab indents here, so the focus stop claims it; Ctrl+Tab
 	# still leaves the field.
 	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TEXTBOX, area, 0)
-	if (node != 0): node.actions = UI_ACCESS_SET_VALUE
+	if (node != 0): node.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION
 	ui_focus_stop(ctx, id, area, 1)
 	int changed = 0
 	char* requested = ui_access_value_request(ctx, id)
 	if (requested != 0):
 		ui_textarea_set(st, requested)
 		changed = 1
+	int sel_anchor = 0
+	int sel_active = 0
+	if (ui_access_selection_request(ctx, id, &sel_anchor, &sel_active)):
+		ui_textarea_select(st, sel_anchor, sel_active)
 
 	# Focus follows the press, and the caret lands where it landed.
 	ui_rect view = ui_rect_new(area.x + pad, area.y + pad, area.w - pad * 2.0, area.h - pad * 2.0)
@@ -341,4 +358,8 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	ui_scroll_end(ctx, &st.scroll)
 	ui_text_input_declare(ctx, id, area, 1)
 	ui_access_set_value(ctx, node, st.buf.data, st.buf.length)
+	int caret = ui_textarea_caret_offset(st)
+	int anchor = caret
+	if (st.sel_anchor >= 0): anchor = st.sel_anchor
+	ui_access_set_caret(ctx, node, anchor, caret)
 	return changed

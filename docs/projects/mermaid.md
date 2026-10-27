@@ -253,7 +253,9 @@ screen reader announces. Assistive focus or selection (Orca, AT-SPI
 item on the next frame and moves keyboard focus to the canvas. With a
 multi-selection every member carries the selected state and the focused item
 is the focused object; assistive select replaces the selection. The status line
-is a text object. Families whose scene does not line up with document nodes
+is a text object and a polite live region, so edit results ("Saved.",
+"Changed on disk ...", "Deleted with incident connections. Ctrl+Z to undo.")
+are announced wherever focus is, without moving it. Families whose scene does not line up with document nodes
 (pie, sequence, Gantt, ...) expose the canvas summary only. At most 2,048
 items are listed; the summary says when more exist.
 
@@ -283,7 +285,12 @@ Both fail rather than skip when a dependency is missing. Qualified here
 "Diagram canvas. List with 5 items." on entering the canvas, then each node or
 edge by name with its description ("Beta. node B, 1 outgoing, 1 incoming,
 movable.") as GrabFocus, SelectChild, Tab and Shift+Tab move focus. Orca
-suppresses an edge's description when it repeats the name. Not exercised:
+suppresses an edge's description when it repeats the name. It also speaks
+the status line's announcements: "Saved." after the Save button is activated
+through AT-SPI, and "The file changed on disk. ..." when the file is modified
+behind the editor. (On the Ubuntu 24.04 host used for the live-region run,
+the later keyboard steps, synthesized with libatspi's XTest path, did not
+reach the editor; they fail the same way on unchanged main there.) Not exercised:
 braille, Orca's flat review and structural navigation commands, and
 Narrator, NVDA and VoiceOver (native runs pending). This is not a claim of
 full accessibility conformance.
@@ -398,8 +405,14 @@ bin/ppm_to_png bin/mermaid.ppm bin/mermaid.png
 | Platform | Checked here | Still needed |
 | --- | --- | --- |
 | Linux x64 / X11 | Real pointer/key workflows under Xvfb (flowchart pointer editing; keyboard-only edit, undo and redo chains in ER, class and state; external change, Keep mine, reload, deletion); AT-SPI and headless Orca screen-reader runs; screenshot/export and save/reopen | Physical display, input-method, braille and HiDPI checks |
-| Windows x64 / WGL | PE cross-compile; Wine/Xvfb startup/render/screenshot smoke; compare-and-swap saves under wine; canvas semantics through wine's UI Automation client | Native run pending: input, clipboard, DPI scaling, NTFS/OneDrive saves, Narrator/NVDA |
+| Windows x64 / WGL | PE cross-compile. Under wine on Xvfb with real XTest input (`mermaid_editor_wine_test`), every Linux workflow passes at 100% and 150% (per-monitor DPI aware): pointer and keyboard editing, undo chains, groups, multi-selection, external change, Keep mine, reload and deletion, plus saves under a non-ASCII folder, over 260 characters, with CRLF and read-only files. Compare-and-swap saves under wine; canvas semantics through wine's UI Automation client | Native run pending: IME, clipboard (#850, no backend has one), per-monitor DPI moves, NTFS locks and OneDrive saves, Narrator/NVDA |
 | macOS ARM64 / Cocoa | Mach-O cross-compile, with and without the NSAccessibility companion | Native run pending: input, clipboard, Retina scaling, APFS/iCloud saves, VoiceOver |
+
+`./wbuild mermaid_editor_wine_test` runs the same workflows against the
+Windows build under wine's X11 driver, at 96 and 144 DPI, in private wine
+prefixes. It is opt-in like `mermaid_editor_ui_test`
+([mermaid_desktop_qualification.md](mermaid_desktop_qualification.md)
+has the results).
 
 `./wbuild mermaid_editor_platforms` cross-compiles the desktop binaries
 (including `bin/wmermaid_editor_darwin_voiceover`) and is part of the full

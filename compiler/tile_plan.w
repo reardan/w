@@ -1,7 +1,9 @@
-# The initial planner spells out the existing 256-thread, row-major layout.
-# Each syntactic dot owns two disjoint shared buffers for its entire lifetime.
-# Loop iterations reuse those assignments only after the reuse barrier; no
-# buffer reuse between distinct dots or branches is attempted here.
+# The planner spells out the 256-thread layout. Vector tiles map element
+# thread + pass*256 to a thread. Rank-two tiles of any supported shape use a
+# 16-by-16 thread grid; thread (r, c) holds the strided fragment of elements
+# (r + 16i, c + 16j), so neighbouring threads touch neighbouring columns
+# (coalesced global access) and every operand of a dot shares one layout.
+# All dots reuse a single shared region; see tile_dot_shared_bytes.
 import compiler.tile_ast
 
 
@@ -25,6 +27,19 @@ int tile_plan_col(tile_lowering_plan* plan, int thread):
 	return thread & plan.col_mask
 
 
+int tile_plan_fragments(tile_lowering_plan* plan, int rows, int cols):
+	return (rows / plan.matrix_rows) * (cols / plan.matrix_cols)
+
+
+# Logical row and column of fragment element f held by a thread.
+int tile_plan_fragment_row(tile_lowering_plan* plan, int thread, int cols, int f):
+	return tile_plan_row(plan, thread) + plan.matrix_rows * (f / (cols / plan.matrix_cols))
+
+
+int tile_plan_fragment_col(tile_lowering_plan* plan, int thread, int cols, int f):
+	return tile_plan_col(plan, thread) + plan.matrix_cols * (f % (cols / plan.matrix_cols))
+
+
 tile_dot_plan* tile_plan_dot(tile_lowering_plan* plan, tile_node* node):
 	tile_dot_plan* dot = plan.dots
 	while (dot != 0):
@@ -33,15 +48,14 @@ tile_dot_plan* tile_plan_dot(tile_lowering_plan* plan, tile_node* node):
 	return 0
 
 
-tile_shared_buffer* tile_plan_buffer(tile_lowering_plan* plan, int id):
+tile_shared_buffer* tile_plan_buffer(tile_lowering_plan* plan, int id, int offset, int rows, int cols):
 	tile_shared_buffer* buffer = cast(tile_shared_buffer*, tile_owned_zero(sizeof(tile_shared_buffer)))
 	buffer.id = id
-	buffer.offset_bytes = plan.shared_bytes
-	buffer.size_bytes = plan.matrix_rows * plan.matrix_cols << plan.element_shift
-	buffer.alignment = 1 << plan.element_shift
+	buffer.offset_bytes = offset
+	buffer.row_stride = tile_shared_row_words(cols) << plan.element_shift
+	buffer.size_bytes = rows * buffer.row_stride
+	buffer.alignment = 16
 	buffer.element_stride = 1 << plan.element_shift
-	buffer.row_stride = plan.matrix_cols << plan.element_shift
-	plan.shared_bytes = plan.shared_bytes + buffer.size_bytes
 	return buffer
 
 
@@ -68,12 +82,15 @@ void tile_plan_expression(tile_lowering_plan* plan, tile_node* node):
 	dot.node = node
 	dot.id = plan.dot_count
 	plan.dot_count = plan.dot_count + 1
-	dot.left = tile_plan_buffer(plan, dot.id * 2)
-	dot.right = tile_plan_buffer(plan, dot.id * 2 + 1)
-	dot.k_extent = node.args.cols
-	dot.stage_thread_shift = plan.element_shift
-	dot.row_shift = plan.row_shift + plan.element_shift
-	dot.col_shift = plan.element_shift
+	tile_node* left = node.args
+	tile_node* right = left.next
+	dot.m_extent = left.rows
+	dot.k_extent = left.cols
+	dot.n_extent = right.cols
+	dot.left = tile_plan_buffer(plan, dot.id * 2, 0, left.rows, left.cols)
+	dot.right = tile_plan_buffer(plan, dot.id * 2 + 1, dot.left.size_bytes, right.rows, right.cols)
+	int bytes = dot.right.offset_bytes + dot.right.size_bytes
+	if (bytes > plan.shared_bytes): plan.shared_bytes = bytes
 	dot.stage_ready = tile_plan_sync(tile_sync_stage_ready)
 	dot.reuse_ready = tile_plan_sync(tile_sync_reuse_ready)
 	if (plan.dots_tail == 0): plan.dots = dot
@@ -95,6 +112,9 @@ void tile_plan_statements(tile_lowering_plan* plan, tile_node* node):
 		else if (node.kind == tile_assign):
 			tile_plan_expression(plan, node.right)
 			tile_plan_expression(plan, node.left)
+			# acc += dot(a, b) accumulates straight into the local's fragment.
+			if ((node.op == '+') && (node.right.kind == tile_dot) && (node.left.kind == tile_reference)):
+				tile_plan_dot(plan, node.right).fused = 1
 		else:
 			tile_plan_expression(plan, node.left)
 			tile_plan_expression(plan, node.right)

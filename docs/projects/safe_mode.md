@@ -872,8 +872,29 @@ calls, including generic method syntax. Inside a specialization, `new T` and
 `new T(arguments)` resolve `T` through its active type substitution. Default
 allocation still requires a pointer-free sized value; record construction
 checks every concrete field, transfers owners once and preserves borrowed
-field lifetimes. Function pointers use explicit quantified contracts; owned
-callback objects can pair them with an environment as described below.
+field lifetimes. Generic records follow the same rules once applied:
+
+```w
+struct Box[T]:
+	own T* value
+
+struct View[T]:
+	ref[a] T* item
+
+own Box[T]* wrap[T](own T* value):
+	return new Box[T](value)
+
+ref[x] T* item_of[T](ref[x] View[T] view):
+	return view.item
+```
+
+`new Box[int](value)` moves `value` into the instance and the owner is
+destroyed recursively, `View[int](&n)` builds a borrowed record value whose
+group borrows `n`, and `item_of(view)` infers `T` from the instance under its
+`ref`/`refmut` wrapper. `new Box[int]` without arguments is rejected like any
+default allocation of an owner-bearing record. Function pointers use explicit
+quantified contracts; owned callback objects can pair them with an
+environment as described below.
 
 ### Quantified function pointers
 
@@ -1881,10 +1902,34 @@ forms are rejected and nothing is replaced:
 - loading `lib/thread.w` again while threads still run on a copy a rollback
   kept.
 
-Under `W_DEBUG_ALLOC` the in-process compiler's guard-page allocations
-exhaust `vm.max_map_count` once it retains the thread runtime, so these
-sessions are tested without it. wdbg still rejects `thread_local` (W0324):
-a debuggee that imports `lib/safe_thread.w` cannot be loaded.
+`W_DEBUG_ALLOC` selects the session's allocator only: the session image
+links its own `lib/memory.w`, and the REPL and wdbg keep the compiler that
+hosts it on the free list (`malloc_host_freelist_mode`), so thread and
+lock-guard sessions are tested under the guard allocator like the rest.
+
+wdbg gives its debuggee the same per-thread block, so a debuggee may
+declare `thread_local` and run `lib/thread.w` and `lib/safe_thread.w`
+threads (other in-process compiles still reject `thread_local`, W0324).
+Every debuggee thread can stop: a `debugger` statement, a breakpoint, a
+step, a watchpoint or a fault stops the thread that reached it, and the
+command loop runs on that thread, so `print`, conditions and `repl`
+entries see its checked locals, its `thread_local` copies and its stack,
+and a fault inside such an evaluation rolls back only that evaluation
+(`tests/safe_session_debugger_threads_fixture.w`). The prompt names the
+thread (`[thread N]`) when it is not the main one. Stops are serialized:
+the compiler and the command loop keep their state in globals, so one
+thread at a time owns a stop and a stop on another thread waits until the
+owner resumes. A resume that single-steps (a step, a breakpoint re-arm, a
+watchpoint scan) keeps ownership, so a step finishes on the thread that
+started it. Consequences:
+- other threads keep running while one is stopped;
+- a thread that reaches a breakpoint deleted while it waited runs on
+  without stopping;
+- an evaluation that waits for a thread stopped behind the current one
+  (joining it, or locking a mutex it holds) deadlocks.
+
+The REPL keeps its rule: a stop on a thread an entry started ends the
+process, because its command loop belongs to the main thread.
 
 **Unsupported forms.** These fail explicitly instead of being
 approximated: `--safe` on in-process entry points; checked declarations in
@@ -1920,19 +1965,29 @@ re-analyzes that frame's function and reads its flow state:
   borrowed groups) and references, `optref T*` for optional ones
   (dereferencing still requires a presence check in the entry), `ref T[]`
   for slices (element writes are `safe: write through a shared
-  reference`), and `ref[labels] R` for a borrowed record whose fields are
-  all shared, `ref` or `refmut` (fields read through it, field writes are
-  `safe: write through a shared reference`). Labels of pointers and slices
-  are dropped: the view only reads, and its loans end with the entry;
+  reference`), and `ref[labels] R` for a borrowed record, `ref` or
+  `refmut` (fields read through it, field writes are `safe: write through
+  a shared reference`). A shared view of a record with `refmut` fields is
+  not a valid checked type, so such a record (directly or through a nested
+  `refmut[g] Inner` field) is viewed as `ref[labels] __wdbg_shared_R`: a
+  twin of R's template with the same layout, field names and labels, every
+  exclusive field made shared (`refmut` to `ref`, `optrefmut` to `optref`,
+  a nested exclusive record to its own twin). The twin is defined ahead of
+  the entry's checked transcript only; the entry still compiles against
+  the frame's real local. Passing the view where `refmut R` is expected
+  reports `safe: cannot make a mutable borrow from a shared reference`
+  (after a type-mismatch warning naming the twin). Labels of pointers and
+  slices are dropped: the view only reads, and its loans end with the
+  entry;
 - other checked locals are hidden; naming one reports why (`safe: this
   checked local is not definitely initialized and live at this debugger
   stop`; in an outer frame, `safe: this checked local is lent exclusively
   to the call this frame is suspended in` for a local, or the root of a
   reborrow, that the statement passes as `refmut` or as an owned record's
-  exclusive group; `safe: borrowed records with exclusive fields cannot be
-  viewed read-only at a debugger stop`, since a shared view of a record
-  with `refmut` fields is not a valid checked type; `safe: arrays of
-  checked values cannot be viewed at a debugger stop`; `safe: this checked
+  exclusive group; `safe: arrays of checked values cannot be viewed at a
+  debugger stop`, which is defensive: checked code cannot declare such an
+  array (`safe: unsupported type or reference-bearing aggregate`); `safe:
+  this checked
   local's type has no read-only view spelling at a debugger stop (generic
   or redefined target)`; `safe: checked locals are only available in
   analyzed functions at a debugger stop` when the frame is not in an
@@ -3029,6 +3084,23 @@ Compiler and prior checked fixture bytes are identical. Measurements describe
 that corpus on the shared host. The implementation rebased unchanged onto
 the prerequisite validation commit; #696/#644 retain their completion gates.
 
+
+### Generic record application validation
+
+`new Name[T]`, `new Name[T](arguments)`, `new Name[T][n]` and the value
+constructor `Name[T](arguments)` name a generic record instance in both
+front ends (the retained parser instantiates a declined expression's first
+applications, then retries it once). In checked code the instance is an
+ordinary record: owner fields transfer once and are destroyed recursively,
+including nested instances and early failure returns; borrowed fields keep
+their lifetime groups through construction, returns and inference through
+`ref[a] Name[T]`/`refmut[a] Name[T]` parameters; default allocation of an
+owner-bearing instance stays rejected. `tests/safe_generic_record_test.w`
+(27 accepted/rejected contracts, x86/x64, with and without `--safe`, no
+executable on rejection) and `tests/safe_generic_record_runtime_test.w`
+(guard-allocator leak counts across optimization variants and ARM64/win64
+cross builds, plus the unchecked forms under `--streaming` and
+`--ast-required`) cover it. Part of #696.
 
 ### Checked mutable-slice validation
 

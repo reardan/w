@@ -598,18 +598,25 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
 
-      - name: Install wine
+      # Xvfb gives wine's X11 driver a display, so the window-hosted UI
+      # Automation / MSAA test (graphics_ui_accessibility_uia_window_test)
+      # can create a window; W_CI_NO_SKIP turns its no-display skip into
+      # a failure here.
+      - name: Install wine and Xvfb
         timeout-minutes: 15
         uses: ./.github/actions/apt-install
         with:
-          packages: wine
+          packages: wine xvfb xauth
 
       # tests_win64 = verify_win (wv3_win == wv4_win == wv5_win under
       # wine) plus the win64 run targets.
       - name: Build and test
+        env:
+          W_CI_NO_SKIP: "1"
         run: |
           set -o pipefail
-          ./wbuild tests_win64 2>&1 | tee wbuild.log
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
+            ./wbuild tests_win64 2>&1 | tee wbuild.log
 
       - name: Report skips
         if: always()

@@ -41,6 +41,18 @@ void tile_matrix_fixture(float32* a, float32* b, float32* c, int m, int n, int k
 			acc += dot(left, right)
 		tile_store(c, row, col, n, 1, m, n, acc)
 
+void tile_wide_fixture(float32* a, float32* b, float32* c, int m, int n, int k, int programs):
+	gpu[1] for tile in range(programs):
+		int columns = (n + 127) / 128
+		int row = tile_program_id() / columns * 64
+		int col = tile_program_id() % columns * 128
+		acc := tile_zero(64, 128)
+		for int block in range((k + 31) / 32):
+			left := tile_load(a, row, block * 32, k, 1, m, k, 64, 32)
+			right := tile_load(b, block * 32, col, n, 1, k, n, 32, 128)
+			acc += dot(left, right)
+		tile_store(c, row, col, n, 1, m, n, acc * 0.5)
+
 void tile_header_fixture(float32* a, float32* b, float32* c, int n):
 	# Each subexpression is one, except the final remainder (zero).
 	gpu[1024] for tile in range(+n - 1 + (n > 0) + (n < 10) + (n <= 9) + (n >= 9) + (n == 9) + (n != 0) + (!0) + (0 || 1) + (1 && 1) - 8 + (n % 3) + n / 3 - 3 + (1 || (n / 0)) - 1 + (0 && (n / 0))):
@@ -54,6 +66,7 @@ int main():
 	tile_vector_fixture(p, p, p, 9)
 	tile_matrix_fixture(p, p, p, 9, 9, 9, 9)
 	tile_header_fixture(p, p, p, 9)
-	assert1(tile_launch_count == 3)
+	tile_wide_fixture(p, p, p, 9, 9, 9, 9)
+	assert1(tile_launch_count == 4)
 	print(__w_ptx_module())
 	return 0

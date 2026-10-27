@@ -22,6 +22,11 @@ keeps this headless-testable at all.
 The general rule the wasm bug only made obvious: UI code should not read
 clocks. Anything time-dependent takes the time as an argument.
 
+Screen readers hear a toast without it taking focus: its semantic node
+is a live region (ui_access_node.live), polite for ui_toast_show and
+assertive for ui_toast_alert, so each bridge announces it when it
+appears or its text changes (docs/projects/accessibility.md).
+
 A toast draws on UI_LAYER_TOP, above even a modal, and takes no input:
 it is not a popup scope and makes nothing inert. Notifications that
 steal clicks are notifications that lose work.
@@ -60,6 +65,7 @@ struct ui_toast_state:
 	int32 shown_at_ms
 	int32 duration_ms
 	int32 visible
+	int32 live                  # UI_ACCESS_LIVE_POLITE or _ASSERTIVE
 
 
 void ui_toast_init(ui_toast_state* st):
@@ -67,6 +73,7 @@ void ui_toast_init(ui_toast_state* st):
 	st.shown_at_ms = 0
 	st.duration_ms = 0
 	st.visible = 0
+	st.live = UI_ACCESS_LIVE_POLITE
 
 
 # Show a message for duration_ms from now. Showing again restarts the
@@ -81,6 +88,14 @@ void ui_toast_show(ui_toast_state* st, char* text, int now_ms, int duration_ms):
 	st.shown_at_ms = now_ms
 	st.duration_ms = duration_ms
 	st.visible = 1
+	st.live = UI_ACCESS_LIVE_POLITE
+
+
+# ui_toast_show for an error: screen readers interrupt current speech to
+# announce it (an assertive live region).
+void ui_toast_alert(ui_toast_state* st, char* text, int now_ms, int duration_ms):
+	ui_toast_show(st, text, now_ms, duration_ms)
+	st.live = UI_ACCESS_LIVE_ASSERTIVE
 
 
 void ui_toast_dismiss(ui_toast_state* st):
@@ -111,7 +126,8 @@ int ui_toast(ui_context* ctx, ui_toast_state* st, int now_ms):
 	float32 w = cast(float32, ui_text_width(&st.text[0], scale)) + pad * 4.0
 	float32 h = ui_toast_height()
 	ui_rect surface = ui_rect_new((vw - w) * 0.5, vh - h - ui_toast_margin(), w, h)
-	ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, surface, &st.text[0])
+	ui_access_node* n = ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_TEXT, surface, &st.text[0])
+	if (n != 0): n.live = st.live
 
 	# UI_LAYER_TOP, so a toast is visible over an open modal — which is
 	# the case that motivates a third layer at all. Saved and restored

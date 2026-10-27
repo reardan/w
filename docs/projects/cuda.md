@@ -34,8 +34,8 @@ docs/projects/torch.md builds on this:
 its Stage 1 added a non-fatal `gpu_available()` driver+device probe to
 `lib/cuda.w`, and its Stages 2-3 the `lib/tensor.w` managed-memory
 tensor type with CPU fallbacks (reductions ride the Stage 4
-`atomic_add`). M3's initial tile slice is described in `tiles.md`; remaining
-work includes more general tile layouts, SASS study, and the
+`atomic_add`). M3's tile programs are described in `tiles.md`; remaining
+work includes tensor-core and pipelined tile lowering, SASS study, and the
 caveats listed in each execution-notes section.
 
 ## Context: what W is today
@@ -271,8 +271,11 @@ real value, and it composes with the planned `thread`/`lock` design in
 
 ### M3: Triton-style tile programs
 
-The initial implementation now records whole tile bodies before analysis and
-PTX emission, with fixed-layout vector operations and staged 16x16 `dot`.
+The implementation records whole tile bodies before analysis and PTX
+emission, with fixed-layout vector operations and register-tiled matrix tiles
+from 16x16 to 128x128 whose `dot` is staged through one shared region (a
+128x128 tile matmul runs at about 20 TFLOP/s on an RTX 4080 SUPER, 8-9x the
+hand-tiled kernel).
 See [tiles.md](tiles.md) for the implemented subset and its tests. The original
 design motivation below predates the retained AST frontend.
 
@@ -332,8 +335,8 @@ performance-oriented API.
 - **Stage 4 — quality** (done): A2 virtual-register emission, explicit memory API,
   `gpu T*` pointer qualifier, error handling for `CUresult` codes, multi-GPU device
   selection.
-- **Initial M3**: whole-body tile recording, masked vector operations and staged
-  matrix `dot` (issue #480; [tiles.md](tiles.md)).
+- **M3**: whole-body tile recording, masked vector operations, register-tiled
+  matrix tiles and staged `dot` (issue #480; [tiles.md](tiles.md)).
 - **Someday**: more general tile layouts and tuning, SASS study
   (`cuobjdump -sass` on our PTX; CuAssembler experiments). Done from this
   list: shared-memory staging, cuBLAS interop (via runtime dlopen rather
@@ -608,7 +611,11 @@ path, fenced off so nothing that does not ask for it changes behavior.
   `tensor_matmul2` square products, per call after warm-up:
   256^3 tiled ~22-25 us vs cuBLAS ~6-7 us (3-3.5x); 1024^3 ~790-870 us
   (~2.5 TFLOP/s) vs ~76-81 us (~27 TFLOP/s, ~10-11x); 2048^3 ~6.2-7.0 ms
-  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x).
+  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x). Since #480 the default
+  path is a tile program instead (`tensor_matmul_launch`, see
+  [tiles.md](tiles.md)): 256^3 ~9 us, 1024^3 ~120 us (~18 TFLOP/s),
+  2048^3 ~1.1 ms (~15 TFLOP/s), so cuBLAS leads by 1.5-2x rather than
+  10-13x.
 
 ## Execution notes (gpu pointer qualifier)
 

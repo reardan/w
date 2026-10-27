@@ -1185,6 +1185,11 @@ int ast_expression_prelude(expression_ast* tree, int helper, int depth):
 
 
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth);
+int ast_expression_generic_record(expression_ast* tree, int depth);
+# Set when a probe declined at a generic record application with no
+# instance yet ('new Pair[char](...)' before any declaration names it).
+int ast_generic_record_missing
+int ast_generic_record_retry
 
 
 # Descriptor validation is pure: unsupported fields decline before the
@@ -1599,7 +1604,11 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 		if ((kind == -3) || (count == 10)): return -1
 		borrowed_shapes[count] = 0
 		applications[count] = 0
-		if ((kind == -2) && (parameter.application == 1)): applications[count] = cast(int, parameter)
+		if ((kind == -2) && (parameter.application == 1)):
+			applications[count] = cast(int, parameter)
+			# 'ref[a] View[T]': a borrowed generic record value binds T
+			# from its underlying instance, like a borrowed whole 'T'
+			if ((parameter.stars == 0) && ((parameter.safety == 2) || (parameter.safety == 3))): borrowed_shapes[count] = 3
 		if ((parameter.safety == 2) || (parameter.safety == 3)):
 			if ((kind >= 0) && (parameter.stars == 0)):
 				borrowed_shapes[count] = 1
@@ -1687,7 +1696,11 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 				if ((bound >= 0) && (bound != inferred)): return -1
 				types[kind] = inferred
 		else if (applications[count]):
-			if (generic_infer_bind_application(def, cast(generic_type_ast*, applications[count]), got, cast(char*, &types[0])) == 0): return -1
+			int applied = got
+			if (borrowed_shapes[count] == 3):
+				if (type_is_safe_record(got) == 0): return -1
+				applied = type_record(type_unqualified(got)).alias_target
+			if (generic_infer_bind_application(def, cast(generic_type_ast*, applications[count]), applied, cast(char*, &types[0])) == 0): return -1
 		else if (kind == -1):
 			int want = shapes[count]
 			if (ast_expression_data_value(want) == 0): return -1
@@ -2141,6 +2154,11 @@ int ast_expression_name(expression_ast* tree, int depth):
 		if (kind): return ast_expression_integer_intrinsic(tree, kind + 3, depth)
 		kind = atomic_builtin_kind()
 		if (kind): return ast_expression_atomic(tree, kind, depth)
+	if ((nextc == '[') && (sym_probe(token) < 0) && (type_lookup(token) < 0) && (generic_def_lookup(token, 0) < 0) && (generic_def_lookup(token, 1) >= 0)):
+		# 'Pair[int](a, b)', matching generic_record_ctor_ready
+		int record = ast_expression_generic_record(tree, depth + 1)
+		if ((record < 0) || (peek(c"(") == 0) || (ast_expression_record_type(record) == 0)): return -1
+		return ast_expression_constructor(tree, record, 0, depth)
 	if ((nextc == '[') && (sym_probe(token) < 0) && (type_lookup(token) < 0) && (import_alias_lookup(token) < 0) && (generic_def_lookup(token, 0) < 0)):
 		return ast_expression_forward_generic(tree, depth)
 	if (generic_call_ready()):
@@ -2250,6 +2268,35 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 # Resolve named/container types and stage new derived records.
 # Generic records must already be instantiated. Alias membership is checked
 # without marking symbol uses or producing diagnostics.
+# A generic record application 'Pair[int]' whose instance already
+# exists, consumed through its ']'; -1 otherwise.
+int ast_expression_generic_record(expression_ast* tree, int depth):
+	int def = generic_def_lookup(token, 1)
+	if (def < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int[8] arguments
+	int count = 0
+	while (1):
+		if (count == generic_max_params): return -1
+		int argument = ast_expression_named_type(tree, 0, depth + 1)
+		if (argument < 0): return -1
+		arguments[count] = argument
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+	if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
+	char* name = generic_mangle(generic_def_name(def), cast(int, &arguments[0]), count)
+	int type = type_lookup(name)
+	free(name)
+	if (type < 0):
+		# Instantiating here would add types inside this probe's arena;
+		# the probe instantiates the applications and retries instead.
+		ast_generic_record_missing = 1
+		return -1
+	ast_expression_advance(tree)
+	return type
+
+
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 1000): return -1
 	int safe_kind = 0
@@ -2307,24 +2354,8 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		if (ast_expression_accept(tree, c"]") == 0): return -1
 		type = ast_expression_checked_composite_type(tree, kind, first, second, token_start_offset)
 	else if ((nextc == '[') && (generic_subst_lookup(token) < 0) && (generic_def_lookup(token, 1) >= 0)):
-		int def = generic_def_lookup(token, 1)
-		ast_expression_advance(tree)
-		if (ast_expression_accept(tree, c"[") == 0): return -1
-		int[8] arguments
-		int count = 0
-		while (1):
-			if (count == generic_max_params): return -1
-			int argument = ast_expression_named_type(tree, 0, depth + 1)
-			if (argument < 0): return -1
-			arguments[count] = argument
-			count = count + 1
-			if (ast_expression_accept(tree, c",") == 0): break
-		if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
-		char* name = generic_mangle(generic_def_name(def), cast(int, &arguments[0]), count)
-		type = type_lookup(name)
-		free(name)
+		type = ast_expression_generic_record(tree, depth)
 		if (type < 0): return -1
-		ast_expression_advance(tree)
 	else:
 		type = generic_subst_lookup(token)
 		if (type < 0):
@@ -2425,6 +2456,21 @@ int ast_expression_map_default(expression_ast* tree, int id, int depth):
 	return id
 
 
+# The rest of 'new T': the type's tokens are consumed. An array length,
+# constructor arguments or nothing (a zeroed allocation) follows.
+int ast_expression_new_type(expression_ast* tree, int base, int offset, int depth):
+	if (peek(c"[")): return ast_expression_new_array(tree, base, depth)
+	if (peek(c"(")): return ast_expression_constructor(tree, base, 1, depth)
+	if (sym_probe(c"malloc") < 0): return -1
+	int pointer = ast_expression_pointer_type(tree, base, offset)
+	if (pointer < 0): return -1
+	int id = expression_ast_add(tree, 'N', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = base
+	tree.result_type[id] = type_value(pointer)
+	return id
+
+
 int ast_expression_unary(expression_ast* tree, int depth):
 	if ((depth > 1000) || (expr_nesting_depth + depth >= 1000)): return -1
 	if (token_start_offset >= tree.end_offset): return -1
@@ -2462,20 +2508,19 @@ int ast_expression_unary(expression_ast* tree, int depth):
 			base = import_alias_module_type(alias, token)
 		else:
 			base = generic_subst_lookup(token)
+			# 'new Pair[int]': an instance the program already named
+			# (a declaration or signature). A first application
+			# instantiates the record, which the streaming parser does.
+			if ((base < 0) && (nextc == '[') && (generic_def_lookup(token, 1) >= 0)):
+				int generic_offset = token_start_offset
+				base = ast_expression_generic_record(tree, depth + 1)
+				if (base < 0): return -1
+				return ast_expression_new_type(tree, base, generic_offset, depth)
 			if (base < 0): base = type_lookup(token)
 		if (base < 0): return -1
 		int offset = token_start_offset
 		ast_expression_advance(tree)
-		if (peek(c"[")): return ast_expression_new_array(tree, base, depth)
-		if (peek(c"(")): return ast_expression_constructor(tree, base, 1, depth)
-		if (sym_probe(c"malloc") < 0): return -1
-		int pointer = ast_expression_pointer_type(tree, base, offset)
-		if (pointer < 0): return -1
-		int id = expression_ast_add(tree, 'N', -1, -1)
-		if (id < 0): return -1
-		tree.value[id] = base
-		tree.result_type[id] = type_value(pointer)
-		return id
+		return ast_expression_new_type(tree, base, offset, depth)
 	if (ast_expression_accept(tree, c"cast")):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
 		int want = ast_expression_named_type(tree, 1, depth + 1)
@@ -3877,8 +3922,33 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 # returns a decoded root in the caller-owned arena, or -1 for fallback;
 # it emits no expression code. Symbols/types and source diagnostics
 # commit only after the probe succeeds.
+# Outside any probe: instantiate every generic record application among
+# the tokens before end through the streaming type grammar, then restore
+# the lexer. Returns 1 when that registered a new type.
+int ast_expression_instantiate_records(int end):
+	tokenizer_snapshot entry
+	tokenizer_snapshot_save(&entry)
+	char* text = strclone(token)
+	int entry_indirection = pointer_indirection
+	int before = type_count()
+	int member = 0
+	while ((token_start_offset < end) && (token[0] != 0)):
+		if ((member == 0) && (nextc == '[') && generic_record_ctor_ready()):
+			generic_struct_type()
+			member = 0
+		else:
+			member = peek(c".")
+			get_token()
+	getchar_seek(file, entry.byte_offset)
+	tokenizer_snapshot_restore(&entry, text)
+	free(text)
+	pointer_indirection = entry_indirection
+	return type_count() > before
+
+
 int ast_expression_prepare_probe(expression_ast* tree, int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
+	ast_generic_record_missing = 0
 	# Keep the streaming parser's pending lvalue/call/statement machinery
 	# out of this first island. Expanding that boundary needs its own
 	# semantic nodes and tests, rather than discarding parser state.
@@ -3957,6 +4027,13 @@ int ast_expression_prepare_probe(expression_ast* tree, int group_offset, int who
 		getchar_seek(file, entry.byte_offset)
 		tokenizer_snapshot_restore(&entry, tree.token_text + tree.tokens[10])
 	if (accepted == 0):
+		if (ast_generic_record_missing && (ast_generic_record_retry == 0)):
+			ast_generic_record_missing = 0
+			if (ast_expression_instantiate_records(bound)):
+				ast_generic_record_retry = 1
+				int retried = ast_expression_prepare_probe(tree, group_offset, whole)
+				ast_generic_record_retry = 0
+				return retried
 		ast_body_layout_suspend()
 		return -1
 	if (relex): ast_expression_replay_by_lexing(tree, end)

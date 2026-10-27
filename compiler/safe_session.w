@@ -89,6 +89,9 @@ char* safe_session_transcript_path
 list[safe_session_binding*] safe_session_views
 list[char*] safe_session_hidden
 list[char*] safe_session_hidden_reasons
+# Struct definitions the views' spellings name (a shared twin of a borrowed
+# record with exclusive fields), placed ahead of the transcript functions.
+list[char*] safe_session_view_types
 
 
 type __safe_session_drop_callback = fn(int) -> void
@@ -116,6 +119,7 @@ void safe_session_init():
 	safe_session_views = new list[safe_session_binding*]
 	safe_session_hidden = new list[char*]
 	safe_session_hidden_reasons = new list[char*]
+	safe_session_view_types = new list[char*]
 
 
 # 1 when values of type must be modeled by the checker across entries.
@@ -585,6 +589,11 @@ char* safe_session_transcript():
 	string_builder* out = string_new()
 	safe_session_line_files.clear()
 	safe_session_line_numbers.clear()
+	for k in range(safe_session_view_types.length):
+		char* definition = safe_session_view_types[k]
+		string_append(out, definition)
+		string_append(out, c"\x0a")
+		for j in range(safe_session_line_count(definition) + 1): safe_session_note_line(0, 0)
 	if (safe_session_touched):
 		int total = safe_session_items.length + safe_session_new_items.length
 		list[safe_session_binding*] params = new list[safe_session_binding*]
@@ -601,7 +610,8 @@ char* safe_session_transcript():
 		safe_session_parameters(out, params)
 		params.free()
 		safe_session_note_line(0, 0)
-		int line = 2
+		# The first item follows the header and any view type definitions.
+		int line = safe_session_line_files.length + 1
 		for k in range(total):
 			safe_session_text* item = 0
 			if (k < safe_session_items.length): item = safe_session_items[k]
@@ -832,6 +842,13 @@ void safe_session_view(char* name, int type, char* spelling):
 	safe_session_views.push(b)
 
 
+# A struct definition the next views name (the text of one top-level
+# struct, ending in a newline); cleared with the views.
+void safe_session_view_type(char* definition):
+	safe_session_init()
+	safe_session_view_types.push(definition)
+
+
 # A checked local of the stopped frame that the entry may not name, and the
 # diagnostic a reference to it reports.
 void safe_session_hide(char* name, char* reason):
@@ -847,6 +864,8 @@ void safe_session_views_clear():
 	for i in range(safe_session_hidden.length): free(safe_session_hidden[i])
 	safe_session_hidden.clear()
 	safe_session_hidden_reasons.clear()
+	for i in range(safe_session_view_types.length): free(safe_session_view_types[i])
+	safe_session_view_types.clear()
 
 
 # safe_function_end_hook: for the session function, read the state where
@@ -1136,6 +1155,7 @@ struct safe_session_suspended:
 	list[safe_session_binding*] views
 	list[char*] hidden
 	list[char*] hidden_reasons
+	list[char*] view_types
 	char* path
 	char* text
 	int touched
@@ -1159,9 +1179,11 @@ char* safe_session_suspend():
 	saved.views = safe_session_views
 	saved.hidden = safe_session_hidden
 	saved.hidden_reasons = safe_session_hidden_reasons
+	saved.view_types = safe_session_view_types
 	safe_session_views = new list[safe_session_binding*]
 	safe_session_hidden = new list[char*]
 	safe_session_hidden_reasons = new list[char*]
+	safe_session_view_types = new list[char*]
 	saved.path = safe_session_entry_path
 	saved.text = safe_session_entry_text
 	saved.touched = safe_session_touched
@@ -1188,9 +1210,11 @@ void safe_session_resume(char* state):
 	safe_session_views.free()
 	safe_session_hidden.free()
 	safe_session_hidden_reasons.free()
+	safe_session_view_types.free()
 	safe_session_views = saved.views
 	safe_session_hidden = saved.hidden
 	safe_session_hidden_reasons = saved.hidden_reasons
+	safe_session_view_types = saved.view_types
 	safe_session_new = saved.fresh
 	safe_session_retired = saved.retired
 	safe_session_new_items = saved.items

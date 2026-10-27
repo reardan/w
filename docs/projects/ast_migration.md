@@ -1226,6 +1226,13 @@ symbols, types or code. `module_dependencies_free` releases it.
 Each dependency has `source`, `target`, and a `reasons` bitmask: import = 1,
 binding = 2, type = 4. Multiple reasons for an edge are combined.
 
+Schema **version 3** adds analyzed tile facts (issue #480, [tiles.md](tiles.md)).
+`tile_expression` and `tile_statement` nodes carry `tile_op`, `tile_type`,
+`tile_rank`, `tile_rows`, `tile_cols`, `tile_uniform`, `tile_masked`,
+`tile_effect` and `tile_binding`. Each tile region's `gpu` statement is
+followed by a `tile_program` record, its `tile_binding` records and one
+`tile_dot` record per planned dot.
+
 This is an analysis and invalidation-planning API, **not an incremental emission
 cache**. It describes dependencies present in retained records. It does not yet
 inventory every parse-time dependency, such as all constant evaluation and

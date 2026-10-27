@@ -21,6 +21,7 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi, GLib  # noqa: E402
 
 EVENTS = []
+ANNOUNCEMENTS = []
 
 
 def note(event):
@@ -29,6 +30,8 @@ def note(event):
     except GLib.Error:
         name = "?"
     EVENTS.append((event.type, name, event.detail1))
+    if event.type.startswith("object:announcement") and isinstance(event.any_data, str):
+        ANNOUNCEMENTS.append((event.any_data, event.detail1))
 
 
 def pump(seconds):
@@ -120,14 +123,24 @@ def keycode(keysym):
     return XLIB.XKeysymToKeycode(DISPLAY, keysym)
 
 
-# Real key presses (libatspi synthesizes them with XTest).
+# Real key presses through XTest. Atspi.generate_keyboard_event drops some
+# keys on hosts whose registryd cannot map the keycode (Tab never arrived on
+# an Ubuntu 26.04 host), so synthesize them directly, as the XTest UI driver
+# does; the check is about what AT-SPI reports, not how the key was sent.
+XTST = ctypes.CDLL("libXtst.so.6")
+XTST.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+XLIB.XFlush.argtypes = [ctypes.c_void_p]
+
+
 def key(keysym, ctrl=False, shift=False):
     held = [sym for sym, on in ((0xFFE3, ctrl), (0xFFE1, shift)) if on]
     for sym in held:
-        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.PRESS)
-    Atspi.generate_keyboard_event(keycode(keysym), None, Atspi.KeySynthType.PRESSRELEASE)
+        XTST.XTestFakeKeyEvent(DISPLAY, keycode(sym), 1, 0)
+    XTST.XTestFakeKeyEvent(DISPLAY, keycode(keysym), 1, 0)
+    XTST.XTestFakeKeyEvent(DISPLAY, keycode(keysym), 0, 0)
     for sym in reversed(held):
-        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.RELEASE)
+        XTST.XTestFakeKeyEvent(DISPLAY, keycode(sym), 0, 0)
+    XLIB.XFlush(DISPLAY)
     pump(0.4)
 
 
@@ -175,7 +188,7 @@ def main():
     with open(path, "w") as out:
         out.write("%% atspi qualification\nflowchart LR\nA[Alpha] -->|pays| B[Beta]\nB --> C[Gamma]\n")
     listener = Atspi.EventListener.new(note)
-    for kind in ("object:state-changed:focused", "object:state-changed:selected", "object:selection-changed", "object:children-changed", "object:property-change:accessible-name"):
+    for kind in ("object:state-changed:focused", "object:state-changed:selected", "object:selection-changed", "object:children-changed", "object:property-change:accessible-name", "object:announcement"):
         listener.register(kind)
     process = subprocess.Popen([editor, path])
     try:
@@ -232,6 +245,26 @@ def main():
 
         # Keyboard only: Tab cycles nodes while the canvas has focus, and each
         # step moves the published focus (what Orca announces).
+        # The status line is a polite live region: edit results are
+        # announced (Object:Announcement) wherever focus is.
+        status = None
+        for node in walk(app):
+            if node.get_role() == Atspi.Role.LABEL and node.get_name() and node.get_attributes().get("live") == "polite":
+                status = node
+        require(status is not None, "status line is a polite live region (live attribute)")
+        save = None
+        for node in walk(app):
+            if node.get_role() == Atspi.Role.PUSH_BUTTON and node.get_name() == "Save":
+                save = node
+        require(save is not None, "Save button in the tree")
+        save.get_action_iface().do_action(0)
+        wait_for(lambda: ("Saved.", 1) in ANNOUNCEMENTS, "saving announces 'Saved.' politely")
+        speech.expect("Saved.")
+        with open(path, "a") as out:
+            out.write("C --> D[Delta]\n")
+        wait_for(lambda: any("changed on disk" in text for text, _ in ANNOUNCEMENTS), "an external change is announced", 15.0)
+        speech.expect("changed on disk")
+
         key(0xFF09)
         wait_for(lambda: has(canvas, "Alpha", Atspi.StateType.FOCUSED), "Tab moves focus to Alpha")
         wait_for(lambda: focus_events("Alpha"), "focus event for Alpha after Tab")
