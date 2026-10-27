@@ -5,6 +5,8 @@
 # wbuild: step="bin/wv2 arm64_darwin --import-root tools/mac/access_cocoa tools/wmermaid_editor.w -o bin/wmermaid_editor_darwin_voiceover"
 # wbuild: target=mermaid_editor_ui_test dep=wmermaid_editor dep=wmermaid dep=mermaid_editor_ui_driver
 # wbuild: step="xvfb-run -a bin/mermaid_editor_ui_driver"
+# wbuild: target=mermaid_editor_wine_test dep=mermaid_editor_platforms dep=wmermaid dep=mermaid_editor_ui_driver
+# wbuild: step="sh tools/mermaid_editor_wine_test.sh"
 # wbuild: target=mermaid_editor_atspi_test dep=wmermaid_editor
 # wbuild: step="sh tools/mermaid_editor_atspi_test.sh"
 # wbuild: target=mermaid_editor_orca_test dep=wmermaid_editor
@@ -877,7 +879,11 @@ int main(int argc, int argv):
 			char* shot = args_value(c"screenshot")
 			if (shot != 0):
 				glFinish()
-				if (wm_editor_ppm(shot, win.width, win.height) == 0): exit_status = 1
+				# The framebuffer is in device pixels (HiDPI windows).
+				float32 ratio = gfx_window_pixel_ratio(win)
+				int shot_w = cast(int, cast(float32, win.width) * ratio)
+				int shot_h = cast(int, cast(float32, win.height) * ratio)
+				if (wm_editor_ppm(shot, shot_w, shot_h) == 0): exit_status = 1
 			finished = 1
 		gfx_window_swap(win)
 		sleep_ms(16)

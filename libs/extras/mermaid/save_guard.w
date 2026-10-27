@@ -93,6 +93,24 @@ int mm_disk_present(char* path):
 	io_close(fd, &result)
 	return 1
 
+# 0 when an existing file refuses writing: no write permission, or the
+# Windows read-only attribute. The save replaces the file by rename, which
+# only needs the directory to be writable, so without this check a
+# read-only file would be silently replaced. Opening for writing without
+# truncation checks exactly the file's own permission and leaves its bytes
+# and timestamps alone.
+int mm_disk_writable(char* path):
+	if (os_windows()):
+		int handle = open(path, FS_O_WRONLY, 0)
+		if (handle < 0): return 0
+		close(handle)
+		return 1
+	io_result result
+	int fd = fs_open(path, FS_O_WRONLY, 0, &result)
+	if (fd < 0): return 0
+	io_close(fd, &result)
+	return 1
+
 # MM_DISK_* for path against the baseline the editor holds. present says
 # whether the baseline is an existing file (0: the path should be absent).
 int mm_disk_compare(char* path, int present, char* baseline):
@@ -193,6 +211,7 @@ char* mm_save_restore(char* claim, char* path):
 int mm_save_cas(char* path, int present, char* baseline, char* data, int length, char** recovery):
 	*recovery = 0
 	if (mm_disk_compare(path, present, baseline) != MM_DISK_SAME): return MM_SAVE_CONFLICT
+	if (present && mm_disk_writable(path) == 0): return MM_SAVE_FAILED
 	int mode = FS_DEFAULT_MODE
 	file_stat st
 	if (present && os_windows() == 0 && file_stat_path(path, &st) == 0): mode = st.mode & FILE_MODE_PERM_MASK

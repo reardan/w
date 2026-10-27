@@ -343,10 +343,11 @@ Implemented and covered by tests:
   jumps out of or into blocks pop or reserve the locals involved — see
   `grammar/goto_statement.w`). `setjmp`/`longjmp` are runtime stubs in
   every native program; `lib/setjmp.w` has the `jmp_buf` type and the
-  contract. The x86/x64 backends keep the hottest word-sized locals and
-  arguments of a function with a loop -- scalars and the pointers its
-  subscripts and field accesses go through -- in callee-saved registers
-  (`esi`/`edi` on x86, `r12`–`r15` on x64;
+  contract. The x86/x64 and arm64 Linux backends keep the hottest
+  word-sized locals and arguments of a function with a loop -- scalars
+  and the pointers its subscripts and field accesses go through -- in
+  callee-saved registers (`esi`/`edi` on x86, `r12`–`r15` on x64,
+  `x19`–`x23` on arm64 Linux; arm64_darwin and Android promote nothing;
   `docs/projects/register_allocation_pgo.md` §2.2 and
   `docs/projects/codegen_gap_plan.md` §8, `--no-regs`/`-O0` turns it
   off): `raw_asm` bodies and hand-written

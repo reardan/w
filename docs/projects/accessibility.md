@@ -63,8 +63,9 @@ coordinates relative to the content view, converted to screen coordinates at
 query time; moving the window does not require republishing bounds. Press,
 toggle, focus and value requests enter the queue and are revalidated by
 `ui_access_dispatch`. Layout and focus changes emit native notifications.
-Text range navigation, selection APIs, table cell relations, incremental updates,
-and native object identity preservation remain follow-ups. Document and list
+Text range navigation, the snapshot's caret and selection (published by the
+other bridges), table cell relations, incremental updates, and native object
+identity preservation remain follow-ups. Document and list
 item roles currently map to AppKit groups. Readonly text remains queryable while
 value writes are rejected.
 
@@ -141,8 +142,22 @@ input. While installed, it replaces the canvas's accessibility exposure and tab
 stop. Programmatic snapshot focus does not echo a request. DOM keyboard events
 stay separate from the existing canvas keyboard event queue. The application
 must paint visible focus and coordinate its canvas editor model with semantic
-focus/value callbacks. Geometry, spatial touch exploration, selection/range
-round trips and automatic widget semantics are not provided by this adapter.
+focus/value callbacks. Geometry, spatial touch exploration and automatic
+widget semantics are not provided by this adapter.
+
+Text selection round-trips. `ui_access_web_publish` passes each text node's
+caret and selection (`gfx_access_selection`, after its text); the mirror's
+textarea gets them with `setSelectionRange`, converted from code points to
+UTF-16 units, backward when the caret is at the start. It is written only when
+the textarea's own selection differs and never during an IME composition, and
+that programmatic selection is not echoed. A user's selection or caret move on
+a textarea whose node offers `UI_ACCESS_SET_SELECTION` (`select`,
+`selectionchange`, `keyup` and `mouseup`, and after each committed edit,
+following its value request) queues a `SET_SELECTION` request with the anchor
+and active ends in code points, once per distinct selection. Read-only
+textareas can still be selected. A real headless Chromium probe confirmed the
+published range and direction, no echo, and that its asynchronous
+`select`/`selectionchange` events queue the user's range and a collapsed caret.
 
 Live nodes (see "Live regions and announcements" below) carry `aria-live` and
 `aria-atomic="true"`. Two visually hidden live regions, one polite and one
@@ -209,6 +224,20 @@ requests are queued and consumed by the target widget on the next frame, which
 then behaves exactly as for a click or an edit. The roles cover document, group,
 text, heading, button, checkbox, textbox, list/list item, table/row/cell, radio,
 switch, combobox, tab list/tab, progress and dialog.
+
+Text nodes also carry a caret and a selection (`caret`, `selection_start`,
+`selection_end`), in characters (code points) of the value, set with
+`ui_access_set_selection(tree, id, anchor, active)` after the value; `caret`
+is -1 on nodes without one and an empty selection has equal ends. Bridges move
+them with `UI_ACCESS_SET_SELECTION`, whose payload is the ASCII pair
+`"anchor active"` (`ui_access_dispatch_selection` builds and dispatches it,
+`ui_access_selection_parse` reads it); a caret move has equal ends, and active
+before anchor is a backward selection. `ui_access_dispatch` checks the payload's
+form but not its range, since a request can follow an edit queued just before
+it; each bridge checks the range against the text it published, and widgets
+clamp. `ui_textarea` publishes its caret and selection and `ui_textbox`
+(single-line, no selection) its caret; both apply a request on the next frame,
+snapped to grapheme boundaries, the textbox moving its caret to the active end.
 
 ```
 ui_access_tree* fresh = ui_access_tree_new(4096, 65536)
@@ -283,12 +312,24 @@ format). It needs no libatspi, ATK, GLib or libdbus.
 Each node is an object at `/org/a11y/atspi/accessible/<id>` under the
 application root. Objects implement Accessible, Component (extents, hit
 testing, GrabFocus), Action (activate/toggle/focus by name), Text (character
-offsets over UTF-8), EditableText (set, insert, delete; applied as a whole-value
+offsets over UTF-8, the caret and one selection), EditableText (set, insert, delete; applied as a whole-value
 `SET_VALUE`) and Value (progress percentages) as the role allows. Switches are
 published as toggle buttons with checked and pressed states, since AT-SPI 2.52
 has no switch role. Actions are queued (64 at most) and revalidated against the
 application's tree, as in the other bridges; publishing drops queued actions
 for the old snapshot.
+
+Text reports `CaretOffset` and `GetNSelections`/`GetSelection` from the
+snapshot (one selection at most). `SetCaretOffset`, `SetSelection(0, ...)`,
+`AddSelection` (only while nothing is selected, and never empty) and
+`RemoveSelection(0)` (which keeps the caret) queue `UI_ACCESS_SET_SELECTION`
+for nodes offering it, range-checked against the published text; those nodes
+also carry the selectable-text state. A republication emits
+`TextSelectionChanged` when a non-empty selection appears, changes or goes,
+then `TextCaretMoved` with the new offset. The bridge knows no fonts or
+colours, so `GetAttributes`, `GetAttributeRun`, `GetDefaultAttributes` and
+`GetDefaultAttributeSet` return empty sets, the runs spanning the whole text,
+and `GetAttributeValue` an empty string.
 
 Tables implement Table and their data cells TableCell. The snapshot has no
 header flag, so the bridge treats a TABLE's first ROW as its column header
@@ -316,7 +357,8 @@ for gone ones, as the ATK bridge does, so a caching libatspi stays coherent.
 `graphics_ui_accessibility_atspi_test` runs the bridge against a private
 `dbus-daemon` with a client that plays both the registry and a screen reader:
 registration, tree walking, roles, states, geometry, text offsets, actions,
-edits, tables, selection, the cache preload and the events a republication
+edits, text caret, selection and attributes, tables, selection, the cache
+preload and the events a republication
 emits, in order (it skips when `dbus-daemon` is not installed). The bridge
 was also qualified against the real at-spi2-core 2.52 registry with a
 libatspi (pyatspi) client: the application appears on the desktop, the tree,
@@ -349,8 +391,21 @@ from the snapshot root. The Mermaid editor's qualification run
 speaking its status line's edit results through these events: "Saved." after
 the Save button is activated through AT-SPI, and "The file changed on disk.
 Reload from disk discards your edits; Keep mine overwrites it on the next
-save." when another program writes the file. Not yet provided: text
-attributes and text selection, row headers, multi-selection policy, and a
+save." when another program writes the file.
+
+Text was qualified the same way (at-spi2-core 2.52, libatspi through
+python `gi` Atspi) against a two-line editor: the caret offset, selectable-text
+state, `get_selection`, the empty attribute run over the whole text and the
+default attributes read correctly; `set_caret_offset`, `set_selection`,
+`remove_selection` and `add_selection` reached the application callback as
+`"5 5"`, `"8 13"`, `"13 13"` and `"0 3"`, and the republished caret and selection
+read back with matching `text-caret-moved` and `text-selection-changed` events.
+Orca 46.1, run headless against the same editor while it moved its own caret and
+selection, said "Notes entry one two thrée." on focus, "two selected" when a word
+was selected and "Text unselected." when the selection collapsed; a caret move
+without keyboard input was processed silently, as Orca does for any
+application. Not yet provided: real text attributes (fonts, colours,
+spelling), multiple selections, row headers, multi-selection policy, and a
 peer-to-peer application bus.
 
 ## Windows UI Automation
@@ -365,6 +420,10 @@ so there is no C helper, ATL or type library. It links `uiautomationcore`,
    calling thread as a single-threaded apartment. Pass 0 for a tree hosted by
    no window (tests and embedding), and give its screen position with
    `ui_access_uia_set_origin(b, x, y)`.
+   Snapshot bounds are logical pixels. `ui_access_uia_set_scale(b, ratio)`
+   gives the window's DPI scale (`gfx_window_pixel_ratio`; the platform
+   layer sets it every frame), and bounding rectangles and
+   ElementProviderFromPoint use device pixels, as UIA clients expect.
 2. Set `gfx_win32_getobject = ui_access_uia_wm_getobject` (the optional
    `WM_GETOBJECT` hook in `graphics/window_win32.w`; nothing changes while it is
    unset). It answers `UiaRootObjectId` with `UiaReturnRawElementProvider` and
@@ -425,6 +484,7 @@ What is mapped:
   - ExpandCollapse: comboboxes, and activatable nodes with the expanded
     state.
   - RangeValue: progress, read-only 0..100, from the value's leading number.
+  - Text: textboxes, below.
 - Properties: Name (an unnamed row's from its cells, and its Name change
   event follows that derived name), HelpText and FullDescription, LiveSetting
   (Off, Polite or Assertive), AutomationId (the node id),
@@ -434,6 +494,34 @@ What is mapped:
 - Runtime ids are `[UiaAppendRuntimeId, id]` under a window. An unhosted tree
   uses `[process id, id]`, because UIA cannot append to a window that does not
   exist.
+
+The Text pattern (`ITextProvider`) exposes a textbox's value, caret and
+selection with single selection (`SupportedTextSelection_Single`).
+`GetSelection` returns the selection, or the degenerate caret range, as one
+range (none when the node has no caret); `DocumentRange` and `GetVisibleRanges`
+span the whole text. `RangeFromPoint` places a caret in proportion to x across
+the field, since the snapshot has no glyph geometry, and `RangeFromChild` fails
+(a textbox has no children). Each range (`ITextRangeProvider`) is its own COM
+object with its own reference count, holding its element; its endpoints count
+code points and are clamped to the current published text on every call:
+
+- `Clone`, `Compare`, `CompareEndpoints` and `MoveEndpointByRange`.
+- `ExpandToEnclosingUnit`, `Move` and `MoveEndpointByUnit` by character, word
+  (a run of non-spaces and the spaces after it), line (split after `\n`;
+  paragraph is line) and document (format and page too).
+- `FindText`, forwards or backwards, with ASCII case folding; `FindAttribute`
+  finds nothing, and `GetAttributeValue` answers `IsReadOnly` and the reserved
+  not-supported value (`UiaGetReservedNotSupportedValue`) for everything else.
+- `GetBoundingRectangles` (the field's screen rectangle), `GetEnclosingElement`,
+  `GetText` (with a maximum length in code points) and an empty `GetChildren`.
+- `Select` queues `UI_ACCESS_SET_SELECTION` for the range; `AddToSelection` and
+  `RemoveFromSelection` fail with `UIA_E_INVALIDOPERATION`, and `ScrollIntoView`
+  succeeds without doing anything.
+
+Ranges outlive publications and answer `UIA_E_ELEMENTNOTAVAILABLE` once their
+node is gone. A republication raises `UIA_Text_TextChangedEventId` and
+`UIA_Text_TextSelectionChangedEventId` for textboxes a client has seen when
+their value, or their caret or selection, changed.
 
 `graphics_ui_accessibility_uia_test` (win64, run under wine by the CI win64 leg,
 never skipped) drives the bridge in-process with wine 9's `uiautomationcore`
@@ -447,7 +535,8 @@ as the client:
   - `UiaNavigate`, with a true condition and a cache request, to the first
     child.
   - `UiaAddEvent`, which receives the focus-changed event a republication
-    raises.
+    raises, and the text-changed and text-selection-changed events (each
+    exactly once).
 - **Through the provider vtables, where wine cannot help:**
   - Navigation in every direction, and QueryInterface identity.
   - Pattern discovery by role, and every pattern read.
@@ -458,12 +547,19 @@ as the client:
   - Retained providers of removed nodes failing with
     `UIA_E_ELEMENTNOTAVAILABLE`.
   - `WM_GETOBJECT` declining non-UIA object ids.
+  - The Text pattern: discovery on textboxes only, the document and selection
+    ranges, every range method by character, word, line and document,
+    `FindText`, attributes, `Select` reaching the application as
+    `SET_SELECTION`, ranges re-clamping after a republication, reference
+    counts, and ranges of a removed node failing.
 
 Wine could not exercise the following:
 
 - Its flat pattern functions (`InvokePattern_Invoke`, `TogglePattern_Toggle`,
   `ValuePattern_SetValue`, ...) are stubs, so patterns are driven through the
-  vtables instead.
+  vtables instead. `UiaGetPatternProvider` is not implemented at all (calling it
+  aborts), so the `TextPattern_*`/`TextRange_*` functions are unreachable, and
+  `UiaGetPropertyValue` answers `IsTextPatternAvailable` with `E_NOTIMPL`.
 - Property-changed event registration is unimplemented, and
   `UiaRaiseAutomationPropertyChangedEvent` and
   `UiaRaiseStructureChangedEvent` are stubs. Its FIXME trace shows the bridge
@@ -497,7 +593,10 @@ not been run against the bridge. That is the qualification still owed.
 
 Not yet provided:
 
-- The Text pattern (caret, selection, text ranges).
+- Text pattern depth: glyph geometry (ranges are bounded by the whole field,
+  `RangeFromPoint` is proportional), text attributes beyond IsReadOnly,
+  scrolling in `GetVisibleRanges`, `ITextProvider2` (`GetCaretRange`) and
+  `ITextEditProvider`, multiple selections.
 - Selection, Grid and Table container patterns.
 - MSAA (`IAccessible`) for legacy clients. `WM_GETOBJECT` for OBJID_CLIENT
   falls through to the default proxy.
@@ -541,18 +640,53 @@ as described in the next section.
 
 `graphics.ui.contrast` provides sRGB relative luminance and contrast ratios
 using the [WCAG formula](https://www.w3.org/WAI/WCAG21/Understanding/relative-luminance.html).
-`graphics_ui_contrast_test` and its x64 twin enforce 4.5:1 for the default light
-and dark themes' body, muted, button and error text, and 3:1 for focus against
-background/surface. Alpha colors must be composited by the caller first.
-Disabled controls, arbitrary application backgrounds, and the illustrative ocean
-theme are outside this default-theme assertion. These checks do not substitute
-for testing a rendered application's complete contrast and focus appearance.
+`graphics_ui_contrast_test` and its x64 twin check every token pair the widgets
+draw, in all three presets (light, dark and ocean):
+
+- 4.5:1 for text ([1.4.3](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)):
+  `text` on background, surface and the widget, hover and active fills;
+  `text_muted` (placeholders, table headers, inactive tabs) on background,
+  surface and widget; `on_accent` on accent and accent_hot; `error` on
+  background and surface.
+- 3:1 for non-text UI ([1.4.11](https://www.w3.org/WAI/WCAG21/Understanding/non-text-contrast.html)):
+  `border` (checkbox and radio edges, the off switch track, field baselines,
+  scroll thumbs) on background, surface and widget; hovered edges
+  (`text_muted` on widget_hot); `accent` and `accent_hot` (checked boxes, the
+  on switch track, progress, tab and selected-row markers) on their
+  backgrounds; `focus` on background, surface, widget and widget_hot; the
+  error underline on a field; and both switch knobs on their tracks.
+
+A failure names the theme, the pair and the measured ratio. Adding the check
+found thirteen failing pairs. `border` was 1.6 to 2.9:1 in every theme and
+`text_muted` was 4.0 to 4.4:1 on field fills, so both tokens were darkened
+(light) or lightened (dark, ocean), and the ocean preset's `widget_active`
+was darkened so its selected-row marker reaches 3:1. Three widgets drew state with colour
+contrast below 3:1, and now draw it differently:
+- The off switch track used the tonal `widget` fill, about 1.3:1 on the
+  surface; it now uses `border`.
+- Selected table and tree rows were marked only by the `widget_active` fill,
+  about 1.6:1. They now get the accent marker the dropdown list already used
+  (`ui_selection_marker`).
+- The tree's keyboard cursor is now an outline, so it can't be mistaken for
+  that marker.
+
+Disabled controls are exempt under WCAG ("inactive user interface
+components"), so `disabled_text` and `disabled_widget` are not asserted.
+Alpha colours such as `shadow` must be composited by the caller first. The
+test covers the presets. An application that fills its own `ui_theme` can
+run the same pair check with `ui_theme_contrast_failures(name, theme)`, which
+prints each failing pair and returns the count. Arbitrary application
+backgrounds are not covered. It does not replace looking at a rendered
+application's contrast and focus appearance.
 
 Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
 and UI Automation bridges are initial adapters, with screen-reader
-qualification on real Windows, VoiceOver and NVDA, and richer semantics (text
-ranges and selection, UIA table/grid and text patterns, incremental updates
-and live regions in the Cocoa bridge) still open; AT-SPI tables and selection are covered and Orca was run headless. A semantic snapshot or a cross-compiled Cocoa binary is not
+qualification on real Windows, VoiceOver and NVDA, and richer semantics (UIA
+table/grid patterns, text attributes, incremental updates and live regions in
+the Cocoa bridge) still open; AT-SPI tables, selection and text selection are
+covered and Orca was run headless, the caret and text selection round-trip
+through AT-SPI, UI Automation's Text pattern and the ARIA mirror, and live
+regions are announced through all three. A semantic snapshot or a cross-compiled Cocoa binary is not
 evidence that a platform has assistive technology integration.
 
 The native implementation follows Apple's

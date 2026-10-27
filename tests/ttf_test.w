@@ -210,6 +210,7 @@ void test_cmap_format_12():
 	f.size = 32
 	f.cmap4 = 0
 	f.cmap12 = 4
+	f.cmap_symbol = 0
 	assert_equal(50, ttf_glyph_id(&f, 128512))
 	assert_equal(51, ttf_glyph_id(&f, 128513))
 	assert_equal(52, ttf_glyph_id(&f, 128514))

@@ -63,8 +63,12 @@ json_value* qn_device():
 	for int cpu in cpus: json_array_push(array, json_int(cpu))
 	json_object_set(info, c"available_cpus", array)
 	qn_shell(c"command -v setsid && command -v timeout && command -v sha256sum")
-	qn_remote = strip(qn_shell(c"mktemp -d /data/local/tmp/w-atomic-qualification-XXXXXX"))
-	ht_require(starts_with(qn_remote, c"/data/local/tmp/w-atomic-qualification-"), c"unexpected device staging directory")
+	qn_remote = strip(qn_shell(c"mktemp -d /data/local/tmp/w-native-qualification-XXXXXX"))
+	ht_require(starts_with(qn_remote, c"/data/local/tmp/w-native-qualification-"), c"unexpected device staging directory")
+	# Durability trials run in subdirectories of qn_remote: record the
+	# filesystem and mount options they exercised.
+	vj_s(info, c"filesystem", strip(qn_shell(strjoin(c"df -k ", ht_quote(qn_remote)))))
+	vj_s(info, c"mounts", strip(qn_shell(c"cat /proc/mounts")))
 	return info
 char* qn_stage(char* binary):
 	char* remote = path_join(qn_remote, path_basename(binary))
@@ -129,7 +133,8 @@ int main(int argc, int argv):
 	argparse_add_option(parser, c"--compiler", c"FILE", c"host compiler")
 	argparse_arg_choices(argparse_add_list(parser, c"--cross", c"ARCH", c"compile only (repeatable)"), c"arm64,arm64_darwin")
 	argparse_add_flag(parser, c"--host-smoke", c"x64 supplementary harness validation")
-	argparse_add_option(parser, c"--adb", c"SERIAL", c"physical Android atomic stress")
+	argparse_add_flag(parser, c"--emulated", c"arm64 under qemu-user via bin/wrun (supplementary, not native)")
+	argparse_add_option(parser, c"--adb", c"SERIAL", c"physical Android ARM64 device")
 	argparse_arg_choices(argparse_add_option(parser, c"--pac", c"MODE", c"pointer authentication"), c"off,ret,full")
 	argparse_arg_default(argparse_add_int(parser, c"--rounds", c"N", c"runtime rounds"), c"10")
 	argparse_arg_default(argparse_add_int(parser, c"--timeout", c"SECONDS", c"per command"), c"120")
@@ -159,11 +164,12 @@ int main(int argc, int argv):
 	list[char*] archs = argparse_get_list(args, c"cross")
 	int cross = archs.length > 0
 	int smoke = argparse_get_bool(args, c"host_smoke")
+	int emulated = argparse_get_bool(args, c"emulated")
 	qn_serial = argparse_get(args, c"adb")
-	ht_require(cross + smoke + (qn_serial != 0) <= 1, c"--cross, --host-smoke and --adb are mutually exclusive")
+	ht_require(cross + smoke + emulated + (qn_serial != 0) <= 1, c"--cross, --host-smoke, --emulated and --adb are mutually exclusive")
 	char* suite_name = argparse_get(args, c"suite")
 	char* scratch_parent = argparse_get(args, c"scratch")
-	ht_require(qn_serial == 0 || (strcmp(suite_name, c"atomic") == 0 && scratch_parent == 0), c"--adb requires --suite atomic and does not accept --scratch")
+	ht_require(qn_serial == 0 || scratch_parent == 0, c"--adb stages trials under /data/local/tmp and does not accept --scratch")
 	char* machine = vm_command(c"uname -m")
 	char* system = vm_command(c"uname -s")
 	int darwin = strcmp(system, c"Darwin") == 0
@@ -171,9 +177,20 @@ int main(int argc, int argv):
 	if (darwin): cpus = atoi(vm_command(c"sysctl -n hw.logicalcpu"))
 	else: cpus = atoi(vm_command(c"getconf _NPROCESSORS_ONLN"))
 	char* evidence = c"cross-compilation only"
+	char* runner = 0
 	if (qn_serial != 0):
 		archs.push(c"arm64")
-		evidence = c"native concurrent ordering stress on Android Linux (host cross-compiled)"
+		evidence = c"native runtime stress on Android Linux (host cross-compiled; process-crash, not power-loss evidence)"
+		if (strcmp(suite_name, c"atomic") == 0): evidence = c"native concurrent ordering stress on Android Linux (host cross-compiled)"
+	elif (emulated):
+		# Exercises the arm64 adapters end to end on an x86_64 build host.
+		# qemu-user forwards each guest syscall to the host kernel, so this
+		# validates the ABI translation and the harness, never ARM64
+		# hardware ordering or the device's flush behavior.
+		ht_require(strcmp(machine, c"x86_64") == 0 && strcmp(system, c"Linux") == 0, c"--emulated requires an x64 Linux host")
+		archs.push(c"arm64")
+		runner = ht_resolve(c"bin/wrun")
+		evidence = c"arm64 supplementary runtime harness validation under qemu-user (not native qualification)"
 	elif (smoke):
 		ht_require(strcmp(machine, c"x86_64") == 0 && strcmp(system, c"Linux") == 0, c"host smoke requires x64 Linux")
 		archs.push(c"x64")
@@ -213,6 +230,7 @@ int main(int argc, int argv):
 		vj_s(qn_report, c"hardware", qn_run(ht_command(c"sysctl hw.model machdep.cpu.brand_string hw.physicalcpu hw.logicalcpu hw.cachelinesize kern.hv_vmm_present")))
 		vj_s(qn_report, c"os_version", qn_run(ht_command(c"sw_vers")))
 	char* build = ht_resolve(c"bin/native_qualification")
+	if (emulated): build = path_join(build, c"emulated")
 	if (qn_serial != 0):
 		build = path_join(build, c"adb")
 		json_value* info = qn_device()
@@ -276,7 +294,8 @@ int main(int argc, int argv):
 						if (!json_object_has(qn_report, c"filesystem")):
 							vj_s(qn_report, c"scratch_parent", path_dirname(scratch))
 							vj_s(qn_report, c"filesystem", qn_run(ht_argv(c"df", c"-k", scratch)))
-						qn_run(ht_argv(binary), scratch, timeout * 1000)
+						if (runner != 0): qn_run(ht_argv(runner, c"arm64", binary), scratch, timeout * 1000)
+						else: qn_run(ht_argv(binary), scratch, timeout * 1000)
 						shutil_rmtree(scratch)
 					vj_i(record, c"completed_rounds", trial + 1)
 				println(strjoin(c"pass ", path_basename(binary)))

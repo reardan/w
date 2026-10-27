@@ -190,9 +190,10 @@ void test_safe_flag_still_rejected():
 	free(cast(void*, args))
 
 
-# Threads and lock guards (#713) run without W_DEBUG_ALLOC: its two
-# mappings per block exhaust vm.max_map_count once the in-process
-# compiler retains the thread runtime. fixture is 0 for a bare session.
+# Threads and lock guards (#713) run under W_DEBUG_ALLOC too: the REPL
+# keeps its own compiler on the free list (malloc_host_freelist_mode), so
+# only the session's blocks take guard pages and a second unlock or
+# destruction faults. fixture is 0 for a bare session.
 process_result* safe_repl_thread_run(char* fixture, char* input):
 	char** args = strv_new(4)
 	strv_set(args, 0, safe_repl_build())
@@ -202,8 +203,9 @@ process_result* safe_repl_thread_run(char* fixture, char* input):
 		strv_set(args, 2, fixture)
 		count = 3
 	strv_set(args, count, 0)
-	process_result* result = process_run(args[0], args, 0, input, 300000)
-	assert1(result != 0)
+	process_result* result = safe_repl_exec(args, input)
+	assert_lacks(result.stdout_text, c"memory_debug")
+	assert_lacks(result.stderr_text, c"memory_debug")
 	free(cast(void*, args))
 	return result
 
@@ -331,9 +333,10 @@ void test_fault_on_entry_thread_ends_session():
 	process_result_free(r)
 
 
-# wdbg compiles its debuggee in process without the REPL's per-thread
-# block, so thread_local (here lib/thread_heap.w's) stays rejected there.
-void test_debugger_keeps_thread_local_rejected():
+# wdbg gives its debuggee the REPL's per-thread block, so a debuggee
+# importing lib/safe_thread.w (and lib/thread_heap.w's thread_local)
+# loads; only other in-process compiles still reject thread_local.
+void test_debugger_loads_thread_local():
 	char* binary = safe_repl_path(c"bin/safe_repl_session_wdbg", c"")
 	char** args = strv_new(5)
 	strv_set(args, 0, c"bin/wv2")
@@ -354,7 +357,7 @@ void test_debugger_keeps_thread_local_rejected():
 	strv_set(run, 1, c"tests/safe_repl_thread_fixture.w")
 	process_result* r = process_run(run[0], run, 0, c"c\n", 300000)
 	assert1(r != 0)
-	assert1(r.status != 0)
-	assert_contains(r.stderr_text, c"thread_local is not supported in the debugger or other in-process compiles; the REPL provides it")
+	assert_lacks(r.stderr_text, c"thread_local is not supported")
+	assert_contains(r.stdout_text, c"debuggee main returned")
 	process_result_free(r)
 	free(cast(void*, run))

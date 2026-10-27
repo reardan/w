@@ -184,3 +184,71 @@ void test_rows_are_named_from_their_cells():
 	assert_equal(0, cast(int, name.data))
 	ui_access_tree_free(copy)
 	ui_access_tree_free(tree)
+
+int access_selection_action(void* context, int id, int action, char* data, int length):
+	int* calls = cast(int*, context)
+	*calls = *calls + 1
+	assert_equal(UI_ACCESS_SET_SELECTION, action)
+	int anchor = 0
+	int active = 0
+	assert_equal(1, ui_access_selection_parse(data, length, &anchor, &active))
+	assert_equal(5, anchor)
+	assert_equal(2, active)
+	return 1
+
+void test_accessibility_caret_and_selection():
+	ui_access_tree* tree = ui_access_tree_new(4, 64)
+	ui_rect r = ui_rect_new(0.0, 0.0, 1.0, 1.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_GROUP, r)
+	ui_access_node* input = ui_access_add(tree, 2, 1, UI_ACCESS_TEXTBOX, r)
+	assert_equal(0 - 1, input.caret)
+	assert_equal(0, ui_access_has_selection(input))
+	# "a\xc3\xa9b\xf0\x9f\x98\x80c": five characters in nine bytes.
+	ui_access_set_text(tree, 2, UI_ACCESS_VALUE, c"a\xc3\xa9b\xf0\x9f\x98\x80c", 9)
+	assert_equal(5, ui_access_char_count(input.value.data, input.value.length))
+	assert_equal(3, ui_access_char_byte(input.value.data, 9, 2))
+	assert_equal(9, ui_access_char_byte(input.value.data, 9, 7))
+	assert_equal(4, ui_access_byte_char(input.value.data, 9, 8))
+	assert_equal(3, ui_access_byte_char(input.value.data, 9, 5))
+	assert_equal(1, ui_access_set_selection(tree, 2, 5, 2))
+	assert_equal(2, input.caret)
+	assert_equal(2, input.selection_start)
+	assert_equal(5, input.selection_end)
+	asserts(c"has selection", ui_access_has_selection(input))
+	assert_equal(0, ui_access_set_selection(tree, 2, 6, 2))
+	assert_equal(0, ui_access_set_selection(tree, 9, 0, 0))
+	assert_equal(2, input.caret)
+
+	# Clones and comparisons see the caret and selection.
+	ui_access_tree* copy = ui_access_tree_clone(tree)
+	assert_equal(1, ui_access_tree_same(tree, copy))
+	assert_equal(5, ui_access_find(copy, 2).selection_end)
+	ui_access_set_selection(copy, 2, 1, 1)
+	assert_equal(0, ui_access_tree_same(tree, copy))
+	ui_access_tree_free(copy)
+
+	char[32] payload
+	int n = ui_access_selection_format(&payload[0], 0, 120)
+	assert_equal(5, n)
+	assert_bytes_equal(c"0 120", &payload[0], 5)
+	int anchor = 0
+	int active = 0
+	assert_equal(0, ui_access_selection_parse(c"1", 1, &anchor, &active))
+	assert_equal(0, ui_access_selection_parse(c"1 2 3", 5, &anchor, &active))
+	assert_equal(0, ui_access_selection_parse(c"1 x", 3, &anchor, &active))
+	assert_equal(0, ui_access_selection_parse(c" 1", 2, &anchor, &active))
+
+	int calls = 0
+	tree.context = cast(void*, &calls)
+	tree.action = access_selection_action
+	# Unsupported until the node offers it, then range-checked.
+	assert_equal(0, ui_access_dispatch_selection(tree, 2, 5, 2))
+	input.actions = UI_ACCESS_SET_SELECTION
+	assert_equal(0, ui_access_dispatch(tree, 2, UI_ACCESS_SET_SELECTION, c"5", 1))
+	assert_equal(0, ui_access_dispatch_selection(tree, 2, 0 - 1, 2))
+	assert_equal(1, ui_access_dispatch_selection(tree, 2, 5, 2))
+	# Read-only text can still be selected.
+	input.states = UI_ACCESS_READONLY
+	assert_equal(1, ui_access_dispatch_selection(tree, 2, 5, 2))
+	assert_equal(2, calls)
+	ui_access_tree_free(tree)

@@ -29,6 +29,7 @@ struct asm_x86_dec:
 	int seg         # segment-override byte, or 0
 	int pfx66       # 1 when the 0x66 prefix was seen (SSE mandatory prefix)
 	int rex         # x64 REX prefix byte (0x40-0x4f), or 0
+	int lock        # 1 when the 0xf0 lock prefix was seen
 
 
 # REX bit accessors: W selects 64-bit operand size; R/X/B extend the
@@ -221,6 +222,17 @@ void asm_x86_rel_target(asm_insn* insn, asm_x86_dec* d, int rel):
 int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	int op = asm_x86_u8(d)
 
+	# lock cmpxchg / lock xadd r/m, r (f0 0f b1 /r, f0 0f c1 /r): the
+	# atomic_cas and atomic_add builtins. The lock prefix is part of the
+	# mnemonic; it is accepted on these two forms only.
+	if (op == 0xb1 || op == 0xc1):
+		if (op == 0xb1): insn.mnemonic = c"cmpxchg"
+		else: insn.mnemonic = c"xadd"
+		if (d.lock): insn.mnemonic = asm_x86_concat(c"lock ", insn.mnemonic)
+		asm_x86_modrm_gp(d, &insn.op2, &insn.op1)
+		return d.pos - start
+	if (d.lock): return 0
+
 	# syscall (0f 05)
 	if (op == 0x05):
 		insn.mnemonic = c"syscall"
@@ -393,6 +405,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	dec.seg = 0
 	dec.pfx66 = 0
 	dec.rex = 0
+	dec.lock = 0
 	asm_x86_dec* d = &dec
 
 	# Prefixes. A REX prefix (0x40-0x4f, x64 only) must be the last prefix
@@ -406,6 +419,9 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			dec.pfx66 = 1
 			dec.pos = dec.pos + 1
 		else if (p == 0x67): dec.pos = dec.pos + 1
+		else if (p == 0xf0):
+			dec.lock = 1
+			dec.pos = dec.pos + 1
 		else if (p == 0xf2 || p == 0xf3):
 			dec.rep = p
 			dec.pos = dec.pos + 1
@@ -429,6 +445,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			insn.length = consumed
 			return consumed
 		return asm_x86_unknown(insn, bytes)
+	# lock is only modeled on the two-byte forms above
+	if (dec.lock): return asm_x86_unknown(insn, bytes)
 
 	# VEX (F16C): the only 3-byte-VEX forms the compiler emits.
 	if (op == 0xc4):

@@ -207,6 +207,9 @@ void emit_typed_local_storage(int type, int has_initializer):
 		store_stack_var(0)
 		mov_eax_int(type_get_array_length(type))
 		store_stack_var(word_size)
+		if (type_has_array_field(type_get_element_type(type))):
+			lea_eax_esp_plus(0)
+			init_array_element_descriptors(type_get_element_type(type), 0)
 	else if (type_has_array_field(type)):
 		lea_eax_esp_plus(0)
 		init_array_field_descriptors(type)

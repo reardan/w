@@ -8,6 +8,18 @@ const pressAction = n => (n.actions & 8) ? 8 : 1;
 const encoder = new TextEncoder();
 let nextBridgeId = 0;
 const integer = n => Number.isInteger(n) && n >= 0 && n <= 0x7fffffff;
+// Snapshot offsets count code points; the DOM's count UTF-16 units.
+const step = (text, i) => (text.codePointAt(i) > 0xffff ? 2 : 1);
+const toUnits = (text, chars) => {
+  let i = 0;
+  for (let k = 0; k < chars && i < text.length; k++) i += step(text, i);
+  return i;
+};
+const toChars = (text, units) => {
+  let k = 0;
+  for (let i = 0; i < units && i < text.length; k++) i += step(text, i);
+  return k;
+};
 
 const politeness = ['', 'polite', 'assertive'];
 const clipped = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0';
@@ -72,11 +84,32 @@ export function createAccessibility({ document, container, canvas = null }) {
       }
     });
     if (tag === 'textarea') {
-      el.addEventListener('input', e => { if (!e.isComposing && !rec.composing) request(rec, 4, el.value); });
+      // The caret and selection as [anchor, active] in code points:
+      // published ones are not echoed back (rec.sent), user moves are
+      // queued (after the edit that caused them, when there was one).
+      const select = () => {
+        const n = rec.node;
+        if (rec.dead || rec.composing || !(n.actions & 16) || typeof el.selectionStart !== 'number') return;
+        const text = el.value;
+        let anchor = toChars(text, el.selectionStart), active = toChars(text, el.selectionEnd);
+        if (el.selectionDirection === 'backward') [anchor, active] = [active, anchor];
+        if (rec.sent && rec.sent[0] === anchor && rec.sent[1] === active) return;
+        if (request(rec, 16, `${anchor} ${active}`)) rec.sent = [anchor, active];
+      };
+      el.addEventListener('input', e => {
+        if (e.isComposing || rec.composing) return;
+        request(rec, 4, el.value);
+        select();
+      });
       // A composition commits at compositionend: Chromium's last input event
       // of a composition still reports isComposing.
       el.addEventListener('compositionstart', () => { rec.composing = true; });
-      el.addEventListener('compositionend', () => { rec.composing = false; request(rec, 4, el.value); });
+      el.addEventListener('compositionend', () => {
+        rec.composing = false;
+        request(rec, 4, el.value);
+        select();
+      });
+      for (const name of ['select', 'selectionchange', 'keyup', 'mouseup']) el.addEventListener(name, select);
     }
     return rec;
   };
@@ -162,7 +195,7 @@ export function createAccessibility({ document, container, canvas = null }) {
       const s = staging;
       if (!s || s.failed || !integer(id) || !id || !integer(parent) ||
           !integer(role) || role < 1 || role >= roles.length ||
-          !integer(states) || states > 127 || !integer(actions) || actions > 15 ||
+          !integer(states) || states > 127 || !integer(actions) || actions > 31 ||
           !integer(level) || (role === 4 && (level < 1 || level > 6)) ||
           !integer(live) || live > 2 ||
           s.nodes.has(id) || s.nodes.size >= s.maxNodes) return fail();
@@ -183,6 +216,14 @@ export function createAccessibility({ document, container, canvas = null }) {
       if (total > s.maxBytes) return fail();
       n.text[field - 1] = value;
       s.textBytes = total;
+      return 1;
+    },
+    // caret is one end of [start, end]; the other is the anchor.
+    selection(id, caret, start, end) {
+      const s = staging, n = s?.nodes.get(id);
+      if (!s || s.failed || !n || ![caret, start, end].every(integer) || start > end ||
+          (caret !== start && caret !== end) || end > [...n.text[1]].length) return fail();
+      n.selection = [caret === start ? end : start, caret];
       return 1;
     },
     // A one-shot announcement, spoken when this publication commits.
@@ -246,6 +287,20 @@ export function createAccessibility({ document, container, canvas = null }) {
       }
       for (const rec of records.values()) if (rec.tag !== 'textarea') arrange(rec.el, children.get(rec.el) ?? []);
       arrange(surface, [s.root.element, descriptions, ...regions]);
+      // The published caret and selection, written only when the textarea's
+      // differs (and never during a composition), so a republish does not
+      // disturb a user's selection that the model already reflects.
+      for (const n of s.nodes.values()) {
+        if (n.role !== 8) continue;
+        const rec = records.get(n.id), el = rec.el;
+        rec.sent = n.selection;
+        if (!n.selection || rec.composing) continue;
+        const [anchor, active] = n.selection, text = el.value;
+        const start = toUnits(text, Math.min(anchor, active)), end = toUnits(text, Math.max(anchor, active));
+        const direction = active < anchor ? 'backward' : 'forward';
+        if (el.selectionStart !== start || el.selectionEnd !== end || (start !== end && el.selectionDirection !== direction))
+          el.setSelectionRange(start, end, direction);
+      }
       if (s.announcement) spoken[s.announcement.live - 1].push(s.announcement.text);
       say(spoken[0], 1);
       say(spoken[1], 2);
@@ -304,6 +359,7 @@ export function makeAccessibilityEnv({ memory, access }) {
       try { return access.text(id, field, decoder.decode(new Uint8Array(memory().buffer, ptr, length))); }
       catch { return access.fail(); }
     },
+    gfx_access_selection: (...args) => access?.selection(...args) ?? 0,
     gfx_access_announce: (ptr, length, live) => {
       if (!access) return 0;
       if (!valid(ptr, length)) return access.fail();

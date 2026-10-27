@@ -184,7 +184,9 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 		st.access_row = row_node
 		n.actions = UI_ACCESS_ACTIVATE
 		if (st.selected == row_index): n.states = n.states | UI_ACCESS_SELECTED
-	if (st.selected == row_index): ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+	if (st.selected == row_index):
+		ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+		ui_selection_marker(ctx, row)
 	else if (ctx.hot == id): ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
 	else if ((row_index & 1) == 1):
 		# Zebra striping: every other row gets the tonal fill.

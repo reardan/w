@@ -286,10 +286,42 @@ int check_row_col_reductions():
 # tile. Same exact-in-f32 small-integer values, all three variants
 # cross-checked against the CPU fallback run on the same tensors'
 # host-visible buffers via ndf.
+int check_matmul_multitile_shape(int m, int kd, int n);
+
+
 int check_matmul_multitile():
-	int m = 37
-	int kd = 50
-	int n = 29
+	return check_matmul_multitile_shape(37, 50, 29)
+
+
+# Every GPU matmul path -- the hand-written 16x16 kernel and the 32, 64
+# and 128 tile programs -- on ragged shapes that span several tiles and
+# K slices, plus the automatic choice.
+int check_matmul_tile_edges():
+	int[5] edges
+	edges[0] = 16
+	edges[1] = 32
+	edges[2] = 64
+	edges[3] = 128
+	edges[4] = 0
+	int ok = 1
+	for e in range(5):
+		tensor_matmul_tile_edge = edges[e]
+		if (check_matmul_multitile_shape(37, 50, 29) == 0): ok = 0
+		if (check_matmul_multitile_shape(150, 70, 200) == 0): ok = 0
+		if (check_matmul_multitile_shape(1, 129, 3) == 0): ok = 0
+		if (ok == 0):
+			print(f"tile edge {edges[e]} failed\n")
+			break
+	tensor_matmul_tile_edge = 0
+	# The automatic choice grows with the output.
+	assert_equal(32, tensor_matmul_edge(128, 128))
+	assert_equal(64, tensor_matmul_edge(512, 512))
+	assert_equal(128, tensor_matmul_edge(1024, 1024))
+	assert_equal(32, tensor_matmul_edge(32, 4096))
+	return ok
+
+
+int check_matmul_multitile_shape(int m, int kd, int n):
 	ndf ha = ndf_new2(m, kd)
 	ndf hat = ndf_new2(kd, m)
 	ndf hb = ndf_new2(kd, n)
@@ -513,6 +545,9 @@ int main(int argc, int argv):
 		return 1
 	if (check_matmul_multitile() == 0):
 		println(c"tensor gpu: FAILED (multi-tile matmul)")
+		return 1
+	if (check_matmul_tile_edges() == 0):
+		println(c"tensor gpu: FAILED (matmul tile edges)")
 		return 1
 	if (check_randn() == 0):
 		println(c"tensor gpu: FAILED (randn)")

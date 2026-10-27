@@ -13,7 +13,7 @@ The follow-up implementation and qualification for issue #522 are documented in
 | Stage | Deliverable | Status |
 |---|---|---|
 | W0 | Checked I/O and stream repair | done: `lib/io.w`, `lib/stream.w`, `lib/file.w`, `lib/task_io.w` |
-| W1 | File durability primitives | Linux x86/x64; native Darwin/APFS process-crash tests passed, ARM64 Linux qualification pending; see below |
+| W1 | File durability primitives | Linux x86/x64; native Darwin/APFS process-crash tests passed; ARM64 Linux passes under qemu-user, native qualification pending; Windows x64 contract implemented (wine-tested), native qualification pending; see below |
 | W1a | WAL / LSM / persistence hardening | done: `wal.w`, `raft_wal.w`, `lsm.w`, `sstable.w`, `kv_state.w`, `durable_gate.w` |
 | W2 | Bounded binary codecs | done: `lib/bytes.w`, `lib/byte_buf.w`, `lib/checked.w`, `lib/byte_map.w`, `compress/crc32c.w` |
 | W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
@@ -34,8 +34,10 @@ The follow-up implementation and qualification for issue #522 are documented in
   (`IO_UNSUPPORTED` when refused), `flock` process locks, and
   `fs_replace_durable` reporting the failing stage and whether the rename
   happened. ARM64 Linux and Darwin adapters are implemented. Darwin
-  requires `F_FULLFSYNC` after filesystem sync; win64 and wasm remain
-  unsupported.
+  requires `F_FULLFSYNC` after filesystem sync. Windows x64 has its own
+  documented contract (HANDLEs, `LockFileEx`, `FlushFileBuffers`,
+  write-through `MoveFileExW`; [durability ports](durability_ports.md#windows-x64));
+  wasm remains unsupported.
 - **W1a.** WAL recovery policies (permissive / strict / strict-truncate)
   with a report naming the first bad offset and classifying clean end,
   torn tail or interior corruption; a failed fsync poisons the handle.
@@ -127,7 +129,8 @@ Platform limits remain explicit: file durability is qualified on Linux
 x86/x64. ARM64 Linux/Darwin adapters and native concurrent qualification
 harnesses are implemented; native hardware/filesystem evidence is still pending
 ([qualification](arm64_qualification.md), [durability ports](durability_ports.md)).
-Windows durability remains a separate, unsupported port. Thread-safe shared
+Windows has a separate, documented durability contract (not POSIX parity)
+that is tested under wine; native Windows qualification is pending. Thread-safe shared
 budget accounting is available on Linux x86/x64, with single-owner arena
 mutation unchanged. Checked transports expose kernel peer addresses, local Unix
 credentials and directional shutdown ([socket identity](socket_identity.md)).
@@ -271,11 +274,16 @@ barriers return an error, never success. Apple's [fsync documentation](https://d
 and [fcntl documentation](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fcntl.2.html)
 explain why a plain filesystem sync is insufficient for the drive cache.
 
-ARM64 Linux native qualification remains open under #608. Windows needs
-its own handle-sharing, locking, replacement and flush contract and native
-crash tests; `lib/fs.w` continues returning `IO_UNSUPPORTED` there, without
-claiming POSIX directory durability. This Darwin work does not complete
-all of #608.
+ARM64 Linux runs `lib/fs_test.w`, `lib/io_test.w` and the Linux fault/crash
+harness (`tools/linux_fs_qualification.w`, also run for i386 and x86-64)
+under qemu-user in `tests_arm64`; that validates the AArch64 adapters, not
+ARM64 hardware. Native ARM64 Linux qualification (an ARM64 Linux host, or
+`bin/qualify_native --suite durability --adb SERIAL` on a physical Android
+device) remains open under #608 ([durability ports](durability_ports.md)).
+Windows now has its own handle-sharing, locking, replacement and flush
+contract ([durability ports](durability_ports.md#windows-x64)); it claims no
+POSIX directory durability, and native Windows crash tests remain open. This
+Darwin work does not complete all of #608.
 
 ### Storage hardening (W1a)
 

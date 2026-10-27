@@ -51,8 +51,10 @@ follow-up):
   pattern; `.shared` + `cvta.shared` + `bar.sync` in
   `code_generator/ptx.w`). `tensor_sum` is now a block-tree reduction
   (one atomic per 256-element block): 4.6x faster (6.0ms → 1.3ms per
-  4M-element sum on an RTX 4080). All three matmuls are 16x16
-  shared-memory tiled kernels.
+  4M-element sum on an RTX 4080). All three matmuls were 16x16
+  shared-memory tiled kernels; since #480 they run as register-tiled
+  tile programs (`tensor_matmul_launch`, [tiles.md](tiles.md)), 3x
+  faster at 256^3 and 6-9x at 1024^3 and up.
 - *Stage 4 async*: per-op `gpu_sync()` is gone — ops enqueue on the
   default stream; the sync points are `tensor_sum` / `tensor_to_ndf` /
   `tensor_free` / `tensor_randn`, autograd's host-side rules, one

@@ -79,6 +79,12 @@ void tile_analysis_broadcast(tile_node* result, tile_node* left, tile_node* righ
 void tile_analyze_expression(tile_program* program, tile_node* node, int destination);
 
 
+int tile_analysis_dimension(tile_node* node):
+	if ((node.kind != tile_literal) || (node.type != type_lookup(c"int")) || (tile_dimension_supported(node.value) == 0)):
+		tile_error_at(node, c"rank-two tile dimensions must be constants 16, 32, 64 or 128")
+	return node.value
+
+
 int tile_analysis_arguments(tile_program* program, tile_node* node):
 	int count = 0
 	tile_node* arg = node.args
@@ -176,21 +182,21 @@ void tile_analyze_expression(tile_program* program, tile_node* node, int destina
 		while (i < 7):
 			dimension = dimension.next
 			i = i + 1
-		if ((dimension.kind != tile_literal) || (dimension.type != type_lookup(c"int")) || (dimension.value != 16) || (dimension.next.kind != tile_literal) || (dimension.next.type != type_lookup(c"int")) || (dimension.next.value != 16)):
-			tile_error_at(node, c"rank-two tile dimensions must be the constant 16 by 16")
+		int rows = tile_analysis_dimension(dimension)
+		int cols = tile_analysis_dimension(dimension.next)
 		tile_analysis_matrix(program, node)
 		node.type = float32_type
-		tile_analysis_shape(node, 2, 16, 16)
+		tile_analysis_shape(node, 2, rows, cols)
 		node.masked = 1
 		tile_analysis_effect(program, node)
 	else if (kind == tile_zero):
 		if (tile_analysis_arguments(program, node) != 2):
 			tile_error_at(node, c"tile_zero expects two static dimensions")
-		if ((node.args.kind != tile_literal) || (node.args.type != type_lookup(c"int")) || (node.args.value != 16) || (node.args.next.kind != tile_literal) || (node.args.next.type != type_lookup(c"int")) || (node.args.next.value != 16)):
-			tile_error_at(node, c"rank-two tile dimensions must be the constant 16 by 16")
+		int rows = tile_analysis_dimension(node.args)
+		int cols = tile_analysis_dimension(node.args.next)
 		tile_analysis_matrix(program, node)
 		node.type = float32_type
-		tile_analysis_shape(node, 2, 16, 16)
+		tile_analysis_shape(node, 2, rows, cols)
 	else if (kind == tile_dot):
 		if (tile_analysis_arguments(program, node) != 2):
 			tile_error_at(node, c"dot expects two rank-two float32 tiles")
@@ -201,11 +207,12 @@ void tile_analyze_expression(tile_program* program, tile_node* node, int destina
 		tile_analysis_matrix(program, node)
 		node.type = float32_type
 		tile_analysis_shape(node, 2, left.rows, right.cols)
-		# A static dot owns two 16x16 f32 shared operands. Iterations reuse
-		# those buffers only after every thread has crossed the final barrier.
-		program.shared_bytes = program.shared_bytes + 2048
-		if (program.shared_bytes > 49152):
+		# Every dot stages both operands in the one shared region, reused
+		# only after all threads cross the dot's final barrier.
+		int bytes = tile_dot_shared_bytes(left.rows, left.cols, right.cols)
+		if (bytes > 49152):
 			tile_error_at(node, c"tile region exceeds the 48 KiB shared-memory limit")
+		if (bytes > program.shared_bytes): program.shared_bytes = bytes
 		tile_analysis_effect(program, node)
 	else:
 		tile_error_at(node, c"unsupported expression in a tile body")

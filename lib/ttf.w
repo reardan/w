@@ -41,6 +41,8 @@ struct ttf_font:
 	int glyph_count
 	int cmap4           # offset of the format-4 cmap subtable, or 0
 	int cmap12          # offset of the format-12 cmap subtable, or 0
+	int cmap_symbol     # the subtable is a Windows symbol one (3,0): U+0000..
+						# U+00FF also map through U+F000..U+F0FF
 	int loca
 	int glyf
 	int hmtx
@@ -146,6 +148,8 @@ int ttf_load(ttf_font* f, char* path):
 	return 1
 
 
+int ttf_cmap_subtable(ttf_font* f, int cmap, int platform, int encoding);
+
 # Index a font already in memory. f borrows data (it is not copied):
 # keep it alive while f is in use. Returns 1, or 0 after printing why.
 int ttf_load_bytes(ttf_font* f, char* data, int size):
@@ -154,6 +158,7 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 	f.hint_metrics = 0
 	f.cmap4 = 0
 	f.cmap12 = 0
+	f.cmap_symbol = 0
 	if (size < 12):
 		print_error(c"ttf: file too short\n")
 		return 0
@@ -217,14 +222,28 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 			f.strike_thick = s_thick
 			f.strike_pos = ttf_s16(f, os2 + 28)
 
-	# Prefer a format-12 subtable (full Unicode); keep the first format-4
-	# one for the BMP.
+	# HarfBuzz's choice of subtable (of the formats 4 and 12 read here):
+	# Windows symbol, then the 32-bit Unicode ones, then the BMP ones.
+	# Like HarfBuzz, a symbol subtable maps U+0000..U+00FF through
+	# U+F000..U+F0FF too, unless an OS/2 version 0 table names a code
+	# page (fsSelection's high byte).
+	char* order = c"\x03\x00\x03\x0a\x00\x06\x00\x04\x03\x01\x00\x03\x00\x02\x00\x01\x00\x00"
+	for k in range(9):
+		int sub = ttf_cmap_subtable(f, cmap, order[k * 2], order[k * 2 + 1])
+		if (sub == 0): continue
+		if (ttf_u16(f, sub) == 4): f.cmap4 = sub
+		else: f.cmap12 = sub
+		f.cmap_symbol = (k == 0) && ((os2 == 0) || (ttf_u16(f, os2) != 0) || ((ttf_u16(f, os2 + 62) & 0xff00) == 0))
+		break
+	# Otherwise prefer any format-12 subtable (full Unicode), and keep
+	# the first format-4 one for the BMP.
 	int subtables = ttf_u16(f, cmap + 2)
 	for i in range(subtables):
+		if ((f.cmap4 != 0) || (f.cmap12 != 0)): break
 		int sub = cmap + ttf_u32(f, cmap + 4 + i * 8 + 4)
 		int format = ttf_u16(f, sub)
-		if ((format == 4) && (f.cmap4 == 0)): f.cmap4 = sub
-		if ((format == 12) && (f.cmap12 == 0)): f.cmap12 = sub
+		if (format == 4): f.cmap4 = sub
+		if (format == 12): f.cmap12 = sub
 	if ((f.cmap4 == 0) && (f.cmap12 == 0)):
 		print_error(c"ttf: no format-4 or format-12 cmap subtable\n")
 		return 0
@@ -472,10 +491,31 @@ int ttf_glyph_id_12(ttf_font* f, int code):
 	return 0
 
 
+int ttf_glyph_id_4(ttf_font* f, int code);
+
 # Glyph id for a codepoint (0 = .notdef): format 12 when present, else
-# format 4.
+# format 4; a symbol subtable also maps U+0000..U+00FF at U+F000.
 int ttf_glyph_id(ttf_font* f, int code):
-	if (f.cmap12 != 0): return ttf_glyph_id_12(f, code)
+	int gid = 0
+	if (f.cmap12 != 0): gid = ttf_glyph_id_12(f, code)
+	else: gid = ttf_glyph_id_4(f, code)
+	if ((gid == 0) && f.cmap_symbol && (code >= 0) && (code <= 0xff)): return ttf_glyph_id(f, 0xf000 + code)
+	return gid
+
+# The offset of the (platform, encoding) cmap subtable when it has
+# format 4 or 12, else 0.
+int ttf_cmap_subtable(ttf_font* f, int cmap, int platform, int encoding):
+	for i in range(ttf_u16(f, cmap + 2)):
+		int record = cmap + 4 + i * 8
+		if ((ttf_u16(f, record) != platform) || (ttf_u16(f, record + 2) != encoding)): continue
+		int sub = cmap + ttf_u32(f, record + 4)
+		int format = ttf_u16(f, sub)
+		if ((format == 4) || (format == 12)): return sub
+		return 0
+	return 0
+
+# Glyph id via a format-4 subtable (BMP segments).
+int ttf_glyph_id_4(ttf_font* f, int code):
 	int sub = f.cmap4
 	if (code > 65535): return 0
 	int segs = ttf_u16(f, sub + 6) / 2

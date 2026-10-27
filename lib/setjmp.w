@@ -30,7 +30,8 @@ Contract, as in C, with the W-specific differences marked:
   §2.2, skips any body that names setjmp/longjmp), so a local of THAT
   function changed between setjmp and longjmp keeps its latest value; C
   only guarantees that for volatile locals. Other functions may hold
-  locals in callee-saved registers (x86 esi/edi, x64 r12-r15): setjmp
+  locals in callee-saved registers (x86 esi/edi, x64 r12-r15, arm64
+  Linux x19-x23): setjmp
   saves that set and longjmp restores it, so a frame unwound by longjmp
   cannot leak a register value into the setjmp caller's callers. The
   same contract binds hand-written asm: an asm body or stub must
@@ -48,7 +49,7 @@ Contract, as in C, with the W-specific differences marked:
 # stack pointer and frame pointer (on arm64 the x28 W stack pointer and
 # x29), then the callee-saved registers register promotion may use
 # (x86: ebx esi edi in r0..r2; x64: rbx r12 r13 r14 r15 in r0..r4;
-# arm64 saves nothing there yet, since it promotes nothing).
+# arm64: x19-x23 in r0..r4, the registers promotion hands out there).
 struct jmp_buf:
 	int pc
 	int sp

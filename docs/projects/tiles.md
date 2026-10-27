@@ -76,69 +76,126 @@ origins, element strides and bounds:
 
 ```text
 tile_load(pointer, row, column, row_stride, column_stride,
-          rows_bound, columns_bound, 16, 16)
+          rows_bound, columns_bound, rows, columns)
+tile_zero(rows, columns)
 dot(left_tile, right_tile)
 tile_store(pointer, row, column, row_stride, column_stride,
            rows_bound, columns_bound, value)
 ```
 
-The initial matrix shape is 16 by 16. A load zero-fills elements outside either
-bound. A store masks both dimensions. `dot` produces a float32 matrix tile.
-The physical implementation stages two inputs in shared memory, synchronizes
-the block, computes the dot product, and synchronizes before buffer reuse.
-Uniform range loops allow a program to accumulate successive K tiles.
+Each static dimension is the literal 16, 32, 64 or 128, so shapes range from
+16 by 16 to 128 by 128 and need not be square. A load zero-fills elements
+outside either bound. A store masks both dimensions. `dot` multiplies an
+m-by-k tile by a k-by-n tile and produces an m-by-n float32 tile. Elementwise
+operators need equal shapes; only scalars broadcast. The physical
+implementation stages both inputs in shared memory, synchronizes the block,
+computes the product, and synchronizes before buffer reuse. Uniform range loops
+allow a program to accumulate successive K tiles.
 
 For example, a row-major product uses inferred tile locals (`:=`) and scalar
-program coordinates:
+program coordinates. Each program computes a 128 by 128 output tile from
+16-deep K slices:
 
 ```text
 gpu[1] for tile in range(programs):
-	int columns = (n + 15) / 16
-	int row = tile_program_id() / columns * 16
-	int col = tile_program_id() % columns * 16
-	acc := tile_zero(16, 16)
+	int columns = (n + 127) / 128
+	int row = tile_program_id() / columns * 128
+	int col = tile_program_id() % columns * 128
+	acc := tile_zero(128, 128)
 	for int block in range((k + 15) / 16):
-		left := tile_load(a, row, block * 16, k, 1, m, k, 16, 16)
-		right := tile_load(b, block * 16, col, n, 1, k, n, 16, 16)
+		left := tile_load(a, row, block * 16, k, 1, m, k, 128, 16)
+		right := tile_load(b, block * 16, col, n, 1, k, n, 16, 128)
 		acc += dot(left, right)
 	tile_store(out, row, col, n, 1, m, n, acc)
 ```
 
-Each dot accumulates its 16 products in ascending K order with separate
-float32 multiplication and addition. Adding successive dot results groups the
-sum by K tile, so results need not be bit-identical to the hand-written kernel's
-single running accumulator. Compare with an appropriate floating-point tolerance.
+A dot accumulates its K products in ascending K order with float32 fused
+multiply-add. `acc += dot(a, b)` accumulates straight into `acc`; any other dot
+starts from zero, and its result is then combined by the enclosing operator.
+Results therefore need not be bit-identical to the hand-written kernel's single
+running multiply-then-add accumulator. Compare with an appropriate
+floating-point tolerance, or use small integer inputs, which stay exact.
 
 All threads participate in cooperative operations, including threads whose
 final output is out of bounds. There is no implicit whole-body lane guard.
 Conditions and loop bounds must be block-uniform; tile-valued conditions are
-rejected. Tensor-core instructions, automatic layout search, asynchronous copies
-and automatic tuning are outside this first implementation.
+rejected. Tensor-core instructions, asynchronous copies, software pipelining
+and automatic tuning are outside the current implementation; the block shape is
+chosen by the program's static tile dimensions.
 
 ## Lowering plan
 
 `tile_program.plan` points to a `tile_lowering_plan` owned by the same retained
-arena as the syntax tree. The initial plan preserves the existing mapping:
-256 threads, `element = thread + pass * 256`, and `ceil(width/256)` passes.
-Matrix elements use `row = thread >> 4` and `column = thread & 15`.
+arena as the syntax tree. Vector tiles keep the original mapping: 256 threads,
+`element = thread + pass * 256`, and `ceil(width/256)` passes.
 `tile_plan_element`, `tile_plan_thread`, `tile_plan_pass`, `tile_plan_row` and
 `tile_plan_col` expose this mapping for independent tests and future consumers.
 
+Rank-two tiles of every shape use a 16 by 16 thread grid, `r = thread >> 4` and
+`c = thread & 15`. Thread `(r, c)` holds a strided fragment of
+`(rows/16) * (cols/16)` elements: fragment element `f = i * (cols/16) + j` is
+logical element `(r + 16i, c + 16j)` (`tile_plan_fragments`,
+`tile_plan_fragment_row`, `tile_plan_fragment_col`). Neighbouring threads touch
+neighbouring columns, so global loads and stores coalesce, and every tile
+of one shape, including a dot's result, shares the same layout. The emitter
+gives each fragment element its own register, so a 128 by 128 accumulator is
+64 registers per thread.
+
 Each syntactic dot has a `tile_dot_plan` keyed by its owned node identity.
 Plans follow evaluation order, including nested dots and both uniform branches.
-Each dot owns two distinct 1024-byte, four-byte-aligned shared buffers with
-four-byte element strides and 64-byte row strides. Buffer IDs are unique
-within the program; offsets describe a disjoint accounting of shared bytes.
-PTX currently declares a separate symbol for each assigned buffer, so offsets
-are accounting metadata rather than addresses into one combined allocation.
-A dot's plan also records the 16-step K reduction, staging/address shifts and
-two block barriers: inputs ready and readers finished before reuse on the next
-loop iteration. Distinct dots do not yet reuse storage, even in disjoint branches.
+A dot's plan records its m, k and n extents, whether it is fused into an
+`acc += dot(...)` accumulation, the left and right shared buffers, and two
+block barriers: inputs ready, and readers finished before the buffers are
+reused. The left operand is staged row-major at offset zero and the right
+operand directly after it. A buffer's row holds the tile's columns, padded by
+16 words when the width is a multiple of 32 words, so the two rows a warp
+touches in one access fall in disjoint banks. Rows are 16-byte aligned.
+
+All dots in a program reuse that one shared region, sized for the largest dot
+(`tile_dot_shared_bytes`); the reuse barrier makes this safe across loop
+iterations, branches and nested dots. PTX declares one `__tile_smem` array per
+kernel and addresses the operands by the planned offsets. A program whose
+largest dot needs more than 48 KiB is rejected. For each K step, a thread reads
+`m/16` left values and `n/16` right values from shared memory and issues
+`(m/16) * (n/16)` fused multiply-adds, an outer product held in registers.
 
 The planner is the source of layout and staging choices. Register assignment
 and PTX spelling remain emitter responsibilities. Changing the plan is not yet
 a supported public tuning interface: its current invariants are established by
 analysis and the planner, and tests with artificial plans inspect text only.
+
+## Tensor library
+
+`lib/tensor.w` uses tile programs for the GPU path of `tensor_matmul2`,
+`tensor_matmul2_tn` and `tensor_matmul2_nt`, and so for every `lib/autograd.w`
+and `lib/nn.w` linear layer. `tensor_matmul_launch` passes each variant's
+element strides to one of three programs. `tensor_matmul_tile32` uses 32 by
+32 output tiles and 32-deep K slices. `tensor_matmul_tile64` and
+`tensor_matmul_tile128` use 64 and 128 square output tiles with 16-deep
+slices. `tensor_matmul_edge` picks the largest tile whose unpadded output
+still gives about 48 programs, 0.6 waves on the 80-SM GPU where this was
+measured. Setting `tensor_matmul_tile_edge` to 16, 32, 64 or 128 forces a
+path; 16 selects the hand-written `tensor_matmul_tiled_kernel`. The opt-in
+cuBLAS hook still takes precedence.
+
+Best of five batches of ten launches, in microseconds, on the RTX 4080 SUPER:
+
+| m x k x n | hand-written 16 | tile 32 | tile 64 | tile 128 |
+| --------- | --------------- | ------- | ------- | -------- |
+| 64 x 784 x 128 | 28 | 23 | 44 | 100 |
+| 256 x 256 x 256 | 23 | 9 | 16 | 35 |
+| 512 x 512 x 512 | 110 | 45 | 30 | 68 |
+| 1024 x 1024 x 1024 | 807 | 266 | 163 | 121 |
+| 512 x 768 x 3072 | 980 | 359 | 150 | 160 |
+| 32 x 4096 x 4096 | 533 | 174 | 236 | 486 |
+| 8192 x 768 x 768 | 4,283 | 1,567 | 735 | 564 |
+| 4096 x 4096 x 4096 | 73,924 | 24,561 | 12,533 | 7,777 |
+
+The 32 by 32 program beats the hand-written kernel at every measured shape.
+The tile programs accumulate with fused multiply-add, so GPU products agree
+with the CPU fallback to float32 rounding, not bit for bit. That matches the
+cuBLAS hook. `tensor_gpu_test` checks every forced path and the automatic
+choice on ragged multi-tile shapes for all three variants.
 
 ## Scope and validation
 
@@ -152,7 +209,9 @@ shape and control diagnostics, and generated PTX structure. Recording and
 analysis must leave host/PTX output and backend execution state unchanged.
 Rollback must allow a later successful compilation. GPU execution tests compare
 tile add with a CPU reference and staged dot with both CPU results and
-`tensor_matmul_tiled_kernel`, including partial M, N and K tiles.
+`tensor_matmul_tiled_kernel`, including partial M, N and K tiles. They also
+run 64 by 64, 128 by 128 and rectangular 32 by 64 products, one with a
+transposed operand, and elementwise operations on multi-register fragments.
 
 Every compiler change is gated by structured diagnostics, diff-selected tests,
 self-host fixpoints, the ordinary suite and changed-line compiler coverage.
@@ -161,18 +220,39 @@ target and streaming-grammar release/seed gate are not prerequisites for tiles.
 
 The new targets are `tile_ast_test` / `tile_ast_64_test`,
 `tile_analysis_unit_test` / `tile_analysis_unit_64_test`,
-`tile_diagnostics_test`, and `tile_ptx_test`. `tile_gpu_compile_test` and
+`tile_diagnostics_test`, `tile_ptx_test` and `tile_tree_query_test`.
+`tile_gpu_compile_test` and
 `tile_ops_gpu_compile_test` exercise both GPU fixtures without running CUDA;
 `tile_gpu_test` and `tile_ops_gpu_test` execute them on a real device.
-Tree queries expose the tile syntax hierarchy and source locations; analyzed
-shape and binding information currently lives in the retained tile payload.
+`w tree --json` (schema version 3) exposes the tile syntax hierarchy, source
+locations and the analysis. Each tile node record carries `tile_op`,
+`tile_type` (a compiler type name such as `float32*`), `tile_rank`,
+`tile_rows`, `tile_cols`, `tile_uniform`, `tile_masked`, `tile_effect` (its
+memory-effect order, or 0) and `tile_binding` (a binding ID, or -1). The
+owning `gpu` statement's record is followed by a `tile_program` record
+(`node`, `kernel`, `width`, `analyzed`, `matrix`, `shared_bytes`,
+`captures`, `bindings`, and once planned `threads`, `lane_passes`, `dots`),
+one `tile_binding` record per binding (`program`, `id`, `name`, `kind`,
+`type`, `rank`, `rows`, `cols`, `uniform`, `capture_slot`), and one
+`tile_dot` record per planned dot (`program`, `node`, `m`, `k`, `n`,
+`fused`, and the buffer offsets and row strides). Every record carries
+`source`. `tile_tree_query_test` covers the format.
 
-A development smoke measurement on an RTX 4080 SUPER (driver 580.173.02),
-using a 512x512 float32 product, five warm-up pairs and three batches of 100
-launches, measured about 121 microseconds per tile matmul versus 110 microseconds
-for the existing hand-tiled kernel. Timing includes host launch overhead and a
-synchronization at each batch end. This establishes a starting point for later
-layout/register tuning; the initial implementation does not claim a speedup.
+The first 16 by 16 implementation measured about 121 microseconds per 512x512
+product on an RTX 4080 SUPER, against 110 microseconds for the hand-tiled
+kernel. Register-tiled shapes changed that. Development measurements on the
+same GPU (driver 580.178.04, 20 timed launches after warm-up, desktop load
+present) gave these results for square float32 products, in GFLOP/s:
+
+| size | `tensor_matmul_tiled_kernel` | 64 by 64 tiles | 128 by 128 tiles | cuBLAS sgemm |
+| ---- | ---------------------------- | -------------- | ---------------- | ------------ |
+| 2048 | 2,200 | 16,300 | 18,100 | 34,300 |
+| 4096 | 2,400 | 12,900-14,900 | 20,000-22,500 | 27,400 |
+
+So 128 by 128 tile programs are about 8-9 times faster than the hand-tiled
+kernel and reach 60-75% of cuBLAS at these sizes. Small products are bound by
+launch overhead, and a 128 by 128 grid under-fills the GPU below about 2048.
+Every result was checked exactly against the reference kernel.
 
 
 ## Reproducible benchmark
@@ -191,19 +271,24 @@ The two optional arguments are launches per batch and number of batches;
 defaults are 100 and 3. `./wbuild tile_benchmark` runs those defaults. Runtime
 benchmarking is opt-in and is not an ordinary-suite performance gate.
 
-The fixed input sweep includes square matrix products from 16 through 512,
-1x1 products with zero/nonzero K, partial 15x17x19 and 511x513x509 products,
-and vector widths 1, 17, 255, 256, 257, 513 and 1024. Each vector width runs
-its exact boundary, boundary plus one, and 65539 elements. Every case checks
-all results against a CPU calculation and a GPU reference, plus output guards,
-before warming up or timing. Deterministic small integer inputs make these
-checks exact in float32 at the chosen sizes.
+The fixed input sweep runs the 16, 64 and 128 tile programs (rows `matrix16`,
+`matrix64` and `matrix128`) on square products from 16 through 4096, 1x1
+products with zero/nonzero K, and partial 15x17x19 and 511x513x509 products.
+It also runs vector widths 1, 17, 255, 256, 257, 513 and 1024. Each vector width
+runs its exact boundary, boundary plus one, and 65539 elements. Every case
+checks all results against a GPU reference, plus output guards, before warming
+up or timing. Products up to 512 cubed are also checked entirely against a CPU
+calculation; larger ones check their first, middle and last rows on the CPU.
+Deterministic small integer inputs make these checks exact in float32 at the
+chosen sizes.
 
 Matrix reference timings use the existing `tensor_matmul_tiled_kernel`;
 vector references use the scalar GPU addition loop used by `tensor_add_into`.
 After five warm-up pairs, each batch reports nanoseconds per launch, including
-host launch overhead and one synchronization at the end of the batch. The two
-implementations alternate first/second timing order between batches. Allocation,
+host launch overhead and one synchronization at the end of the batch, and for
+matrix rows the corresponding GFLOP/s. The two implementations alternate
+first/second timing order between batches. Products larger than 512 cubed halve
+the launches per batch, down to three, for each doubling of work. Allocation,
 CPU validation and managed-memory first-touch costs are outside timing. Keep
 individual batch results and record GPU/driver/compiler revision when comparing
 runs; normal device load and clock variation still affect results. This baseline

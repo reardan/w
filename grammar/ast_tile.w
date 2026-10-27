@@ -342,7 +342,10 @@ void tile_retain_one(tile_program* program, tile_node* node, int parent):
 	int source = retained_source_id(program.source_file)
 	int id = retained_add(kind, parent, source, node.start, node.line, node.column, name)
 	node.retained_id = id
-	retained_record_at(id).end = node.end
+	retained_record* record = retained_record_at(id)
+	record.end = node.end
+	# Tree queries report the analyzed shape and binding through this link.
+	record.tile_payload = cast(char*, node)
 	tile_retain_one(program, node.left, id)
 	tile_retain_one(program, node.right, id)
 	tile_retain_one(program, node.third, id)

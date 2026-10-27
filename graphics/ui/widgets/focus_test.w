@@ -500,3 +500,78 @@ void test_assistive_actions_reach_the_widgets():
 	assert_equal(0, m.disabled_clicks)
 	ui_access_tree_free(tree)
 	ui_render_destroy(&fx.r)
+
+
+ui_access_tree* captured_area(ui_context* ctx, ui_textarea_state* ta, int32* clicks):
+	ui_access_tree* tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	area_frame(ctx, ta, clicks)
+	ui_access_capture(ctx, 0)
+	return tree
+
+
+# Text widgets publish their caret and selection in characters, and a
+# bridge's SET_SELECTION request moves them on the next frame.
+void test_text_caret_and_selection_round_trip():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textarea_state ta
+	ui_textarea_init(&ta)
+	# "h\xc3\xa9llo\nw": five characters on the first line (one is two
+	# bytes), then a newline and a "w".
+	ui_textarea_set(&ta, c"h\xc3\xa9llo\nw")
+	int32 clicks = 0
+	ui_access_tree* tree = captured_area(ctx, &ta, &clicks)
+	ui_access_node* area = ui_access_find(tree, 1)
+	assert_equal(UI_ACCESS_TEXTBOX, area.role)
+	asserts(c"selection action", (area.actions & UI_ACCESS_SET_SELECTION) != 0)
+	assert_equal(0, area.caret)
+	assert_equal(0, ui_access_has_selection(area))
+
+	# Select "\xc3\xa9ll" backwards: the caret lands on the anchor side.
+	assert_equal(1, ui_access_dispatch_selection(tree, 1, 4, 1))
+	ui_access_tree_free(tree)
+	tree = captured_area(ctx, &ta, &clicks)
+	area = ui_access_find(tree, 1)
+	assert_equal(1, area.caret)
+	assert_equal(1, area.selection_start)
+	assert_equal(4, area.selection_end)
+	assert_equal(1, ui_textarea_caret_offset(&ta))
+	assert_equal(5, ta.sel_anchor)
+	asserts(c"widget selection", ui_textarea_has_selection(&ta))
+
+	# A bare caret drops the selection; offsets are characters, so 7 is
+	# after the "w" on the second line.
+	assert_equal(1, ui_access_dispatch_selection(tree, 1, 7, 7))
+	ui_access_tree* again = captured_area(ctx, &ta, &clicks)
+	assert_equal(0, ui_access_tree_same(tree, again))
+	area = ui_access_find(again, 1)
+	assert_equal(7, area.caret)
+	assert_equal(0, ui_access_has_selection(area))
+	assert_equal(1, ta.caret_line)
+	assert_equal(1, ta.caret_col)
+	asserts(c"no widget selection", ui_textarea_has_selection(&ta) == 0)
+	# Offsets past the text clamp to its end.
+	assert_equal(1, ui_access_dispatch_selection(again, 1, 0, 99))
+	area_frame(ctx, &ta, &clicks)
+	assert_equal(0, ta.sel_anchor)
+	assert_equal(8, ui_textarea_caret_offset(&ta))
+	ui_access_tree_free(again)
+	ui_access_tree_free(tree)
+
+	# The single-line textbox has a caret only: a range request moves
+	# the caret to its active end.
+	form_model m
+	form_model_init(&m)
+	ui_textbox_set(&m.name, c"Ad\xc3\xa1")
+	tree = captured_frame(ctx, &m)
+	ui_access_node* name = ui_access_find(tree, 4)
+	assert_equal(3, name.caret)
+	assert_equal(3, name.selection_start)
+	assert_equal(3, name.selection_end)
+	assert_equal(1, ui_access_dispatch_selection(tree, 4, 0, 1))
+	form_frame(ctx, &m)
+	assert_equal(1, m.name.caret)
+	ui_access_tree_free(tree)
+	ui_textarea_free(&ta)
+	ui_render_destroy(&fx.r)

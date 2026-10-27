@@ -116,6 +116,12 @@ import debugger.disas
 import debugger.attach
 
 
+# 1 in wdbg when the debuggee may run threads (repl_threads_enable): every
+# debuggee thread can stop, one at a time (repl_host_enter). The REPL
+# leaves it 0: its main thread owns the compiler between entries.
+int dbg_thread_stops
+
+
 # Stepping state machine, consumed by the SIGTRAP handler.
 const int dbg_step_none = 0
 const int dbg_step_insn = 1
@@ -336,6 +342,19 @@ void dbg_examine(int addr, int count):
 
 # print <arg>: locals and args by name first, then defined globals, then
 # the expression compiler. pc/esp describe the selected frame.
+# A thread_local's symbol value is an offset in the per-thread block, so
+# its address on the stopped thread comes from compiled code (the stop
+# runs on that thread). 0 when the expression did not compile or run.
+int dbg_thread_local_address(char* name, int pc, int esp):
+	char* prefix = strjoin(c"cast(int, &", name)
+	char* expr = strjoin(prefix, c")")
+	free(prefix)
+	int addr = dbg_eval_call(expr, pc, esp)
+	free(expr)
+	if (dbg_eval_ok == 0): return 0
+	return addr
+
+
 void dbg_print_command(int pc, int esp, char* arg):
 	if (arg[0] == 0):
 		println(c"usage: print <name | expression>")
@@ -348,9 +367,13 @@ void dbg_print_command(int pc, int esp, char* arg):
 		int g = dbg_global_find(arg)
 		if (g >= 0):
 			if (dbg_sym_symtype(g) != 2):
+				int addr = dbg_sym_address(g)
+				if (sym_is_thread_local(dbg_sym_data(g))):
+					addr = dbg_thread_local_address(arg, pc, esp)
+					if (addr == 0): return;
 				print(arg)
 				print(c" = ")
-				dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
+				dbg_print_typed_value(addr, dbg_sym_type(g))
 				put_char(10)
 				return;
 	dbg_eval(arg, pc, esp)
@@ -385,10 +408,14 @@ void dbg_set_command(int pc, int esp, char* arg):
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
 			if (dbg_set_checked(dbg_sym_type(g))): return;
-			dbg_mem_write_word(dbg_sym_address(g), v)
+			int target = dbg_sym_address(g)
+			if (sym_is_thread_local(dbg_sym_data(g))):
+				target = dbg_thread_local_address(arg, pc, esp)
+				if (target == 0): return;
+			dbg_mem_write_word(target, v)
 			print(arg)
 			print(c" = ")
-			dbg_print_typed_value(dbg_sym_address(g), dbg_sym_type(g))
+			dbg_print_typed_value(target, dbg_sym_type(g))
 			put_char(10)
 			return;
 	print(c"unknown variable: ")
@@ -414,6 +441,8 @@ void dbg_watch_command(int pc, int esp, char* arg):
 				println(arg)
 				return;
 			addr = dbg_sym_address(g)
+			# The stopped thread's copy (watched like any word)
+			if (sym_is_thread_local(dbg_sym_data(g))): addr = dbg_thread_local_address(arg, pc, esp)
 	if (dbg_mem_readable(addr, __word_size__) == 0):
 		println(c"address is not readable")
 		return;
@@ -716,6 +745,10 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 
 # Interactive command loop. Returning resumes the debuggee.
 void wdbg_command_loop(int context, int stop_addr):
+	if (dbg_thread_stops && (repl_gettid() != getpid())):
+		print(c"[thread ")
+		dbg_print_dec(repl_gettid())
+		println(c"]")
 	dbg_frames_compute(context, stop_addr)
 	char* command = cast(char*, malloc(256))
 	while (1):
@@ -969,14 +1002,26 @@ void dbg_log_report(int bp, int addr, int esp):
 # debug exceptions (trapno 1, eip exact). Returning resumes the debuggee
 # through the kernel's sigreturn path. context points at the sigcontext;
 # the arch-specific entry shims below compute it.
+void wdbg_trap_stop(int sig, int context);
+
+
 void wdbg_trap(int sig, int context):
 	# A thread an entry started trapped ('debugger' or a breakpoint): the
 	# command loop and its nested entries belong to the main thread, which
 	# may be compiling or reading input right now (#713).
-	if (repl_threads_enabled && (repl_gettid() != getpid())):
+	if (repl_threads_enabled && (dbg_thread_stops == 0) && (repl_gettid() != getpid())):
 		println(c"debugger: stop in a thread started by an entry; only the main thread can stop in the REPL; exiting")
 		# The trap already executed: end the process as SIGTRAP would.
 		exit(128 + sig)
+	if (dbg_thread_stops == 0):
+		wdbg_trap_stop(sig, context)
+		return;
+	repl_host_enter()
+	wdbg_trap_stop(sig, context)
+	repl_host_leave((ctx_eflags(context) & 256) != 0)
+
+
+void wdbg_trap_stop(int sig, int context):
 	# Mirrors the trapped sigcontext into the register seam's in-process
 	# read path (debugger/registers.w), so any seam consumer sees the same
 	# registers this handler is about to work with. Purely additive: every
@@ -1037,6 +1082,13 @@ void wdbg_trap(int sig, int context):
 			dbg_print_source_at(addr)
 			if (dbg_disas_auto): dbg_disas_show_context(addr)
 			wdbg_stop_loop(context, addr)
+			return;
+		# A thread that trapped on a breakpoint another thread's stop then
+		# deleted waited for the lock with the original byte back in
+		# place: run that instruction, there is no stop.
+		char* trapped = cast(char*, addr)
+		if (dbg_thread_stops && ((trapped[0] & 255) != 204)):
+			ctx_set_eip(context, addr)
 			return;
 		# A compiled-in 'debugger' statement (or --break_start/--break_end)
 		print(c"breakpoint hit at eip=")
@@ -1122,8 +1174,10 @@ void wdbg_trap(int sig, int context):
 # which rolls the failed entry back and returns to the wdbg prompt
 # instead of wedging the session in a post-mortem stop.
 void wdbg_fatal(int sig, int context):
+	if (repl_fault_window_mine()): repl_fault(sig, context)
+	# A fault on a debuggee thread waits for another thread's stop to end
+	if (dbg_thread_stops): repl_host_enter()
 	dbg_reg_context = context
-	if (repl_fault_active): repl_fault(sig, context)
 	dbg_fatal_stop = 1
 	dbg_fault_banner(c"fatal signal: ", sig, context)
 	dbg_announce_location(ctx_eip(context))
@@ -1227,6 +1281,8 @@ void wdbg_attach_compile(char* target):
 
 
 int wdbg_main(int argc, int argv):
+	# A no-op when the compiler driver ('w --debug') already allocated
+	malloc_host_freelist_mode()
 	args_init(argc, argv)
 	repl_ast_options()
 	# Quiet the compiler driver: wdbg is entered through its own main (not
@@ -1272,6 +1328,11 @@ int wdbg_main(int argc, int argv):
 	# handlers; wdbg_fatal forwards to repl_fault while an eval's fault
 	# window is active.
 	repl_inprocess_setup()
+	# Per-thread storage as in the REPL, so a debuggee may declare
+	# thread_local and run lib/thread.w and lib/safe_thread.w threads;
+	# each of them can stop (dbg_thread_stops)
+	repl_threads_enable()
+	dbg_thread_stops = repl_threads_enabled
 
 	# Every call stays a call (unit A5, compiler/inline_table.w), even
 	# under --inline: a breakpoint on a function is reached through a
@@ -1337,6 +1398,8 @@ int wdbg_main(int argc, int argv):
 		println2(c"wdbg: no --break_start and no 'debugger' statement in the program; it will run unmanaged until a trap or crash, so breakpoints queued on stdin before then will not apply")
 
 	int result = target_main(argc, argv)
+	# Wait for a stop on another debuggee thread to end
+	if (dbg_thread_stops): repl_host_enter()
 
 	if (args_has_flag(c"break_end")): debugger
 

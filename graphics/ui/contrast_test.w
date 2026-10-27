@@ -1,23 +1,28 @@
 # wbuild: name=graphics_ui_contrast_test x64
+# The preset themes pass graphics.ui.contrast's WCAG pair check.
 import lib.testing
 import graphics.ui.contrast
 
-void check_theme_contrast(ui_theme* t):
-	asserts(c"body text on background", ui_contrast_ratio(t.text, t.background) >= 4.5)
-	asserts(c"body text on surface", ui_contrast_ratio(t.text, t.surface) >= 4.5)
-	asserts(c"muted text on surface", ui_contrast_ratio(t.text_muted, t.surface) >= 4.5)
-	asserts(c"text on widget", ui_contrast_ratio(t.text, t.widget) >= 4.5)
-	asserts(c"button label", ui_contrast_ratio(t.on_accent, t.accent) >= 4.5)
-	asserts(c"button hover label", ui_contrast_ratio(t.on_accent, t.accent_hot) >= 4.5)
-	asserts(c"focus on background", ui_contrast_ratio(t.focus, t.background) >= 3.0)
-	asserts(c"focus on surface", ui_contrast_ratio(t.focus, t.surface) >= 3.0)
-	asserts(c"error on surface", ui_contrast_ratio(t.error, t.surface) >= 4.5)
+void test_formula():
+	assert_near(21.0, ui_contrast_ratio(ui_gray(0.0), ui_gray(1.0)))
+	assert_near(1.0, ui_contrast_ratio(ui_gray(0.5), ui_gray(0.5)))
+	# Symmetric, and the WCAG reference value for #777 on white (4.48).
+	assert_near(ui_contrast_ratio(ui_gray(0.0), ui_gray(0.3)), ui_contrast_ratio(ui_gray(0.3), ui_gray(0.0)))
+	float32 grey = 119.0 / 255.0
+	asserts(c"#777 on white is just under 4.5", fabs(ui_contrast_ratio(ui_gray(grey), ui_gray(1.0)) - 4.48) < 0.01)
 
-void test_default_theme_contrast():
+void test_preset_theme_contrast():
 	ui_theme t
 	ui_theme_light(&t)
-	check_theme_contrast(&t)
+	assert_equal(0, ui_theme_contrast_failures(c"light", &t))
 	ui_theme_dark(&t)
-	check_theme_contrast(&t)
-	asserts(c"black white 21", fabs(ui_contrast_ratio(ui_gray(0.0), ui_gray(1.0)) - 21.0) < 0.001)
-	asserts(c"same color 1", fabs(ui_contrast_ratio(t.text, t.text) - 1.0) < 0.001)
+	assert_equal(0, ui_theme_contrast_failures(c"dark", &t))
+	ui_theme_ocean(&t)
+	assert_equal(0, ui_theme_contrast_failures(c"ocean", &t))
+
+# The checker itself must catch a failing pair (and name it).
+void test_failing_pair_is_reported():
+	ui_theme t
+	ui_theme_light(&t)
+	t.border = ui_gray(0.8)
+	assert_equal(4, ui_theme_contrast_failures(c"pale-border", &t))

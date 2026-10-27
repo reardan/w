@@ -4,7 +4,7 @@ const int wexec_process_groups_supported = 0
 
 
 # 1: directory listings work here (lib/__arch__/win64/dirent.w walks
-# directories with FindFirstFileA/FindNextFileA).
+# directories with FindFirstFileW/FindNextFileW).
 int wexec_dirents_supported():
 	return 1
 

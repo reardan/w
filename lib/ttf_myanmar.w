@@ -365,6 +365,7 @@ void ttf_myanmar_shape(ttf_font* f, otl_buffer* b, char* scripts, int script_cou
 	tags[0] = otl_tag(c"rvrn")
 	masks[0] = 1 | otl_mask_hb
 	ttf_myanmar_stage(f, b, scripts, script_count, language, &tags[0], &masks[0], 1)
+	otl_apply_common(f, b, scripts, script_count, language, 0)
 	int broken = ttf_myanmar_find_syllables(b)
 	tags[0] = otl_tag(c"locl")
 	tags[1] = otl_tag(c"ccmp")

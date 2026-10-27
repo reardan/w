@@ -348,10 +348,11 @@ void dw_variable_emit(int local_index, int arg_words):
 	# A register-resident local (register promotion): DW_OP_reg<n>. The
 	# hardware number is the DWARF number on i386 and for r8-r15; x64's
 	# DWARF numbering swaps rcx/rdx and puts rsi/rdi at 4/5 (the loop and
-	# function-region registers, compiler/regalloc_scan.w)
+	# function-region registers, compiler/regalloc_scan.w); arm64's
+	# x19-x27 (#801) are DWARF 19-27
 	if (reg != 0):
 		int dw = reg
-		if (word_size == 8):
+		if ((word_size == 8) && (target_isa == 0)):
 			if (reg == 6): dw = 4
 			elif (reg == 7): dw = 5
 			elif (reg == 1): dw = 2

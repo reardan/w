@@ -230,13 +230,23 @@ not emitted on win64.
   traces already symbolize through the embedded ELF tables).
 - **Threads, sockets, process spawning** over WinAPI
   (`CreateThread`, Winsock, `CreateProcessA`).
+- **UTF-8 paths and long paths**: the win64 runtime's file, directory,
+  working-directory, argv and environment calls go through the wide
+  (UTF-16) Win32 API, converting with `MultiByteToWideChar` /
+  `WideCharToMultiByte` (CP_UTF8), so W's UTF-8 strings name files
+  outside the system code page correctly. Paths of 248 UTF-16 units or
+  more are made absolute with `GetFullPathNameW` and get the `\\?\`
+  (or `\\?\UNC\`) prefix, which lifts MAX_PATH. `win64_utf8_paths_test`
+  (in `tests_win64`) covers non-ASCII names created through
+  `CreateFileW` directly, listings, renames, `chdir`/`getcwd` and a path
+  over 300 characters. Process spawning (`CreateProcessA`) is still ANSI.
 - **Self-hosting on Windows**: the compiler itself runs on Windows with
   `w.exe win64 w.w -o wv2.exe`; the fixpoint is verified via
   `./wbuild verify_win` (needs Wine on Linux) or `wbuild.cmd verify_win`
   (natively on Windows — `wbuild.cmd` downloads the pinned `w.exe` seed
   from GitHub Releases per `SEEDS` on cold start; wexec drops the
   manifest's `wine` prefix when `os_windows()`). Path handling
-  (`GetCurrentDirectoryA` backslash normalization, Windows drive-letter
+  (`GetCurrentDirectoryW` backslash normalization, Windows drive-letter
   absolute paths, `NUL` device for check mode) is implemented in
   `compiler/compiler.w`; the normalization is a no-op on Unix. Process
   spawning for the build executor (`tools/wexec.w`) uses
@@ -250,7 +260,7 @@ not emitted on win64.
   `bin\wv2.exe`, compiles untargeted `bin/wv2 f.w -o bin/tool` host-tool
   steps for win64 (`bin/tool.exe`, e.g. the generated-source
   generators), supplies `echo`/`cmp` when PATH has neither, and walks
-  the source tree with FindFirstFileA so the generated manifest has
+  the source tree with FindFirstFileW so the generated manifest has
   every target. `wbuild.cmd` promotes the refreshed `wv2_win` /
   `wexec_win` outputs to `bin\wv2.exe` / `bin\wexec.exe`. The pinned
   v0.1.0 `w.exe` seed predates the IAT pre-fill fix and crashes on

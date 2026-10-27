@@ -1,7 +1,8 @@
 # Opt-in pure-grammar continuation predictor. Ordered alternatives and greedy
 # repetitions are explored with the complete caller continuation. AST nodes are
 # allocated only after a successful derivation, never during speculation.
-# This is bounded depth-first configuration execution, not an ALL(*) simulator.
+# This is bounded depth-first configuration execution with memoized rule
+# calls (see pg_prediction_record), not an ALL(*) simulator.
 import libs.extras.parser_generator.runtime
 
 
@@ -21,11 +22,15 @@ struct pg_prediction_program:
 	int events
 
 
+# An ordinary branch resumes at pc; a memo branch (record >= 0) resumes a
+# memoized call's next recorded derivation, then continues at pc.
 struct pg_prediction_branch:
 	int pc
 	int position
 	int frame
 	int events
+	int record
+	int derivation
 
 
 pg_prediction_program* pg_prediction_new():
@@ -109,21 +114,196 @@ pg_ast_node* pg_prediction_replay(pg_prediction_program* program, list[int] even
 	return root
 
 
-# The caller chooses an explicit work budget. Each step allocates at most one
-# frame/branch or event pair; all temporary memory is released on every exit.
-# Fixed tokenization is required: generation refuses parser goals and actions.
-pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry, pg_token_stream* stream, pg_diagnostics* diagnostics, int limit):
-	list[int] frames = new list[int]
+# Memoized rule calls. The search is ordered depth-first, but a rule's
+# derivations from one token position do not depend on the caller's
+# continuation: they are enumerated in the same order whichever caller asks.
+# The first call of a rule at a position records, in order, the end position
+# and event chain of each derivation reaching a new end position (a later
+# derivation with an already-seen end can only repeat the continuation's
+# outcome). Once backtracking has exhausted that call, the record is
+# complete, and later calls replay its derivations instead of re-parsing,
+# trying the continuation once per distinct end, in the original order. The
+# selected derivation is therefore exactly the one plain depth-first search
+# selects; only repeated work disappears. Events form a persistent chain so
+# a replay splices a recorded segment in O(1).
+struct pg_prediction_record:
+	int depth
+	int start
+	int complete
+	list[int] ends
+	list[int] tails
+	map[int, int] seen
+
+
+struct pg_prediction_state:
+	list[int] frames
+	list[int] frame_records
+	list[int] event_kind
+	list[int] event_a
+	list[int] event_b
+	list[int] event_prev
+	list[pg_prediction_branch*] branches
+	list[pg_prediction_record*] records
+	list[int] open
+	map[int, map[int, int]] memo
+
+
+pg_prediction_state* pg_prediction_state_new():
+	pg_prediction_state* state = new pg_prediction_state()
+	state.frames = new list[int]
+	state.frame_records = new list[int]
+	state.event_kind = new list[int]
+	state.event_a = new list[int]
+	state.event_b = new list[int]
+	state.event_prev = new list[int]
+	state.branches = new list[pg_prediction_branch*]
+	state.records = new list[pg_prediction_record*]
+	state.open = new list[int]
+	state.memo = new map[int, map[int, int]]
+	return state
+
+
+void pg_prediction_state_free(pg_prediction_state* state):
+	for pg_prediction_branch* branch in state.branches: free(branch)
+	for pg_prediction_record* record in state.records:
+		__w_list_free(cast(__w_list*, record.ends))
+		__w_list_free(cast(__w_list*, record.tails))
+		__w_map_free(cast(__w_hash_table*, record.seen))
+		free(record)
+	for int position in state.memo.keys(): __w_map_free(cast(__w_hash_table*, state.memo[position]))
+	__w_map_free(cast(__w_hash_table*, state.memo))
+	__w_list_free(cast(__w_list*, state.frames))
+	__w_list_free(cast(__w_list*, state.frame_records))
+	__w_list_free(cast(__w_list*, state.event_kind))
+	__w_list_free(cast(__w_list*, state.event_a))
+	__w_list_free(cast(__w_list*, state.event_b))
+	__w_list_free(cast(__w_list*, state.event_prev))
+	__w_list_free(cast(__w_list*, state.branches))
+	__w_list_free(cast(__w_list*, state.records))
+	__w_list_free(cast(__w_list*, state.open))
+	free(state)
+
+
+# Kind 0 is an (instruction, position) event; kind 1 splices the recorded
+# chain segment after node `a` up to and including node `b`.
+int pg_prediction_event(pg_prediction_state* state, int kind, int a, int b, int prev):
+	state.event_kind.push(kind)
+	state.event_a.push(a)
+	state.event_b.push(b)
+	state.event_prev.push(prev)
+	return state.event_kind.length - 1
+
+
+# The flat (instruction, position) pairs of the chain ending at `tail`.
+list[int] pg_prediction_flatten(pg_prediction_state* state, int tail):
+	list[int] reversed = new list[int]
+	list[int] stack = new list[int]
+	stack.push(tail)
+	stack.push(-1)
+	while (stack.length > 0):
+		int stop = stack.pop()
+		int node = stack.pop()
+		while (node != stop):
+			if (state.event_kind[node] == 0):
+				reversed.push(state.event_b[node])
+				reversed.push(state.event_a[node])
+				node = state.event_prev[node]
+			else:
+				stack.push(state.event_prev[node])
+				stack.push(stop)
+				stop = state.event_a[node]
+				node = state.event_b[node]
 	list[int] events = new list[int]
-	list[pg_prediction_branch*] branches = new list[pg_prediction_branch*]
+	int i = reversed.length - 1
+	while (i >= 0):
+		events.push(reversed[i])
+		i = i - 1
+	__w_list_free(cast(__w_list*, reversed))
+	__w_list_free(cast(__w_list*, stack))
+	return events
+
+
+int pg_prediction_lookup(pg_prediction_state* state, int callee, int position):
+	if (!(position in state.memo)): return -1
+	map[int, int] calls = state.memo[position]
+	if (!(callee in calls)): return -1
+	return calls[callee]
+
+
+int pg_prediction_remember(pg_prediction_state* state, int callee, int position, int tail):
+	pg_prediction_record* record = new pg_prediction_record()
+	record.depth = state.branches.length
+	record.start = tail
+	record.complete = 0
+	record.ends = new list[int]
+	record.tails = new list[int]
+	record.seen = new map[int, int]
+	int index = state.records.length
+	state.records.push(record)
+	if (!(position in state.memo)): state.memo[position] = new map[int, int]
+	map[int, int] calls = state.memo[position]
+	calls[callee] = index
+	state.open.push(index)
+	return index
+
+
+# Backtracking to a branch older than an open call completes that call.
+void pg_prediction_close(pg_prediction_state* state):
+	while (state.open.length > 0):
+		pg_prediction_record* record = state.records[state.open[state.open.length - 1]]
+		if (record.depth <= state.branches.length): return
+		record.complete = 1
+		state.open.pop()
+
+
+# The caller chooses an explicit work budget. Each step allocates a bounded
+# amount of memory (a frame, branch, event or memo record), and replaying a
+# further memoized derivation is charged as a step; all temporary memory is
+# released on every exit. Fixed tokenization is required: generation refuses parser goals
+# and actions.
+pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry, pg_token_stream* stream, pg_diagnostics* diagnostics, int limit):
+	pg_prediction_state* state = pg_prediction_state_new()
+	list[pg_prediction_branch*] branches = state.branches
+	list[int] frames = state.frames
 	int pc = entry
 	int position = stream.index
 	int initial = position
 	int frame = -1
+	int tail = -1
 	int steps = 0
 	int accepted = 0
+	int fail = 0
 	program.peak_branches = 0
 	while (1):
+		if (fail):
+			# Resume the most recent alternative: an ordinary branch, or the
+			# next recorded derivation of a memoized call.
+			fail = 0
+			if (branches.length == 0): break
+			pg_prediction_branch* branch = branches.pop()
+			pg_prediction_close(state)
+			frame = branch.frame
+			tail = branch.events
+			if (branch.record < 0):
+				pc = branch.pc
+				position = branch.position
+				free(branch)
+			else:
+				steps++
+				if (steps > limit):
+					pg_prediction_resource(stream, diagnostics, branch.position)
+					free(branch)
+					break
+				pg_prediction_record* record = state.records[branch.record]
+				int derivation = branch.derivation
+				pc = branch.pc
+				position = record.ends[derivation]
+				tail = pg_prediction_event(state, 1, record.start, record.tails[derivation], tail)
+				if (derivation + 1 < record.ends.length):
+					branch.derivation = derivation + 1
+					branches.push(branch)
+				else: free(branch)
+			continue
 		if (stream.resource_failed): break
 		steps++
 		if (steps > limit):
@@ -141,16 +321,42 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 			branch.pc = op.other
 			branch.position = position
 			branch.frame = frame
-			branch.events = events.length
+			branch.events = tail
+			branch.record = -1
 			branches.push(branch)
 			if (branches.length > program.peak_branches): program.peak_branches = branches.length
 			pc = op.next
 			continue
 		if (op.kind == 2):
+			int known = pg_prediction_lookup(state, op.value, position)
+			if ((known >= 0) && state.records[known].complete):
+				pg_prediction_record* record = state.records[known]
+				if (record.ends.length == 0):
+					fail = 1
+					continue
+				if (record.ends.length > 1):
+					pg_prediction_branch* branch = new pg_prediction_branch()
+					branch.pc = op.next
+					branch.position = position
+					branch.frame = frame
+					branch.events = tail
+					branch.record = known
+					branch.derivation = 1
+					branches.push(branch)
+					if (branches.length > program.peak_branches): program.peak_branches = branches.length
+				position = record.ends[0]
+				tail = pg_prediction_event(state, 1, record.start, record.tails[0], tail)
+				pc = op.next
+				continue
+			# A call re-entered while its first exploration is still open
+			# (only possible through an empty derivation) runs unmemoized.
+			int created = -1
+			if (known < 0): created = pg_prediction_remember(state, op.value, position, tail)
 			int previous = frame
 			frame = frames.length
 			frames.push(op.next)
 			frames.push(previous)
+			state.frame_records.push(created)
 			pc = op.value
 			continue
 		if (op.kind == 3):
@@ -160,49 +366,44 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 				if (pg_token_stream_get(stream, position).kind == pg_token_eof_kind):
 					accepted = 1
 					break
-				if (branches.length == 0): break
-				pg_prediction_branch* branch = branches.pop()
-				pc = branch.pc
-				position = branch.position
-				frame = branch.frame
-				while (events.length > branch.events): events.pop()
-				free(branch)
+				fail = 1
 				continue
+			int owner = state.frame_records[frame / 2]
+			if ((owner >= 0) && (state.records[owner].complete == 0)):
+				pg_prediction_record* record = state.records[owner]
+				if (position in record.seen):
+					fail = 1
+					continue
+				record.seen[position] = 1
+				record.ends.push(position)
+				record.tails.push(tail)
 			pc = frames[frame]
 			frame = frames[frame + 1]
 			continue
 		if ((op.kind == 5) || (op.kind == 6) || (op.kind == 8) || (op.kind == 9)):
-			events.push(pc)
-			events.push(position)
+			tail = pg_prediction_event(state, 0, pc, position, tail)
 			pc = op.next
 			continue
 		pg_token* token = pg_token_stream_get(stream, position)
 		if (position > stream.max_index): stream.max_index = position
 		if (token.kind == op.value):
-			events.push(pc)
-			events.push(position)
+			tail = pg_prediction_event(state, 0, pc, position, tail)
 			if (token.kind != pg_token_eof_kind): position++
 			pc = op.next
 			continue
-		if (branches.length == 0): break
-		pg_prediction_branch* branch = branches.pop()
-		pc = branch.pc
-		position = branch.position
-		frame = branch.frame
-		while (events.length > branch.events): events.pop()
-		free(branch)
+		fail = 1
 	program.steps = steps
 	program.frames = frames.length / 2
-	program.events = events.length / 2
 	pg_ast_node* root = 0
+	program.events = 0
 	if (accepted && (stream.resource_failed == 0)):
+		list[int] events = pg_prediction_flatten(state, tail)
+		program.events = events.length / 2
 		root = pg_prediction_replay(program, events, stream)
+		__w_list_free(cast(__w_list*, events))
 		if (root != 0): stream.index = position
 	if (root == 0): stream.index = initial
-	for pg_prediction_branch* branch in branches: free(branch)
-	__w_list_free(cast(__w_list*, branches))
-	__w_list_free(cast(__w_list*, frames))
-	__w_list_free(cast(__w_list*, events))
+	pg_prediction_state_free(state)
 	return root
 
 

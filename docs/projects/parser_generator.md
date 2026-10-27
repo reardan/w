@@ -537,8 +537,11 @@ byte-identical when stateful features are not requested.
 It preserves caller continuations across ordered alternatives and greedy terms,
 then replays the chosen derivation into an owned AST. The default step budget is
 one million; `pg_prediction_parse_limit` permits a caller budget. Resource
-failure is terminal across rollback. This bounded search is not ALL(*) and may
-require exponential work on ambiguous inputs. Native modes retain their existing
+failure is terminal across rollback. Rule calls are memoized by rule and start
+position: a completed call replays its recorded end positions in their original
+order instead of being re-explored, so the selected derivation is the one plain
+depth-first search selects, in at most as many steps. This bounded search is not
+ALL(*) and may still require exponential work on ambiguous inputs. Native modes retain their existing
 ordered choice, partial-entry, and streaming contracts.
 
 `node_meta`/`term_meta` attach validated provenance to selected alternatives and

@@ -1,4 +1,5 @@
 import compiler.module_dependencies
+import compiler.tile_ast
 
 # Public read-only serialization of the session-owned module forest. All IDs
 # refer to this dump; rollback or a new compiler invocation starts a new session.
@@ -218,6 +219,111 @@ void retained_query_dependencies():
 	module_dependencies_free(graph)
 
 
+# Tile regions (docs/projects/tiles.md): a tile record's payload is its
+# owned tile_node, and the owning gpu statement's payload is the program.
+# The analyzed facts are additive fields and records; tile element types
+# are compiler type names, since tile analysis never notes retained types.
+char* retained_query_tile_kind(int kind):
+	if (kind == tile_literal): return c"literal"
+	if (kind == tile_reference): return c"reference"
+	if (kind == tile_binary): return c"binary"
+	if (kind == tile_unary): return c"unary"
+	if (kind == tile_index): return c"index"
+	if (kind == tile_load): return c"load"
+	if (kind == tile_dot): return c"dot"
+	if (kind == tile_declare): return c"declare"
+	if (kind == tile_assign): return c"assign"
+	if (kind == tile_if): return c"if"
+	if (kind == tile_for): return c"for"
+	if (kind == tile_store): return c"store"
+	if (kind == tile_program_id): return c"program_id"
+	return c"zero"
+
+
+char* retained_query_tile_binding_kind(int kind):
+	if (kind == tile_binding_capture): return c"capture"
+	if (kind == tile_binding_local): return c"local"
+	if (kind == tile_binding_index): return c"index"
+	return c"loop"
+
+
+# A pointer's record keeps its element name; spell the level as stars.
+void retained_query_tile_type(char* name, int type):
+	if (type < 0): return
+	retained_query_key(name)
+	diag_write_cstr(c"\"")
+	diag_write_cstr(type_get_name(type))
+	for i in range(type_get_pointer_level(type)): diag_write_cstr(c"*")
+	diag_write_cstr(c"\"")
+
+
+void retained_query_tile_node(tile_node* node):
+	retained_query_string(c"tile_op", retained_query_tile_kind(node.kind))
+	retained_query_tile_type(c"tile_type", node.type)
+	retained_query_int(c"tile_rank", node.rank)
+	retained_query_int(c"tile_rows", node.rows)
+	retained_query_int(c"tile_cols", node.cols)
+	retained_query_int(c"tile_uniform", node.uniform)
+	retained_query_int(c"tile_masked", node.masked)
+	retained_query_int(c"tile_effect", node.effect_order)
+	int binding = -1
+	if (node.binding != 0): binding = node.binding.id
+	retained_query_int(c"tile_binding", binding)
+
+
+void retained_query_tile_program(int id, int source, tile_program* program):
+	diag_write_cstr(c"{\"record\": \"tile_program\"")
+	retained_query_int(c"node", id)
+	retained_query_int(c"source", source)
+	retained_query_string(c"kernel", program.kernel_name)
+	retained_query_int(c"width", program.width)
+	retained_query_int(c"analyzed", program.analyzed)
+	retained_query_int(c"matrix", program.matrix_mode)
+	retained_query_int(c"shared_bytes", program.shared_bytes)
+	retained_query_int(c"captures", program.capture_count)
+	retained_query_int(c"bindings", program.binding_count)
+	tile_lowering_plan* plan = program.plan
+	if (program.plan_generation != retained_arena_generation): plan = 0
+	if (plan != 0):
+		retained_query_int(c"threads", plan.threads)
+		retained_query_int(c"lane_passes", plan.lane_passes)
+		retained_query_int(c"dots", plan.dot_count)
+	retained_query_end_record()
+	tile_binding* binding = program.bindings
+	while (binding != 0):
+		diag_write_cstr(c"{\"record\": \"tile_binding\"")
+		retained_query_int(c"program", id)
+		retained_query_int(c"source", source)
+		retained_query_int(c"id", binding.id)
+		retained_query_string(c"name", binding.name)
+		retained_query_string(c"kind", retained_query_tile_binding_kind(binding.kind))
+		retained_query_tile_type(c"type", binding.type)
+		retained_query_int(c"rank", binding.rank)
+		retained_query_int(c"rows", binding.rows)
+		retained_query_int(c"cols", binding.cols)
+		retained_query_int(c"uniform", binding.uniform)
+		retained_query_int(c"capture_slot", binding.capture_slot)
+		retained_query_end_record()
+		binding = binding.next
+	if (plan == 0): return
+	tile_dot_plan* dot = plan.dots
+	while (dot != 0):
+		diag_write_cstr(c"{\"record\": \"tile_dot\"")
+		retained_query_int(c"program", id)
+		retained_query_int(c"source", source)
+		retained_query_int(c"node", dot.node.retained_id)
+		retained_query_int(c"m", dot.m_extent)
+		retained_query_int(c"k", dot.k_extent)
+		retained_query_int(c"n", dot.n_extent)
+		retained_query_int(c"fused", dot.fused)
+		retained_query_int(c"left_offset", dot.left.offset_bytes)
+		retained_query_int(c"left_row_stride", dot.left.row_stride)
+		retained_query_int(c"right_offset", dot.right.offset_bytes)
+		retained_query_int(c"right_row_stride", dot.right.row_stride)
+		retained_query_end_record()
+		dot = dot.next
+
+
 void retained_query_node(int id, retained_node* node):
 	diag_write_cstr(c"{\"record\": \"node\"")
 	retained_query_int(c"id", id)
@@ -274,11 +380,14 @@ void retained_query_node(int id, retained_node* node):
 		retained_query_bytes(c"initializer_hex", init.bytes, init.length)
 	retained_query_string(c"binding_name", node.binding_name)
 	retained_query_string(c"binding_file", node.binding_file)
+	if ((node.kind == retained_tile_expression) || (node.kind == retained_tile_statement)):
+		char* payload = retained_record_at(id).tile_payload
+		if (payload != 0): retained_query_tile_node(cast(tile_node*, payload))
 	retained_query_end_record()
 
 
 void retained_query_dump():
-	diag_write_cstr(c"{\"record\": \"tree\", \"version\": 2")
+	diag_write_cstr(c"{\"record\": \"tree\", \"version\": 3")
 	retained_query_int(c"sources", retained_sources.length)
 	retained_query_int(c"nodes", retained_node_count())
 	if (retained_types != 0): retained_query_int(c"types", retained_types.length)
@@ -301,6 +410,9 @@ void retained_query_dump():
 		retained_node_load(i, &view)
 		if (retained_query_selected(view.source) == 0): continue
 		retained_query_node(i, &view)
+		if (kind == retained_statement):
+			char* program = retained_record_at(i).tile_payload
+			if (program != 0): retained_query_tile_program(i, view.source, cast(tile_program*, program))
 	retained_query_semantics()
 	retained_query_dependencies()
 	diag_flush()

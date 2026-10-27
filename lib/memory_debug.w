@@ -355,7 +355,7 @@ void* debug_malloc(int size):
 		debug_quarantine_reclaim_to(0)
 		region = mmap(0, region_size, 3, flags)
 		if (debug_tbl_mmap_failed(region)):
-			st_write_cstr(c"memory_debug: out of memory (mmap failed)\x0a")
+			st_write_cstr(c"memory_debug: out of memory (mmap failed; the process may have reached vm.max_map_count)\x0a")
 			return cast(void*, 0)
 	int guard_addr = region + payload_size
 	# Unmap the guard page so overflow faults on a hole. Prefer munmap
@@ -436,8 +436,13 @@ int debug_free(void* mem_address):
 		return 1
 	if (debug_linear_memory()): debug_linear_fill(ptr, debug_tbl_size[idx], debug_freed_poison)
 	else if (mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0) != 0):
-		st_write_cstr(c"memory_debug: cannot protect freed allocation\x0a")
-		exit(1)
+		# Protecting part of a merged mapping splits it, which fails once
+		# the process holds vm.max_map_count mappings. Releasing the
+		# quarantine frees mappings; retry once, as debug_malloc does.
+		debug_quarantine_reclaim_to(0)
+		if (mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0) != 0):
+			st_write_cstr(c"memory_debug: cannot protect freed allocation (the process may have reached vm.max_map_count; raise it with sysctl -w vm.max_map_count=1048576)\x0a")
+			exit(1)
 	debug_tbl_freed[idx] = 1
 	debug_quarantine_push(idx)
 	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]

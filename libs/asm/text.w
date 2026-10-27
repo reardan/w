@@ -188,6 +188,12 @@ int asm_x86_parse(char* line, int arch, asm_insn* insn):
 
 	insn.mnemonic = asm_parse_token(p)
 	if (insn.mnemonic[0] == 0): return 1 == 2
+	# A lock prefix belongs to the mnemonic ("lock cmpxchg").
+	if (strcmp(insn.mnemonic, c"lock") == 0):
+		asm_parse_skip_spaces(p)
+		char* locked = asm_parse_token(p)
+		if (locked[0] == 0): return 1 == 2
+		insn.mnemonic = strjoin(c"lock ", locked)
 	asm_parse_skip_spaces(p)
 	if (asm_parse_peek(p) == 0): return 1
 	asm_parse_operand(p, &insn.op1, arch, 0)

@@ -17,6 +17,7 @@ const api = instance.exports;
 const [button, textbox] = container.children[0].children[0].children;
 assert.equal(button.getAttribute('aria-label'), 'Open <日本>');
 assert.equal(textbox.value, 'a\u0000é');
+assert.deepEqual([textbox.selectionStart, textbox.selectionEnd], [3, 3], 'the published caret');
 button.emit('click');
 textbox.focus();
 textbox.value = '文\u0000🙂'; textbox.emit('input');
@@ -40,6 +41,12 @@ assert.equal(document.activeElement, textbox);
 button.emit('click'); assert.equal(api.web_test_dispatch(), 0);
 textbox.value = '文\u0000🙂'; textbox.emit('input');
 assert.equal(api.web_test_dispatch(), 1); assert.equal(api.web_test_call_count(), 4);
+// A user selection (backward, over a surrogate pair) reaches W in code points.
+textbox.setSelectionRange(1, 4, 'backward');
+assert.equal(api.web_test_dispatch(), 1); assert.equal(api.web_test_call_count(), 5);
+assert.equal(api.web_test_selection(), 301);
+textbox.emit('keyup');
+assert.equal(api.web_test_dispatch(), 0, 'an unchanged selection is not requested again');
 // A live status line and a one-shot announcement.
 assert.equal(status.getAttribute('aria-live'), 'polite');
 assert.equal(status.textContent, 'Ready.');
