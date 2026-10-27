@@ -1142,9 +1142,44 @@ same rules. A reference to a previous element remains valid when the cursor
 advances because it points into the nonmutated backing storage.
 
 A checked mutable slice must first be reborrowed as a shared slice. Direct
-iteration of mutable slices or owned elements, opaque container owners, and
-user cursor protocols still have separate gates under #697. Legacy raw
-iteration retains its existing behavior outside checked functions.
+iteration of mutable slices, exclusive element iteration and user cursor
+protocols remain rejected. Legacy raw iteration retains its existing behavior
+outside checked functions.
+
+### Owned-storage iteration
+
+`for ref T* item in values` and `for item in values` iterate an audited
+`WOwnedBuffer[T]` (see "Generic owned-element buffers") reached through
+`own`, `ref` or `refmut`: a local owner, a borrowed parameter or an owned
+record field. Each iteration lends one stored element as `ref T*`; ownership
+never moves, so no element is dropped by the loop. The container is borrowed
+shared once, for the whole loop: the iterable evaluates exactly once and the
+loop captures the element array and length by value, without allocation.
+
+The synthetic iterator loan covers the implicit condition and element reads,
+so insertion (even with spare capacity), replacement, pop, clear, moving or
+replacing the owner, and destruction are rejected while the loop can still
+read. A path that has finished with the element and then leaves the loop
+(`break`) may mutate, as for slices. Element references retain the
+container's origin: one saved in an outer `optref` or returned under the
+container's lifetime keeps blocking invalidation until its last use, and a
+local container's element cannot escape. Fields are read-only through the
+reference, and owned children cannot be moved out of it. Nested loops,
+nested owned buffers, `continue`, `break`, `return`, scoped `defer`, imports
+and aliases follow the ordinary rules; the loop variable is uninitialized
+after a possibly empty loop.
+
+Rejected explicitly: owning loop variables (`own T*`), exclusive or raw
+element variables, mismatched element types, optional containers (test and
+bind them first) and owning temporaries such as `for x in make_buffer()`,
+which would leave the container without an owner to destroy it.
+
+The runtime fixture iterates owner-valued elements through nested loops with
+`break`, `continue`, an early `return` and scoped `defer`, then replaces and
+clears the container, and checks the W_DEBUG_ALLOC allocation balance across
+x86/x64 optimization variants, Wine and ARM64. The `--ast-required` variant is
+not run: `lib/safe_owned_vector.w` itself takes a generic function's address,
+an expression the AST-required front end does not yet support.
 
 ## Checked buffers and byte strings
 

@@ -82,7 +82,7 @@ void emit_range_loop_ast_end(loop_ast* node):
 int* emit_cursor_loop_ast_begin(loop_ast* node):
 	assert1(node.layout_ready)
 	assert1(stack_pos == node.entry_depth)
-	if (node.capture_slice): for_capture_slice()
+	if (node.capture_slice): for_capture_slice(node.capture_slice)
 	# hidden slot: the container pointer
 	assert1(push_slot() == node.container_slot)
 
@@ -127,7 +127,10 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 		if (element_size > 1): imul_eax_int32(element_size)
 		pop_ebx_slot()
 		alu_add()
-		if (node.capture_slice && (type_num_args(node.element_type) > 0)): extracted_type = node.variable_type
+		if (node.capture_slice == 2):
+			promote(node.element_type)
+			extracted_type = node.variable_type
+		else if (node.capture_slice && (type_num_args(node.element_type) > 0)): extracted_type = node.variable_type
 		else: extracted_type = promote(node.element_type)
 	if (extracted_type != -1): coerce(node.variable_type, extracted_type)
 	for_store_loop_var(node.variable_slot)

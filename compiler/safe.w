@@ -1028,9 +1028,25 @@ int safe_range(int id, int next):
 # The iterable is evaluated once into the cursor's hidden descriptor slot.
 # A synthetic loan preserves backing storage
 # until the final implicit loop read, independently of uses in the body.
+int retained_type_note(int index);
+
+
+# Iterating owned storage through a non-optional checked pointer borrows the
+# whole container shared for the loop: the synthetic iterator binding gets
+# that ref type, and each element is lent as a shared reference into it.
+int safe_owned_iteration_type(int type):
+	if ((type < 0) || safe_optional(type) || safe_slice(type) || safe_record(type)): return -1
+	int kind = safe_kind(type)
+	if ((kind < 1) || (kind > 3)): return -1
+	int storage = safe_unqualified(safe_pointee(type))
+	if (safe_owned_buffer_element(storage) < 0): return -1
+	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
 int safe_iteration(int id, int next):
 	int iterator = safe_iterator_locals.get(id, -1)
-	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice", -1)
+	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice or owned storage", -1)
+	int storage = safe_slice(retained_bindings[safe_locals[iterator]].type) == 0
 	int local = -1
 	int body = -1
 	int expression = -1
@@ -1046,6 +1062,14 @@ int safe_iteration(int id, int next):
 	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
 	int type = retained_bindings[safe_locals[local]].type
 	int borrowed = safe_kind(type) == 2
+	if (storage):
+		if (borrowed == 0): safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
+		# The hidden slot borrows the container; an owning temporary would
+		# have no owner to destroy it after the loop.
+		retained_node value
+		retained_node_load(expression, &value)
+		if ((safe_kind(value.semantic_type) == 1) && ((value.op == 'C') || (value.op == 'G') || (value.op == 'W'))):
+			safe_error(id, c"safe: owned-storage iteration requires a named owner or a borrow", -1)
 	if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
 	safe_type_check(id, type)
 	int guard = safe_add(id, -1, iterator, 8, -1, next)
@@ -2793,7 +2817,8 @@ void safe_function_check(int function):
 				retained_node value
 				retained_node_load(safe_expr_root(child), &value)
 				int type = safe_unqualified(value.semantic_type)
-				if ((type >= 0) && (retained_types[type].kind == type_kind_safe_slice)):
+				if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
+				if ((type >= 0) && (safe_kind(type) == 2)):
 					retained_binding* binding = new retained_binding
 					binding.name = retained_intern(c"<iterator>")
 					binding.key = strclone(c"<checked iterator>")
