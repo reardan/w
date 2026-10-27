@@ -109,13 +109,16 @@ int ui_toggle(ui_context* ctx, char* label, int32* on):
 		if (on[0]): n.states = n.states | UI_ACCESS_CHECKED
 
 	ui_rect track = ui_rect_new(r.x, r.y + (r.h - cast(float32, track_h)) * 0.5, cast(float32, track_w), cast(float32, track_h))
-	ui_color track_color = ctx.theme.widget
+	# The off track uses the border token, like an unchecked checkbox's
+	# edge, so the control stays visible at 3:1 (WCAG 1.4.11) on the
+	# surface; the tonal widget fill alone is only about 1.3:1.
+	ui_color track_color = ctx.theme.border
 	ui_color knob_color = ctx.theme.surface
 	if (on[0]):
 		track_color = ctx.theme.accent
 		if (ctx.hot == id): track_color = ctx.theme.accent_hot
 		knob_color = ctx.theme.on_accent
-	else if (ctx.hot == id): track_color = ctx.theme.widget_hot
+	else if (ctx.hot == id): track_color = ctx.theme.text_muted
 	if (ctx.disabled):
 		track_color = ctx.theme.disabled_widget
 		knob_color = ctx.theme.disabled_text

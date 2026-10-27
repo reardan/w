@@ -451,12 +451,44 @@ as described in the next section.
 
 `graphics.ui.contrast` provides sRGB relative luminance and contrast ratios
 using the [WCAG formula](https://www.w3.org/WAI/WCAG21/Understanding/relative-luminance.html).
-`graphics_ui_contrast_test` and its x64 twin enforce 4.5:1 for the default light
-and dark themes' body, muted, button and error text, and 3:1 for focus against
-background/surface. Alpha colors must be composited by the caller first.
-Disabled controls, arbitrary application backgrounds, and the illustrative ocean
-theme are outside this default-theme assertion. These checks do not substitute
-for testing a rendered application's complete contrast and focus appearance.
+`graphics_ui_contrast_test` and its x64 twin check every token pair the widgets
+draw, in all three presets (light, dark and ocean):
+
+- 4.5:1 for text ([1.4.3](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)):
+  `text` on background, surface and the widget, hover and active fills;
+  `text_muted` (placeholders, table headers, inactive tabs) on background,
+  surface and widget; `on_accent` on accent and accent_hot; `error` on
+  background and surface.
+- 3:1 for non-text UI ([1.4.11](https://www.w3.org/WAI/WCAG21/Understanding/non-text-contrast.html)):
+  `border` (checkbox and radio edges, the off switch track, field baselines,
+  scroll thumbs) on background, surface and widget; hovered edges
+  (`text_muted` on widget_hot); `accent` and `accent_hot` (checked boxes, the
+  on switch track, progress, tab and selected-row markers) on their
+  backgrounds; `focus` on background, surface, widget and widget_hot; the
+  error underline on a field; and both switch knobs on their tracks.
+
+A failure names the theme, the pair and the measured ratio. Adding the check
+found thirteen failing pairs. `border` was 1.6 to 2.9:1 in every theme and
+`text_muted` was 4.0 to 4.4:1 on field fills, so both tokens were darkened
+(light) or lightened (dark, ocean), and the ocean preset's `widget_active`
+was darkened so its selected-row marker reaches 3:1. Three widgets drew state with colour
+contrast below 3:1, and now draw it differently:
+- The off switch track used the tonal `widget` fill, about 1.3:1 on the
+  surface; it now uses `border`.
+- Selected table and tree rows were marked only by the `widget_active` fill,
+  about 1.6:1. They now get the accent marker the dropdown list already used
+  (`ui_selection_marker`).
+- The tree's keyboard cursor is now an outline, so it can't be mistaken for
+  that marker.
+
+Disabled controls are exempt under WCAG ("inactive user interface
+components"), so `disabled_text` and `disabled_widget` are not asserted.
+Alpha colours such as `shadow` must be composited by the caller first. The
+test covers the presets. An application that fills its own `ui_theme` can
+run the same pair check with `ui_theme_contrast_failures(name, theme)`, which
+prints each failing pair and returns the count. Arbitrary application
+backgrounds are not covered. It does not replace looking at a rendered
+application's contrast and focus appearance.
 
 Every platform bridge of #465 now exists. The web ARIA mirror and the AT-SPI
 and UI Automation bridges are initial adapters, with screen-reader
