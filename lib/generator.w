@@ -88,11 +88,11 @@ void __w_gen_release_stack(generator* g):
 
 # Words gen_switch pushes before saving the stack pointer: 4 callee-saved
 # registers on x86 (ebx, esi, edi, ebp), 6 on x64 (rbx, rbp, r12-r15), and
-# 1 on arm64 — the A64 gen_switch (code_generator/arm64_asm.w) saves only
-# the frame pointer (x29) beside the resume address (x30), since W keeps
-# no live values in callee-saved registers across calls.
+# 6 on arm64 -- the A64 gen_switch (code_generator/arm64_asm.w) saves the
+# frame pointer (x29) and x19-x23, the registers promoted locals live in,
+# beside the resume address (x30).
 int __w_gen_switch_regs():
-	if (__target_isa__ == 1): return 1
+	if (__target_isa__ == 1): return 6
 	if (__word_size__ == 8): return 6
 	return 4
 

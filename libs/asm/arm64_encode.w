@@ -83,7 +83,12 @@ int arm64_enc_ldst(asm_insn* insn):
 		# Distinguish scaled unsigned-offset (imm >= 0, aligned) — that is
 		# the only unsigned form the compiler emits — from stur is not
 		# needed: the decoder tags stur as UOFF too, but with imm9. All
-		# compiler UOFF loads are the scaled form.
+		# compiler UOFF loads are the scaled form, except a negative or
+		# unaligned displacement, which only ldur/stur (imm9) encode
+		# (the promoted-register restores below x29, issue #801).
+		if ((mem.disp < 0) || ((mem.disp % access) != 0)):
+			int unscaled = (size_field << 30) | 0x38000000 | (opc << 22)
+			return unscaled | ((mem.disp & 0x1ff) << 12) | (rn << 5) | rt
 		int imm12 = mem.disp / access
 		int base = (size_field << 30) | 0x39000000 | (opc << 22)
 		return base | ((imm12 & 0xfff) << 10) | (rn << 5) | rt

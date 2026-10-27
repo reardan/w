@@ -1601,3 +1601,15 @@ digest update. Direction: have `deps` list the closure without
 enforcing the safe runtime pins (or report the failure and still print
 the closure), and have wtest treat a failed `deps` as "select this
 root" rather than "no imports"; see also the `binary=` entry above.
+
+## `inspect --disasm` cannot read Mach-O (2026-10-26, issue #801)
+
+`bin/wv2 inspect --disasm FUNCTION` disassembles x86, x64 and arm64 ELF
+output, but an `arm64_darwin` Mach-O answers `inspect: not an ELF file`,
+so checking that a shared-backend change left Darwin's code alone meant
+falling back to byte comparisons of whole binaries (the arm64 register
+promotion work compared `arm64_darwin` builds with and without
+`--no-regs`). `libs/asm/binary_reader.w` already recognizes Mach-O
+(`asm_is_macho64`); teaching `asm_binary_open` and `tools/inspect.w` the
+`LC_SYMTAB`/`__TEXT,__text` lookup would make per-function Darwin
+disassembly available to agents.
