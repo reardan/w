@@ -146,7 +146,7 @@ void test_generic_buffer_15():
 	generic_buffer_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* buffer = buffer_new[int]()\n\tbuffer.capacity = 100\n\treturn 0\n", c"opaque")
 
 void test_generic_buffer_16():
-	generic_buffer_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* buffer = new WBuffer[int]\n\treturn 0\n", c"unknown type after new")
+	generic_buffer_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* buffer = new WBuffer[int]\n\treturn 0\n", c"opaque collections require an audited constructor")
 
 void test_generic_buffer_17():
 	generic_buffer_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int*]* buffer = buffer_new[int*]()\n\treturn 0\n", c"unsupported")
