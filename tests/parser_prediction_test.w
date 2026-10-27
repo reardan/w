@@ -48,13 +48,22 @@ void prediction_case(char* rules, char* input, int accepted, int alternative):
 	pg_diagnostics_free(diagnostics)
 
 
+# Without memoized calls this grammar takes 2^n steps to reject the input;
+# with them each item call is explored once per position (about 1,050 steps).
 void prediction_adversarial():
 	pg_grammar* grammar = prediction_grammar(c"rule start = item B EOF\nrule item = A item | A item | A\n")
 	pg_prediction_program* program = pg_prediction_build(grammar)
 	pg_token_stream* stream = prediction_tokens(c"aaaaaaaaaaaaaaaaaaaac")
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	assert1(pg_prediction_parse_limit(program, 0, stream, diagnostics, 1000) == 0)
-	assert_equal(1001, program.steps)
+	assert1(pg_prediction_parse(program, 0, stream, diagnostics) == 0)
+	assert1(program.steps < 2000)
+	assert_equal(0, stream.resource_failed)
+	assert_equal(0, diagnostics.items.length)
+	pg_token_stream_free(stream)
+	# The explicit budget still bounds the search.
+	stream = prediction_tokens(c"aaaaaaaaaaaaaaaaaaaac")
+	assert1(pg_prediction_parse_limit(program, 0, stream, diagnostics, 50) == 0)
+	assert_equal(51, program.steps)
 	assert1(program.peak_branches > 0)
 	assert1(stream.resource_failed)
 	assert_equal(1, diagnostics.items.length)
@@ -88,6 +97,59 @@ void prediction_linear():
 	pg_diagnostics_free(diagnostics)
 	pg_grammar_free(grammar)
 	free(text)
+
+
+# A memoized call replays its recorded derivations in their original order,
+# one per distinct end position, so the selected derivation and its AST are
+# the ones plain depth-first search selects.
+void prediction_memo_replay():
+	pg_grammar* grammar = prediction_grammar(c"rule start = item EOF\nrule item = pair B | pair C | pair A C\nrule pair = A | A A | A\n")
+	pg_prediction_program* program = pg_prediction_build(grammar)
+	for int variant in range(3):
+		char* input = c"aac"
+		int item_alternative = 2
+		int pair_alternative = 2
+		if (variant == 1):
+			input = c"ac"
+			pair_alternative = 1
+		if (variant == 2):
+			input = c"aaac"
+			item_alternative = 3
+		pg_token_stream* stream = prediction_tokens(input)
+		pg_diagnostics* diagnostics = pg_diagnostics_new()
+		pg_ast_node* root = pg_prediction_parse(program, 0, stream, diagnostics)
+		assert1(root != 0)
+		assert1(pg_token_stream_done(stream))
+		pg_ast_node* item = root.children[0]
+		assert_equal(item_alternative, pg_ast_get_metadata(item, c"pg_alternative", -1))
+		pg_ast_node* pair = item.children[0]
+		assert_equal(pair_alternative, pg_ast_get_metadata(pair, c"pg_alternative", -1))
+		assert_equal(pair_alternative, pair.children.length)
+		pg_ast_free(root)
+		pg_token_stream_free(stream)
+		pg_diagnostics_free(diagnostics)
+	# Every budget, including ones that run out while replaying a memoized
+	# derivation, either accepts or stops with a resource error.
+	pg_token_stream* full = prediction_tokens(c"aaac")
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_ast_free(pg_prediction_parse(program, 0, full, diagnostics))
+	int needed = program.steps
+	pg_token_stream_free(full)
+	for int limit in range(needed + 1):
+		pg_token_stream* stream = prediction_tokens(c"aaac")
+		pg_ast_node* root = pg_prediction_parse_limit(program, 0, stream, diagnostics, limit)
+		if (limit < needed):
+			assert1(root == 0)
+			assert1(stream.resource_failed)
+			assert_equal(limit + 1, program.steps)
+		else:
+			assert1(root != 0)
+			assert_equal(0, stream.resource_failed)
+			pg_ast_free(root)
+		pg_token_stream_free(stream)
+	pg_diagnostics_free(diagnostics)
+	pg_prediction_free(program)
+	pg_grammar_free(grammar)
 
 
 void prediction_metadata():
@@ -150,5 +212,6 @@ int main():
 	prediction_metadata()
 	prediction_adversarial()
 	prediction_linear()
+	prediction_memo_replay()
 	println(c"continuation prediction, priority, rollback and bounded failure passed")
 	return 0
