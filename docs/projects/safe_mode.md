@@ -1360,8 +1360,8 @@ checked iteration retain their independent implementation and merge gates;
 `int`, `uint`, `byte`, `char`, `bool`, or enums (including aliases). Map values
 are sized, pointer-free scalars or records without fixed arrays. Raw/checked
 pointer keys and values, borrowed records, floats as keys, and user hashing or
-equality are rejected by this initial closed contract. Owned-value maps and
-checked user operations have separate implementation gates under #697.
+equality are rejected by this initial closed contract; maps keyed by owned
+values with checked user hashing and equality are `WKeyedMap` below.
 
 `map_new[K,V]`/`set_new[K]` construct owners. Length, contains, map get/get-or,
 and snapshots borrow shared; set/add, remove and clear require an exclusive
@@ -1383,6 +1383,56 @@ The audited implementation and destructor are source-pinned. Changed/shadowed
 runtime sources cannot inherit the contract. Allocation follows the existing
 fatal-out-of-memory table policy; recoverable insertion is not claimed for
 this API. Legacy `map[K,V]`/`set[K]` retain their raw aliasing semantics.
+
+### Keyed maps with checked user hashing and equality
+
+`import lib.safe_keyed_map` provides `own WKeyedMap[K, V]*`, a map whose keys
+are owned values of any type admitted by `own K*` without a lifetime (plain
+records, owned record graphs, nested checked storage) and whose values are
+sized pointer-free `V`. Hashing and equality are user functions supplied at
+construction as checked function values:
+
+```w
+type NameHash = fn[](ref Name*) -> int
+type NameEqual = fn[](ref Name*, ref Name*) -> int
+
+own WKeyedMap[Name, int]* map = keyed_map_new[Name, int, NameHash, NameEqual](name_hash, name_equal)
+```
+
+The compiler requires exactly `fn[](ref K*) -> int` and
+`fn[](ref K*, ref K*) -> int` for the specialization's key type: owning,
+exclusive, optional, raw or other-key signatures are rejected with `safe:
+keyed map operations must be fn[](ref K*) -> int and fn[](ref K*, ref K*) ->
+int for its key type`. Both bodies are ordinary checked code, so they can only
+read the keys lent to them; checked code has no global or captured path back
+to the map, so they cannot re-enter it.
+
+`keyed_map_insert[K, V]` consumes its key and returns `optown K*`: absent when
+the key was new, or the argument itself when an equal key is already stored
+(the stored key is kept and its value replaced). `keyed_map_take` removes an
+entry and returns its key's ownership; `keyed_map_remove` removes and destroys
+it; `keyed_map_clear` and scope-exit destruction drop every key recursively.
+`keyed_map_length`, `contains`, `get` (trapping on a missing key), `get_or` and
+`find` borrow the map shared and take the probe as `ref K*`. `find` returns
+`optref[a] V*` tied to the map; a live result blocks insertion (even with
+spare capacity), removal, clearing, moving and destruction. Mutation resumes
+after its last use.
+
+Memory safety never depends on the user functions being consistent. Every
+probe sequence is bounded by the capacity, rehashing reuses stored hashes
+without calling user code, and the user code runs only while the map is
+consistent, before any slot changes. A nondeterministic hash or an equality
+that is never true makes lookups miss or equal keys repeat, as the runtime
+fixture's colliding, never-equal map shows; it cannot read freed or
+uninitialized storage. Growth and allocation failure trap; recoverable
+insertion is not claimed for this API.
+
+The map's metadata, slots, key destructor and the two stored code addresses
+are private. Trust binds to the pinned contents of `lib/safe_keyed_map.w` and
+its runtime closure: a changed or shadowed copy fails with `runtime
+implementation differs`, and private helpers are not checked contracts.
+Thread rules recurse into `K`, so a thread-affine key keeps the map on its
+thread. Iteration over keyed maps is not provided.
 
 ## Synchronous foreign byte I/O
 

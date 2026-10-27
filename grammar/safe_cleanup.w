@@ -54,6 +54,11 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WOwnedBuffer$")):
 			helper = c"__w_owned_buffer_drop"
 			pointee = type_lookup(c"void")
+	# Keyed maps record their key destructor; one helper drops keys and slots.
+	else if (ends_with(source, c"/lib/safe_keyed_map.w")):
+		if (starts_with(name, c"WKeyedMap$")):
+			helper = c"__w_keyed_map_drop"
+			pointee = type_lookup(c"void")
 	# Checked maps/sets wrap one legacy table pointer; one helper frees it.
 	else if (ends_with(source, c"/lib/safe_hash.w")):
 		if (starts_with(name, c"WMap$") || starts_with(name, c"WSet$")):

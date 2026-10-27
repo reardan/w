@@ -427,6 +427,25 @@ int safe_owned_buffer_element(int type):
 int safe_owned_shape(int type);
 
 
+# The owned key type K of an audited WKeyedMap[K, V] (lib/safe_keyed_map.w),
+# else -1. Values are the separate pointer-free V of safe_keyed_map_value.
+int safe_keyed_map_key(int type):
+	type = safe_unqualified(type)
+	if type < 0: return -1
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 10): return -1
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return -1
+	if (ends_with(retained_sources[record.source].path, c"/lib/safe_keyed_map.w") == 0): return -1
+	if (starts_with(record.name, c"WKeyedMap$") == 0): return -1
+	int key = safe_pointee(safe_pointee(record.fields[3].type))
+	if ((key < 0) || (retained_types[key].size <= 0)): return -1
+	return key
+
+
+int safe_keyed_map_value(int type):
+	return safe_unqualified(safe_pointee(retained_types[safe_unqualified(type)].fields[4].type))
+
+
 int safe_hash_key(int type):
 	type = safe_unqualified(type)
 	if type < 0: return 0
@@ -457,6 +476,7 @@ int safe_opaque(int type):
 	retained_type* record = retained_types[type]
 	if (safe_hash_opaque(type)): return 1
 	if (safe_owned_buffer_element(type) >= 0): return safe_owned_shape(type)
+	if (safe_keyed_map_key(type) >= 0): return safe_owned_shape(type)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
 		if (starts_with(record.name, c"WBuffer$") && (record.fields.length == 3)):
@@ -468,6 +488,8 @@ int safe_opaque(int type):
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_keyed_map.w")):
+		return starts_with(name, c"keyed_map_new$") || starts_with(name, c"keyed_map_length$") || starts_with(name, c"keyed_map_contains$") || starts_with(name, c"keyed_map_insert$") || starts_with(name, c"keyed_map_get$") || starts_with(name, c"keyed_map_get_or$") || starts_with(name, c"keyed_map_find$") || starts_with(name, c"keyed_map_take$") || starts_with(name, c"keyed_map_remove$") || starts_with(name, c"keyed_map_clear$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_hash.w")):
 		return starts_with(name, c"map_new$") || starts_with(name, c"map_length$") || starts_with(name, c"map_contains$") || starts_with(name, c"map_set$") || starts_with(name, c"map_get$") || starts_with(name, c"map_get_or$") || starts_with(name, c"map_find$") || starts_with(name, c"map_remove$") || starts_with(name, c"map_clear$") || starts_with(name, c"map_keys$") || starts_with(name, c"map_values$") || starts_with(name, c"set_new$") || starts_with(name, c"set_length$") || starts_with(name, c"set_contains$") || starts_with(name, c"set_add$") || starts_with(name, c"set_remove$") || starts_with(name, c"set_clear$") || starts_with(name, c"set_values$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_owned_vector.w")):
@@ -493,7 +515,7 @@ int safe_thread_sealed(int type):
 	if (safe_opaque(type) == 0): return 0
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
-	if (safe_owned_buffer_element(type) >= 0): return 0
+	if ((safe_owned_buffer_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -532,6 +554,7 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
 	int stored = safe_owned_buffer_element(type)
+	if (stored < 0): stored = safe_keyed_map_key(type)
 	if (stored >= 0):
 		if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
 		*remaining = *remaining - 1
@@ -726,6 +749,11 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	path[depth] = type
 	int element = safe_owned_buffer_element(type)
 	if element >= 0: return safe_owned_shape_walk(element, depth + 1, path, remaining)
+	int key = safe_keyed_map_key(type)
+	if key >= 0:
+		int value = safe_keyed_map_value(type)
+		if ((value < 0) || (retained_types[value].size <= 0) || (safe_plain(value, 0) == 0) || safe_has_array(value, 0)): return 0
+		return safe_owned_shape_walk(key, depth + 1, path, remaining)
 	# A guard always carries its mutex's lifetime: own[a] WSafeGuard*.
 	if (safe_plain(type, 0) || (safe_opaque(type) && (safe_sync_record(type) != 2))): return 1
 	retained_type* record = retained_types[type]
@@ -2137,6 +2165,33 @@ int safe_return_from(retained_binding* binding, int inferred, int slot, int grou
 	return safe_contract_outlives(binding, slot, safe_contract_offset(binding, binding.parameters.length) + group)
 
 
+# One checked key operation of keyed_map_new: a quantified fn[] contract
+# taking arity shared, non-optional references to K and returning int.
+int safe_keyed_operation(int type, int key, int arity):
+	int signature = safe_callable_signature(type)
+	if (signature < 0): return 0
+	retained_type* operation = retained_types[signature]
+	if (operation.parameters.length != arity): return 0
+	int result = safe_unqualified(operation.return_type)
+	if ((result < 0) || retained_types[result].pointer_level || (strcmp(retained_types[result].name, c"int") != 0)): return 0
+	for i in range(arity):
+		int parameter = operation.parameters[i]
+		if ((safe_kind(parameter) != 2) || safe_optional(parameter) || safe_slice(parameter) || safe_record(parameter)): return 0
+		if (safe_same_nominal(safe_pointee(parameter), key) == 0): return 0
+	return 1
+
+
+# The audited keyed map calls the user's hash and equality functions from
+# unchecked runtime code, so construction pins their checked contracts.
+void safe_keyed_map_check(int id, retained_binding* implementation):
+	if (ends_with(retained_sources[implementation.source].path, c"/lib/safe_keyed_map.w") == 0): return
+	if (starts_with(implementation.name, c"keyed_map_new$") == 0): return
+	int key = safe_keyed_map_key(safe_pointee(implementation.return_type))
+	if ((key < 0) || (implementation.parameters.length != 2)): safe_error(id, c"safe: keyed map requires an audited WKeyedMap specialization", -1)
+	if ((safe_keyed_operation(implementation.parameters[0], key, 1) == 0) || (safe_keyed_operation(implementation.parameters[1], key, 2) == 0)):
+		safe_error(id, c"safe: keyed map operations must be fn[](ref K*) -> int and fn[](ref K*, ref K*) -> int for its key type", -1)
+
+
 void safe_implementation_check(int id, int binding, int callable):
 	retained_binding* callee = retained_bindings[binding]
 	int function = safe_function_for_binding[binding]
@@ -2150,6 +2205,7 @@ void safe_implementation_check(int id, int binding, int callable):
 	if (safe_trusted(implementation.source)):
 		if (safe_runtime_call(implementation) == 0):
 			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
+		safe_keyed_map_check(id, implementation)
 	else:
 		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
 		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
