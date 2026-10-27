@@ -1,6 +1,7 @@
 int multiplicative_expr();
 void zero_runtime_object(int bytes);
 void init_array_field_descriptors(int type);
+void init_array_element_descriptors(int element_type, int offset);
 void assign_store_struct(int type); /* defined in expression */
 int increment_op(); /* defined in increment */
 void increment_expression_error(); /* defined in increment */
@@ -418,6 +419,7 @@ int unary_expression_operand():
 
 			pop_eax_slot()
 			drop_slots(1)
+			init_array_element_descriptors(base, 0)
 			return type_get_slice_value(base)
 
 		int has_parens = accept(c"(")

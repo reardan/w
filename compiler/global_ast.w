@@ -39,6 +39,11 @@ global_storage_ast* global_storage_ast_build(int type, int offset):
 	if (type_is_array(type)):
 		node.kind = 1
 		node.length = type_get_array_length(type)
+		# An element that holds arrays carries its own headers (issue
+		# #701): its layout is the one child, laid out at offset 0 of
+		# each element in turn.
+		int element_type = type_get_element_type(type)
+		if (type_has_array_field(element_type)): node.children = global_storage_ast_build(element_type, 0)
 	else if (type_num_args(type) > 0):
 		node.kind = 2
 		global_storage_ast* last = 0
