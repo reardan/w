@@ -42,6 +42,18 @@ ast_generic_box[T]* ast_generic_box_address[T](ast_generic_box[T]* box): return 
 
 ast_generic_box[T] ast_generic_box_copy[T](ast_generic_box[T] box): return box
 
+type ast_generic_int_fn = fn(int) -> int
+
+T ast_generic_twice[T](T value): return value + value
+
+T ast_generic_thrice[T](T value): return value * 3
+
+# Named without a call, a generic instance is its address, also from
+# inside another generic body whose own substitution supplies T.
+int ast_generic_call_via[T](T value):
+	ast_generic_int_fn* f = cast(ast_generic_int_fn*, ast_generic_thrice[T])
+	return f(value)
+
 
 int main():
 	if ((ast_generic_identity[int](3) + ast_generic_identity[int](4)) != 7): return 1
@@ -81,4 +93,12 @@ int main():
 	array_free[int](array)
 	if ((ast_generic_box_address[int](&box).value) != 31): return 19
 	if ((ast_generic_box_copy[int](box).value) != 31): return 20
+	# An instance that already exists, one first named here, and one named
+	# only by another instantiation.
+	ast_generic_int_fn* known = cast(ast_generic_int_fn*, ast_generic_identity[int])
+	if (known(21) != 21): return 21
+	ast_generic_int_fn* fresh = cast(ast_generic_int_fn*, ast_generic_twice[int])
+	if (fresh(11) != 22): return 22
+	if (ast_generic_call_via[int](5) != 15): return 23
+	if (cast(int, ast_generic_twice[int]) != cast(int, fresh)): return 24
 	return 0

@@ -411,7 +411,7 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
 		int high = tree.high[i]
-		if ((op == 'G') || (op == 'W') || (op == ast_forward_generic)):
+		if ((op == 'G') || (op == 'W') || (op == ast_forward_generic) || (op == ast_generic_reference)):
 			char* callee = ast_expression_generic_callee(tree, i)
 			payload = retained_intern(callee)
 			free(callee)
@@ -428,7 +428,7 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 			char* name = table + tree.value[i]
 			if (tree.binding_name[i] >= 0): name = &tree.text[tree.binding_name[i]]
 			payload = retained_intern(name)
-		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W') || (op == ast_generic_reference)):
 			binding = retained_binding_note(tree.symbol[i], id)
 		s[4 * count + i] = binding
 		s[5 * count + i] = name_binding
