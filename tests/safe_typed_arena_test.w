@@ -225,6 +225,51 @@ void test_typed_arena_39():
 	typed_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\nstruct Inner:\n\tint count\n\tWThreadUnshared marker\ntype Read = fn[](ref WTypedArena[Inner]*) -> int\nint count(ref WTypedArena[Inner]* objects):\n\treturn typed_arena_length[Inner](objects)\nint main():\n\town WTypedArena[Inner]* left = typed_arena_new[Inner](-1)\n\town WTypedArena[Inner]* right = typed_arena_new[Inner](-1)\n\tref WTypedArena[Inner]* first = left\n\tref WTypedArena[Inner]* second = right\n\tRead* entry = count\n\treturn safe_thread_fork_join(entry, first, second)\n", c"explicitly unshareable across threads")
 
 
+# Shared allocation keeps earlier views alive: objects never move.
+void test_typed_arena_40():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\tref int* first = typed_arena_alloc_shared[int](arena, 1)\n\tref int* second = typed_arena_alloc_shared[int](arena, 2)\n\tfor i in range(20):\n\t\tref int* more = typed_arena_alloc_shared[int](arena, i)\n\toptref int* looked = typed_arena_get[int](arena, 0)\n\tref int* third = typed_arena_alloc_shared[int](arena, 3)\n\tint total = *first + *second + *third\n\tif (looked): total += *looked\n\treturn total - 7 - typed_arena_length[int](arena) + 23\n", 0)
+
+
+# Shared allocation through a borrowed parameter, in a loop and a branch.
+void test_typed_arena_41():
+	typed_arena_case(c"import lib.safe_typed_arena\nint sum(ref WTypedArena[int]* arena, int count):\n\tint total = 0\n\tfor i in range(count):\n\t\tref int* value = typed_arena_alloc_shared[int](arena, i)\n\t\tif (i % 2): total += *value\n\treturn total\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\treturn sum(arena, 6) - 9\n", 0)
+
+
+# The result is a shared view.
+void test_typed_arena_42():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\tref int* first = typed_arena_alloc_shared[int](arena, 1)\n\t*first = 2\n\treturn 0\n", c"assignment to const")
+
+
+# Destroying objects still needs the views to be dead.
+void test_typed_arena_43():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\tref int* first = typed_arena_alloc_shared[int](arena, 1)\n\ttyped_arena_reset[int](arena)\n\treturn *first\n", c"conflicting access while a borrow is live")
+
+
+# Destroying one object also waits for shared views.
+void test_typed_arena_44():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\tref int* first = typed_arena_alloc_shared[int](arena, 1)\n\ttyped_arena_destroy[int](arena, 0)\n\treturn *first\n", c"conflicting access while a borrow is live")
+
+
+# An exclusive view excludes shared allocation.
+void test_typed_arena_45():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\trefmut int* first = typed_arena_alloc[int](arena, 1)\n\tref int* second = typed_arena_alloc_shared[int](arena, 2)\n\t*first = 3\n\treturn *second\n", c"conflicting access while a borrow is live")
+
+
+# The arena cannot move while shared views live.
+void test_typed_arena_46():
+	typed_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WTypedArena[int]* arena = typed_arena_new[int](-1)\n\tref int* first = typed_arena_alloc_shared[int](arena, 1)\n\town WTypedArena[int]* moved = arena\n\treturn *first\n", c"use of uninitialized or moved value")
+
+
+# Shared allocation copies plain values only.
+void test_typed_arena_47():
+	typed_arena_case(c"import lib.safe_typed_arena\nstruct Pair:\n\tint[2] items\nint main():\n\town WTypedArena[Pair]* arena = typed_arena_new[Pair](-1)\n\tPair initial\n\tref Pair* stored = typed_arena_alloc_shared[Pair](arena, initial)\n\treturn 0\n", c"audited ownership contract")
+
+
+# Two threads could allocate in one shared arena at once.
+void test_typed_arena_48():
+	typed_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\ntype Read = fn[](ref WTypedArena[int]*) -> int\nint count(ref WTypedArena[int]* arena):\n\tref int* value = typed_arena_alloc_shared[int](arena, 1)\n\treturn *value\nint main():\n\town WTypedArena[int]* left = typed_arena_new[int](-1)\n\town WTypedArena[int]* right = typed_arena_new[int](-1)\n\tref WTypedArena[int]* first = left\n\tref WTypedArena[int]* second = right\n\tRead* entry = count\n\treturn safe_thread_fork_join(entry, first, second)\n", c"has unsynchronized interior mutation")
+
+
 void test_typed_arena_runtime_pin():
 	char* root = c"bin/safe_typed_arena_pin32"
 	if (__word_size__ == 8): root = c"bin/safe_typed_arena_pin64"

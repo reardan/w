@@ -1490,6 +1490,7 @@ private to the audited implementation.
 | --- | --- |
 | `typed_arena_new[T](maximum)` | Create an empty arena; `-1` allows unlimited slots, `0` refuses insertion. |
 | `typed_arena_alloc[T](arena, initial)` | Allocate and initialize a plain `T`; return an exclusive reference borrowing the arena. |
+| `typed_arena_alloc_shared[T](arena, initial)` | Allocate and initialize a plain `T` under a shared borrow; return a shared reference borrowing the arena. |
 | `typed_arena_insert[T](arena, owner)` | Consume an object owner and return its position. |
 | `typed_arena_try_insert[T](arena, owner)` | Consume the input; return absent on success or the original owner on capacity, overflow or allocation failure. |
 | `typed_arena_length[T](arena)` / `typed_arena_slots[T](arena)` | Count live objects / positions assigned since the last reset. |
@@ -1498,19 +1499,33 @@ private to the audited implementation.
 | `typed_arena_reset[T](arena)` | Destroy every remaining object and retain the slot allocation for reuse. |
 | `typed_arena_release[T](arena)` | Destroy every remaining object and free slot storage; the arena stays usable. |
 
-All allocating or mutating operations require exclusive borrowing, even when
-there is spare slot capacity. Live object references therefore block insertion,
-allocation, per-object destruction, reset, release and arena transfer/drop.
-Mutation resumes after the last dependent use. Shared/exclusive returns and
-saved field references retain the arena's lifetime through ordinary functions,
-generics, branches and loops, with the same checking without `--safe`.
+Insertion, exclusive allocation, per-object destruction, reset and release
+require exclusive borrowing, even when there is spare slot capacity. Live object
+references therefore block them, and arena transfer and drop. Mutation resumes
+after the last dependent use. Shared/exclusive returns and saved field
+references retain the arena's lifetime through ordinary functions, generics,
+branches and loops, with the same checking without `--safe`.
+
+**Allocation with live views.** `typed_arena_alloc_shared` needs only a shared
+borrow, so it can run while other shared views into the arena are live: earlier
+allocations, `typed_arena_get` results, or a shared parameter. Two facts make
+this sound:
+- Storage is nonmoving. Slot growth reallocates only the private address
+  array, which never escapes, and each object keeps its own allocation.
+- Initialization is disjoint. The new object is written before its address
+  is published, and no other view can reach it before that.
+
+The result is a shared view of a plain `T`. Destruction still needs an
+exclusive borrow, so it waits for every view. An exclusive view (`alloc`,
+`get_mut`) still excludes shared allocation. Because the allocation mutates
+through a shared borrow, a typed arena is never shared across threads
+(`has unsynchronized interior mutation`); transferring an owned arena is
+unaffected.
 
 Destroyed positions become holes; other positions remain stable until reset or
 release. Holes do not restore the `maximum` slot allowance. Positions are
 indices, not identity tokens across reset or between arenas. The maximum is a
-slot quota, not a byte budget. Attached-budget ownership and lifetimes retain
-their own implementation gate under #698. Allocation with live views remains
-rejected by this initial conservative contract.
+slot quota; byte budgets are the budget arenas below.
 
 Each live object has one generated destructor. Reset, release, early returns,
 lexical defer and arena destruction free nested owners exactly once. Failed
@@ -1522,6 +1537,51 @@ reset retains only those slots. Trust binds to resolved source content, so a
 changed or shadowed implementation cannot inherit the contract. Arenas are not
 iterable: destroyed positions are holes, so loops index with
 `typed_arena_slots` and `typed_arena_get`.
+
+### Budget arenas
+
+`own WArenaBudget*` is an opaque byte budget, created with
+`arena_budget_new(limit)`. `arena_budget_limit`, `arena_budget_used` and
+`arena_budget_remaining` read it. `budget_arena_new[T](budget, maximum)` borrows
+the budget exclusively and returns `own[b] WBudgetArena[T]*`, a typed arena that
+charges `sizeof(T)` bytes per live object to that budget.
+
+- It has the same operations under the `budget_arena_` prefix: `insert`,
+  `try_insert`, `alloc`, `get`, `get_mut`, `destroy`, `reset`, `release`,
+  `length`, `slots`.
+- `budget_arena_try_alloc[T]` returns `optrefmut[a] T*`. It is absent, with
+  nothing charged, when the budget or the slots refuse the object.
+- `budget_arena_remaining[T](arena)` reads the budget through the arena while
+  the arena holds it.
+- `try_insert` returns the owner when the budget is exhausted. `insert` and
+  `alloc` trap.
+- Destroy, reset, release and drop refund exactly what was charged. The budget
+  therefore always equals `sizeof(T)` times the arena's live objects, and it
+  is whole again once the arena is gone.
+- Only the object itself is charged: slot storage and storage that its fields
+  own are not.
+
+The budget arena is a labeled owner whose one group is its budget, so the mixed
+owner rules apply. The budget cannot move, be borrowed elsewhere, or back a
+second arena while the arena lives. An unlabeled `own WBudgetArena[T]*` is
+rejected, and so is any attempt to return the arena past the function that
+owns the budget. Dropping the arena refunds the budget, so its drop counts as a
+use of the budget at every exit. A budget declared after the arena's home,
+directly or through a holder record, is rejected with `safe: budget arena
+outlives the budget it borrows`. That is the same rule that keeps a lock guard
+from outliving its mutex.
+
+A spawned thread could outlive the budget, so the arena never crosses to one
+(`carries a borrowed lifetime`). Budget arenas are not iterable. The descriptor
+is eight words. Charging and refunding are one compare and one add or subtract
+per object.
+
+Contracts: `tests/safe_typed_arena_test.w` covers typed arenas and shared
+allocation, and `tests/safe_budget_arena_test.w` covers budgets. Each case runs
+on x86 and x64, with and without `--safe`. The runtime fixtures check the
+allocation balance under W_DEBUG_ALLOC across every exit path:
+`tests/safe_typed_arena_runtime_fixture.w` and
+`tests/safe_budget_arena_runtime_fixture.w`.
 
 ## Cleanup and unsafe boundaries
 

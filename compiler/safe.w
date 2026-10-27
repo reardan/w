@@ -385,6 +385,11 @@ int safe_sync_record(int type):
 	return 0
 
 
+int safe_budget_arena_element(int type);
+
+
+# 1 for an owner whose drop unlocks a mutex, 2 for one whose drop refunds an
+# arena budget (lib/safe_typed_arena.w), else 0.
 int safe_guard_drop_walk(int type, int depth, int* remaining):
 	type = safe_unqualified(type)
 	if ((type < 0) || (safe_kind(type) != 1)): return 0
@@ -394,10 +399,12 @@ int safe_guard_drop_walk(int type, int depth, int* remaining):
 	int target = safe_unqualified(safe_pointee(type))
 	if (target < 0): return 0
 	if (safe_sync_record(target) == 2): return 1
+	if (safe_budget_arena_element(target) >= 0): return 2
 	retained_type* record = retained_types[target]
 	if ((record.kind != 0) || record.pointer_level): return 0
 	for i in range(record.fields.length):
-		if (safe_guard_drop_walk(record.fields[i].type, depth + 1, remaining)): return 1
+		int found = safe_guard_drop_walk(record.fields[i].type, depth + 1, remaining)
+		if (found): return found
 	return 0
 
 
@@ -440,6 +447,23 @@ int safe_owned_storage_element(int type):
 	int element = safe_owned_buffer_element(type)
 	if element >= 0: return element
 	return safe_typed_arena_element(type)
+
+
+# WBudgetArena[T]: a typed arena that also borrows a WArenaBudget
+# exclusively, so it is only ever a labeled owner own[b] WBudgetArena[T]*
+# (safe_mixed_owned_shape). Holes make it non-iterable, like WTypedArena.
+int safe_budget_arena_element(int type):
+	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WBudgetArena$", 8)
+
+
+# The audited WArenaBudget record: opaque, so only its library changes it.
+int safe_arena_budget(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 2): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	return ends_with(retained_sources[record.source].path, c"/lib/safe_typed_arena.w") && (strcmp(record.name, c"WArenaBudget") == 0)
 
 
 int safe_owned_shape(int type);
@@ -495,6 +519,9 @@ int safe_opaque(int type):
 	if (safe_hash_opaque(type)): return 1
 	if (safe_owned_storage_element(type) >= 0): return safe_owned_shape(type)
 	if (safe_keyed_map_key(type) >= 0): return safe_owned_shape(type)
+	if (safe_arena_budget(type)): return 1
+	int budgeted = safe_budget_arena_element(type)
+	if (budgeted >= 0): return safe_owned_shape(budgeted)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
 		if (starts_with(record.name, c"WBuffer$") && (record.fields.length == 3)):
@@ -507,9 +534,12 @@ int safe_opaque(int type):
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_typed_arena.w")):
-		if (starts_with(name, c"typed_arena_alloc$")):
+		# Allocation copies a plain initial value into the new object.
+		if (starts_with(name, c"typed_arena_alloc$") || starts_with(name, c"typed_arena_alloc_shared$") || starts_with(name, c"budget_arena_alloc$") || starts_with(name, c"budget_arena_try_alloc$")):
 			int element = binding.parameters[1]
 			return safe_plain(element, 0) && (safe_has_array(element, 0) == 0)
+		if ((strcmp(name, c"arena_budget_new") == 0) || (strcmp(name, c"arena_budget_limit") == 0) || (strcmp(name, c"arena_budget_used") == 0) || (strcmp(name, c"arena_budget_remaining") == 0)): return 1
+		if (starts_with(name, c"budget_arena_new$") || starts_with(name, c"budget_arena_length$") || starts_with(name, c"budget_arena_slots$") || starts_with(name, c"budget_arena_remaining$") || starts_with(name, c"budget_arena_try_insert$") || starts_with(name, c"budget_arena_insert$") || starts_with(name, c"budget_arena_get$") || starts_with(name, c"budget_arena_get_mut$") || starts_with(name, c"budget_arena_destroy$") || starts_with(name, c"budget_arena_reset$") || starts_with(name, c"budget_arena_release$")): return 1
 		return starts_with(name, c"typed_arena_new$") || starts_with(name, c"typed_arena_length$") || starts_with(name, c"typed_arena_slots$") || starts_with(name, c"typed_arena_try_insert$") || starts_with(name, c"typed_arena_insert$") || starts_with(name, c"typed_arena_get$") || starts_with(name, c"typed_arena_get_mut$") || starts_with(name, c"typed_arena_destroy$") || starts_with(name, c"typed_arena_reset$") || starts_with(name, c"typed_arena_release$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_keyed_map.w")):
 		return starts_with(name, c"keyed_map_new$") || starts_with(name, c"keyed_map_length$") || starts_with(name, c"keyed_map_contains$") || starts_with(name, c"keyed_map_insert$") || starts_with(name, c"keyed_map_get$") || starts_with(name, c"keyed_map_get_or$") || starts_with(name, c"keyed_map_find$") || starts_with(name, c"keyed_map_take$") || starts_with(name, c"keyed_map_remove$") || starts_with(name, c"keyed_map_clear$")
@@ -539,6 +569,7 @@ int safe_thread_sealed(int type):
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
 	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
+	if (safe_budget_arena_element(type) >= 0): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -576,7 +607,14 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
+	# A shared typed arena could allocate on two threads at once
+	# (typed_arena_alloc_shared mutates through a shared borrow).
+	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
+	# A budget arena always borrows its budget, whatever the payload's
+	# declared type says (spawn's payload is an unlabeled own T*).
+	if (detached && (safe_budget_arena_element(type) >= 0)): return c"carries a borrowed lifetime"
 	int stored = safe_owned_storage_element(type)
+	if (stored < 0): stored = safe_budget_arena_element(type)
 	if (stored < 0): stored = safe_keyed_map_key(type)
 	if (stored >= 0):
 		if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
@@ -772,6 +810,8 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	path[depth] = type
 	int element = safe_owned_storage_element(type)
 	if element >= 0: return safe_owned_shape_walk(element, depth + 1, path, remaining)
+	# A budget arena always carries its budget's lifetime: own[b] WBudgetArena.
+	if (safe_budget_arena_element(type) >= 0): return 0
 	int key = safe_keyed_map_key(type)
 	if key >= 0:
 		int value = safe_keyed_map_value(type)
@@ -803,6 +843,10 @@ int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
+	# The audited budget arena's one group is its budget; its private slot
+	# fields expose only the element shape.
+	int budgeted = safe_budget_arena_element(type)
+	if (budgeted >= 0): return safe_owned_shape_walk(budgeted, depth + 1, path, remaining)
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
 	for i in range(record.fields.length):
@@ -2723,6 +2767,11 @@ void safe_condition(int id, char* state):
 	safe_eval(id, state, -1)
 
 
+char* safe_drop_borrow_message(int borrower):
+	if (safe_guard_locals[borrower] == 2): return c"safe: budget arena outlives the budget it borrows"
+	return c"safe: lock guard outlives the mutex it borrows"
+
+
 # A return drops every local in reverse declaration order: a guard that
 # may still hold a loan on a mutex declared after it would unlock freed
 # memory. Block exits apply the same rule to the roots that end there.
@@ -2733,7 +2782,7 @@ void safe_guard_order_check(int node, char* state):
 		if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
 		for root in range(safe_locals.length):
 			if (safe_set_has(safe_origin[borrower], root) && (safe_birth[borrower] < safe_birth[root])):
-				safe_error(node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
+				safe_error(node, safe_drop_borrow_message(borrower), safe_birth[borrower])
 				return
 
 
@@ -2812,7 +2861,7 @@ void safe_transfer(int event, char* state):
 				# so a guard declared before its mutex would unlock it after
 				# the mutex is freed.
 				if (safe_validate && safe_guard_locals[borrower] && (state[borrower] & 2) && ((safe_within(safe_birth[borrower], f.node) == 0) || (safe_birth[borrower] < safe_birth[root]))):
-					safe_error(f.node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
+					safe_error(f.node, safe_drop_borrow_message(borrower), safe_birth[borrower])
 				state[borrower] = (state[borrower] & 48) | 4
 				safe_moved_at[borrower] = f.node
 		for i in range(safe_locals.length):

@@ -60,6 +60,10 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WTypedArena$")):
 			helper = c"__w_typed_arena_drop"
 			pointee = type_lookup(c"void")
+		# A budget arena also refunds its budget for the objects it drops.
+		else if (starts_with(name, c"WBudgetArena$")):
+			helper = c"__w_budget_arena_drop"
+			pointee = type_lookup(c"void")
 	# Keyed maps record their key destructor; one helper drops keys and slots.
 	else if (ends_with(source, c"/lib/safe_keyed_map.w")):
 		if (starts_with(name, c"WKeyedMap$")):
