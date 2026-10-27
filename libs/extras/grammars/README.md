@@ -105,10 +105,12 @@ alternative — the same pattern `w.pg`/`c.pg` use throughout).
 ## Future grammars
 
 SQL is the first hand-written grammar; JSON/CSV/ABNF/DOT/GraphQL are
-machine-translated demos (see `tools/README.md`). The grammars-v4 sweep
-now compiles **200/291 pinned cases** with generated matchers (see
-[`antlr_to_pg/SWEEP_RESULTS.md`](antlr_to_pg/SWEEP_RESULTS.md)). Compilation alone
-does not establish runtime behavior or ANTLR semantic equivalence. Pick a
+machine-translated demos (see `tools/README.md`). The pinned grammars-v4 sweep
+compiles **214/291 cases** by default and **267/291** with `--exact-lexer
+--prediction`, and parses each grammar's pinned upstream examples: exact mode
+gives every example the expected verdict in 215 of 244 cases (see
+[`antlr_to_pg/SWEEP_RESULTS.md`](antlr_to_pg/SWEEP_RESULTS.md)). An accepted
+example checks the verdict, not ANTLR semantic equivalence. Pick a
 compiling grammar with an `examples/` dir and add `<lang>.pg` plus
 `tests/grammars/<lang>_demo.w` (copy an existing demo's `# wbuild:`
 header) following this layout.
