@@ -540,3 +540,6 @@ c70078563412|mov dword [rax],0x12345678
 7503|jne .+5
 488db91000c0ff|lea rdi,[rcx-0x3ffff0]
 b80b000000|mov eax,0xb
+# code_generator/x86.w alu_atomic_add / alu_atomic_cas (atomic_add, atomic_cas)
+f0480fc103|lock xadd [rbx],rax
+f0480fb10b|lock cmpxchg [rbx],rcx

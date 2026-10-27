@@ -1535,6 +1535,11 @@ when stderr is not a terminal.
   Direction: let memory_debug retry a failed guard munmap after
   reclaiming its quarantine, as it already does for a failed mmap. Also
   name the limit in the message.
+  **Resolved (#713):** the REPL and wdbg now keep their compiler on the
+  free list (`malloc_host_freelist_mode` in `lib/memory.w`), so
+  `W_DEBUG_ALLOC` only selects the session image's allocator, and
+  memory_debug retries a failed free-time `mprotect` after draining its
+  quarantine and names `vm.max_map_count` when it gives up.
 
 ## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
 
