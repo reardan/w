@@ -463,6 +463,9 @@ int safe_runtime_call(retained_binding* binding):
 # guards are opaque too but carry their own thread rules below.
 int safe_thread_sealed(int type):
 	if (safe_opaque(type) == 0): return 0
+	# Owning storage is sealed metadata around owned elements, which cross
+	# threads with it; safe_thread_reason inspects the element graph.
+	if (safe_owned_buffer_element(type) >= 0): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -500,6 +503,11 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
+	int stored = safe_owned_buffer_element(type)
+	if (stored >= 0):
+		if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
+		*remaining = *remaining - 1
+		return safe_thread_reason(stored, detached, sharing, depth + 1, remaining, path)
 	int kind = safe_kind(type)
 	retained_type* t = retained_types[type]
 	# A mutex is shareable whenever its payload is transferable: the lock

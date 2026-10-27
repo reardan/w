@@ -1271,6 +1271,13 @@ User code cannot access metadata, forge the destructor or call private
 runtime helpers through a checked contract. These guarantees also hold
 without `--safe`.
 
+Thread rules see through the sealed descriptor: an owned buffer crosses to
+another thread, or is shared with one, exactly when its element type could
+(`safe_thread_reason` recurses into `T`). A thread-affine or unshareable
+marker anywhere in the element graph is reported under the containing field
+path, for example `thread payload field 'items.affinity' is explicitly
+thread-affine`.
+
 This extends the sequential-container deliverable in #697. Maps/sets and
 checked iteration retain their independent implementation and merge gates;
 #697 and #644 remain open.

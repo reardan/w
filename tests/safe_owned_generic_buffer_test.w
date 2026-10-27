@@ -223,6 +223,18 @@ void test_owned_generic_buffer_40():
 void test_owned_generic_buffer_41():
 	owned_generic_buffer_case(c"import lib.safe_owned_vector\nstruct Item:\n\town int* value\n\nown Item* item(int number):\n\town int* value = new int\n\t*value = number\n\treturn new Item(value)\nstruct Box:\n\town WOwnedBuffer[Item]* values\nint main():\n\town Box* box = new Box(owned_buffer_new[Item](-1))\n\towned_buffer_push[Item](box.values, item(7))\n\town WOwnedBuffer[Item]* moved = box.values\n\tbox.values = owned_buffer_new[Item](-1)\n\treturn owned_buffer_length[Item](moved) - 1\n", 0)
 
+# Owned elements cross threads with their storage: a thread-affine element
+# makes the buffer thread-affine, while transferable elements may move.
+void test_owned_generic_buffer_42():
+	owned_generic_buffer_case(c"import lib.safe_owned_vector\nimport lib.safe_thread\nstruct Inner:\n\tint count\n\tWThreadAffine affinity\nstruct Job:\n\town WOwnedBuffer[Inner]* items\ntype Worker = fn[](own Job*) -> int\nint run_job(own Job* job):\n\treturn 0\nint main():\n\town Job* job = new Job(owned_buffer_new[Inner](-1))\n\tWorker* entry = run_job\n\toptown WSafeThread* thread = safe_thread_spawn(entry, job)\n\treturn 0\n", c"thread payload field 'items.affinity' is explicitly thread-affine")
+
+void test_owned_generic_buffer_43():
+	owned_generic_buffer_case(c"import lib.safe_owned_vector\nimport lib.safe_thread\nstruct Inner:\n\town int* value\nstruct Job:\n\town WOwnedBuffer[Inner]* items\ntype Worker = fn[](own Job*) -> int\nint run_job(own Job* job):\n\treturn owned_buffer_length[Inner](job.items)\nint main():\n\town Job* job = new Job(owned_buffer_new[Inner](-1))\n\towned_buffer_push[Inner](job.items, new Inner(new int))\n\tWorker* entry = run_job\n\toptown WSafeThread* thread = safe_thread_spawn(entry, job)\n\tif (!thread): return 1\n\town WSafeThread* started = thread\n\treturn safe_thread_join(started) - 1\n", 0)
+
+void test_owned_generic_buffer_44():
+	owned_generic_buffer_case(c"import lib.safe_owned_vector\nimport lib.safe_thread\nstruct Inner:\n\tint count\n\tWThreadUnshared marker\ntype Read = fn[](ref WOwnedBuffer[Inner]*) -> int\nint count(ref WOwnedBuffer[Inner]* items):\n\treturn owned_buffer_length[Inner](items)\nint main():\n\town WOwnedBuffer[Inner]* left = owned_buffer_new[Inner](-1)\n\town WOwnedBuffer[Inner]* right = owned_buffer_new[Inner](-1)\n\tref WOwnedBuffer[Inner]* first = left\n\tref WOwnedBuffer[Inner]* second = right\n\tRead* entry = count\n\treturn safe_thread_fork_join(entry, first, second)\n", c"explicitly unshareable across threads")
+
+
 void test_owned_generic_buffer_runtime_pin():
 	char* root = c"bin/safe_owned_vector_pin32"
 	if (__word_size__ == 8): root = c"bin/safe_owned_vector_pin64"
