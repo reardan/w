@@ -1433,6 +1433,18 @@ int binary_float_kind(int left_type, int right_type):
 	return rk
 
 
+# The record a '*' stacks on: an alias ('type handle_t = void*') is
+# looked through, so 'handle_t*' is the same record as void** -- the one
+# type_get_next_pointer, '&' and cast() build -- instead of a separate
+# ("handle_t", 2) record that no conversion check recognizes as void**.
+int type_pointer_base(int type_index):
+	int real = type_real(type_index)
+	if (real < 0): return type_index
+	type_rec* t = cast(type_rec*, type_records[real])
+	if (t.kind != type_kind_alias): return type_index
+	return type_canonical(real)
+
+
 int type_lookup_next_pointer(int type_index):
 	type_index = type_canonical(type_index)
 	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) + 1)

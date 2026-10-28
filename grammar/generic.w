@@ -742,6 +742,7 @@ int generic_tree_resolve(generic_type_ast* node):
 	else:
 		type = generic_subst_lookup(node.name)
 		if (type < 0): type = type_lookup(node.name)
+	if (node.stars > 0): type = type_pointer_base(type)
 	char* base_name = type_get_name(type)
 	for i in range(node.stars):
 		int next_level = type_get_pointer_level(type) + 1
@@ -1050,12 +1051,16 @@ int generic_declaration_scan():
 		error(c"float64 requires the x64 target")
 	if (((checked_type == int64_type) || (checked_type == uint64_type)) && (word_size != 8)):
 		error(c"int64 requires the x64 target")
+	if (stars > 0): type = type_pointer_base(type)
 	char* base_name = type_get_name(type)
 	while (pointer_indirection < stars):
 		pointer_indirection = pointer_indirection + 1
-		int pointer_type = type_lookup_pointer(base_name, pointer_indirection)
+		# stack on the base's own level, as type_name() does: with
+		# 'type tp = ts*', 'tp*' is ts**, not ts*
+		int next_level = type_get_pointer_level(type) + 1
+		int pointer_type = type_lookup_pointer(base_name, next_level)
 		if (pointer_type < 0):
-			pointer_type = type_push_pointer(base_name, word_size, pointer_indirection)
+			pointer_type = type_push_pointer(base_name, word_size, next_level)
 		type = pointer_type
 	type = type_name_array_suffix(type)
 	generic_scanned_type = type
