@@ -1,0 +1,32 @@
+# The budget-arena runtime fixture across loop, checked-mode, register, inlining and target variants.
+# wbuild: step="bin/wv2 --strict --no-loop-rotate tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_top"
+# wbuild: step="bin/safe_budget_arena_top"
+# wbuild: step="bin/wv2 x64 --strict --no-loop-rotate tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_top64"
+# wbuild: step="bin/safe_budget_arena_top64"
+# wbuild: step="bin/wv2 --strict --safe tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_explicit_safe"
+# wbuild: step="bin/safe_budget_arena_explicit_safe"
+# wbuild: step="bin/wv2 --strict tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime"
+# wbuild: step="bin/wv2 --strict --no-regs --no-inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime"
+# wbuild: step="bin/wv2 --strict --inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime"
+# wbuild: step="bin/wv2 x64 --strict tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime64"
+# wbuild: step="bin/wv2 x64 --strict --no-regs --no-inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime64"
+# wbuild: step="bin/wv2 x64 --strict --inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_budget_arena_runtime64"
+# wbuild: step="bin/wv2 win64 --strict tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_cross.exe"
+# wbuild: step="bin/wv2 arm64 --strict tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_arm64"
+# wbuild: step="bin/wv2 arm64 --strict --no-regs --no-inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_arm64_plain"
+# wbuild: step="bin/wv2 arm64 --strict --inline tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_arm64_inline"
+# wbuild: target=safe_budget_arena_win64_runtime_test tag=tests_win64 dep=wv2
+# wbuild: step="bin/wv2 win64 --strict tests/safe_budget_arena_runtime_fixture.w -o bin/safe_budget_arena_runtime.exe"
+# wbuild: step="wine bin/safe_budget_arena_runtime.exe"
+# wbuild: target=safe_budget_arena_arm64_runtime_test tag=tests_arm64 dep=safe_budget_arena_runtime_test dep=wrun
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_budget_arena_arm64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_budget_arena_arm64_plain"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_budget_arena_arm64_inline"
+int main():
+	return 0

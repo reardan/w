@@ -24,6 +24,7 @@ struct safe_flow:
 	int next
 	int alternate
 	int returning
+	int iterator
 	int return_roots
 	int return_exclusive_roots
 	int reached
@@ -34,6 +35,7 @@ struct safe_flow:
 list[safe_flow*] safe_graph
 list[int] safe_locals
 map[int, int] safe_local_index
+map[int, int] safe_iterator_locals
 
 # Component sets preserve group independence; whole-value unions still drive
 # access checks, scope invalidation and reborrow ancestry.
@@ -92,6 +94,7 @@ void safe_reset():
 	safe_bounds_disabled = 0
 	if (safe_trusted_sources != 0): safe_trusted_sources.free()
 	safe_trusted_sources = 0
+	import_attest_reset()
 	if (safe_contains_seen != 0): free(cast(char*, safe_contains_seen))
 	safe_contains_seen = 0
 	safe_contains_generation = 0
@@ -110,6 +113,8 @@ void safe_trust_sources(int first):
 	for i in range(first, retained_sources.length): safe_trusted_sources[i] = 1
 
 
+# 1 for the audited runtime, 2 for a module trusted through an import
+# attestation (safe_audit_attestations), else 0.
 int safe_trusted(int source):
 	if ((source < 0) || (safe_trusted_sources == 0)): return 0
 	if (source >= safe_trusted_sources.length): return 0
@@ -383,6 +388,11 @@ int safe_sync_record(int type):
 	return 0
 
 
+int safe_budget_arena_element(int type);
+
+
+# 1 for an owner whose drop unlocks a mutex, 2 for one whose drop refunds an
+# arena budget (lib/safe_typed_arena.w), else 0.
 int safe_guard_drop_walk(int type, int depth, int* remaining):
 	type = safe_unqualified(type)
 	if ((type < 0) || (safe_kind(type) != 1)): return 0
@@ -392,10 +402,12 @@ int safe_guard_drop_walk(int type, int depth, int* remaining):
 	int target = safe_unqualified(safe_pointee(type))
 	if (target < 0): return 0
 	if (safe_sync_record(target) == 2): return 1
+	if (safe_budget_arena_element(target) >= 0): return 2
 	retained_type* record = retained_types[target]
 	if ((record.kind != 0) || record.pointer_level): return 0
 	for i in range(record.fields.length):
-		if (safe_guard_drop_walk(record.fields[i].type, depth + 1, remaining)): return 1
+		int found = safe_guard_drop_walk(record.fields[i].type, depth + 1, remaining)
+		if (found): return found
 	return 0
 
 
@@ -408,29 +420,121 @@ int safe_guard_drop(int type):
 
 
 # A sealed descriptor exposes only its element type to recursive validation.
-# The walk below shares its cycle/depth budget across nested owned buffers.
-int safe_owned_buffer_element(int type):
+# The walk below shares its cycle/depth budget across nested owning storage.
+# Both audited containers keep their T** slot array in field 3.
+int safe_storage_element(int type, char* path, char* prefix, int fields):
 	type = safe_unqualified(type)
 	if type < 0: return -1
 	retained_type* record = retained_types[type]
-	if record.kind || record.pointer_level || (record.fields.length != 5): return -1
+	if record.kind || record.pointer_level || (record.fields.length != fields): return -1
 	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return -1
-	if (ends_with(retained_sources[record.source].path, c"/lib/safe_owned_vector.w") == 0): return -1
-	if (starts_with(record.name, c"WOwnedBuffer$") == 0): return -1
+	if (ends_with(retained_sources[record.source].path, path) == 0): return -1
+	if (starts_with(record.name, prefix) == 0): return -1
 	int element = safe_pointee(safe_pointee(record.fields[3].type))
 	if ((element < 0) || (retained_types[element].size <= 0)): return -1
 	return element
 
 
+# WOwnedBuffer[T]: dense, so it is also iterable (safe_owned_iteration_type).
+int safe_owned_buffer_element(int type):
+	return safe_storage_element(type, c"/lib/safe_owned_vector.w", c"WOwnedBuffer$", 5)
+
+
+# WTypedArena[T]: destroyed objects leave holes, so it is never iterable.
+int safe_typed_arena_element(int type):
+	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WTypedArena$", 6)
+
+
+# Either owning container, for the shape, opaque and thread rules.
+int safe_owned_storage_element(int type):
+	int element = safe_owned_buffer_element(type)
+	if element >= 0: return element
+	return safe_typed_arena_element(type)
+
+
+# WBudgetArena[T]: a typed arena that also borrows a WArenaBudget
+# exclusively, so it is only ever a labeled owner own[b] WBudgetArena[T]*
+# (safe_mixed_owned_shape). Holes make it non-iterable, like WTypedArena.
+int safe_budget_arena_element(int type):
+	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WBudgetArena$", 8)
+
+
+# The audited WArenaBudget record: opaque, so only its library changes it.
+int safe_arena_budget(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 2): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	return ends_with(retained_sources[record.source].path, c"/lib/safe_typed_arena.w") && (strcmp(record.name, c"WArenaBudget") == 0)
+
+
 int safe_owned_shape(int type);
 
 
+# The owned key type K of an audited WKeyedMap[K, V] (lib/safe_keyed_map.w),
+# else -1. Values are the separate pointer-free V of safe_keyed_map_value.
+int safe_keyed_map_key(int type):
+	type = safe_unqualified(type)
+	if type < 0: return -1
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 10): return -1
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return -1
+	if (ends_with(retained_sources[record.source].path, c"/lib/safe_keyed_map.w") == 0): return -1
+	if (starts_with(record.name, c"WKeyedMap$") == 0): return -1
+	int key = safe_pointee(safe_pointee(record.fields[3].type))
+	if ((key < 0) || (retained_types[key].size <= 0)): return -1
+	return key
+
+
+int safe_keyed_map_value(int type):
+	return safe_unqualified(safe_pointee(retained_types[safe_unqualified(type)].fields[4].type))
+
+
+int safe_hash_key(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* key = retained_types[type]
+	if key.pointer_level || safe_kind(type): return 0
+	return (key.kind == type_kind_enum) || (strcmp(key.name, c"int") == 0) || (strcmp(key.name, c"uint") == 0) || (strcmp(key.name, c"byte") == 0) || (strcmp(key.name, c"char") == 0) || (strcmp(key.name, c"bool") == 0)
+
+
+int safe_hash_opaque(int type):
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 1): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	if (ends_with(retained_sources[record.source].path, c"/lib/safe_hash.w") == 0): return 0
+	int storage = safe_unqualified(record.fields[0].type)
+	if storage < 0: return 0
+	retained_type* table = retained_types[storage]
+	if (safe_hash_key(table.target) == 0): return 0
+	if starts_with(record.name, c"WSet$"): return table.kind == type_kind_set
+	if ((starts_with(record.name, c"WMap$") == 0) || (table.kind != type_kind_map)): return 0
+	int value = safe_unqualified(table.return_type)
+	return (value >= 0) && (retained_types[value].size > 0) && safe_plain(value, 0) && (safe_has_array(value, 0) == 0)
+
+
+# The audited WForeign[T] owner of a foreign object (lib/safe_foreign_owner.w).
+int safe_foreign_record(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 2): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	return ends_with(retained_sources[record.source].path, c"/lib/safe_foreign_owner.w") && starts_with(record.name, c"WForeign$")
+
+
 int safe_opaque(int type):
-	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type)): return 1
+	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type) || safe_foreign_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
-	if (safe_owned_buffer_element(type) >= 0): return safe_owned_shape(type)
+	if (safe_hash_opaque(type)): return 1
+	if (safe_owned_storage_element(type) >= 0): return safe_owned_shape(type)
+	if (safe_keyed_map_key(type) >= 0): return safe_owned_shape(type)
+	if (safe_arena_budget(type)): return 1
+	int budgeted = safe_budget_arena_element(type)
+	if (budgeted >= 0): return safe_owned_shape(budgeted)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
 		if (starts_with(record.name, c"WBuffer$") && (record.fields.length == 3)):
@@ -440,8 +544,37 @@ int safe_opaque(int type):
 	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0) || (strcmp(record.name, c"WByteArena") == 0)
 
 
+# A function of an attested module is a checked contract when every value
+# crossing it is a plain scalar or record, a checked pointer, slice or view,
+# or a quantified function contract. Raw pointers stay inside unsafe blocks.
+int safe_attested_value(int type):
+	if (type < 0): return 1
+	return safe_plain(type, 0) || safe_kind(type) || (safe_callable_signature(type) >= 0)
+
+
+int safe_attested_contract(retained_binding* binding):
+	if (safe_attested_value(binding.return_type) == 0): return 0
+	for i in range(binding.parameters.length):
+		if (safe_attested_value(binding.parameters[i]) == 0): return 0
+	return 1
+
+
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if (safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_foreign_owner.w")):
+		return starts_with(name, c"foreign_close$")
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_typed_arena.w")):
+		# Allocation copies a plain initial value into the new object.
+		if (starts_with(name, c"typed_arena_alloc$") || starts_with(name, c"typed_arena_alloc_shared$") || starts_with(name, c"budget_arena_alloc$") || starts_with(name, c"budget_arena_try_alloc$")):
+			int element = binding.parameters[1]
+			return safe_plain(element, 0) && (safe_has_array(element, 0) == 0)
+		if ((strcmp(name, c"arena_budget_new") == 0) || (strcmp(name, c"arena_budget_limit") == 0) || (strcmp(name, c"arena_budget_used") == 0) || (strcmp(name, c"arena_budget_remaining") == 0)): return 1
+		if (starts_with(name, c"budget_arena_new$") || starts_with(name, c"budget_arena_length$") || starts_with(name, c"budget_arena_slots$") || starts_with(name, c"budget_arena_remaining$") || starts_with(name, c"budget_arena_try_insert$") || starts_with(name, c"budget_arena_insert$") || starts_with(name, c"budget_arena_get$") || starts_with(name, c"budget_arena_get_mut$") || starts_with(name, c"budget_arena_destroy$") || starts_with(name, c"budget_arena_reset$") || starts_with(name, c"budget_arena_release$")): return 1
+		return starts_with(name, c"typed_arena_new$") || starts_with(name, c"typed_arena_length$") || starts_with(name, c"typed_arena_slots$") || starts_with(name, c"typed_arena_try_insert$") || starts_with(name, c"typed_arena_insert$") || starts_with(name, c"typed_arena_get$") || starts_with(name, c"typed_arena_get_mut$") || starts_with(name, c"typed_arena_destroy$") || starts_with(name, c"typed_arena_reset$") || starts_with(name, c"typed_arena_release$")
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_keyed_map.w")):
+		return starts_with(name, c"keyed_map_new$") || starts_with(name, c"keyed_map_length$") || starts_with(name, c"keyed_map_contains$") || starts_with(name, c"keyed_map_insert$") || starts_with(name, c"keyed_map_get$") || starts_with(name, c"keyed_map_get_or$") || starts_with(name, c"keyed_map_find$") || starts_with(name, c"keyed_map_take$") || starts_with(name, c"keyed_map_remove$") || starts_with(name, c"keyed_map_clear$")
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_hash.w")):
+		return starts_with(name, c"map_new$") || starts_with(name, c"map_length$") || starts_with(name, c"map_contains$") || starts_with(name, c"map_set$") || starts_with(name, c"map_get$") || starts_with(name, c"map_get_or$") || starts_with(name, c"map_find$") || starts_with(name, c"map_remove$") || starts_with(name, c"map_clear$") || starts_with(name, c"map_keys$") || starts_with(name, c"map_values$") || starts_with(name, c"set_new$") || starts_with(name, c"set_length$") || starts_with(name, c"set_contains$") || starts_with(name, c"set_add$") || starts_with(name, c"set_remove$") || starts_with(name, c"set_clear$") || starts_with(name, c"set_values$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_owned_vector.w")):
 		return starts_with(name, c"owned_buffer_new$") || starts_with(name, c"owned_buffer_length$") || starts_with(name, c"owned_buffer_push$") || starts_with(name, c"owned_buffer_try_push$") || starts_with(name, c"owned_buffer_get$") || starts_with(name, c"owned_buffer_set$") || starts_with(name, c"owned_buffer_pop$") || starts_with(name, c"owned_buffer_clear$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_vector.w")):
@@ -465,7 +598,8 @@ int safe_thread_sealed(int type):
 	if (safe_opaque(type) == 0): return 0
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
-	if (safe_owned_buffer_element(type) >= 0): return 0
+	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
+	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -503,7 +637,17 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
-	int stored = safe_owned_buffer_element(type)
+	# Foreign libraries state their own threading rules; none is audited.
+	if (safe_foreign_record(type)): return c"is a foreign object without a thread contract"
+	# A shared typed arena could allocate on two threads at once
+	# (typed_arena_alloc_shared mutates through a shared borrow).
+	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
+	# A budget arena always borrows its budget, whatever the payload's
+	# declared type says (spawn's payload is an unlabeled own T*).
+	if (detached && (safe_budget_arena_element(type) >= 0)): return c"carries a borrowed lifetime"
+	int stored = safe_owned_storage_element(type)
+	if (stored < 0): stored = safe_budget_arena_element(type)
+	if (stored < 0): stored = safe_keyed_map_key(type)
 	if (stored >= 0):
 		if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
 		*remaining = *remaining - 1
@@ -696,8 +840,15 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
-	int element = safe_owned_buffer_element(type)
+	int element = safe_owned_storage_element(type)
 	if element >= 0: return safe_owned_shape_walk(element, depth + 1, path, remaining)
+	# A budget arena always carries its budget's lifetime: own[b] WBudgetArena.
+	if (safe_budget_arena_element(type) >= 0): return 0
+	int key = safe_keyed_map_key(type)
+	if key >= 0:
+		int value = safe_keyed_map_value(type)
+		if ((value < 0) || (retained_types[value].size <= 0) || (safe_plain(value, 0) == 0) || safe_has_array(value, 0)): return 0
+		return safe_owned_shape_walk(key, depth + 1, path, remaining)
 	# A guard always carries its mutex's lifetime: own[a] WSafeGuard*.
 	if (safe_plain(type, 0) || (safe_opaque(type) && (safe_sync_record(type) != 2))): return 1
 	retained_type* record = retained_types[type]
@@ -724,6 +875,10 @@ int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
+	# The audited budget arena's one group is its budget; its private slot
+	# fields expose only the element shape.
+	int budgeted = safe_budget_arena_element(type)
+	if (budgeted >= 0): return safe_owned_shape_walk(budgeted, depth + 1, path, remaining)
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
 	for i in range(record.fields.length):
@@ -871,6 +1026,7 @@ int safe_add(int node, int expression, int binding, int action, int next, int al
 	f.next = next
 	f.alternate = alternate
 	f.returning = -1
+	f.iterator = -1
 	f.return_roots = -1
 	f.return_exclusive_roots = -1
 	f.reached = 0
@@ -996,6 +1152,67 @@ int safe_range(int id, int next):
 	return safe_add(id, -1, local, 4, start, -1)
 
 
+# The iterable is evaluated once into the cursor's hidden descriptor slot.
+# A synthetic loan preserves backing storage
+# until the final implicit loop read, independently of uses in the body.
+int retained_type_note(int index);
+
+
+# Iterating owned storage through a non-optional checked pointer borrows the
+# whole container shared for the loop: the synthetic iterator binding gets
+# that ref type, and each element is lent as a shared reference into it.
+int safe_owned_iteration_type(int type):
+	if ((type < 0) || safe_optional(type) || safe_slice(type) || safe_record(type)): return -1
+	int kind = safe_kind(type)
+	if ((kind < 1) || (kind > 3)): return -1
+	int storage = safe_unqualified(safe_pointee(type))
+	if (safe_owned_buffer_element(storage) < 0): return -1
+	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
+int safe_iteration(int id, int next):
+	int iterator = safe_iterator_locals.get(id, -1)
+	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice or owned storage", -1)
+	int storage = safe_slice(retained_bindings[safe_locals[iterator]].type) == 0
+	int local = -1
+	int body = -1
+	int expression = -1
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_local):
+			if (local >= 0): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
+			local = safe_index(n.binding)
+		else if (n.kind == retained_expression_group): expression = safe_expr_root(child)
+		else if (n.kind == retained_statement): body = child
+		child = safe_next[child]
+	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
+	int type = retained_bindings[safe_locals[local]].type
+	int borrowed = safe_kind(type) == 2
+	if (storage):
+		if (borrowed == 0): safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
+		# The hidden slot borrows the container; an owning temporary would
+		# have no owner to destroy it after the loop.
+		retained_node value
+		retained_node_load(expression, &value)
+		if ((safe_kind(value.semantic_type) == 1) && ((value.op == 'C') || (value.op == 'G') || (value.op == 'W'))):
+			safe_error(id, c"safe: owned-storage iteration requires a named owner or a borrow", -1)
+	if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
+	safe_type_check(id, type)
+	int guard = safe_add(id, -1, iterator, 8, -1, next)
+	int action = 6
+	if (borrowed): action = 9
+	int write = safe_add(id, -1, local, action, -1, -1)
+	safe_graph[write].iterator = iterator
+	safe_graph[write].next = safe_build(body, guard, next, guard)
+	safe_graph[guard].next = write
+	int capture = safe_add(id, expression, iterator, 1, guard, -1)
+	# A reference exists only on the body edge, never on an empty loop.
+	int initialize = 4
+	if (borrowed): initialize = 10
+	return safe_add(id, -1, local, initialize, capture, -1)
+
+
 # Each clause owns its label expressions and body. Unmatched labels
 # continue to the next clause; matching one skips the remaining labels.
 int safe_switch_clause(int clause, int next, int continue_to):
@@ -1101,12 +1318,13 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		safe_unsafe_check(id)
 		return next
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
-	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
+	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
 	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"scoped defer") == 0)): return next
 	if (strcmp(name, c"deferred exit") == 0): return safe_deferred(id, next, -1)
 	if (strcmp(name, c"return") == 0): return safe_return(id)
 	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
+	if (strcmp(name, c"for") == 0): return safe_iteration(id, next)
 	if (strcmp(name, c"switch") == 0): return safe_switch(id, next, continue_to)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
@@ -2046,6 +2264,33 @@ int safe_return_from(retained_binding* binding, int inferred, int slot, int grou
 	return safe_contract_outlives(binding, slot, safe_contract_offset(binding, binding.parameters.length) + group)
 
 
+# One checked key operation of keyed_map_new: a quantified fn[] contract
+# taking arity shared, non-optional references to K and returning int.
+int safe_keyed_operation(int type, int key, int arity):
+	int signature = safe_callable_signature(type)
+	if (signature < 0): return 0
+	retained_type* operation = retained_types[signature]
+	if (operation.parameters.length != arity): return 0
+	int result = safe_unqualified(operation.return_type)
+	if ((result < 0) || retained_types[result].pointer_level || (strcmp(retained_types[result].name, c"int") != 0)): return 0
+	for i in range(arity):
+		int parameter = operation.parameters[i]
+		if ((safe_kind(parameter) != 2) || safe_optional(parameter) || safe_slice(parameter) || safe_record(parameter)): return 0
+		if (safe_same_nominal(safe_pointee(parameter), key) == 0): return 0
+	return 1
+
+
+# The audited keyed map calls the user's hash and equality functions from
+# unchecked runtime code, so construction pins their checked contracts.
+void safe_keyed_map_check(int id, retained_binding* implementation):
+	if (ends_with(retained_sources[implementation.source].path, c"/lib/safe_keyed_map.w") == 0): return
+	if (starts_with(implementation.name, c"keyed_map_new$") == 0): return
+	int key = safe_keyed_map_key(safe_pointee(implementation.return_type))
+	if ((key < 0) || (implementation.parameters.length != 2)): safe_error(id, c"safe: keyed map requires an audited WKeyedMap specialization", -1)
+	if ((safe_keyed_operation(implementation.parameters[0], key, 1) == 0) || (safe_keyed_operation(implementation.parameters[1], key, 2) == 0)):
+		safe_error(id, c"safe: keyed map operations must be fn[](ref K*) -> int and fn[](ref K*, ref K*) -> int for its key type", -1)
+
+
 void safe_implementation_check(int id, int binding, int callable):
 	retained_binding* callee = retained_bindings[binding]
 	int function = safe_function_for_binding[binding]
@@ -2056,9 +2301,13 @@ void safe_implementation_check(int id, int binding, int callable):
 			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
 	if (callable && implementation.callable_excluded):
 		safe_error(id, c"safe: checked function values require ordinary W functions", -1)
-	if (safe_trusted(implementation.source)):
+	if (safe_trusted(implementation.source) == 2):
+		if (safe_attested_contract(implementation) == 0):
+			safe_error(id, c"safe: audited module function has a raw signature; call it inside an unsafe block", -1)
+	else if (safe_trusted(implementation.source)):
 		if (safe_runtime_call(implementation) == 0):
 			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
+		safe_keyed_map_check(id, implementation)
 	else:
 		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
 		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
@@ -2553,6 +2802,11 @@ void safe_condition(int id, char* state):
 	safe_eval(id, state, -1)
 
 
+char* safe_drop_borrow_message(int borrower):
+	if (safe_guard_locals[borrower] == 2): return c"safe: budget arena outlives the budget it borrows"
+	return c"safe: lock guard outlives the mutex it borrows"
+
+
 # A return drops every local in reverse declaration order: a guard that
 # may still hold a loan on a mutex declared after it would unlock freed
 # memory. Block exits apply the same rule to the roots that end there.
@@ -2563,7 +2817,7 @@ void safe_guard_order_check(int node, char* state):
 		if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
 		for root in range(safe_locals.length):
 			if (safe_set_has(safe_origin[borrower], root) && (safe_birth[borrower] < safe_birth[root])):
-				safe_error(node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
+				safe_error(node, safe_drop_borrow_message(borrower), safe_birth[borrower])
 				return
 
 
@@ -2642,14 +2896,29 @@ void safe_transfer(int event, char* state):
 				# so a guard declared before its mutex would unlock it after
 				# the mutex is freed.
 				if (safe_validate && safe_guard_locals[borrower] && (state[borrower] & 2) && ((safe_within(safe_birth[borrower], f.node) == 0) || (safe_birth[borrower] < safe_birth[root]))):
-					safe_error(f.node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
+					safe_error(f.node, safe_drop_borrow_message(borrower), safe_birth[borrower])
 				state[borrower] = (state[borrower] & 48) | 4
 				safe_moved_at[borrower] = f.node
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
 	else if (f.action == 4): state[index] = 2
+	else if (f.action == 10): state[index] = 1
+	else if (f.action == 9):
+		int iterator = f.iterator
+		safe_read(iterator, f.node, state)
+		safe_access(safe_origin[iterator], iterator, 0, f.node, state)
+		safe_borrowed components
+		safe_borrowed_clear(&components)
+		components.roots[0] = safe_origin[iterator]
+		components.parents[0] = iterator
+		safe_components_join(index, &components, 1)
+		safe_origin_join(index, safe_origin[iterator], iterator)
+		state[index] = 2
 	else if ((f.action == 5) || (f.action == 6)):
 		safe_access(index, -1, f.action == 6, f.node, state)
+	else if (f.action == 8):
+		safe_read(index, f.node, state)
+		safe_access(safe_origin[index], index, 0, f.node, state)
 	else if (f.action == 7):
 		int roots = -1
 		if (f.returning >= 0): roots = safe_graph[f.returning].return_roots
@@ -2697,6 +2966,38 @@ void safe_function_check(int function):
 			int block = n.parent
 			if ((block < 0) || (retained_record_at(block).parent != function)):
 				safe_error(id, c"safe: defer requires the function's outer lexical block", -1)
+	int saved_bindings = retained_bindings.length
+	safe_iterator_locals = new map[int, int]
+	list[int] iterator_nodes = new list[int]
+	for id in range(retained_node_count()):
+		if (retained_node_table[id] & 1): continue
+		retained_record* n = retained_record_at(id)
+		if ((n.kind != retained_statement) || (strcmp(n.name, c"for") != 0) || (safe_within(id, function) == 0)): continue
+		int child = safe_first[id]
+		while (child >= 0):
+			retained_record* part = retained_record_at(child)
+			if (part.kind == retained_expression_group):
+				retained_node value
+				retained_node_load(safe_expr_root(child), &value)
+				int type = safe_unqualified(value.semantic_type)
+				if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
+				if ((type >= 0) && (safe_kind(type) == 2)):
+					retained_binding* binding = new retained_binding
+					binding.name = retained_intern(c"<iterator>")
+					binding.key = strclone(c"<checked iterator>")
+					binding.origin = -1
+					binding.origin_previous = -1
+					binding.type = type
+					binding.scope = 'L'
+					binding.owner = function
+					binding.parameters = new list[int]
+					int slot = retained_bindings.length
+					safe_local_index[slot] = safe_locals.length
+					safe_iterator_locals[id] = safe_locals.length
+					safe_locals.push(retained_bindings.length)
+					retained_bindings.push(binding)
+					iterator_nodes.push(id)
+			child = safe_next[child]
 	# Additional abstract parameter roots are not variable bindings or loans.
 	# Keep them after real locals, without overwriting safe_local_index; their
 	# state/birth still participates in the ordinary root and scope checks.
@@ -2746,6 +3047,7 @@ void safe_function_check(int function):
 		if (n.kind == retained_local):
 			int index = safe_index(n.binding)
 			if (index >= 0): safe_birth[index] = id
+	for i in range(iterator_nodes.length): safe_birth[safe_iterator_locals[iterator_nodes[i]]] = iterator_nodes[i]
 	for i in range(safe_real_locals, count): safe_birth[i] = safe_birth[safe_index(safe_locals[i])]
 	safe_guard_locals = safe_zero(count, 1)
 	for i in range(safe_real_locals): safe_guard_locals[i] = safe_guard_drop(retained_bindings[safe_locals[i]].type)
@@ -2755,7 +3057,8 @@ void safe_function_check(int function):
 	# point handles loop backedges; no source-offset lifetime shortcuts.
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
-		if ((f.action == 5) || (f.action == 6)): f.uses[f.binding] = 1
+		if ((f.action == 5) || (f.action == 6) || (f.action == 8)): f.uses[f.binding] = 1
+		if (f.action == 9): f.uses[f.iterator] = 1
 		# A guard is used where it is dropped: its block's exit, any
 		# return, and the end of the function.
 		for j in range(safe_real_locals):
@@ -2778,7 +3081,7 @@ void safe_function_check(int function):
 			safe_flow* f = safe_graph[i]
 			for j in range(count):
 				int live = f.uses[j]
-				if (((f.action != 1) && (f.action != 4)) || (f.binding != j)):
+				if (((f.action != 1) && (f.action != 4) && (f.action != 9) && (f.action != 10)) || (f.binding != j)):
 					if (f.next >= 0): live = live | safe_graph[f.next].live[j]
 					if (f.alternate >= 0): live = live | safe_graph[f.alternate].live[j]
 				if (live != f.live[j]):
@@ -2861,10 +3164,46 @@ void safe_function_check(int function):
 	safe_path_offset.free()
 	safe_path_type.free()
 	safe_local_index.free()
+	safe_iterator_locals.free()
+	iterator_nodes.free()
+	while (retained_bindings.length > saved_bindings):
+		retained_binding* binding = retained_bindings.pop()
+		free(binding.key)
+		binding.parameters.free()
+		free(binding)
 	free(cast(char*, safe_origin))
 	free(cast(char*, safe_parent_ref))
 	free(cast(char*, safe_birth))
 	free(cast(char*, safe_moved_at))
+
+
+int safe_digest_matches(retained_source* source, char* expected):
+	char[32] digest
+	sha256(source.bytes, source.length, &digest[0])
+	char* digits = c"0123456789abcdef"
+	int matches = 1
+	for j in range(32):
+		int value = digest[j] & 255
+		if ((expected[j * 2] != digits[value >> 4]) || (expected[j * 2 + 1] != digits[value & 15])): matches = 0
+	return matches
+
+
+# An attested import trusts the file it resolved to while its bytes hash to
+# the attested digest. A changed file, or another file shadowing the module
+# name, fails at the import. Pinned runtime files keep their own pins.
+void safe_audit_attestations():
+	if (import_attested_paths == 0): return
+	for k in range(import_attested_paths.length):
+		int found = -1
+		for i in range(retained_sources.length):
+			char* key = retained_sources[i].import_key
+			if ((key != 0) && (strcmp(key, import_attested_paths[k]) == 0)): found = i
+		# Without a retained module nothing becomes trusted (fail closed).
+		if (found < 0): continue
+		int at = import_attested_nodes[k]
+		if (at < 0): at = retained_sources[found].root
+		if (safe_digest_matches(retained_sources[found], import_attested_digests[k]) == 0): safe_error(at, c"safe: audited module differs from its attestation", -1)
+		if (safe_trusted_sources[found] == 0): safe_trusted_sources[found] = 2
 
 
 void safe_audit_runtime():
@@ -2873,17 +3212,11 @@ void safe_audit_runtime():
 		retained_source* source = retained_sources[i]
 		char* expected = safe_runtime_digest(source.path)
 		if (expected == 0):
-			if (safe_trusted(i)): safe_error(source.root, c"safe: injected runtime has no audited implementation", -1)
+			if (safe_trusted(i) == 1): safe_error(source.root, c"safe: injected runtime has no audited implementation", -1)
 			continue
-		char[32] digest
-		sha256(source.bytes, source.length, &digest[0])
-		char* digits = c"0123456789abcdef"
-		int matches = 1
-		for j in range(32):
-			int value = digest[j] & 255
-			if ((expected[j * 2] != digits[value >> 4]) || (expected[j * 2 + 1] != digits[value & 15])): matches = 0
-		if (matches == 0): safe_error(source.root, c"safe: runtime implementation differs from its audited contract", -1)
+		if (safe_digest_matches(source, expected) == 0): safe_error(source.root, c"safe: runtime implementation differs from its audited contract", -1)
 		safe_trusted_sources[i] = 1
+	safe_audit_attestations()
 
 
 void safe_check_finish():
