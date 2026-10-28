@@ -1215,9 +1215,9 @@ which would leave the container without an owner to destroy it.
 The runtime fixture iterates owner-valued elements through nested loops with
 `break`, `continue`, an early `return` and scoped `defer`, then replaces and
 clears the container, and checks the W_DEBUG_ALLOC allocation balance across
-x86/x64 optimization variants, Wine and ARM64. The `--ast-required` variant is
-not run: `lib/safe_owned_vector.w` itself takes a generic function's address,
-an expression the AST-required front end does not yet support.
+x86/x64 optimization variants, Wine and ARM64. Both Linux word sizes also
+run the `--ast-required` variant, including the generic function-reference
+used for the owned buffer's element destructor.
 
 ### Checked cursor protocols and hash iteration
 
@@ -3754,3 +3754,12 @@ Tombstone reuse keeps repeat-address churn constant-time. The contract and
 runtime tests exercise invalid results, indirect and inferred-generic calls,
 helper shadowing, failed realloc, hash collisions, growth, and concurrent
 allocation/transfer under both Linux word sizes.
+
+A separate ten-million-cycle owner-return benchmark (`x64 --no-inline`,
+eight post-warmup CPU-time medians with rotating run order) measured
+28.25 ns/cycle before these checks, 32.82 ns without attestation, and
+60.57 ns with attestation. Each cycle allocates an owner in a function,
+returns it, reads it and drops it. The disabled-path delta includes the
+allocator enablement branches and no-op result helper; the enabled delta
+includes registration and result lookup. Whole-program costs depend on
+allocation and owner-return frequency.
