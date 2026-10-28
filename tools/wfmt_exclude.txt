@@ -45,6 +45,11 @@ lib/not_android.w
 lib/page_size.w
 lib/safe_buffer.w
 lib/safe_foreign.w
+lib/safe_foreign_owner.w
+lib/safe_hash.w
+lib/safe_keyed_map.w
+lib/safe_typed_arena.w
+lib/safe_owned_vector.w
 lib/safe_thread.w
 lib/safe_vector.w
 lib/signal.w
@@ -57,6 +62,10 @@ lib/win32_stubs.w
 structures/hash_table.w
 structures/prelude.w
 structures/w_list.w
+
+# Attested audited module: tests/safe_foreign_owner_runtime_fixture.w pins
+# its sha256 in an import attestation, so a reformat needs a re-audit
+tests/safe_foreign_boundary_module.w
 
 # Diagnostic fixtures whose expected output depends on their whitespace
 tests/warning_fixture.w

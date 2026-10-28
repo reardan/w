@@ -1881,6 +1881,10 @@ int generic_declaration_scan_repl():
 	return 0
 
 
+void import_scope_hide(char* definition_file);
+void import_scope_restore();
+
+
 # Drain cursors: global so repeated drains (the REPL drains once per
 # entry; link_impl drains again after the runtime imports) resume where
 # the previous drain stopped instead of re-resolving patched records.
@@ -1904,7 +1908,9 @@ void generic_finish_instantiations():
 		while (generic_insts_compiled < generic_inst_count()):
 			if (generic_inst_done(generic_insts_compiled) == 0):
 				generic_inst_set_done(generic_insts_compiled)
+				import_scope_hide(generic_def_file(generic_inst_def(generic_insts_compiled)))
 				generic_instantiate_function(generic_insts_compiled)
+				import_scope_restore()
 				progress = 1
 			generic_insts_compiled = generic_insts_compiled + 1
 

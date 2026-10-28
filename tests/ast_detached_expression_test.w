@@ -522,6 +522,7 @@ void test_control_layout_ignores_backend_stack():
 	loop_ast loop
 	loop.kind = ast_loop_range
 	loop.variable_slot = 7
+	loop.capture_slice = 0
 	for arguments in range(1, 4):
 		loop.argument_count = arguments
 		ast_loop_layout(&loop, 7)
@@ -537,6 +538,14 @@ void test_control_layout_ignores_backend_stack():
 	assert_equal(13, loop.cursor_slot)
 	assert_equal(13, loop.body_depth)
 	assert_equal(2, loop.cleanup_slots)
+	# A captured slice descriptor takes the two slots before the container.
+	loop.capture_slice = 1
+	ast_loop_layout(&loop, 11)
+	assert_equal(14, loop.container_slot)
+	assert_equal(15, loop.cursor_slot)
+	assert_equal(15, loop.body_depth)
+	assert_equal(4, loop.cleanup_slots)
+	loop.capture_slice = 0
 	loop.kind = ast_loop_while
 	ast_loop_layout(&loop, 17)
 	assert_equal(17, loop.body_depth)

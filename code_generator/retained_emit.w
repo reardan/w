@@ -112,7 +112,7 @@ void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
 			expected = cast(int, payload)
 			if (value && (strcmp(cast(char*, value), payload) == 0)): expected = value
 		else if ((op == ast_warning) && ((high == 1) || (high == 2) || (high == 5))): expected = retained_emit_name(payload, name_binding)
-		else if ((op == 'G') || (op == 'W')):
+		else if ((op == 'G') || (op == 'W') || (op == ast_generic_reference)):
 			char* template = strclone(payload)
 			int at = 0
 			while (template[at] && (template[at] != '$')): at = at + 1
@@ -122,7 +122,7 @@ void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
 		if (value != expected): retained_emit_check(value, expected, c"value")
 		int symbol = tree.symbol[i]
 		expected = symbol
-		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W') || (op == ast_generic_reference)):
 			if (binding >= 0): expected = retained_bindings[binding].origin
 		if ((op == ast_warning) && (high == 1) && (name_binding >= 0)): expected = retained_bindings[name_binding].origin
 		if (symbol != expected): retained_emit_check(symbol, expected, c"symbol")
