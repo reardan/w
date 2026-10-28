@@ -3735,7 +3735,11 @@ and a separate lock when thread heaps are installed; it never recurses into
 the allocator. Lookup is expected constant time. The table holds two words
 per slot, grows with peak live allocations and compacts tombstones under
 churn. It is process-lifetime metadata, not an allocation owned by a program
-value. Programs without attestations leave registration disabled.
+value. Standalone programs without attestations leave registration disabled.
+Persistent REPL/debugger sessions enable their session allocator registry
+before the first allocation, because a later entry may attest a foreign
+module. Reset and failed entries retract attestation declarations and stale
+allocator/registry callbacks; the compiler host allocator remains separate.
 
 These checks establish allocator provenance and extent, not initialization,
 uniqueness, type identity, or recursive validity of fields. Those remain

@@ -240,3 +240,19 @@ void test_shared_budget_shared_read_argument():
 
 void test_shared_budget_exclusive_budget_argument_rejected():
 	budget_arena_case(c"import lib.safe_typed_arena\nint add(refmut WBudgetArena[int]* arena, refmut WArenaBudget* budget):\n\treturn budget_arena_length[int](arena) + arena_budget_used(budget)\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\treturn add(first, budget)\n", c"conflicting")
+
+
+void test_shared_budget_left_budget_in_owner_join():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\tleft = arena_budget_new(128)\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_right_budget_in_owner_join():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\tright = arena_budget_new(128)\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_owner_join_preserves_shared_sources():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](left, -1)\n\tbudget_arena_insert[int](second, new int)\n\tif (chosen):\n\t\trefmut int* value = budget_arena_alloc[int](chosen, 9)\n\t\t*value += 1\n\t\treturn *value - 10\n\treturn 1\n", 0)
+
+
+void test_shared_budget_borrowed_container_payload_rejected():
+	budget_arena_case(c"import lib.safe_typed_arena\nstruct Holder:\n\town[a] WBudgetArena[int]* arena\nint main():\n\town WOwnedBuffer[Holder]* holders = owned_buffer_new[Holder](-1)\n\treturn 0\n", c"unsupported type or reference-bearing aggregate")
