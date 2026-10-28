@@ -1,4 +1,5 @@
 # wbuild: x64
+# wbuild: deps=lib/safe_typed_arena.w
 # wbuild: deps=lib/safe_hash.w deps=lib/safe_keyed_map.w
 # Checked user cursor and hash iteration (#697). Every contract is
 # checked and compiled with and without --safe. Rejections must prevent
@@ -266,3 +267,13 @@ void test_cursor_iteration_38():
 # Optional cursor rejected
 void test_cursor_iteration_39():
 	cursor_iteration_case(c"struct Counter:\n\tint count\nint Counter_iter_begin(ref Counter* c): return 0\nint Counter_iter_done(ref Counter* c, int cursor): return cursor >= c.count\nint Counter_iter_next(ref Counter* c, int cursor): return cursor + 1\nint Counter_iter_value(ref Counter* c, int cursor): return cursor\nint main():\n\toptown Counter* c = new Counter(2)\n\tfor x in c: return x\n\treturn 0\n", c"checked shared slice")
+
+
+# Exclusive iteration writes the buffer storage, not its shared budget.
+void test_cursor_iteration_40():
+	cursor_iteration_case(c"import lib.safe_typed_arena\nimport lib.safe_owned_vector\nimport lib.safe_hash\nstruct Item:\n\tint number\nint main():\n\town WArenaBudget* budget = arena_budget_new(4096)\n\town[a] WBudgetArena[WOwnedBuffer[Item]]* left = budget_arena_new[WOwnedBuffer[Item]](budget, -1)\n\town[b] WBudgetArena[int]* right = budget_arena_new[int](budget, -1)\n\town WOwnedBuffer[Item]* items = owned_buffer_new[Item](-1)\n\towned_buffer_push[Item](items, new Item(2))\n\towned_buffer_push[Item](items, new Item(3))\n\tbudget_arena_insert[WOwnedBuffer[Item]](left, items)\n\town WMap[int, int]* map = map_new[int, int]()\n\tmap_set[int, int](map, 1, 5)\n\toptrefmut WOwnedBuffer[Item]* found = budget_arena_get_mut[WOwnedBuffer[Item]](left, 0)\n\tint total = 0\n\tif found:\n\t\trefmut WOwnedBuffer[Item]* present = found\n\t\tfor refmut Item* item in present:\n\t\t\tfor key, value in map: item.number += *value\n\t\t\trefmut int* other = budget_arena_alloc[int](right, item.number)\n\t\t\ttotal += *other\n\tbudget_arena_reset[WOwnedBuffer[Item]](left)\n\tbudget_arena_reset[int](right)\n\tif arena_budget_used(budget): return 1\n\treturn total - 15\n", 0)
+
+
+# Read-only budget dependencies do not weaken the actual backing loan.
+void test_cursor_iteration_41():
+	cursor_iteration_case(c"import lib.safe_typed_arena\nimport lib.safe_owned_vector\nimport lib.safe_hash\nstruct Item:\n\tint number\nint main():\n\town WArenaBudget* budget = arena_budget_new(4096)\n\town[a] WBudgetArena[WOwnedBuffer[Item]]* left = budget_arena_new[WOwnedBuffer[Item]](budget, -1)\n\town[b] WBudgetArena[int]* right = budget_arena_new[int](budget, -1)\n\town WOwnedBuffer[Item]* items = owned_buffer_new[Item](-1)\n\towned_buffer_push[Item](items, new Item(2))\n\towned_buffer_push[Item](items, new Item(3))\n\tbudget_arena_insert[WOwnedBuffer[Item]](left, items)\n\town WMap[int, int]* map = map_new[int, int]()\n\tmap_set[int, int](map, 1, 5)\n\toptrefmut WOwnedBuffer[Item]* found = budget_arena_get_mut[WOwnedBuffer[Item]](left, 0)\n\tint total = 0\n\tif found:\n\t\trefmut WOwnedBuffer[Item]* present = found\n\t\tfor refmut Item* item in present:\n\t\t\tbudget_arena_reset[WOwnedBuffer[Item]](left)\n\t\t\tfor key, value in map: item.number += *value\n\t\t\trefmut int* other = budget_arena_alloc[int](right, item.number)\n\t\t\ttotal += *other\n\tbudget_arena_reset[WOwnedBuffer[Item]](left)\n\tbudget_arena_reset[int](right)\n\tif arena_budget_used(budget): return 1\n\treturn total - 15\n", c"borrow")

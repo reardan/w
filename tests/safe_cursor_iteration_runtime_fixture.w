@@ -1,4 +1,5 @@
 import lib.safe_hash
+import lib.safe_typed_arena
 import lib.safe_keyed_map
 import lib.memory_debug
 import lib.safe
@@ -92,12 +93,39 @@ int exercise():
 	return 0
 
 
+struct Item:
+	int number
+int exercise_shared_budget_iteration():
+	own WArenaBudget* budget = arena_budget_new(4096)
+	own[a] WBudgetArena[WOwnedBuffer[Item]]* left = budget_arena_new[WOwnedBuffer[Item]](budget, -1)
+	own[b] WBudgetArena[int]* right = budget_arena_new[int](budget, -1)
+	own WOwnedBuffer[Item]* items = owned_buffer_new[Item](-1)
+	owned_buffer_push[Item](items, new Item(2))
+	owned_buffer_push[Item](items, new Item(3))
+	budget_arena_insert[WOwnedBuffer[Item]](left, items)
+	own WMap[int, int]* map = map_new[int, int]()
+	map_set[int, int](map, 1, 5)
+	optrefmut WOwnedBuffer[Item]* found = budget_arena_get_mut[WOwnedBuffer[Item]](left, 0)
+	int total = 0
+	if found:
+		refmut WOwnedBuffer[Item]* present = found
+		for refmut Item* item in present:
+			for key, value in map: item.number += *value
+			refmut int* other = budget_arena_alloc[int](right, item.number)
+			total += *other
+	budget_arena_reset[WOwnedBuffer[Item]](left)
+	budget_arena_reset[int](right)
+	if arena_budget_used(budget): return 1
+	return total - 15
+
+
 int main():
 	int before = 0
 	unsafe:
 		malloc_force_debug_mode()
 		before = debug_alloc_report_leaks()
 	int result = exercise()
+	if result == 0: result = exercise_shared_budget_iteration()
 	if result:
 		safe_println_int(result)
 		return result
