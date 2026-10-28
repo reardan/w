@@ -1127,6 +1127,7 @@ void program_item():
 		defhash_line = diag_token_line
 		defhash_column = diag_token_column
 		current_symbol = sym_declare_global(token, decl_type, 1)
+		sym_claim_enum_name(current_symbol, decl_type)
 		get_token()
 	if (accept(c";")):
 		if (export_pending): error(c"only functions can be exported")

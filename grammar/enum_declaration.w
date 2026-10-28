@@ -20,7 +20,9 @@ int enum_declaration():
 		enum_forget_constants(type_index)
 		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		type_set_kind(type_index, type_kind_enum)
-		sym_declare_global(token, type_index, 1)
+		int name_symbol = sym_declare_global(token, type_index, 1)
+		# unless a global or function already holds the name
+		if (table[name_symbol + 1] != 'D'): sym_set_enum_name(name_symbol)
 		get_token()
 		expect(c":")
 		int value = 0
