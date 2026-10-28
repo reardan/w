@@ -1285,7 +1285,7 @@ int safe_iteration(int id, int next):
 		int local = locals[i]
 		if (local < 0): safe_error(id, c"safe: unsupported iteration representation", -1)
 		int type = retained_bindings[safe_locals[local]].type
-		int borrowed = safe_kind(type) == 2
+		int borrowed = safe_kind(type) >= 2
 		if (storage && (hash == 0) && (retained_record_at(id).iteration == 0) && (borrowed == 0)):
 			safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
 		if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
@@ -1301,7 +1301,7 @@ int safe_iteration(int id, int next):
 	for j in range(locals.length):
 		int local = locals[j]
 		int initialize = 4
-		if (safe_kind(retained_bindings[safe_locals[local]].type) == 2): initialize = 10
+		if (safe_kind(retained_bindings[safe_locals[local]].type) >= 2): initialize = 10
 		capture = safe_add(id, -1, local, initialize, capture, -1)
 	locals.free()
 	return capture
@@ -3000,7 +3000,7 @@ void safe_transfer(int event, char* state):
 	else if (f.action == 9):
 		int iterator = f.iterator
 		safe_read(iterator, f.node, state)
-		safe_access(safe_origin[iterator], iterator, 0, f.node, state)
+		safe_access(safe_origin[iterator], iterator, safe_local_kind(index) == 3, f.node, state)
 		safe_borrowed components
 		safe_borrowed_clear(&components)
 		components.roots[0] = safe_origin[iterator]
@@ -3067,6 +3067,14 @@ void safe_function_check(int function):
 		if (retained_node_table[id] & 1): continue
 		retained_record* n = retained_record_at(id)
 		if ((n.kind != retained_statement) || (strcmp(n.name, c"for") != 0) || (safe_within(id, function) == 0)): continue
+		# Match the hidden loan to element access, not the receiver qualifier.
+		# A refmut slice can still be iterated shared or by scalar copies.
+		int access = 2
+		int variable = safe_first[id]
+		while (variable >= 0):
+			retained_record* part = retained_record_at(variable)
+			if ((part.kind == retained_local) && (safe_kind(retained_bindings[part.binding].type) == 3)): access = 3
+			variable = safe_next[variable]
 		int child = safe_first[id]
 		while (child >= 0):
 			retained_record* part = retained_record_at(child)
@@ -3075,8 +3083,13 @@ void safe_function_check(int function):
 				retained_node_load(safe_expr_root(child), &value)
 				int type = safe_unqualified(value.semantic_type)
 				if ((type >= 0) && (n.iteration != 0)): type = safe_protocol_iteration_type(type)
-				else if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
-				if ((type >= 0) && (safe_kind(type) == 2)):
+				else if (safe_inline_slice(type)):
+					type = retained_type_note(type_get_safe_slice(retained_types[retained_types[type].target].origin, 0, access))
+				else:
+					type = safe_owned_iteration_type(type)
+					if ((type >= 0) && (access == 3)):
+						type = retained_type_note(type_get_safe(type_get_next_pointer(retained_types[safe_pointee(type)].origin), 3))
+				if ((type >= 0) && (safe_kind(type) >= 2)):
 					retained_binding* binding = new retained_binding
 					binding.name = retained_intern(c"<iterator>")
 					binding.key = strclone(c"<checked iterator>")

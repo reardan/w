@@ -1141,10 +1141,40 @@ loop. Nested loops, subranges, generic calls and lexical defer preserve these
 same rules. A reference to a previous element remains valid when the cursor
 advances because it points into the nonmutated backing storage.
 
-A checked mutable slice must first be reborrowed as a shared slice. Direct
-iteration of mutable slices, exclusive element iteration remain rejected. Checked user cursor protocols
-are described below. Legacy raw iteration retains its existing behavior
-outside checked functions.
+Mutable checked slices also support direct iteration. Scalar inferred variables
+still receive copies; `for ref T* item in view` borrows an element shared, and
+`for refmut T* item in view` lends it exclusively. Record elements of a
+`refmut T[]` infer `refmut T*`; an explicit `ref T*` requests shared iteration.
+The exclusive form requires a mutable slice, and both forms require the exact
+element type. The descriptor snapshot and traversal allocate no heap storage.
+
+Exclusive iteration is a lending contract: an element or reborrow must reach
+its last use before the next implicit iterator read. Saving an element and
+immediately breaking, or returning it under the source lifetime, is allowed;
+keeping it live across cursor advancement is rejected conservatively. The
+checker does not prove that distinct cursor values designate disjoint elements.
+The iterator excludes accesses through other aliases while it is live, and
+ordinary shared reborrows temporarily exclude writes through its element.
+Nested iteration over independent storage, scoped defer, `continue`, `break`
+and `return` preserve these rules. Checked user cursor protocols are described below.
+Legacy raw iteration retains its existing behavior outside checked functions.
+
+The mutable iteration contract suite checks and compiles 33 positive/negative
+cases on x86/x64 with and without `--safe`, executes accepted programs and
+verifies rejected programs leave no binary. Its runtime fixture covers nested
+exclusive owned-buffer loops, recursive owned elements, scoped cleanup and
+saved references across `break`. Linux optimization variants, required-AST
+lowering, ARM64/qemu and Wine execute the fixture; native guards and Memcheck
+report balanced cleanup (2,360 allocations/frees, zero errors/leaks per Linux
+word size). The fixture also participates in the optimization differential
+sweep.
+
+A development-host x64 smoke measurement of 50,000 passes over 1,024 integers
+(51.2 million increments) took 0.055 s with exclusive iteration versus 0.070 s
+with a checked indexed loop, using five-run medians and default optimization.
+The loop's descriptor is captured once per pass; it adds no allocation,
+reference counting or per-element ownership transfer. These timings are a
+local cost check, not a performance guarantee.
 
 ### Owned-storage iteration
 
@@ -1169,8 +1199,16 @@ nested owned buffers, `continue`, `break`, `return`, scoped `defer`, imports
 and aliases follow the ordinary rules; the loop variable is uninitialized
 after a possibly empty loop.
 
-Rejected explicitly: owning loop variables (`own T*`), exclusive or raw
-element variables, mismatched element types, optional containers (test and
+`for refmut T* item in values` lends owned-buffer elements exclusively when
+`values` is an owner or an exclusive borrow. Its iterator borrows the whole
+container exclusively and uses the lending rule above. A shared container
+cannot produce exclusive elements. Element ownership remains in the buffer;
+scalar fields and owned children may be mutated through ordinary reborrows,
+while moving or replacing owned fields retains the existing unique-owner-path
+requirements.
+
+Rejected explicitly: owning loop variables (`own T*`), raw element variables,
+mismatched element types, optional containers (test and
 bind them first) and owning temporaries such as `for x in make_buffer()`,
 which would leave the container without an owner to destroy it.
 

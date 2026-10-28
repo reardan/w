@@ -1,6 +1,7 @@
 # wbuild: deps=tests/safe_foreign_contract_runtime_fixture.w deps=tests/safe_foreign_contract_module.w
 # wbuild: x64
 # wbuild: deps=tests/safe_cursor_iteration_runtime_fixture.w
+# wbuild: deps=tests/safe_mutable_iteration_runtime_fixture.w
 # wbuild: timeout=1800000
 # wbuild: deps=tests/safe_opt_order_fixture.w deps=tests/safe_opt_order_manual_fixture.w deps=tests/safe_opt_bounds_fixture.w deps=tests/safe_opt_log.w
 # wbuild: deps=tests/safe_aggregate_groups_runtime_fixture.w deps=tests/safe_aggregate_runtime_fixture.w deps=tests/safe_arena_runtime_fixture.w

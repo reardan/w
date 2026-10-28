@@ -565,10 +565,10 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		pop_ebx_slot()
 		alu_add()
 		if (capture_slice == 2):
-			# Load the stored element pointer; it becomes a shared reference.
+			# Load the stored element pointer; its checked borrow never moves it.
 			promote(element_type)
 			extracted_type = loop_var_type
-		else if (capture_slice && (type_num_args(element_type) > 0)): extracted_type = loop_var_type
+		else if (capture_slice && (type_safe_kind(loop_var_type) >= 2)): extracted_type = loop_var_type
 		else: extracted_type = promote(element_type)
 	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
 	for_store_loop_var(for_var)
@@ -688,13 +688,16 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
 	int element_type = type_unqualified(type_get_element_type(container_type))
 	int yielded_type = element_type
-	if (type_num_args(element_type) > 0):
+	int reference = type_safe_kind(loop_var_type)
+	if ((type_num_args(element_type) > 0) || (type_is_safe_slice(container_type) && (reference >= 2))):
 		if (type_is_safe_slice(container_type) == 0): error(c"slice iteration requires scalar or pointer elements")
-		yielded_type = type_get_safe(type_get_next_pointer(element_type), 2)
-		if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
-			error(c"safe: record slice iteration requires a shared reference variable")
+		if ((reference < 2) || (reference > 3) || (type_get_pointer_level(loop_var_type) != 1)):
+			error(c"safe: record slice iteration requires a shared reference variable or an exclusive reference to a mutable slice")
+		if ((reference == 3) && (type_safe_kind(container_type) != 3)):
+			error(c"safe: shared slice iteration requires a shared reference variable")
+		yielded_type = type_get_safe(type_get_next_pointer(element_type), reference)
 	if (types_compatible_with_expression(loop_var_type, yielded_type) == 0):
-		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)): error(c"safe: incompatible record slice iteration variable type")
+		if (type_is_safe_slice(container_type) && ((type_num_args(element_type) > 0) || (reference >= 2))): error(c"safe: incompatible record slice iteration variable type")
 		warn_type_mismatch(c"for loop variable", loop_var_type, yielded_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
@@ -724,13 +727,16 @@ int for_owned_storage_element(int container_type):
 	return type_lookup_previous_pointer(type_lookup_previous_pointer(items))
 
 
-# Iterate owned storage: each stored element is lent as a shared reference
-# for one iteration, without transferring ownership. The element array and
+# Iterate owned storage: each element is lent shared or exclusively without
+# transferring ownership. The receiver must admit that borrow. Its array and
 # length are captured once, like a slice descriptor.
-void for_owned_storage_loop(int for_var, int for_tab_level, int loop_var_type, int element):
-	int yielded = type_get_safe(type_get_next_pointer(element), 2)
-	if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
+void for_owned_storage_loop(int for_var, int for_tab_level, int loop_var_type, int element, int container_type):
+	int reference = type_safe_kind(loop_var_type)
+	if ((reference < 2) || (reference > 3) || (type_get_pointer_level(loop_var_type) != 1)):
 		error(c"safe: owned-storage iteration requires a shared reference variable")
+	if ((reference == 3) && (type_safe_kind(container_type) == 2)):
+		error(c"safe: owned-storage iteration requires a shared reference variable through a shared container")
+	int yielded = type_get_safe(type_get_next_pointer(element), reference)
 	if (types_compatible_with_expression(loop_var_type, yielded) == 0):
 		error(c"safe: incompatible owned-storage iteration variable type")
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
@@ -892,7 +898,7 @@ int for_infer_var_type(int container_type):
 	if (type_is_slice(container_type)):
 		int element_type = type_unqualified(type_get_element_type(container_type))
 		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)):
-			return type_get_safe(type_get_next_pointer(element_type), 2)
+			return type_get_safe(type_get_next_pointer(element_type), type_safe_kind(container_type))
 		return element_type
 	if (type_is_string(container_type)): return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
@@ -984,7 +990,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 		return;
 	int stored = for_owned_storage_element(container_type)
 	if (stored >= 0):
-		for_owned_storage_loop(for_var, for_tab_level, loop_var_type, stored)
+		for_owned_storage_loop(for_var, for_tab_level, loop_var_type, stored, container_type)
 		return;
 	for_iter_require_struct_pointer(container_type)
 

@@ -155,7 +155,7 @@ void test_slice_iteration_18():
 	slice_iteration_case(c"import lib.safe_vector\nint first(ref int[] view):\n\tfor item in view:\n\t\town int* local = new int\n\t\t*local = item\n\t\treturn *local\n\treturn -1\nint main():\n\town WBuffer[int]* values = buffer_new[int]()\n\tfor i in range(4): buffer_push[int](values, i + 1)\n\tref int[] view = buffer_view[int](values)\n\treturn first(view) - 1\n", 0, 0)
 
 void test_slice_iteration_19():
-	slice_iteration_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* values = buffer_new[int]()\n\tfor i in range(4): buffer_push[int](values, i + 1)\n\trefmut int[] view = buffer_view_mut[int](values)\n\tfor item in view: pass\n\treturn 0\n", c"checked shared slice", 0)
+	slice_iteration_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* values = buffer_new[int]()\n\tfor i in range(4): buffer_push[int](values, i + 1)\n\trefmut int[] view = buffer_view_mut[int](values)\n\tfor item in view: pass\n\treturn 0\n", 0, 0)
 
 void test_slice_iteration_20():
 	slice_iteration_case(c"import lib.safe_vector\nint main():\n\town WBuffer[int]* values = buffer_new[int]()\n\tfor i in range(4): buffer_push[int](values, i + 1)\n\tfor item in values: pass\n\treturn 0\n", c"not iterable", 0)
