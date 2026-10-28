@@ -29,7 +29,7 @@ void cursor_iteration_result(process_result* result, char* diagnostic, int check
 		assert_contains(message, diagnostic)
 
 
-void cursor_iteration_case(char* source, char* diagnostic, int relaxed = 0, int seed = -1, char* explicit_safe_diagnostic = 0, char* runtime_diagnostic = 0):
+void cursor_iteration_case(char* source, char* diagnostic, int relaxed = 0, int seed = -1, char* explicit_safe_diagnostic = 0, char* runtime_diagnostic = 0, int indirect = 0):
 	cursor_iteration_case_number = cursor_iteration_case_number + 1
 	char* number = itoa(cursor_iteration_case_number)
 	char* prefix = c"bin/cursor_iteration_case32_"
@@ -73,6 +73,7 @@ void cursor_iteration_case(char* source, char* diagnostic, int relaxed = 0, int 
 		strv_set(compiling, 3, c"--quiet")
 		if (__word_size__ == 8): strv_set(compiling, 3, c"x64")
 		strv_set(compiling, 4, c"--inline")
+		if (indirect): strv_set(compiling, 4, c"--no-direct-calls")
 		strv_set(compiling, 5, full)
 		strv_set(compiling, 6, c"-o")
 		strv_set(compiling, 7, output)
@@ -277,3 +278,77 @@ void test_cursor_iteration_40():
 # Read-only budget dependencies do not weaken the actual backing loan.
 void test_cursor_iteration_41():
 	cursor_iteration_case(c"import lib.safe_typed_arena\nimport lib.safe_owned_vector\nimport lib.safe_hash\nstruct Item:\n\tint number\nint main():\n\town WArenaBudget* budget = arena_budget_new(4096)\n\town[a] WBudgetArena[WOwnedBuffer[Item]]* left = budget_arena_new[WOwnedBuffer[Item]](budget, -1)\n\town[b] WBudgetArena[int]* right = budget_arena_new[int](budget, -1)\n\town WOwnedBuffer[Item]* items = owned_buffer_new[Item](-1)\n\towned_buffer_push[Item](items, new Item(2))\n\towned_buffer_push[Item](items, new Item(3))\n\tbudget_arena_insert[WOwnedBuffer[Item]](left, items)\n\town WMap[int, int]* map = map_new[int, int]()\n\tmap_set[int, int](map, 1, 5)\n\toptrefmut WOwnedBuffer[Item]* found = budget_arena_get_mut[WOwnedBuffer[Item]](left, 0)\n\tint total = 0\n\tif found:\n\t\trefmut WOwnedBuffer[Item]* present = found\n\t\tfor refmut Item* item in present:\n\t\t\tbudget_arena_reset[WOwnedBuffer[Item]](left)\n\t\t\tfor key, value in map: item.number += *value\n\t\t\trefmut int* other = budget_arena_alloc[int](right, item.number)\n\t\t\ttotal += *other\n\tbudget_arena_reset[WOwnedBuffer[Item]](left)\n\tbudget_arena_reset[int](right)\n\tif arena_budget_used(budget): return 1\n\treturn total - 15\n", c"borrow")
+
+
+# Audited map local helper shadowing
+void test_cursor_iteration_42():
+	cursor_iteration_case(c"import lib.safe_hash\nint main():\n\town WMap[int, int]* values = map_new[int, int]()\n\tmap_set[int, int](values, 1, 7)\n\tmap_set[int, int](values, 2, 8)\n\tint __w_checked_hash_iter_begin = 0\n\tint __w_checked_hash_iter_done = 0\n\tint __w_checked_hash_iter_next = 0\n\tint __w_checked_hash_iter_key = 0\n\tint __w_checked_hash_iter_value = 0\n\tint total = __w_checked_hash_iter_begin + __w_checked_hash_iter_done + __w_checked_hash_iter_next + __w_checked_hash_iter_key + __w_checked_hash_iter_value\n\tfor key, value in values: total += key + *value\n\tfor key, value in values: total += key + *value\n\treturn total - 36\n", 0)
+	cursor_iteration_case(c"import lib.safe_hash\nint main():\n\town WMap[int, int]* values = map_new[int, int]()\n\tmap_set[int, int](values, 1, 7)\n\tmap_set[int, int](values, 2, 8)\n\tint __w_checked_hash_iter_begin = 0\n\tint __w_checked_hash_iter_done = 0\n\tint __w_checked_hash_iter_next = 0\n\tint __w_checked_hash_iter_key = 0\n\tint __w_checked_hash_iter_value = 0\n\tint total = __w_checked_hash_iter_begin + __w_checked_hash_iter_done + __w_checked_hash_iter_next + __w_checked_hash_iter_key + __w_checked_hash_iter_value\n\tfor key, value in values: total += key + *value\n\tfor key, value in values: total += key + *value\n\treturn total - 36\n", 0, 0, -1, 0, 0, 1)
+
+
+# Audited map parameter helper shadowing
+void test_cursor_iteration_43():
+	cursor_iteration_case(c"import lib.safe_hash\nint traverse(ref WMap[int, int]* values, int __w_checked_hash_iter_begin, int __w_checked_hash_iter_done, int __w_checked_hash_iter_next, int __w_checked_hash_iter_key, int __w_checked_hash_iter_value):\n\tint total = __w_checked_hash_iter_begin + __w_checked_hash_iter_done + __w_checked_hash_iter_next + __w_checked_hash_iter_key + __w_checked_hash_iter_value\n\tfor key, value in values: total += key + *value\n\tfor key, value in values: total += key + *value\n\treturn total - 36\nint main():\n\town WMap[int, int]* values = map_new[int, int]()\n\tmap_set[int, int](values, 1, 7)\n\tmap_set[int, int](values, 2, 8)\n\treturn traverse(values, 0, 0, 0, 0, 0)\n", 0)
+	cursor_iteration_case(c"import lib.safe_hash\nint traverse(ref WMap[int, int]* values, int __w_checked_hash_iter_begin, int __w_checked_hash_iter_done, int __w_checked_hash_iter_next, int __w_checked_hash_iter_key, int __w_checked_hash_iter_value):\n\tint total = __w_checked_hash_iter_begin + __w_checked_hash_iter_done + __w_checked_hash_iter_next + __w_checked_hash_iter_key + __w_checked_hash_iter_value\n\tfor key, value in values: total += key + *value\n\tfor key, value in values: total += key + *value\n\treturn total - 36\nint main():\n\town WMap[int, int]* values = map_new[int, int]()\n\tmap_set[int, int](values, 1, 7)\n\tmap_set[int, int](values, 2, 8)\n\treturn traverse(values, 0, 0, 0, 0, 0)\n", 0, 0, -1, 0, 0, 1)
+
+
+# Audited keyed-map local helper shadowing
+void test_cursor_iteration_44():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nstruct Key:\n\tint number\nint hash(ref Key* k): return k.number\nint equal(ref Key* a, ref Key* b): return a.number == b.number\ntype H = fn[](ref Key*) -> int\ntype E = fn[](ref Key*, ref Key*) -> int\nint main():\n\town WKeyedMap[Key, int]* values = keyed_map_new[Key, int, H, E](hash, equal)\n\toptown Key* a = keyed_map_insert[Key, int](values, new Key(1), 7)\n\toptown Key* b = keyed_map_insert[Key, int](values, new Key(2), 8)\n\tint __w_keyed_map_iter_begin = 0\n\tint __w_keyed_map_iter_done = 0\n\tint __w_keyed_map_iter_next = 0\n\tint __w_keyed_map_iter_key = 0\n\tint WKeyedMap_iter_value = 0\n\tint total = __w_keyed_map_iter_begin + __w_keyed_map_iter_done + __w_keyed_map_iter_next + __w_keyed_map_iter_key\n\tfor key, value in values: total += key.number + *value\n\tfor key, value in values: total += key.number + *value\n\treturn total - 36\n", 0)
+	cursor_iteration_case(c"import lib.safe_keyed_map\nstruct Key:\n\tint number\nint hash(ref Key* k): return k.number\nint equal(ref Key* a, ref Key* b): return a.number == b.number\ntype H = fn[](ref Key*) -> int\ntype E = fn[](ref Key*, ref Key*) -> int\nint main():\n\town WKeyedMap[Key, int]* values = keyed_map_new[Key, int, H, E](hash, equal)\n\toptown Key* a = keyed_map_insert[Key, int](values, new Key(1), 7)\n\toptown Key* b = keyed_map_insert[Key, int](values, new Key(2), 8)\n\tint __w_keyed_map_iter_begin = 0\n\tint __w_keyed_map_iter_done = 0\n\tint __w_keyed_map_iter_next = 0\n\tint __w_keyed_map_iter_key = 0\n\tint WKeyedMap_iter_value = 0\n\tint total = __w_keyed_map_iter_begin + __w_keyed_map_iter_done + __w_keyed_map_iter_next + __w_keyed_map_iter_key\n\tfor key, value in values: total += key.number + *value\n\tfor key, value in values: total += key.number + *value\n\treturn total - 36\n", 0, 0, -1, 0, 0, 1)
+
+
+# Audited keyed-map parameter helper shadowing
+void test_cursor_iteration_45():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nstruct Key:\n\tint number\nint hash(ref Key* k): return k.number\nint equal(ref Key* a, ref Key* b): return a.number == b.number\ntype H = fn[](ref Key*) -> int\ntype E = fn[](ref Key*, ref Key*) -> int\nint traverse(ref WKeyedMap[Key, int]* values, int __w_keyed_map_iter_begin, int __w_keyed_map_iter_done, int __w_keyed_map_iter_next, int __w_keyed_map_iter_key, int WKeyedMap_iter_value):\n\tint total = __w_keyed_map_iter_begin + __w_keyed_map_iter_done + __w_keyed_map_iter_next + __w_keyed_map_iter_key\n\tfor key, value in values: total += key.number + *value\n\tfor key, value in values: total += key.number + *value\n\treturn total - 36\nint main():\n\town WKeyedMap[Key, int]* values = keyed_map_new[Key, int, H, E](hash, equal)\n\toptown Key* a = keyed_map_insert[Key, int](values, new Key(1), 7)\n\toptown Key* b = keyed_map_insert[Key, int](values, new Key(2), 8)\n\treturn traverse(values, 0, 0, 0, 0, 0)\n", 0)
+	cursor_iteration_case(c"import lib.safe_keyed_map\nstruct Key:\n\tint number\nint hash(ref Key* k): return k.number\nint equal(ref Key* a, ref Key* b): return a.number == b.number\ntype H = fn[](ref Key*) -> int\ntype E = fn[](ref Key*, ref Key*) -> int\nint traverse(ref WKeyedMap[Key, int]* values, int __w_keyed_map_iter_begin, int __w_keyed_map_iter_done, int __w_keyed_map_iter_next, int __w_keyed_map_iter_key, int WKeyedMap_iter_value):\n\tint total = __w_keyed_map_iter_begin + __w_keyed_map_iter_done + __w_keyed_map_iter_next + __w_keyed_map_iter_key\n\tfor key, value in values: total += key.number + *value\n\tfor key, value in values: total += key.number + *value\n\treturn total - 36\nint main():\n\town WKeyedMap[Key, int]* values = keyed_map_new[Key, int, H, E](hash, equal)\n\toptown Key* a = keyed_map_insert[Key, int](values, new Key(1), 7)\n\toptown Key* b = keyed_map_insert[Key, int](values, new Key(2), 8)\n\treturn traverse(values, 0, 0, 0, 0, 0)\n", 0, 0, -1, 0, 0, 1)
+
+
+# Wrong-source __w_checked_hash_iter_begin cannot replace the audited helper
+void test_cursor_iteration_46():
+	cursor_iteration_case(c"import lib.safe_hash\nint __w_checked_hash_iter_begin(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_checked_hash_iter_done cannot replace the audited helper
+void test_cursor_iteration_47():
+	cursor_iteration_case(c"import lib.safe_hash\nint __w_checked_hash_iter_done(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_checked_hash_iter_next cannot replace the audited helper
+void test_cursor_iteration_48():
+	cursor_iteration_case(c"import lib.safe_hash\nint __w_checked_hash_iter_next(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_checked_hash_iter_key cannot replace the audited helper
+void test_cursor_iteration_49():
+	cursor_iteration_case(c"import lib.safe_hash\nint __w_checked_hash_iter_key(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_checked_hash_iter_value cannot replace the audited helper
+void test_cursor_iteration_50():
+	cursor_iteration_case(c"import lib.safe_hash\nint __w_checked_hash_iter_value(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_keyed_map_iter_begin cannot replace the audited helper
+void test_cursor_iteration_51():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nint __w_keyed_map_iter_begin(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_keyed_map_iter_done cannot replace the audited helper
+void test_cursor_iteration_52():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nint __w_keyed_map_iter_done(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_keyed_map_iter_next cannot replace the audited helper
+void test_cursor_iteration_53():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nint __w_keyed_map_iter_next(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source __w_keyed_map_iter_key cannot replace the audited helper
+void test_cursor_iteration_54():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nint __w_keyed_map_iter_key(int container, int cursor): return 0\nint main(): return 0\n", c"symbol redefined")
+
+
+# Wrong-source keyed generic accessor cannot replace the audited helper
+void test_cursor_iteration_55():
+	cursor_iteration_case(c"import lib.safe_keyed_map\nstruct Key:\n\tint number\nint hash(ref Key* k): return k.number\nint equal(ref Key* a, ref Key* b): return a.number == b.number\ntype H = fn[](ref Key*) -> int\ntype E = fn[](ref Key*, ref Key*) -> int\nint WKeyedMap_iter_value[K, V](ref WKeyedMap[K, V]* map, int cursor): return 0\nint main(): return 0\n", c"redefined")

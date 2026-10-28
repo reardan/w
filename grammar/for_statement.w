@@ -33,6 +33,8 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 
 
 void ivopt_range_step();   /* compiler/ivopt.w (unit O7) */
+int safe_global_function(char* name, char* source);
+int safe_runtime_call_begin(char* name, char* source);
 
 
 # Load the iterator function's address into eax: directly for an
@@ -49,11 +51,42 @@ void for_iter_callee(char* fn_name, int t):
 	generic_inst_emit_callee(inst)
 
 
+# Only compiler-inserted audited hash helpers use this resolution path.
+# User cursor functions retain their ordinary resolved contract checks.
+char* for_iter_runtime_source(char* name):
+	if ((strcmp(name, c"__w_checked_hash_iter_begin") == 0) || (strcmp(name, c"__w_checked_hash_iter_done") == 0) || (strcmp(name, c"__w_checked_hash_iter_next") == 0) || (strcmp(name, c"__w_checked_hash_iter_key") == 0) || (strcmp(name, c"__w_checked_hash_iter_value") == 0)):
+		return c"/lib/safe_hash.w"
+	if ((strcmp(name, c"__w_keyed_map_iter_begin") == 0) || (strcmp(name, c"__w_keyed_map_iter_done") == 0) || (strcmp(name, c"__w_keyed_map_iter_next") == 0) || (strcmp(name, c"__w_keyed_map_iter_key") == 0) || starts_with(name, c"WKeyedMap_iter_value$")):
+		return c"/lib/safe_keyed_map.w"
+	return 0
+
+
 # Emit a call to fn_name(container) or, when cursor_slot is nonzero,
 # fn_name(container, cursor). The operands live in hidden stack slots
 # identified by their stack_pos anchors; the result is left in eax.
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 	int s = stack_pos
+	# A local, parameter or same-spelled function in another file must
+	# never redirect an implicit audited operation.
+	char* source = for_iter_runtime_source(fn_name)
+	if (source != 0):
+		if (safe_global_function(fn_name, source) >= 0):
+			s = safe_runtime_call_begin(fn_name, source)
+		else:
+			# A keyed-value accessor can still be waiting for its generic
+			# body. Bind its backpatch identity to the audited definition.
+			int inst = generic_inst_lookup(fn_name)
+			if ((inst < 0) || (ends_with(generic_def_file(generic_inst_def(inst)), source) == 0)):
+				error(c"safe: audited iterator implementation is missing")
+			if (direct_generic_ok()): direct_call_record(s, 2, inst)
+			else:
+				generic_inst_emit_callee(inst)
+				push_slot()
+				direct_call_record(s, 0, 0)
+		push_slot_copy(container_slot)
+		if (cursor_slot != 0): push_slot_copy(cursor_slot)
+		rt_call_end(s)
+		return
 	# A direct call (unit A4) records the callee instead of parking it
 	int t = sym_lookup(fn_name)
 	if (direct_callee_ok(t)): direct_call_record(s, 1, t)
