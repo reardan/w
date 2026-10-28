@@ -1630,7 +1630,7 @@ iterable: destroyed positions are holes, so loops index with
 `own WArenaBudget*` is an opaque byte budget, created with
 `arena_budget_new(limit)`. `arena_budget_limit`, `arena_budget_used` and
 `arena_budget_remaining` read it. `budget_arena_new[T](budget, maximum)` borrows
-the budget exclusively and returns `own[b] WBudgetArena[T]*`, a typed arena that
+the budget shared and returns `own[b] WBudgetArena[T]*`, a typed arena that
 charges `sizeof(T)` bytes per live object to that budget.
 
 - It has the same operations under the `budget_arena_` prefix: `insert`,
@@ -1643,14 +1643,19 @@ charges `sizeof(T)` bytes per live object to that budget.
 - `try_insert` returns the owner when the budget is exhausted. `insert` and
   `alloc` trap.
 - Destroy, reset, release and drop refund exactly what was charged. The budget
-  therefore always equals `sizeof(T)` times the arena's live objects, and it
-  is whole again once the arena is gone.
+  therefore records the sum of `sizeof(T)` for every live object in every
+  attached arena; it is whole again once all arenas are gone.
 - Only the object itself is charged: slot storage and storage that its fields
   own are not.
 
 The budget arena is a labeled owner whose one group is its budget, so the mixed
-owner rules apply. The budget cannot move, be borrowed elsewhere, or back a
-second arena while the arena lives. An unlabeled `own WBudgetArena[T]*` is
+owner rules apply. Several live arenas may borrow the same budget, and direct
+shared budget reads observe their combined charges. Each arena may mutate or
+lend its own objects independently, including simultaneous exclusive object
+views in different arenas. The checker separates writable storage from shared
+external lifetime dependencies: a mutable arena view does not acquire exclusive
+access to its budget. The budget cannot move, be replaced or be borrowed
+exclusively until every dependent arena is gone. An unlabeled `own WBudgetArena[T]*` is
 rejected, and so is any attempt to return the arena past the function that
 owns the budget. Dropping the arena refunds the budget, so its drop counts as a
 use of the budget at every exit. A budget declared after the arena's home,
@@ -1659,7 +1664,11 @@ outlives the budget it borrows`. That is the same rule that keeps a lock guard
 from outliving its mutex.
 
 A spawned thread could outlive the budget, so the arena never crosses to one
-(`carries a borrowed lifetime`). Budget arenas are not iterable. The descriptor
+(`carries a borrowed lifetime`). Scoped threads also reject budget arenas
+(`has an unsynchronized shared budget`), and shared budget references cannot
+cross threads (`has unsynchronized interior mutation`). Charging is deliberately
+single-threaded; independent owners of separate budgets may transfer between
+threads. Budget arenas are not iterable. The descriptor
 is eight words. Charging and refunding are one compare and one add or subtract
 per object.
 

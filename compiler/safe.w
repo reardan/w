@@ -41,6 +41,8 @@ map[int, int] safe_iterator_locals
 # access checks, scope invalidation and reborrow ancestry.
 struct safe_borrowed:
 	int[32] roots
+	# Writable storage excludes shared external lifetime dependencies.
+	int[32] writable
 	int[32] parents
 
 list[safe_borrowed*] safe_components
@@ -292,6 +294,7 @@ int safe_field_group(int type, int field_type, int component):
 void safe_borrowed_clear(safe_borrowed* value):
 	for i in range(32):
 		value.roots[i] = -1
+		value.writable[i] = -1
 		value.parents[i] = -1
 
 
@@ -310,6 +313,7 @@ void safe_borrowed_copy(safe_borrowed* target, safe_borrowed* source, int count)
 	if (target == 0): return
 	for i in range(count):
 		target.roots[i] = source.roots[i]
+		target.writable[i] = source.writable[i]
 		target.parents[i] = source.parents[i]
 
 
@@ -457,7 +461,7 @@ int safe_owned_storage_element(int type):
 
 
 # WBudgetArena[T]: a typed arena that also borrows a WArenaBudget
-# exclusively, so it is only ever a labeled owner own[b] WBudgetArena[T]*
+# shared, so it is only ever a labeled owner own[b] WBudgetArena[T]*
 # (safe_mixed_owned_shape). Holes make it non-iterable, like WTypedArena.
 int safe_budget_arena_element(int type):
 	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WBudgetArena$", 8)
@@ -616,7 +620,7 @@ int safe_thread_sealed(int type):
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
 	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
-	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type) || safe_attested_opaque(type)): return 0
+	if ((safe_budget_arena_element(type) >= 0) || safe_arena_budget(type) || safe_foreign_record(type) || safe_attested_opaque(type)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -667,10 +671,12 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 		return 0
 	# A shared typed arena could allocate on two threads at once
 	# (typed_arena_alloc_shared mutates through a shared borrow).
-	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
+	if (sharing && ((safe_typed_arena_element(type) >= 0) || safe_arena_budget(type))): return c"has unsynchronized interior mutation"
 	# A budget arena always borrows its budget, whatever the payload's
 	# declared type says (spawn's payload is an unlabeled own T*).
-	if (detached && (safe_budget_arena_element(type) >= 0)): return c"carries a borrowed lifetime"
+	if (safe_budget_arena_element(type) >= 0):
+		if (detached): return c"carries a borrowed lifetime"
+		return c"has an unsynchronized shared budget"
 	int stored = safe_owned_storage_element(type)
 	if (stored < 0): stored = safe_budget_arena_element(type)
 	if (stored < 0): stored = safe_keyed_map_key(type)
@@ -1594,7 +1600,7 @@ int safe_return_path_allowed(int allowed, int root):
 int safe_exclusive_roots_selected(int type, safe_borrowed* components, int selected):
 	int roots = -1
 	for group in range(safe_lifetime_count(type)):
-		if ((selected & (1 << group)) && safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.roots[group])
+		if ((selected & (1 << group)) && safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.writable[group])
 	return roots
 
 
@@ -1623,15 +1629,40 @@ int safe_shared_parent(int parents):
 	return -1
 
 
-void safe_access(int roots, int via, int write, int id, char* state):
+# All roots keep storage alive. Only writable roots conflict with another
+# shared borrower when a mutable view accesses its own descriptor/objects.
+int safe_component_writable(safe_borrowed* components, int count):
+	int roots = -1
+	for group in range(count): roots = safe_set_union(roots, components.writable[group])
+	return roots
+
+
+int safe_access_writable(int roots, int via):
+	if (via < 0): return roots
+	int writable = -1
+	for parent in range(safe_real_locals):
+		if (safe_set_has(via, parent) == 0): continue
+		int type = retained_bindings[safe_locals[parent]].type
+		if (safe_owned_borrowed(type)):
+			writable = safe_set_union(writable, parent)
+			writable = safe_set_union(writable, safe_exclusive_roots(type, safe_components[parent]))
+		else: writable = safe_set_union(writable, safe_component_writable(safe_components[parent], safe_lifetime_count(type)))
+	int selected = -1
+	for root in range(safe_locals.length):
+		if (safe_set_has(roots, root) && safe_set_overlap(writable, root)): selected = safe_set_union(selected, root)
+	return selected
+
+
+void safe_access(int roots, int via, int write, int id, char* state, int writable = -2):
 	if ((roots < 0) || (safe_validate == 0)): return
+	if (writable == -2): writable = safe_access_writable(roots, via)
 	for root in range(safe_locals.length):
 		if (safe_set_has(roots, root)): safe_read(root, id, state)
 	int shared = safe_shared_parent(via)
 	if ((shared >= 0) && write):
 		safe_error(id, c"safe: write through a shared reference", safe_birth[shared])
 	for i in range(safe_call_roots.length):
-		int conflict = safe_set_overlap(safe_call_roots[i], roots) && (write || (safe_call_kinds[i] != 2))
+		int conflict = (write && safe_set_overlap(safe_call_roots[i], writable)) || ((safe_call_kinds[i] != 2) && safe_set_overlap(safe_call_roots[i], roots))
 		# Kind 4 reserves only the destination allocation. Child transfers
 		# cannot invalidate that saved address, but a parent move can.
 		if (safe_call_kinds[i] == 4): conflict = write && safe_paths_cover(roots, safe_call_roots[i])
@@ -1654,11 +1685,12 @@ void safe_access(int roots, int via, int write, int id, char* state):
 		if (safe_set_overlap(origins, roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
-		int exclusive = safe_local_kind(i) == 3
-		if ((safe_local_kind(i) == 1) && (write == 0)):
+		int exclusive = 0
+		if (safe_local_kind(i) == 3): exclusive = safe_set_overlap(safe_exclusive_roots(retained_bindings[safe_locals[i]].type, safe_components[i]), roots)
+		if (safe_local_kind(i) == 1):
 			int type = retained_bindings[safe_locals[i]].type
 			exclusive = safe_set_overlap(safe_exclusive_roots_selected(type, safe_components[i], selected), roots)
-		if (write || exclusive):
+		if ((write && safe_set_overlap(origins, writable)) || exclusive):
 			safe_error(id, c"safe: conflicting access while a borrow is live", safe_birth[i])
 
 
@@ -1742,8 +1774,10 @@ void safe_components_join(int index, safe_borrowed* value, int count):
 	for i in range(count):
 		int roots = safe_set_union(safe_components[index].roots[i], value.roots[i])
 		int parents = safe_set_union(safe_components[index].parents[i], value.parents[i])
-		if ((roots != safe_components[index].roots[i]) || (parents != safe_components[index].parents[i])): safe_origins_changed = 1
+		int writable = safe_set_union(safe_components[index].writable[i], value.writable[i])
+		if ((roots != safe_components[index].roots[i]) || (parents != safe_components[index].parents[i]) || (writable != safe_components[index].writable[i])): safe_origins_changed = 1
 		safe_components[index].roots[i] = roots
+		safe_components[index].writable[i] = writable
 		safe_components[index].parents[i] = parents
 
 
@@ -1850,6 +1884,7 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components, int ac
 		int roots = safe_borrow_groups(left, base.semantic_type, state, &parent, &view, -1, access_kind)
 		for component in range(safe_lifetime_count(node.semantic_type)):
 			components.roots[component] = roots
+			components.writable[component] = safe_component_writable(&view, safe_lifetime_count(base.semantic_type))
 			components.parents[component] = parent
 		return parent
 	int template = safe_pointee(base.semantic_type)
@@ -1866,6 +1901,7 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components, int ac
 		int group = safe_field_group(template, field, component)
 		if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 		components.roots[component] = parent.roots[group]
+		components.writable[component] = parent.writable[group]
 		components.parents[component] = parent.parents[group]
 	return root
 
@@ -1915,6 +1951,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 				int group = safe_field_group(retained_types[safe_unqualified(want)].target, type, component)
 				if (group < 0): safe_error(entry, c"safe: unnamed borrowed aggregate group", -1)
 				components.roots[group] = safe_set_union(components.roots[group], field_components.roots[component])
+				components.writable[group] = safe_set_union(components.writable[group], field_components.writable[component])
 				components.parents[group] = safe_set_union(components.parents[group], field_components.parents[component])
 			roots = safe_set_union(roots, root)
 			*parent = safe_set_union(*parent, via)
@@ -1981,6 +2018,7 @@ void safe_owner_construct(int id, retained_node* n, int want, char* state, safe_
 					int group = safe_field_group(template, type, component)
 					if (group < 0): safe_error(entry, c"safe: unnamed owner field group", -1)
 					components.roots[group] = safe_set_union(components.roots[group], incoming.roots[component])
+					components.writable[group] = safe_set_union(components.writable[group], incoming.writable[component])
 					components.parents[group] = safe_set_union(components.parents[group], incoming.parents[component])
 			# Shared and exclusive groups retain separate reservations.
 			safe_reserve_components(type, &incoming, via, value, state)
@@ -2088,6 +2126,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 				if (mask & (1 << component)):
 					int group = safe_field_group(template, field_type, component)
 					components.roots[component] = base_components.roots[group]
+					components.writable[component] = base_components.writable[group]
 					components.parents[component] = base_components.parents[group]
 					root = safe_set_union(root, components.roots[component])
 					via = safe_set_union(via, components.parents[component])
@@ -2097,6 +2136,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 			root = safe_borrow_groups(safe_child(&n, n.left), base.semantic_type, state, &via, &base_components, -1, kind)
 			for component in range(safe_lifetime_count(want)):
 				components.roots[component] = root
+				components.writable[component] = safe_component_writable(&base_components, safe_lifetime_count(base.semantic_type))
 				components.parents[component] = via
 		else if (safe_owned_borrowed(base.semantic_type) && (safe_kind(n.semantic_type) >= 2)):
 			if ((kind == 3) && (safe_kind(n.semantic_type) == 2)): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
@@ -2113,6 +2153,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					int group = safe_field_group(template, field, component)
 					if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 					components.roots[component] = owner.roots[group]
+					components.writable[component] = owner.writable[group]
 					components.parents[component] = owner.parents[group]
 					root = safe_set_union(root, owner.roots[group])
 					via = safe_set_union(via, owner.parents[group])
@@ -2169,6 +2210,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 			for component in range(safe_lifetime_count(want)):
 				if (mask & (1 << component)):
 					components.roots[component] = safe_components[index].roots[component]
+					components.writable[component] = safe_components[index].writable[component]
 					components.parents[component] = index
 					root = safe_set_union(root, components.roots[component])
 	else: safe_error(id, c"safe: reference requires a stable place", -1)
@@ -2182,9 +2224,10 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 		via = -1
 		safe_borrowed_clear(components)
 	if (safe_lifetime_count(want) == 1):
+		if (components.roots[0] < 0): components.writable[0] = safe_access_writable(root, via)
 		components.roots[0] = root
 		components.parents[0] = via
-	safe_access(root, via, kind == 3, id, state)
+	safe_access(root, via, kind == 3, id, state, safe_component_writable(components, safe_lifetime_count(want)))
 	*parent = via
 	return root
 
@@ -2475,6 +2518,7 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 				for group in range(safe_lifetime_count(callee.return_type)):
 					if (safe_return_from(callee, return_parameter, slot, group)):
 						components.roots[group] = safe_set_union(components.roots[group], argument.roots[component])
+						components.writable[group] = safe_set_union(components.writable[group], argument.writable[component])
 						components.parents[group] = safe_set_union(components.parents[group], argument.parents[component])
 						return_root = safe_set_union(return_root, argument.roots[component])
 						*parent = safe_set_union(*parent, argument.parents[component])
@@ -2483,11 +2527,16 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		# Scalar arguments copy their value; only pointer contracts keep
 		# storage reserved while later arguments are evaluated.
 		if ((root >= 0) && kind):
+			int writable = root
+			if (kind >= 2): writable = safe_exclusive_roots(want, &argument)
 			for i in range(saved, safe_call_roots.length):
-				if (safe_set_overlap(safe_call_roots[i], root) && ((kind != 2) || (safe_call_kinds[i] != 2))):
+				if ((safe_set_overlap(safe_call_roots[i], root) && (safe_call_kinds[i] != 2)) || ((kind != 2) && safe_set_overlap(safe_call_roots[i], writable))):
 					safe_error(arg, c"safe: conflicting call arguments", -1)
 			safe_call_roots.push(root)
-			safe_call_kinds.push(kind)
+			safe_call_kinds.push(2)
+			if (kind != 2):
+				safe_call_roots.push(writable)
+				safe_call_kinds.push(kind)
 		retained_node a
 		retained_node_load(arg, &a)
 		arg = safe_child(&a, a.next_arg)
@@ -2586,6 +2635,7 @@ void safe_replacement_components_at_root(int id, safe_borrowed* incoming, safe_b
 	for component in range(safe_lifetime_count(owner.semantic_type)):
 		int group = safe_parent_field_group(id, component)
 		mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+		mapped.writable[group] = safe_set_union(mapped.writable[group], incoming.writable[component])
 		mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
 	safe_replacement_components_at_root(safe_child(&owner, owner.left), &mapped, result)
 
@@ -2641,6 +2691,7 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 			int group = safe_field_group(template, field.semantic_type, component)
 			if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 			mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+			mapped.writable[group] = safe_set_union(mapped.writable[group], incoming.writable[component])
 			mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
 		int parent = -1
 		int external = safe_borrowed_roots(&incoming, safe_lifetime_count(field.semantic_type), &parent)
@@ -3004,6 +3055,7 @@ void safe_transfer(int event, char* state):
 		safe_borrowed components
 		safe_borrowed_clear(&components)
 		components.roots[0] = safe_origin[iterator]
+		components.writable[0] = safe_component_writable(safe_components[iterator], 1)
 		components.parents[0] = iterator
 		safe_components_join(index, &components, 1)
 		safe_origin_join(index, safe_origin[iterator], iterator)
@@ -3118,10 +3170,12 @@ void safe_function_check(int function):
 		retained_binding* binding = retained_bindings[safe_locals[i]]
 		if (binding.scope == 'A'):
 			components.roots[0] = i
+			components.writable[0] = i
 			int first_group = 1
 			if (safe_owned_borrowed(binding.type)): first_group = 0
 			for group in range(first_group, safe_lifetime_count(binding.type)):
 				components.roots[group] = safe_locals.length
+				components.writable[group] = safe_locals.length
 				safe_locals.push(safe_locals[i])
 	safe_path_parent = new list[int]
 	safe_path_offset = new list[int]
@@ -3212,6 +3266,7 @@ void safe_function_check(int function):
 				for group in range(safe_lifetime_count(safe_return_type)):
 					if (safe_return_from(retained_bindings[fn.binding], return_parameter, slot, group)):
 						safe_return_components.roots[group] = safe_set_union(safe_return_components.roots[group], root)
+						safe_return_components.writable[group] = safe_set_union(safe_return_components.writable[group], root)
 			parameter = parameter + 1
 			initial[i] = 2
 			if (safe_optional(type)): initial[i] = 50

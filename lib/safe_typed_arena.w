@@ -3,7 +3,7 @@
 # exclusive borrow; typed_arena_alloc_shared allocates under a shared borrow,
 # so it can run while views into the arena are live. Budget arenas charge each
 # object's bytes to a separately owned WArenaBudget that they borrow
-# exclusively while they live.
+# shared while they live; the audited single-threaded runtime updates it.
 import lib.safe_owned_vector
 
 
@@ -155,9 +155,9 @@ void typed_arena_release[T](refmut WTypedArena[T]* value):
 	arena.capacity = 0
 
 
-# A byte budget: limit and the bytes its arena currently holds. A budget
-# arena borrows it exclusively, so between arenas the owner can read it and
-# hand it to the next arena with every charge refunded.
+# A byte budget shared by any number of live arenas. Checked callers may
+# read the totals while the audited runtime charges and refunds individual
+# objects. Budgets cannot be shared across threads.
 struct WArenaBudget:
 	int limit
 	int used
@@ -190,7 +190,7 @@ int arena_budget_remaining(ref WArenaBudget* value):
 # budget it borrows: own[b] WBudgetArena[T]* cannot outlive the budget b,
 # and its destruction, which refunds the budget, counts as a use of b.
 # Destroy, reset, release and drop refund exactly what was charged, so used
-# always equals size times the arena's live objects. Only the object itself
+# always equals the total charged by all live arenas. Only the object itself
 # is charged, not slot storage or storage its fields own.
 struct WBudgetArena[T]:
 	int capacity
@@ -200,7 +200,7 @@ struct WBudgetArena[T]:
 	__WOwnedBufferDrop* drop
 	int live
 	int size
-	refmut[budget] WArenaBudget* budget
+	ref[budget] WArenaBudget* budget
 
 
 struct __WBudgetArenaHeader:
@@ -238,7 +238,7 @@ void __w_budget_arena_drop(void* value):
 	free(arena)
 
 
-own[b] WBudgetArena[T]* budget_arena_new[T](refmut[b] WArenaBudget* budget, int maximum):
+own[b] WBudgetArena[T]* budget_arena_new[T](ref[b] WArenaBudget* budget, int maximum):
 	if maximum < -1: __w_trap(c"invalid budget arena maximum")
 	__WBudgetArenaHeader* arena = cast(__WBudgetArenaHeader*, __w_new_object(sizeof(__WBudgetArenaHeader)))
 	arena.capacity = 0
