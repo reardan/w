@@ -554,6 +554,71 @@ void import_strip_comment(char* line):
 		else: i = i + 1
 
 
+# Audited foreign boundaries (docs/projects/safe_mode.md): an import ending in
+# 'unsafe "<sha256>"' attests that the module it resolves to is reviewed raw
+# code. The checker trusts that file only while its bytes hash to the digest
+# (safe_audit_runtime), so trust binds to the resolved implementation rather
+# than to the module name. Node is the import's retained record, or -1.
+list[char*] import_attested_paths
+list[char*] import_attested_digests
+list[int] import_attested_nodes
+
+
+void import_attestation_error():
+	error(c"import attestation must be unsafe \"<sha256>\" with 64 lowercase hex digits")
+
+
+# Splits an optional trailing ' unsafe "<64 lowercase hex>"' clause off an
+# import line, truncating the line at the clause. Returns the digest (fresh
+# allocation) or 0 when the line has none.
+char* import_split_attestation(char* line):
+	int i = 0
+	while (line[i]):
+		if (starts_with(line + i, c" unsafe") && ((line[i + 7] == ' ') || (line[i + 7] == 9) || (line[i + 7] == 0))):
+			int at = i + 7
+			while ((line[at] == ' ') || (line[at] == 9)): at = at + 1
+			if (line[at] != '"'): import_attestation_error()
+			char* digest = cast(char*, malloc(65))
+			for j in range(64):
+				int c = line[at + 1 + j]
+				if ((c < '0') || ((c > '9') && (c < 'a')) || (c > 'f')): import_attestation_error()
+				digest[j] = c
+			digest[64] = 0
+			at = at + 65
+			if (line[at] != '"'): import_attestation_error()
+			at = at + 1
+			while ((line[at] == ' ') || (line[at] == 9)): at = at + 1
+			if (line[at] != 0): import_attestation_error()
+			line[i] = 0
+			return digest
+		i = i + 1
+	return 0
+
+
+void import_attest(char* resolved, char* digest, int node):
+	if (import_attested_paths == 0):
+		import_attested_paths = new list[char*]
+		import_attested_digests = new list[char*]
+		import_attested_nodes = new list[int]
+	import_attested_paths.push(strclone(resolved))
+	import_attested_digests.push(digest)
+	import_attested_nodes.push(node)
+
+
+# coverage: exempt runs between compiles in one process; a fresh compiler starts empty
+void import_attest_reset():
+	if (import_attested_paths == 0): return
+	for i in range(import_attested_paths.length):
+		free(import_attested_paths[i])
+		free(import_attested_digests[i])
+	import_attested_paths.free()
+	import_attested_digests.free()
+	import_attested_nodes.free()
+	import_attested_paths = 0
+	import_attested_digests = 0
+	import_attested_nodes = 0
+
+
 # Splits an optional trailing " as <alias>" clause off an import line,
 # truncating the line at the clause. Returns the alias (fresh allocation)
 # or 0 when the line has none.
@@ -594,6 +659,7 @@ int import_statement():
 		# and an optional trailing comment
 		read_until_end()
 		import_strip_comment(token)
+		char* attestation = import_split_attestation(token)
 		char* alias = import_split_alias(token)
 		if (token[0] == 0): error(c"module name expected after 'import'")
 
@@ -614,6 +680,7 @@ int import_statement():
 		if (ast_retain_mode): retained_id = retained_node_count()
 		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
+		if (attestation != 0): import_attest(resolved, attestation, retained_id)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
 		if (import_module(token)): nextc = get_character()

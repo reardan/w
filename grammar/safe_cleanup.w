@@ -69,6 +69,11 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WKeyedMap$")):
 			helper = c"__w_keyed_map_drop"
 			pointee = type_lookup(c"void")
+	# A foreign owner runs its recorded release function once.
+	else if (ends_with(source, c"/lib/safe_foreign_owner.w")):
+		if (starts_with(name, c"WForeign$")):
+			helper = c"__w_foreign_drop"
+			pointee = type_lookup(c"void")
 	# Checked maps/sets wrap one legacy table pointer; one helper frees it.
 	else if (ends_with(source, c"/lib/safe_hash.w")):
 		if (starts_with(name, c"WMap$") || starts_with(name, c"WSet$")):

@@ -1618,3 +1618,18 @@ promotion work compared `arm64_darwin` builds with and without
 (`asm_is_macho64`); teaching `asm_binary_open` and `tools/inspect.w` the
 `LC_SYMTAB`/`__TEXT,__text` lookup would make per-function Darwin
 disassembly available to agents.
+
+## Safe errors in imported files show the importer's source line (2026-10-26, #698 foreign boundaries)
+
+When `--safe` rejects code in an imported module, the human diagnostic
+names the right file, line and column, but the snippet under it prints
+that line number from the root file instead. For example, a global in
+an unattested `ffi.w` points at `ffi.w:9:5` and then shows line 9 of
+the importing program, which was blank. `check --json` is correct, so
+agents reading NDJSON are unaffected. A human reading the terminal sees
+an empty or unrelated line and has to open the file. Direction: have
+`safe_error` give the snippet renderer the retained source of the node's
+file, the way its `filename` already does. An attested module whose
+digest no longer matches is also hidden from `bin/wtest changed`, for
+the same reason as the pinned runtime entry above: `deps` fails the
+safe audit and prints no closure.
