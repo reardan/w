@@ -54,10 +54,25 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WOwnedBuffer$")):
 			helper = c"__w_owned_buffer_drop"
 			pointee = type_lookup(c"void")
+	# Typed arenas record their object destructor like owned buffers; one
+	# helper drops the live objects, skipping holes, and the slot storage.
+	else if (ends_with(source, c"/lib/safe_typed_arena.w")):
+		if (starts_with(name, c"WTypedArena$")):
+			helper = c"__w_typed_arena_drop"
+			pointee = type_lookup(c"void")
+		# A budget arena also refunds its budget for the objects it drops.
+		else if (starts_with(name, c"WBudgetArena$")):
+			helper = c"__w_budget_arena_drop"
+			pointee = type_lookup(c"void")
 	# Keyed maps record their key destructor; one helper drops keys and slots.
 	else if (ends_with(source, c"/lib/safe_keyed_map.w")):
 		if (starts_with(name, c"WKeyedMap$")):
 			helper = c"__w_keyed_map_drop"
+			pointee = type_lookup(c"void")
+	# A foreign owner runs its recorded release function once.
+	else if (ends_with(source, c"/lib/safe_foreign_owner.w")):
+		if (starts_with(name, c"WForeign$")):
+			helper = c"__w_foreign_drop"
 			pointee = type_lookup(c"void")
 	# Checked maps/sets wrap one legacy table pointer; one helper frees it.
 	else if (ends_with(source, c"/lib/safe_hash.w")):

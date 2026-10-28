@@ -1272,8 +1272,9 @@ after reset or release, and normal owner cleanup frees it automatically.
 
 This API uses ordinary lifetime contracts and audited copying; it does not
 trust manual borrow-registration counters in the legacy `lib.arena` API.
-Typed arena allocation, attached budgets, nonmoving concurrent allocation,
-and general raw/foreign-to-checked conversions remain separate work.
+Typed arenas, attached budgets and allocation with live views are described
+below, and raw/foreign-to-checked conversions under "Audited foreign
+boundaries".
 
 ### Generic pointer-free buffers
 
@@ -1460,9 +1461,9 @@ Quantified callback signatures preserve the same mutable/shared contract.
 
 Trust binds to the resolved implementation and the pinned runtime closure.
 A changed or shadowed `safe_foreign.w` fails the runtime audit; a user wrapper
-with the same spelling receives no special privilege. General foreign
-adoption, ownership transfer, assembly contracts and typed arenas retain their
-separate acceptance gates in #698.
+with the same spelling receives no special privilege. Foreign adoption,
+ownership transfer and assembly contracts are the audited foreign boundaries
+below; typed arenas are described above.
 
 Validation: 16 positive/rejection contracts plus implementation-integrity tests
 pass on x86/x64 with and without `--safe`. The complete run passes 1,438 ordinary
@@ -1475,6 +1476,221 @@ Seven alternating compiles of fixed parent `8a3a0c79` measure median 1.66/1.67
 seconds and 116,704/116,704 KiB peak RSS. Compiler output and prior checked fixture
 bytes are identical. Every tracked W source stayed identical across the rebase
 onto the prerequisite's final proof commit. Existing coverage floors pass.
+
+## Typed object arenas
+
+`lib.safe_typed_arena` supplies opaque `own WTypedArena[T]*` owners. An arena
+owns individually allocated, nonmoving objects and a growable array of their
+addresses. `T` may be a sized plain value or a supported recursive owner shape,
+including owned buffers, nested arenas and checked callback capture records.
+Raw pointers, external borrowed fields and recursive ownership cycles are not
+accepted element shapes. Arena metadata and generated destructor pointers are
+private to the audited implementation.
+
+| Operation | Contract |
+| --- | --- |
+| `typed_arena_new[T](maximum)` | Create an empty arena; `-1` allows unlimited slots, `0` refuses insertion. |
+| `typed_arena_alloc[T](arena, initial)` | Allocate and initialize a plain `T`; return an exclusive reference borrowing the arena. |
+| `typed_arena_alloc_shared[T](arena, initial)` | Allocate and initialize a plain `T` under a shared borrow; return a shared reference borrowing the arena. |
+| `typed_arena_insert[T](arena, owner)` | Consume an object owner and return its position. |
+| `typed_arena_try_insert[T](arena, owner)` | Consume the input; return absent on success or the original owner on capacity, overflow or allocation failure. |
+| `typed_arena_length[T](arena)` / `typed_arena_slots[T](arena)` | Count live objects / positions assigned since the last reset. |
+| `typed_arena_get[T](arena, index)` / `typed_arena_get_mut[T](arena, index)` | Return an optional shared / exclusive reference; out-of-range or destroyed positions return absent. |
+| `typed_arena_destroy[T](arena, index)` | Destroy that object recursively once; return one for a live object, zero otherwise. |
+| `typed_arena_reset[T](arena)` | Destroy every remaining object and retain the slot allocation for reuse. |
+| `typed_arena_release[T](arena)` | Destroy every remaining object and free slot storage; the arena stays usable. |
+
+Insertion, exclusive allocation, per-object destruction, reset and release
+require exclusive borrowing, even when there is spare slot capacity. Live object
+references therefore block them, and arena transfer and drop. Mutation resumes
+after the last dependent use. Shared/exclusive returns and saved field
+references retain the arena's lifetime through ordinary functions, generics,
+branches and loops, with the same checking without `--safe`.
+
+**Allocation with live views.** `typed_arena_alloc_shared` needs only a shared
+borrow, so it can run while other shared views into the arena are live: earlier
+allocations, `typed_arena_get` results, or a shared parameter. Two facts make
+this sound:
+- Storage is nonmoving. Slot growth reallocates only the private address
+  array, which never escapes, and each object keeps its own allocation.
+- Initialization is disjoint. The new object is written before its address
+  is published, and no other view can reach it before that.
+
+The result is a shared view of a plain `T`. Destruction still needs an
+exclusive borrow, so it waits for every view. An exclusive view (`alloc`,
+`get_mut`) still excludes shared allocation. Because the allocation mutates
+through a shared borrow, a typed arena is never shared across threads
+(`has unsynchronized interior mutation`); transferring an owned arena is
+unaffected.
+
+Destroyed positions become holes; other positions remain stable until reset or
+release. Holes do not restore the `maximum` slot allowance. Positions are
+indices, not identity tokens across reset or between arenas. The maximum is a
+slot quota; byte budgets are the budget arenas below.
+
+Each live object has one generated destructor. Reset, release, early returns,
+lexical defer and arena destruction free nested owners exactly once. Failed
+`try_insert` preserves the input owner and existing slots. Infallible insertion
+and plain-value allocation trap on failure. There is no object relocation,
+implicit reference count or garbage collector. Costs are one allocation per
+object, a six-word arena descriptor and geometrically grown pointer slots;
+reset retains only those slots. Trust binds to resolved source content, so a
+changed or shadowed implementation cannot inherit the contract. Arenas are not
+iterable: destroyed positions are holes, so loops index with
+`typed_arena_slots` and `typed_arena_get`.
+
+### Budget arenas
+
+`own WArenaBudget*` is an opaque byte budget, created with
+`arena_budget_new(limit)`. `arena_budget_limit`, `arena_budget_used` and
+`arena_budget_remaining` read it. `budget_arena_new[T](budget, maximum)` borrows
+the budget exclusively and returns `own[b] WBudgetArena[T]*`, a typed arena that
+charges `sizeof(T)` bytes per live object to that budget.
+
+- It has the same operations under the `budget_arena_` prefix: `insert`,
+  `try_insert`, `alloc`, `get`, `get_mut`, `destroy`, `reset`, `release`,
+  `length`, `slots`.
+- `budget_arena_try_alloc[T]` returns `optrefmut[a] T*`. It is absent, with
+  nothing charged, when the budget or the slots refuse the object.
+- `budget_arena_remaining[T](arena)` reads the budget through the arena while
+  the arena holds it.
+- `try_insert` returns the owner when the budget is exhausted. `insert` and
+  `alloc` trap.
+- Destroy, reset, release and drop refund exactly what was charged. The budget
+  therefore always equals `sizeof(T)` times the arena's live objects, and it
+  is whole again once the arena is gone.
+- Only the object itself is charged: slot storage and storage that its fields
+  own are not.
+
+The budget arena is a labeled owner whose one group is its budget, so the mixed
+owner rules apply. The budget cannot move, be borrowed elsewhere, or back a
+second arena while the arena lives. An unlabeled `own WBudgetArena[T]*` is
+rejected, and so is any attempt to return the arena past the function that
+owns the budget. Dropping the arena refunds the budget, so its drop counts as a
+use of the budget at every exit. A budget declared after the arena's home,
+directly or through a holder record, is rejected with `safe: budget arena
+outlives the budget it borrows`. That is the same rule that keeps a lock guard
+from outliving its mutex.
+
+A spawned thread could outlive the budget, so the arena never crosses to one
+(`carries a borrowed lifetime`). Budget arenas are not iterable. The descriptor
+is eight words. Charging and refunding are one compare and one add or subtract
+per object.
+
+Contracts: `tests/safe_typed_arena_test.w` covers typed arenas and shared
+allocation, and `tests/safe_budget_arena_test.w` covers budgets. Each case runs
+on x86 and x64, with and without `--safe`. The runtime fixtures check the
+allocation balance under W_DEBUG_ALLOC across every exit path:
+`tests/safe_typed_arena_runtime_fixture.w` and
+`tests/safe_budget_arena_runtime_fixture.w`.
+
+## Audited foreign boundaries
+
+Raw code reaches checked code through audited modules. An audited module is
+ordinary W source that may use raw pointers, foreign calls and assembly. It is
+not checked; its function signatures are the contract that checked callers
+rely on. The stdlib's pinned runtime files are audited modules. A program
+attests one of its own by naming the file's SHA-256 on the import:
+
+```w
+import tests.safe_foreign_boundary_module unsafe "6ef6a19a7598bda552d3a607d1483eb7585d583f3fe34f99b2dc4eb3f7bca57d"
+```
+
+The digest is `sha256sum tests/safe_foreign_boundary_module.w`. The clause is `unsafe` followed by 64 lowercase hex digits in quotes, after the
+module path and any `as` alias. Anything else is rejected with `import
+attestation must be unsafe "<sha256>" with 64 lowercase hex digits`.
+
+**Trust binds to the resolved file.** Whenever checked code is compiled, the
+checker hashes the file the import resolved to. If the bytes differ from the
+digest, compilation fails at the import with `safe: audited module differs
+from its attestation`. This covers an edited module, another file that
+shadows the module name under an earlier `--import-root`, and a digest copied
+from a different module. Trust follows the file, not the name, and does not
+extend to the module's own imports: each raw file an audited module relies on
+needs its own attestation or a runtime pin. A pinned runtime file keeps its
+pin; attesting it with another digest fails. An attestation changes nothing
+when no checked code is compiled, and the streaming front end parses it
+unchanged.
+
+**What checked code may call.** A function of an attested module is callable
+from checked code when every parameter and its result is a plain scalar or
+plain record, a checked pointer, slice or view, or a quantified function
+contract. Any other signature carries raw values, and checked code calling it
+fails with `safe: audited module function has a raw signature; call it inside
+an unsafe block`. Inside an `unsafe:` block it is an ordinary raw call. Without
+an attestation, the module is checked like any other code, so its raw
+operations, global storage and assembly bodies are rejected under `--safe`.
+
+**Obligations of an audited module.** The checker trusts every value an
+audited function returns or stores through a checked parameter:
+- *Non-null and aligned:* `own`, `ref` and `refmut` results point at a live
+  object aligned for its type. Optional results are null or such a pointer.
+- *Initialized:* every field of a returned object holds a valid value of its
+  type, and owned fields are themselves valid owners.
+- *Provenance:* an `own T*` result comes from the W allocator (`new`), because
+  its drop calls the W allocator's free and its fields' destructors. A foreign
+  allocation is wrapped in `WForeign[T]` instead.
+- *Aliasing:* no other path writes through a `ref` result while it is live,
+  and no other path reads or writes through a `refmut` result. A result keeps
+  the lifetime its signature names, and the module retains no checked pointer
+  past the call that lent it.
+- *Ownership:* an owner passed in is consumed exactly once. The module either
+  keeps it, hands it to foreign code, or returns it, as `try_insert` does. It
+  never drops and returns the same owner.
+
+### Foreign owners
+
+`import lib.safe_foreign_owner` provides `own WForeign[T]*`, a checked owner
+of one object that foreign code allocated, together with the foreign function
+that releases it.
+
+| Operation | Signature | Who may call it |
+|---|---|---|
+| `foreign_adopt[T](raw, release)` | `(T*, WForeignRelease*) -> optown WForeign[T]*` | audited code |
+| `foreign_raw[T](owner)` | `(ref WForeign[T]*) -> T*` | audited code |
+| `foreign_disown[T](owner)` | `(own WForeign[T]*) -> T*` | audited code |
+| `foreign_close[T](owner)` | `(own WForeign[T]*) -> void` | checked code |
+
+`WForeignRelease` is `fn(void*) -> void`. Adoption takes ownership of the raw
+object on every path. A null pointer owns nothing and yields an absent owner.
+A pointer misaligned for `T` is released at once and yields an absent owner.
+The alignment is the largest power of two that divides `sizeof(T)`, up to the
+word size. Otherwise the owner holds the object until it is dropped, closed
+or disowned. Every drop path runs the release function exactly once: scope
+exits, early returns, loop iterations, replacement, assigning zero, owned
+record fields, and parameters a callee consumes. `foreign_raw` lends the object
+to one synchronous foreign call. `foreign_disown` hands it back to foreign
+code without releasing it.
+
+The owner is opaque. Checked code can move, lend, close or drop it, but cannot
+read its fields, construct one, take its raw pointer, adopt or disown. Those
+three calls have raw signatures, so only audited code makes them. A foreign
+transfer that can fail takes the owner and returns `optown WForeign[T]*`,
+which is present when the foreign side refused it. Foreign libraries state
+their own threading rules, and none is audited, so a foreign owner never
+crosses to another thread: `is a foreign object without a thread contract`,
+for spawned payloads and scoped arguments alike.
+
+Each adopted object costs one two-word descriptor allocation. Its drop is one
+indirect call to the release function and one free. On the x86-64 host, a
+million adopt, read and drop cycles take 0.06 s, against 0.02 s for the same
+objects allocated, read and freed by raw code: about 40 ns per object. The
+attestation check hashes each attested file once per checked compile.
+
+Contracts: `tests/safe_foreign_boundary_test.w` has 26 cases, each checked
+and compiled on x86 and x64 with and without `--safe`, and each rejected
+program leaves no binary. They cover attested adoption and release, failed
+transfers, null and misaligned adoption, edited, shadowed and foreign digests,
+a wrong attestation of a pinned file, malformed attestations, aliases,
+unattested raw modules and assembly, raw signatures inside and outside unsafe
+blocks, raw access, disowning and adoption from checked code, private fields,
+forged owners, use after close, threads, owned W results and attested
+assembly, and imports that trust does not follow.
+`tests/safe_foreign_owner_runtime_fixture.w` attests
+`tests/safe_foreign_boundary_module.w` and runs 20 rounds of every drop path,
+checking that each object is released exactly once and the W_DEBUG_ALLOC
+allocation balance. It runs under the loop, register and inlining variants
+on x86 and x64, Wine and arm64/qemu, and is a `safe_opt_diff_test` input.
 
 ## Cleanup and unsafe boundaries
 
@@ -1533,7 +1749,8 @@ The audited runtime exposes scalar `put_char`, `put_error` and `exit` calls,
 the concrete storage APIs above, and compiler-generated allocation,
 destruction and bounds operations. Import
 `lib.safe` for checked `safe_print_int` and `safe_println_int` formatting.
-Other runtime calls need an unsafe boundary. Source
+Other runtime calls need an unsafe boundary. Attested modules add their own
+checked contracts ("Audited foreign boundaries"). Source
 hashes in `compiler/safe_runtime.w` bind these contracts to their resolved
 implementations. A changed runtime or shadow import fails checking until its
 contract is reviewed and its pin updated. Merely importing a library does not

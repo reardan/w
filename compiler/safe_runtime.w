@@ -5,6 +5,8 @@
 import lib.sha256
 
 char* safe_runtime_digest(char* path):
+	if (ends_with(path, c"/lib/safe_foreign_owner.w")): return c"0bddc7c2a00a2478f14e9aa0ab6b472e5f9c3ef20fcd5c5c56771f584b7d682e"
+	if (ends_with(path, c"/lib/safe_typed_arena.w")): return c"93ea2de75ad2609d3d62578e48a75c8fc9eec565d47ec2f940a0c533780ee4d2"
 	if (ends_with(path, c"/lib/safe_keyed_map.w")): return c"4ac8798410a01979b79986efaf3f116cb2e48af3bd057085e7b08254569eba3f"
 	if (ends_with(path, c"/lib/safe_hash.w")): return c"47492fd6d7b8649271aa13bee1925263fa69d2dff8a617be77ed4b6248ff89f0"
 	if (ends_with(path, c"/lib/safe_owned_vector.w")): return c"a2c00bac9caea4e5ad93e427ea794f80603fcd6ca610963c5ad210915e9a2630"
