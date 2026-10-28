@@ -590,6 +590,21 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		last_call_return_type = tree.high[id]
 		last_call_end = codepos
 		return
+	if (op == ast_generic_reference):
+		int sym = tree.symbol[id]
+		if (sym >= 0):
+			int count = generic_def_param_count(tree.value[id])
+			int[8] types
+			int argument = tree.right[id]
+			for i in range(count):
+				types[i] = tree.value[argument]
+				argument = tree.next_arg[argument]
+			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
+			strcpy(last_identifier, name)
+			sym_emit_value(sym, name)
+			free(name)
+		else: generic_inst_emit_callee(tree.generic_instance[id])
+		return
 	if (op == 'G'):
 		int sym = tree.symbol[id]
 		int signature = tree.generic_signature[id]

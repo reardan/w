@@ -30,6 +30,9 @@ const int ast_list_it_value = 134
 const int ast_forward_generic = 135
 const int ast_propagate = 136
 const int ast_warning = 137
+# 'f[T]' naming a declared generic function's instance without calling it:
+# its address, as streaming generic_call_expr leaves it in eax.
+const int ast_generic_reference = 138
 
 
 struct expression_ast:

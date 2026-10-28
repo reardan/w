@@ -42,6 +42,43 @@ char* safe_owner_drop_helper(int element):
 		else if (starts_with(name, c"WSafeGuard$")):
 			helper = c"__w_safe_guard_drop"
 			pointee = type_lookup(c"wmutex")
+	# Every pointer-free WBuffer[T] specialization shares one helper over
+	# the common descriptor layout.
+	else if (ends_with(source, c"/lib/safe_vector.w")):
+		if (starts_with(name, c"WBuffer$")):
+			helper = c"__w_buffer_drop"
+			pointee = type_lookup(c"void")
+	# Every WOwnedBuffer[T] specialization records its element destructor
+	# in the descriptor; one helper drops the elements and the storage.
+	else if (ends_with(source, c"/lib/safe_owned_vector.w")):
+		if (starts_with(name, c"WOwnedBuffer$")):
+			helper = c"__w_owned_buffer_drop"
+			pointee = type_lookup(c"void")
+	# Typed arenas record their object destructor like owned buffers; one
+	# helper drops the live objects, skipping holes, and the slot storage.
+	else if (ends_with(source, c"/lib/safe_typed_arena.w")):
+		if (starts_with(name, c"WTypedArena$")):
+			helper = c"__w_typed_arena_drop"
+			pointee = type_lookup(c"void")
+		# A budget arena also refunds its budget for the objects it drops.
+		else if (starts_with(name, c"WBudgetArena$")):
+			helper = c"__w_budget_arena_drop"
+			pointee = type_lookup(c"void")
+	# Keyed maps record their key destructor; one helper drops keys and slots.
+	else if (ends_with(source, c"/lib/safe_keyed_map.w")):
+		if (starts_with(name, c"WKeyedMap$")):
+			helper = c"__w_keyed_map_drop"
+			pointee = type_lookup(c"void")
+	# A foreign owner runs its recorded release function once.
+	else if (ends_with(source, c"/lib/safe_foreign_owner.w")):
+		if (starts_with(name, c"WForeign$")):
+			helper = c"__w_foreign_drop"
+			pointee = type_lookup(c"void")
+	# Checked maps/sets wrap one legacy table pointer; one helper frees it.
+	else if (ends_with(source, c"/lib/safe_hash.w")):
+		if (starts_with(name, c"WMap$") || starts_with(name, c"WSet$")):
+			helper = c"__w_checked_hash_drop"
+			pointee = type_lookup(c"void")
 	else if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
 	else if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
 	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"

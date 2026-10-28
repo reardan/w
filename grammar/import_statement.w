@@ -181,6 +181,30 @@ int import_plain_imported(char* file_path):
 	return 0
 
 
+# Generic bodies compile at the end-of-file drain, re-parsed from their
+# definition's file while the current (root) file's aliases and plain
+# imports are still registered. Those belong to the current file, so hide
+# them for a body defined in another file (including any call it inlines
+# from a third file); otherwise an inlined parameter could be reported as
+# an unqualified use of an alias. A body defined in the current file keeps
+# its own aliases.
+int import_hidden_alias_base
+int import_hidden_plain_base
+
+
+void import_scope_hide(char* definition_file):
+	import_hidden_alias_base = import_alias_base
+	import_hidden_plain_base = import_plain_base
+	if ((filename != 0) && (definition_file != 0) && (strcmp(filename, definition_file) == 0)): return
+	import_alias_base = import_alias_count
+	import_plain_base = import_plain_count
+
+
+void import_scope_restore():
+	import_alias_base = import_hidden_alias_base
+	import_plain_base = import_hidden_plain_base
+
+
 # Unqualified reference to a symbol whose module was imported only through
 # an alias in this file: still legal (the symbol table is global), but
 # probably an oversight, so warn. Cheap when no aliases are in scope.
@@ -189,7 +213,7 @@ void import_warn_unqualified(char* name):
 	int t = sym_lookup(name)
 	if (t < 0): return
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0): return
+	if ((file_index < 0) || (file_index == decl_file_index())): return
 	char* file_path = debug_file_name(file_index)
 	int i = import_alias_base
 	while (i < import_alias_count):
@@ -372,6 +396,15 @@ int import_alias_type_member(int alias_index):
 	return -1
 
 
+# Generic declarations have no ordinary symbol before specialization. Bind
+# aliases to their captured declaration source, not merely the global name.
+int import_alias_module_generic(int alias_index, char* name):
+	int def = generic_def_lookup(name, 0)
+	if (def < 0): return -1
+	if (import_path_matches_file(import_alias_path(alias_index), generic_def_file(def)) == 0): return -1
+	return def
+
+
 # Qualified access through an import alias. The caller has just seen the
 # alias identifier with '.' as the next character. Consumes ".member",
 # checks the member was declared in the aliased module's file, and then
@@ -384,6 +417,8 @@ int import_alias_member(int alias_index):
 	if (is_name == 0):
 		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = sym_lookup(token)
+	if ((nextc == '[') || (t < 0)):
+		if (import_alias_module_generic(alias_index, token) >= 0): return generic_call_expr()
 	int in_module = 0
 	if (t >= 0):
 		int file_index = sym_decl_file_index(t)
@@ -519,6 +554,71 @@ void import_strip_comment(char* line):
 		else: i = i + 1
 
 
+# Audited foreign boundaries (docs/projects/safe_mode.md): an import ending in
+# 'unsafe "<sha256>"' attests that the module it resolves to is reviewed raw
+# code. The checker trusts that file only while its bytes hash to the digest
+# (safe_audit_runtime), so trust binds to the resolved implementation rather
+# than to the module name. Node is the import's retained record, or -1.
+list[char*] import_attested_paths
+list[char*] import_attested_digests
+list[int] import_attested_nodes
+
+
+void import_attestation_error():
+	error(c"import attestation must be unsafe \"<sha256>\" with 64 lowercase hex digits")
+
+
+# Splits an optional trailing ' unsafe "<64 lowercase hex>"' clause off an
+# import line, truncating the line at the clause. Returns the digest (fresh
+# allocation) or 0 when the line has none.
+char* import_split_attestation(char* line):
+	int i = 0
+	while (line[i]):
+		if (starts_with(line + i, c" unsafe") && ((line[i + 7] == ' ') || (line[i + 7] == 9) || (line[i + 7] == 0))):
+			int at = i + 7
+			while ((line[at] == ' ') || (line[at] == 9)): at = at + 1
+			if (line[at] != '"'): import_attestation_error()
+			char* digest = cast(char*, malloc(65))
+			for j in range(64):
+				int c = line[at + 1 + j]
+				if ((c < '0') || ((c > '9') && (c < 'a')) || (c > 'f')): import_attestation_error()
+				digest[j] = c
+			digest[64] = 0
+			at = at + 65
+			if (line[at] != '"'): import_attestation_error()
+			at = at + 1
+			while ((line[at] == ' ') || (line[at] == 9)): at = at + 1
+			if (line[at] != 0): import_attestation_error()
+			line[i] = 0
+			return digest
+		i = i + 1
+	return 0
+
+
+void import_attest(char* resolved, char* digest, int node):
+	if (import_attested_paths == 0):
+		import_attested_paths = new list[char*]
+		import_attested_digests = new list[char*]
+		import_attested_nodes = new list[int]
+	import_attested_paths.push(strclone(resolved))
+	import_attested_digests.push(digest)
+	import_attested_nodes.push(node)
+
+
+# coverage: exempt runs between compiles in one process; a fresh compiler starts empty
+void import_attest_reset():
+	if (import_attested_paths == 0): return
+	for i in range(import_attested_paths.length):
+		free(import_attested_paths[i])
+		free(import_attested_digests[i])
+	import_attested_paths.free()
+	import_attested_digests.free()
+	import_attested_nodes.free()
+	import_attested_paths = 0
+	import_attested_digests = 0
+	import_attested_nodes = 0
+
+
 # Splits an optional trailing " as <alias>" clause off an import line,
 # truncating the line at the clause. Returns the alias (fresh allocation)
 # or 0 when the line has none.
@@ -559,6 +659,7 @@ int import_statement():
 		# and an optional trailing comment
 		read_until_end()
 		import_strip_comment(token)
+		char* attestation = import_split_attestation(token)
 		char* alias = import_split_alias(token)
 		if (token[0] == 0): error(c"module name expected after 'import'")
 
@@ -579,6 +680,7 @@ int import_statement():
 		if (ast_retain_mode): retained_id = retained_node_count()
 		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
+		if (attestation != 0): import_attest(resolved, attestation, retained_id)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
 		if (import_module(token)): nextc = get_character()

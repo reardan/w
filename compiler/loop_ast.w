@@ -23,6 +23,7 @@ struct loop_ast:
 	int container_slot
 	int cursor_slot
 	int element_type
+	int capture_slice
 	int value_coerce_type
 	int value_var
 	int value_var_type
@@ -63,7 +64,11 @@ void ast_loop_layout(loop_ast* node, int depth):
 		node.cleanup_slots = 2
 		node.container_slot = depth + 1
 		node.cursor_slot = depth + 2
-		node.body_depth = depth + 2
+		if (node.capture_slice):
+			node.cleanup_slots = 4
+			node.container_slot = depth + 3
+			node.cursor_slot = depth + 4
+		node.body_depth = depth + node.cleanup_slots
 	node.layout_ready = 1
 
 

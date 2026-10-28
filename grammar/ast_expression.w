@@ -1518,7 +1518,12 @@ int ast_expression_generic_call_bound(expression_ast* tree, int depth, int def, 
 	int arity = ast_expression_generic_resolve(tree, id, cast(int, &types[0]), count)
 	if (arity < 0): return -1
 	ast_expression_advance(tree)
-	if (token_newline || (ast_expression_accept(tree, c"(") == 0)): return -1
+	if (token_newline || (peek(c"(") == 0)):
+		if (receiver >= 0): return -1
+		tree.op[id] = ast_generic_reference
+		tree.result_type[id] = 4
+		return id
+	ast_expression_accept(tree, c"(")
 	count = 0
 	tail = -1
 	if (receiver >= 0):
@@ -2123,6 +2128,10 @@ int ast_expression_name(expression_ast* tree, int depth):
 					ast_expression_advance(tree)
 					return ast_expression_constructor(tree, base, 0, depth)
 			int sym = sym_probe(token)
+			if ((nextc == '[') || (sym < 0)):
+				if (import_alias_module_generic(alias, token) >= 0):
+					if (nextc == '['): return ast_expression_generic_call(tree, depth)
+					if (nextc == '('): return ast_expression_generic_infer(tree, depth)
 			if (sym < 0): return -1
 			int source = sym_decl_file_index(sym)
 			if (source < 0): return -1
@@ -3727,7 +3736,7 @@ void ast_expression_replay_event(expression_ast* tree, int id, int at):
 		int before = type_count()
 		generic_infer_shapes(tree.value[id])
 		assert1(before == type_count())
-	if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == at)): ast_expression_commit_generic(tree, id)
+	if (((tree.op[id] == 'G') || (tree.op[id] == 'W') || (tree.op[id] == ast_generic_reference)) && (tree.generic_offset[id] == at)): ast_expression_commit_generic(tree, id)
 	if ((tree.op[id] == ast_template_format) && (tree.offset[id] == at)): template_take_spec()
 	if ((tree.op[id] == 't') && (tree.offset[id] == at)):
 		if (tree.high[id]): get_token_template_chunk()
@@ -3840,7 +3849,7 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 			entries[used * 2] = k
 			entries[used * 2 + 1] = id
 			used = used + 1
-		if ((tree.op[id] == 'G') || (tree.op[id] == 'W')):
+		if ((tree.op[id] == 'G') || (tree.op[id] == 'W') || (tree.op[id] == ast_generic_reference)):
 			int g = expression_ast_token_at(tree, tree.generic_offset[id])
 			if ((g >= 0) && (g < tokens) && (g != k)):
 				entries[used * 2] = g

@@ -275,6 +275,7 @@ the function exits, not where the `defer` is written
 |---|---|
 | `import a.b` | Compiles `a/b.w` once. Every top-level name it declares lands in **one global namespace** shared with the importer and with everything else imported. |
 | `import a.b as m` | Adds the checked qualified spelling `m.name`. Unqualified names stay visible. |
+| `import a.b unsafe "<sha256>"` | Attests `a/b.w` as an audited foreign boundary for checked code while the file hashes to the 64 lowercase hex digits. It may follow `as m`. Without checked code it changes nothing ([safe_mode.md](projects/safe_mode.md#audited-foreign-boundaries)). |
 | `__arch__` path segment | Resolves to the target directory (`x86`, `x64`, `arm64`, ...). |
 | Search path | The working directory and its parents, then the compiler binary's directory. `--import-root` comes first ([compilation_model.md](projects/compilation_model.md) §7). |
 | Entry point | The ELF entry calls `_main`. `lib/lib.w` provides a `_main` that calls `main(argc, argv)`. A program may define `_main` itself instead. |

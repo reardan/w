@@ -477,6 +477,23 @@ void for_cleanup_emit_returning():
 	pop_eax_slot()
 
 
+# Freeze an inline checked descriptor by value. Its address may refer to a
+# mutable local, a field, or a temporary call result; the iterator retains
+# its own data/length pair even when another expression overwrites that home.
+# kind 2 reads an audited WOwnedBuffer[T] descriptor instead: its element
+# array (T**) is the fourth word and its length the second.
+void for_capture_slice(int kind):
+	int original = push_slot()
+	if (kind == 2): add_eax_int32(3 * word_size)
+	promote_eax()
+	push_slot()
+	load_slot(original)
+	add_eax_int32(word_size)
+	promote_eax()
+	store_stack_var(word_size)
+	lea_eax_esp_plus(0)
+
+
 # Emit the cursor-loop scaffold shared by every for-in container shape:
 # hidden container and cursor slots, break/continue context, done-check,
 # loop-variable extraction, body, advance, back-jump, chain patching.
@@ -502,20 +519,21 @@ void for_cleanup_emit_returning():
 void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
-		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type);
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type, int capture_slice);
 
 
 void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
-		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type, int capture_slice):
 	if (ast_expressions_mode >= 2):
 		ast_for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_fn, done_fn, value_fn, next_fn, free_fn,
-			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type)
+			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type, capture_slice)
 		return
 	# The bottom test of a rotated loop belongs to the header's line
 	int header_line = diag_token_line
+	if (capture_slice): for_capture_slice(capture_slice)
 	# hidden slot: the container pointer
 	int container_slot = push_slot()
 
@@ -558,7 +576,12 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		if (element_size > 1): imul_eax_int32(element_size)
 		pop_ebx_slot()
 		alu_add()
-		extracted_type = promote(element_type)
+		if (capture_slice == 2):
+			# Load the stored element pointer; it becomes a shared reference.
+			promote(element_type)
+			extracted_type = loop_var_type
+		else if (capture_slice && (type_num_args(element_type) > 0)): extracted_type = loop_var_type
+		else: extracted_type = promote(element_type)
 	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
 	for_store_loop_var(for_var)
 
@@ -605,7 +628,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	loop_leave(outer)
 
 	# Discard the hidden container and cursor slots (the loop variable stays)
-	drop_slots(2)
+	drop_slots(2 + (capture_slice != 0) * 2)
 
 
 # value_var is 0 for the one-variable form; otherwise it anchors the
@@ -632,7 +655,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			c"__w_map_iter_begin", c"__w_map_iter_done", c"__w_map_iter_key", c"__w_map_iter_next", 0,
 			-1, key_type,
-			value_var, value_var_type, value_call, loop_value_type)
+			value_var, value_var_type, value_call, loop_value_type, 0)
 
 
 # value_var is 0 for the one-variable form; otherwise "for i, x in l"
@@ -658,7 +681,7 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 		for_cursor_loop(for_var, for_tab_level, loop_var_type,
 				c"__w_list_iter_begin", c"__w_list_iter_done", c"__w_list_iter_index", c"__w_list_iter_next", 0,
 				-1, type_lookup(c"int"),
-				value_var, value_var_type, value_call, loop_value_type)
+				value_var, value_var_type, value_call, loop_value_type, 0)
 		return;
 
 	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
@@ -667,7 +690,7 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			c"__w_list_iter_begin", c"__w_list_iter_done", value_call, c"__w_list_iter_next", 0,
 			-1, loop_value_type,
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 
 # Iterate a slice (T[] descriptor): hidden slots hold the descriptor
@@ -676,15 +699,56 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 # this path too, because promote() decays them to slice values.
 void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
 	int element_type = type_unqualified(type_get_element_type(container_type))
+	int yielded_type = element_type
 	if (type_num_args(element_type) > 0):
-		error(c"slice iteration requires scalar or pointer elements")
-	if (types_compatible_with_expression(loop_var_type, element_type) == 0):
-		warn_type_mismatch(c"for loop variable", loop_var_type, element_type)
+		if (type_is_safe_slice(container_type) == 0): error(c"slice iteration requires scalar or pointer elements")
+		yielded_type = type_get_safe(type_get_next_pointer(element_type), 2)
+		if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
+			error(c"safe: record slice iteration requires a shared reference variable")
+	if (types_compatible_with_expression(loop_var_type, yielded_type) == 0):
+		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)): error(c"safe: incompatible record slice iteration variable type")
+		warn_type_mismatch(c"for loop variable", loop_var_type, yielded_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			0, 0, 0, 0, 0,
 			element_type, -1,
-			0, -1, 0, -1)
+			0, -1, 0, -1, type_is_safe_slice(container_type))
+
+
+# The element type T of an audited WOwnedBuffer[T] (lib/safe_owned_vector.w)
+# reached through a non-optional checked pointer, else -1. The safety pass
+# separately requires the resolved runtime to be the pinned one.
+int for_owned_storage_element(int container_type):
+	int kind = type_get_kind(type_unqualified(container_type))
+	int optional = (kind == type_kind_optown) || (kind == type_kind_optref) || (kind == type_kind_optrefmut)
+	if (((kind < type_kind_own) || (kind > type_kind_refmut)) && (optional == 0)): return -1
+	int pointer = type_safe_target(container_type)
+	if (type_get_pointer_level(pointer) != 1): return -1
+	int record = type_unqualified(type_lookup_previous_pointer(pointer))
+	if (record < 0): return -1
+	if (starts_with(type_get_name(record), c"WOwnedBuffer$") == 0): return -1
+	if (ends_with(debug_file_name(type_decl_file_index(record)), c"/lib/safe_owned_vector.w") == 0): return -1
+	type_rec* layout = type_record(record)
+	if (layout.num_fields != 5): return -1
+	int items = layout.field_types[3]
+	if (type_get_pointer_level(items) != 2): return -1
+	if (optional): error(c"safe: owned-storage iteration requires a present container; test and bind the optional owner first")
+	return type_lookup_previous_pointer(type_lookup_previous_pointer(items))
+
+
+# Iterate owned storage: each stored element is lent as a shared reference
+# for one iteration, without transferring ownership. The element array and
+# length are captured once, like a slice descriptor.
+void for_owned_storage_loop(int for_var, int for_tab_level, int loop_var_type, int element):
+	int yielded = type_get_safe(type_get_next_pointer(element), 2)
+	if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
+		error(c"safe: owned-storage iteration requires a shared reference variable")
+	if (types_compatible_with_expression(loop_var_type, yielded) == 0):
+		error(c"safe: incompatible owned-storage iteration variable type")
+	for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			0, 0, 0, 0, 0,
+			type_get_next_pointer(element), -1,
+			0, -1, 0, -1, 2)
 
 
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
@@ -698,7 +762,7 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			0, 0, c"utf8_decode", c"utf8_next", 0,
 			-1, type_lookup(c"int"),
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 
 # Inferred loop variable, first half: 'for name in ...' with the type
@@ -739,6 +803,8 @@ void for_infer_declare(char* name, int slot, int type):
 # container yields its value accessor's declared return type when one
 # is in scope; otherwise int (for_iter_require reports the real error).
 int for_infer_var_type(int container_type):
+	int stored = for_owned_storage_element(container_type)
+	if (stored >= 0): return type_get_safe(type_get_next_pointer(stored), 2)
 	if (type_is_map(container_type)): return type_map_key_type(container_type)
 	if (type_is_set(container_type)): return type_set_key_type(container_type)
 	if (type_is_list(container_type)):
@@ -746,7 +812,10 @@ int for_infer_var_type(int container_type):
 		if (type_num_args(element_type) > 0): return type_get_next_pointer(element_type)
 		return element_type
 	if (type_is_slice(container_type)):
-		return type_unqualified(type_get_element_type(container_type))
+		int element_type = type_unqualified(type_get_element_type(container_type))
+		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)):
+			return type_get_safe(type_get_next_pointer(element_type), 2)
+		return element_type
 	if (type_is_string(container_type)): return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
 		if (for_iter_generic_split(type_get_name(container_type)) >= 0):
@@ -826,6 +895,10 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	if (type_is_string(container_type)):
 		for_string_loop(for_var, for_tab_level, loop_var_type)
 		return;
+	int stored = for_owned_storage_element(container_type)
+	if (stored >= 0):
+		for_owned_storage_loop(for_var, for_tab_level, loop_var_type, stored)
+		return;
 	for_iter_require_struct_pointer(container_type)
 
 	char* container_name = type_get_name(container_type)
@@ -862,7 +935,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_name, done_name, value_name, next_name, free_name,
 			-1, -1,
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 	free(begin_name)
 	free(done_name)

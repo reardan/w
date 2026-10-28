@@ -1102,12 +1102,84 @@ The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
 `switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
 scalar conditional expressions. Range bounds and step evaluate once in source
 order; `continue` reaches the implicit index update. Switch labels retain
-their evaluation order and W's no-fallthrough behavior. Container iteration,
+their evaluation order and W's no-fallthrough behavior. Shared checked slices
+support scalar iteration as described below. Other container iteration,
 generators, arbitrary `goto`, GPU operations and legacy container operations
 remain unsupported. The audited concrete storage APIs
 below are the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
+
+### Checked slice iteration
+
+`for item in view` and `for int item in view` accept `ref T[]` with scalar
+elements. The iterable can be a local, borrowed record field, checked subrange
+or a function/generic call. It evaluates exactly once; the loop captures its
+inline data/length descriptor by value and copies one element into the loop
+variable per iteration. Neither capture nor traversal allocates heap storage.
+
+The checker keeps a synthetic loan for implicit condition and element reads,
+so invalidating the backing owner is rejected even when the body never names
+the slice. Implicit loop-variable writes also participate in borrow checking.
+Nested loops keep independent loans. `continue` advances the cursor; `break`,
+return and ordinary completion release the loop's slots and run the existing
+lexical defer/owner cleanup for exited scopes. Mutation resumes after the last
+possible iterator read, including on a path that immediately breaks.
+
+For a plain record element, `for item in view` infers `ref Record*`;
+`for ref Record* item in view` states the same contract explicitly. Each
+iteration borrows the stored record at its element stride without copying it.
+The reference and any borrowed fields retain the backing slice's origins.
+They can be saved or returned subject to the ordinary lifetime contract;
+reallocation, clearing and owner transfer are rejected while a saved reference
+is live. Record fields cannot be mutated through the shared reference.
+
+A record loop variable becomes initialized only on entry to the body. Reading
+it after the loop is rejected because the slice may be empty. Use an optional
+reference initialized before the loop when retaining an element across the
+loop. Nested loops, subranges, generic calls and lexical defer preserve these
+same rules. A reference to a previous element remains valid when the cursor
+advances because it points into the nonmutated backing storage.
+
+A checked mutable slice must first be reborrowed as a shared slice. Direct
+iteration of mutable slices, exclusive element iteration and user cursor
+protocols remain rejected. Legacy raw iteration retains its existing behavior
+outside checked functions.
+
+### Owned-storage iteration
+
+`for ref T* item in values` and `for item in values` iterate an audited
+`WOwnedBuffer[T]` (see "Generic owned-element buffers") reached through
+`own`, `ref` or `refmut`: a local owner, a borrowed parameter or an owned
+record field. Each iteration lends one stored element as `ref T*`; ownership
+never moves, so no element is dropped by the loop. The container is borrowed
+shared once, for the whole loop: the iterable evaluates exactly once and the
+loop captures the element array and length by value, without allocation.
+
+The synthetic iterator loan covers the implicit condition and element reads,
+so insertion (even with spare capacity), replacement, pop, clear, moving or
+replacing the owner, and destruction are rejected while the loop can still
+read. A path that has finished with the element and then leaves the loop
+(`break`) may mutate, as for slices. Element references retain the
+container's origin: one saved in an outer `optref` or returned under the
+container's lifetime keeps blocking invalidation until its last use, and a
+local container's element cannot escape. Fields are read-only through the
+reference, and owned children cannot be moved out of it. Nested loops,
+nested owned buffers, `continue`, `break`, `return`, scoped `defer`, imports
+and aliases follow the ordinary rules; the loop variable is uninitialized
+after a possibly empty loop.
+
+Rejected explicitly: owning loop variables (`own T*`), exclusive or raw
+element variables, mismatched element types, optional containers (test and
+bind them first) and owning temporaries such as `for x in make_buffer()`,
+which would leave the container without an owner to destroy it.
+
+The runtime fixture iterates owner-valued elements through nested loops with
+`break`, `continue`, an early `return` and scoped `defer`, then replaces and
+clears the container, and checks the W_DEBUG_ALLOC allocation balance across
+x86/x64 optimization variants, Wine and ARM64. The `--ast-required` variant is
+not run: `lib/safe_owned_vector.w` itself takes a generic function's address,
+an expression the AST-required front end does not yet support.
 
 ## Checked buffers and byte strings
 
@@ -1200,8 +1272,168 @@ after reset or release, and normal owner cleanup frees it automatically.
 
 This API uses ordinary lifetime contracts and audited copying; it does not
 trust manual borrow-registration counters in the legacy `lib.arena` API.
-Typed arena allocation, attached budgets, nonmoving concurrent allocation,
-and general raw/foreign-to-checked conversions remain separate work.
+Typed arenas, attached budgets and allocation with live views are described
+below, and raw/foreign-to-checked conversions under "Audited foreign
+boundaries".
+
+### Generic pointer-free buffers
+
+`import lib.safe_vector` provides the distinct checked owner
+`own WBuffer[T]*`. `T` may be a sized pointer-free scalar or record without
+fixed-array fields. Raw pointers, references, owners, zero-sized elements
+and records containing fixed arrays are rejected. Legacy `list[T]` keeps
+its existing behavior.
+
+`buffer_new[T]()` creates an empty buffer. `buffer_length[T]`,
+`buffer_get[T]` and `buffer_view[T]` borrow it shared; `buffer_push[T]`,
+`buffer_set[T]`, `buffer_pop[T]`, `buffer_clear[T]` and
+`buffer_view_mut[T]` borrow it exclusively. Explicit method calls such as
+`values.buffer_push[int](7)` and module aliases are accepted. Type
+arguments are explicit where a concrete buffer specialization cannot
+uniquely invert its generic argument shape.
+
+Shared and mutable views are checked inline slices tied to the buffer's
+borrow. A live view blocks every exclusive operation, including a push
+that would fit spare capacity. Mutation resumes after the last use.
+Moving the owner transfers the descriptor and allocation together; its
+scope-exit destructor releases both. Metadata is opaque and cannot be
+constructed, copied or modified from checked code. Get/set bounds, empty
+pop and allocation overflow are fatal checks. Allocation failure currently
+traps; fallible insertion with ownership recovery remains a separate gate.
+
+This is an audited runtime boundary: the compiler binds the accepted API
+and destructor to the exact resolved `lib/safe_vector.w` contents. The
+runtime uses private raw storage and descriptor construction; checked
+callers cannot invoke its private helpers. Explicit contracts have the
+same semantics without `--safe`.
+
+This step covers pointer-free sequential storage in #697. Owned-element
+storage, maps/sets, checked iteration and fallible insertion remain required;
+it does not close #697 or #644.
+
+### Generic owned-element buffers
+
+`import lib.safe_owned_vector` provides `own WOwnedBuffer[T]*`, an opaque
+container of unique `own T*` elements. `owned_buffer_new[T](maximum)` uses
+`-1` for unbounded storage or a nonnegative insertion limit. `T` can contain
+other unique owners, fixed arrays and checked callable fields. Recursive
+type cycles and externally borrowed fields remain rejected. Nested owned
+buffers preserve the generated destructor for each element specialization.
+
+`owned_buffer_push[T]` consumes an element; `owned_buffer_set[T]` consumes
+its replacement and destroys the old value recursively. `owned_buffer_pop[T]`
+returns ownership. `owned_buffer_clear[T]` and scope-exit destruction release
+elements in reverse order. `owned_buffer_get[T]` returns a shared reference
+tied to the buffer; a live reference blocks every exclusive operation,
+including insertion with spare capacity or an insertion that would fail.
+`owned_buffer_length[T]` borrows shared. Element addresses remain private.
+
+`owned_buffer_try_push[T]` consumes the argument and returns `optown T*`:
+absence means insertion succeeded, and presence returns the original element
+on limit, overflow or allocation failure. A failed growth preserves all
+existing elements, length, capacity and storage. The returned owner can be
+retried or destroyed by its scope. Bind and handle this result; discarding
+an owner-valued call is rejected by the existing checked-call contract.
+Infallible push traps on failure; new descriptor allocation and out-of-range
+get/set/pop also trap.
+
+The exact resolved runtime implementation is pinned. Private raw slots are
+cleared at every transfer, including the failed-insertion return path, and
+a per-specialization destructor uses generated recursive owner cleanup.
+User code cannot access metadata, forge the destructor or call private
+runtime helpers through a checked contract. These guarantees also hold
+without `--safe`.
+
+Thread rules see through the sealed descriptor: an owned buffer crosses to
+another thread, or is shared with one, exactly when its element type could
+(`safe_thread_reason` recurses into `T`). A thread-affine or unshareable
+marker anywhere in the element graph is reported under the containing field
+path, for example `thread payload field 'items.affinity' is explicitly
+thread-affine`.
+
+This extends the sequential-container deliverable in #697. Maps/sets and
+checked iteration retain their independent implementation and merge gates;
+#697 and #644 remain open.
+
+### Checked generic maps and sets
+
+`lib.safe_hash` supplies opaque `WMap[K, V]` and `WSet[K]` owners. Keys are
+`int`, `uint`, `byte`, `char`, `bool`, or enums (including aliases). Map values
+are sized, pointer-free scalars or records without fixed arrays. Raw/checked
+pointer keys and values, borrowed records, floats as keys, and user hashing or
+equality are rejected by this initial closed contract; maps keyed by owned
+values with checked user hashing and equality are `WKeyedMap` below.
+
+`map_new[K,V]`/`set_new[K]` construct owners. Length, contains, map get/get-or,
+and snapshots borrow shared; set/add, remove and clear require an exclusive
+receiver. Replacement copies pointer-free values. Missing `map_get` keys trap;
+`map_get_or` copies the fallback. `map_find` returns `optref[a] V*` tied to its
+receiver's lifetime and requires a presence check before access. A live result
+blocks every invalidating mutation, including insertion with spare capacity.
+Mutation resumes after its last use. All metadata stays private; ordinary
+`new`, field access and raw container aliases cannot create checked identity.
+
+`map_keys`, `map_values` and `set_values` return owned `WBuffer` snapshots.
+Their elements are copies, so they survive clearing or destroying the original.
+Range loops over their checked slices are available; direct checked container
+iteration remains a separate step. Snapshot order follows the table and has no
+stability guarantee. Scope exits, owner replacement and recursive destruction
+free the wrapper and table exactly once, including maps nested in owned buffers.
+
+The audited implementation and destructor are source-pinned. Changed/shadowed
+runtime sources cannot inherit the contract. Allocation follows the existing
+fatal-out-of-memory table policy; recoverable insertion is not claimed for
+this API. Legacy `map[K,V]`/`set[K]` retain their raw aliasing semantics.
+
+### Keyed maps with checked user hashing and equality
+
+`import lib.safe_keyed_map` provides `own WKeyedMap[K, V]*`, a map whose keys
+are owned values of any type admitted by `own K*` without a lifetime (plain
+records, owned record graphs, nested checked storage) and whose values are
+sized pointer-free `V`. Hashing and equality are user functions supplied at
+construction as checked function values:
+
+```w
+type NameHash = fn[](ref Name*) -> int
+type NameEqual = fn[](ref Name*, ref Name*) -> int
+
+own WKeyedMap[Name, int]* map = keyed_map_new[Name, int, NameHash, NameEqual](name_hash, name_equal)
+```
+
+The compiler requires exactly `fn[](ref K*) -> int` and
+`fn[](ref K*, ref K*) -> int` for the specialization's key type: owning,
+exclusive, optional, raw or other-key signatures are rejected with `safe:
+keyed map operations must be fn[](ref K*) -> int and fn[](ref K*, ref K*) ->
+int for its key type`. Both bodies are ordinary checked code, so they can only
+read the keys lent to them; checked code has no global or captured path back
+to the map, so they cannot re-enter it.
+
+`keyed_map_insert[K, V]` consumes its key and returns `optown K*`: absent when
+the key was new, or the argument itself when an equal key is already stored
+(the stored key is kept and its value replaced). `keyed_map_take` removes an
+entry and returns its key's ownership; `keyed_map_remove` removes and destroys
+it; `keyed_map_clear` and scope-exit destruction drop every key recursively.
+`keyed_map_length`, `contains`, `get` (trapping on a missing key), `get_or` and
+`find` borrow the map shared and take the probe as `ref K*`. `find` returns
+`optref[a] V*` tied to the map; a live result blocks insertion (even with
+spare capacity), removal, clearing, moving and destruction. Mutation resumes
+after its last use.
+
+Memory safety never depends on the user functions being consistent. Every
+probe sequence is bounded by the capacity, rehashing reuses stored hashes
+without calling user code, and the user code runs only while the map is
+consistent, before any slot changes. A nondeterministic hash or an equality
+that is never true makes lookups miss or equal keys repeat, as the runtime
+fixture's colliding, never-equal map shows; it cannot read freed or
+uninitialized storage. Growth and allocation failure trap; recoverable
+insertion is not claimed for this API.
+
+The map's metadata, slots, key destructor and the two stored code addresses
+are private. Trust binds to the pinned contents of `lib/safe_keyed_map.w` and
+its runtime closure: a changed or shadowed copy fails with `runtime
+implementation differs`, and private helpers are not checked contracts.
+Thread rules recurse into `K`, so a thread-affine key keeps the map on its
+thread. Iteration over keyed maps is not provided.
 
 ## Synchronous foreign byte I/O
 
@@ -1229,9 +1461,9 @@ Quantified callback signatures preserve the same mutable/shared contract.
 
 Trust binds to the resolved implementation and the pinned runtime closure.
 A changed or shadowed `safe_foreign.w` fails the runtime audit; a user wrapper
-with the same spelling receives no special privilege. General foreign
-adoption, ownership transfer, assembly contracts and typed arenas retain their
-separate acceptance gates in #698.
+with the same spelling receives no special privilege. Foreign adoption,
+ownership transfer and assembly contracts are the audited foreign boundaries
+below; typed arenas are described above.
 
 Validation: 16 positive/rejection contracts plus implementation-integrity tests
 pass on x86/x64 with and without `--safe`. The complete run passes 1,438 ordinary
@@ -1244,6 +1476,221 @@ Seven alternating compiles of fixed parent `8a3a0c79` measure median 1.66/1.67
 seconds and 116,704/116,704 KiB peak RSS. Compiler output and prior checked fixture
 bytes are identical. Every tracked W source stayed identical across the rebase
 onto the prerequisite's final proof commit. Existing coverage floors pass.
+
+## Typed object arenas
+
+`lib.safe_typed_arena` supplies opaque `own WTypedArena[T]*` owners. An arena
+owns individually allocated, nonmoving objects and a growable array of their
+addresses. `T` may be a sized plain value or a supported recursive owner shape,
+including owned buffers, nested arenas and checked callback capture records.
+Raw pointers, external borrowed fields and recursive ownership cycles are not
+accepted element shapes. Arena metadata and generated destructor pointers are
+private to the audited implementation.
+
+| Operation | Contract |
+| --- | --- |
+| `typed_arena_new[T](maximum)` | Create an empty arena; `-1` allows unlimited slots, `0` refuses insertion. |
+| `typed_arena_alloc[T](arena, initial)` | Allocate and initialize a plain `T`; return an exclusive reference borrowing the arena. |
+| `typed_arena_alloc_shared[T](arena, initial)` | Allocate and initialize a plain `T` under a shared borrow; return a shared reference borrowing the arena. |
+| `typed_arena_insert[T](arena, owner)` | Consume an object owner and return its position. |
+| `typed_arena_try_insert[T](arena, owner)` | Consume the input; return absent on success or the original owner on capacity, overflow or allocation failure. |
+| `typed_arena_length[T](arena)` / `typed_arena_slots[T](arena)` | Count live objects / positions assigned since the last reset. |
+| `typed_arena_get[T](arena, index)` / `typed_arena_get_mut[T](arena, index)` | Return an optional shared / exclusive reference; out-of-range or destroyed positions return absent. |
+| `typed_arena_destroy[T](arena, index)` | Destroy that object recursively once; return one for a live object, zero otherwise. |
+| `typed_arena_reset[T](arena)` | Destroy every remaining object and retain the slot allocation for reuse. |
+| `typed_arena_release[T](arena)` | Destroy every remaining object and free slot storage; the arena stays usable. |
+
+Insertion, exclusive allocation, per-object destruction, reset and release
+require exclusive borrowing, even when there is spare slot capacity. Live object
+references therefore block them, and arena transfer and drop. Mutation resumes
+after the last dependent use. Shared/exclusive returns and saved field
+references retain the arena's lifetime through ordinary functions, generics,
+branches and loops, with the same checking without `--safe`.
+
+**Allocation with live views.** `typed_arena_alloc_shared` needs only a shared
+borrow, so it can run while other shared views into the arena are live: earlier
+allocations, `typed_arena_get` results, or a shared parameter. Two facts make
+this sound:
+- Storage is nonmoving. Slot growth reallocates only the private address
+  array, which never escapes, and each object keeps its own allocation.
+- Initialization is disjoint. The new object is written before its address
+  is published, and no other view can reach it before that.
+
+The result is a shared view of a plain `T`. Destruction still needs an
+exclusive borrow, so it waits for every view. An exclusive view (`alloc`,
+`get_mut`) still excludes shared allocation. Because the allocation mutates
+through a shared borrow, a typed arena is never shared across threads
+(`has unsynchronized interior mutation`); transferring an owned arena is
+unaffected.
+
+Destroyed positions become holes; other positions remain stable until reset or
+release. Holes do not restore the `maximum` slot allowance. Positions are
+indices, not identity tokens across reset or between arenas. The maximum is a
+slot quota; byte budgets are the budget arenas below.
+
+Each live object has one generated destructor. Reset, release, early returns,
+lexical defer and arena destruction free nested owners exactly once. Failed
+`try_insert` preserves the input owner and existing slots. Infallible insertion
+and plain-value allocation trap on failure. There is no object relocation,
+implicit reference count or garbage collector. Costs are one allocation per
+object, a six-word arena descriptor and geometrically grown pointer slots;
+reset retains only those slots. Trust binds to resolved source content, so a
+changed or shadowed implementation cannot inherit the contract. Arenas are not
+iterable: destroyed positions are holes, so loops index with
+`typed_arena_slots` and `typed_arena_get`.
+
+### Budget arenas
+
+`own WArenaBudget*` is an opaque byte budget, created with
+`arena_budget_new(limit)`. `arena_budget_limit`, `arena_budget_used` and
+`arena_budget_remaining` read it. `budget_arena_new[T](budget, maximum)` borrows
+the budget exclusively and returns `own[b] WBudgetArena[T]*`, a typed arena that
+charges `sizeof(T)` bytes per live object to that budget.
+
+- It has the same operations under the `budget_arena_` prefix: `insert`,
+  `try_insert`, `alloc`, `get`, `get_mut`, `destroy`, `reset`, `release`,
+  `length`, `slots`.
+- `budget_arena_try_alloc[T]` returns `optrefmut[a] T*`. It is absent, with
+  nothing charged, when the budget or the slots refuse the object.
+- `budget_arena_remaining[T](arena)` reads the budget through the arena while
+  the arena holds it.
+- `try_insert` returns the owner when the budget is exhausted. `insert` and
+  `alloc` trap.
+- Destroy, reset, release and drop refund exactly what was charged. The budget
+  therefore always equals `sizeof(T)` times the arena's live objects, and it
+  is whole again once the arena is gone.
+- Only the object itself is charged: slot storage and storage that its fields
+  own are not.
+
+The budget arena is a labeled owner whose one group is its budget, so the mixed
+owner rules apply. The budget cannot move, be borrowed elsewhere, or back a
+second arena while the arena lives. An unlabeled `own WBudgetArena[T]*` is
+rejected, and so is any attempt to return the arena past the function that
+owns the budget. Dropping the arena refunds the budget, so its drop counts as a
+use of the budget at every exit. A budget declared after the arena's home,
+directly or through a holder record, is rejected with `safe: budget arena
+outlives the budget it borrows`. That is the same rule that keeps a lock guard
+from outliving its mutex.
+
+A spawned thread could outlive the budget, so the arena never crosses to one
+(`carries a borrowed lifetime`). Budget arenas are not iterable. The descriptor
+is eight words. Charging and refunding are one compare and one add or subtract
+per object.
+
+Contracts: `tests/safe_typed_arena_test.w` covers typed arenas and shared
+allocation, and `tests/safe_budget_arena_test.w` covers budgets. Each case runs
+on x86 and x64, with and without `--safe`. The runtime fixtures check the
+allocation balance under W_DEBUG_ALLOC across every exit path:
+`tests/safe_typed_arena_runtime_fixture.w` and
+`tests/safe_budget_arena_runtime_fixture.w`.
+
+## Audited foreign boundaries
+
+Raw code reaches checked code through audited modules. An audited module is
+ordinary W source that may use raw pointers, foreign calls and assembly. It is
+not checked; its function signatures are the contract that checked callers
+rely on. The stdlib's pinned runtime files are audited modules. A program
+attests one of its own by naming the file's SHA-256 on the import:
+
+```w
+import tests.safe_foreign_boundary_module unsafe "6ef6a19a7598bda552d3a607d1483eb7585d583f3fe34f99b2dc4eb3f7bca57d"
+```
+
+The digest is `sha256sum tests/safe_foreign_boundary_module.w`. The clause is `unsafe` followed by 64 lowercase hex digits in quotes, after the
+module path and any `as` alias. Anything else is rejected with `import
+attestation must be unsafe "<sha256>" with 64 lowercase hex digits`.
+
+**Trust binds to the resolved file.** Whenever checked code is compiled, the
+checker hashes the file the import resolved to. If the bytes differ from the
+digest, compilation fails at the import with `safe: audited module differs
+from its attestation`. This covers an edited module, another file that
+shadows the module name under an earlier `--import-root`, and a digest copied
+from a different module. Trust follows the file, not the name, and does not
+extend to the module's own imports: each raw file an audited module relies on
+needs its own attestation or a runtime pin. A pinned runtime file keeps its
+pin; attesting it with another digest fails. An attestation changes nothing
+when no checked code is compiled, and the streaming front end parses it
+unchanged.
+
+**What checked code may call.** A function of an attested module is callable
+from checked code when every parameter and its result is a plain scalar or
+plain record, a checked pointer, slice or view, or a quantified function
+contract. Any other signature carries raw values, and checked code calling it
+fails with `safe: audited module function has a raw signature; call it inside
+an unsafe block`. Inside an `unsafe:` block it is an ordinary raw call. Without
+an attestation, the module is checked like any other code, so its raw
+operations, global storage and assembly bodies are rejected under `--safe`.
+
+**Obligations of an audited module.** The checker trusts every value an
+audited function returns or stores through a checked parameter:
+- *Non-null and aligned:* `own`, `ref` and `refmut` results point at a live
+  object aligned for its type. Optional results are null or such a pointer.
+- *Initialized:* every field of a returned object holds a valid value of its
+  type, and owned fields are themselves valid owners.
+- *Provenance:* an `own T*` result comes from the W allocator (`new`), because
+  its drop calls the W allocator's free and its fields' destructors. A foreign
+  allocation is wrapped in `WForeign[T]` instead.
+- *Aliasing:* no other path writes through a `ref` result while it is live,
+  and no other path reads or writes through a `refmut` result. A result keeps
+  the lifetime its signature names, and the module retains no checked pointer
+  past the call that lent it.
+- *Ownership:* an owner passed in is consumed exactly once. The module either
+  keeps it, hands it to foreign code, or returns it, as `try_insert` does. It
+  never drops and returns the same owner.
+
+### Foreign owners
+
+`import lib.safe_foreign_owner` provides `own WForeign[T]*`, a checked owner
+of one object that foreign code allocated, together with the foreign function
+that releases it.
+
+| Operation | Signature | Who may call it |
+|---|---|---|
+| `foreign_adopt[T](raw, release)` | `(T*, WForeignRelease*) -> optown WForeign[T]*` | audited code |
+| `foreign_raw[T](owner)` | `(ref WForeign[T]*) -> T*` | audited code |
+| `foreign_disown[T](owner)` | `(own WForeign[T]*) -> T*` | audited code |
+| `foreign_close[T](owner)` | `(own WForeign[T]*) -> void` | checked code |
+
+`WForeignRelease` is `fn(void*) -> void`. Adoption takes ownership of the raw
+object on every path. A null pointer owns nothing and yields an absent owner.
+A pointer misaligned for `T` is released at once and yields an absent owner.
+The alignment is the largest power of two that divides `sizeof(T)`, up to the
+word size. Otherwise the owner holds the object until it is dropped, closed
+or disowned. Every drop path runs the release function exactly once: scope
+exits, early returns, loop iterations, replacement, assigning zero, owned
+record fields, and parameters a callee consumes. `foreign_raw` lends the object
+to one synchronous foreign call. `foreign_disown` hands it back to foreign
+code without releasing it.
+
+The owner is opaque. Checked code can move, lend, close or drop it, but cannot
+read its fields, construct one, take its raw pointer, adopt or disown. Those
+three calls have raw signatures, so only audited code makes them. A foreign
+transfer that can fail takes the owner and returns `optown WForeign[T]*`,
+which is present when the foreign side refused it. Foreign libraries state
+their own threading rules, and none is audited, so a foreign owner never
+crosses to another thread: `is a foreign object without a thread contract`,
+for spawned payloads and scoped arguments alike.
+
+Each adopted object costs one two-word descriptor allocation. Its drop is one
+indirect call to the release function and one free. On the x86-64 host, a
+million adopt, read and drop cycles take 0.06 s, against 0.02 s for the same
+objects allocated, read and freed by raw code: about 40 ns per object. The
+attestation check hashes each attested file once per checked compile.
+
+Contracts: `tests/safe_foreign_boundary_test.w` has 26 cases, each checked
+and compiled on x86 and x64 with and without `--safe`, and each rejected
+program leaves no binary. They cover attested adoption and release, failed
+transfers, null and misaligned adoption, edited, shadowed and foreign digests,
+a wrong attestation of a pinned file, malformed attestations, aliases,
+unattested raw modules and assembly, raw signatures inside and outside unsafe
+blocks, raw access, disowning and adoption from checked code, private fields,
+forged owners, use after close, threads, owned W results and attested
+assembly, and imports that trust does not follow.
+`tests/safe_foreign_owner_runtime_fixture.w` attests
+`tests/safe_foreign_boundary_module.w` and runs 20 rounds of every drop path,
+checking that each object is released exactly once and the W_DEBUG_ALLOC
+allocation balance. It runs under the loop, register and inlining variants
+on x86 and x64, Wine and arm64/qemu, and is a `safe_opt_diff_test` input.
 
 ## Cleanup and unsafe boundaries
 
@@ -1302,7 +1749,8 @@ The audited runtime exposes scalar `put_char`, `put_error` and `exit` calls,
 the concrete storage APIs above, and compiler-generated allocation,
 destruction and bounds operations. Import
 `lib.safe` for checked `safe_print_int` and `safe_println_int` formatting.
-Other runtime calls need an unsafe boundary. Source
+Other runtime calls need an unsafe boundary. Attested modules add their own
+checked contracts ("Audited foreign boundaries"). Source
 hashes in `compiler/safe_runtime.w` bind these contracts to their resolved
 implementations. A changed runtime or shadow import fails checking until its
 contract is reviewed and its pin updated. Merely importing a library does not
