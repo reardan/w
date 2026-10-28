@@ -10,6 +10,12 @@ libraries this design names below have since been replaced by the
 built-in `list`/`map`/`set`.
 Steps 3-4 of the recommendation at the bottom are done.
 
+Checked containers use this same convention with shared `ref` receiver
+contracts and scalar or shared-reference values. The checker retains the
+backing lifetime across implicit calls and verifies the resolved operations.
+Audited maps/sets and keyed maps also support direct traversal. See
+[safe_mode.md](safe_mode.md#checked-cursor-protocols-and-hash-iteration).
+
 Generators (steps 1-2 and 5) are implemented as stackful coroutines
 (model A): `generator int counter(int n)` declarations parse in
 `grammar/program.w` + `grammar/generator_decl.w`, `yield` in

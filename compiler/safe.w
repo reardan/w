@@ -1192,51 +1192,119 @@ int safe_owned_iteration_type(int type):
 	int kind = safe_kind(type)
 	if ((kind < 1) || (kind > 3)): return -1
 	int storage = safe_unqualified(safe_pointee(type))
-	if (safe_owned_buffer_element(storage) < 0): return -1
+	if ((safe_owned_buffer_element(storage) < 0) && (safe_hash_opaque(storage) == 0) && (safe_keyed_map_key(storage) < 0)): return -1
 	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
+# User cursors borrow one checked container shared. The cursor itself is a
+# plain int; no callback may mutate the backing object or transfer its owner.
+int safe_protocol_iteration_type(int type):
+	if ((type < 0) || safe_optional(type) || safe_slice(type) || safe_record(type)): return -1
+	int kind = safe_kind(type)
+	if ((kind < 1) || (kind > 3)): return -1
+	int storage = safe_unqualified(safe_pointee(type))
+	if (storage < 0): return -1
+	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
+void safe_implementation_check(int id, int binding, int callable);
+int safe_same_contract_type_at(int a, int b, int depth, int* remaining);
+
+
+void safe_protocol_iteration_check(int id, int iterator_type, int variable_type):
+	retained_iteration* protocol = retained_record_at(id).iteration
+	if (protocol == 0): return
+	for i in range(4):
+		retained_node call
+		call.binding = protocol.bindings[i]
+		call.op = 'G'
+		call.payload_text = protocol.names[i]
+		int binding = safe_call_binding(&call)
+		if (binding < 0): safe_error(id, c"safe: iterator operation has no checked implementation", -1)
+		retained_binding* callee = retained_bindings[binding]
+		int arity = 2
+		if (i == 0): arity = 1
+		if (callee.parameters.length != arity): safe_error(id, c"safe: iterator operation has wrong arity", -1)
+		int first = callee.parameters[0]
+		int remaining = 256
+		if ((safe_kind(first) != 2) || safe_optional(first) || (safe_same_contract_type_at(first, iterator_type, 0, &remaining) == 0)):
+			safe_error(id, c"safe: iterator operations require a shared container reference", -1)
+		if (arity == 2):
+			int cursor = safe_unqualified(callee.parameters[1])
+			if ((cursor < 0) || (strcmp(retained_types[cursor].name, c"int") != 0)):
+				safe_error(id, c"safe: iterator cursor must have type int", -1)
+		int result = safe_unqualified(callee.return_type)
+		if (i < 3):
+			if ((result < 0) || (strcmp(retained_types[result].name, c"int") != 0)):
+				safe_error(id, c"safe: iterator begin, done and next must return int", -1)
+		else:
+			int shared = (safe_kind(result) == 2) && (safe_slice(result) == 0) && (safe_record(result) == 0) && (safe_optional(result) == 0)
+			if ((safe_scalar_type(result) == 0) && (shared == 0)):
+				safe_error(id, c"safe: iterator values must be scalars or shared references", -1)
+			remaining = 256
+			if (safe_same_contract_type_at(result, variable_type, 0, &remaining) == 0):
+				safe_error(id, c"safe: incompatible iterator variable type", -1)
+			if (shared): safe_return_parameter(id, callee)
+		safe_implementation_check(id, binding, 0)
 
 
 int safe_iteration(int id, int next):
 	int iterator = safe_iterator_locals.get(id, -1)
 	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice or owned storage", -1)
-	int storage = safe_slice(retained_bindings[safe_locals[iterator]].type) == 0
-	int local = -1
+	int iterator_type = retained_bindings[safe_locals[iterator]].type
+	int storage = safe_slice(iterator_type) == 0
+	int hash = 0
+	if (storage):
+		int record = safe_unqualified(safe_pointee(iterator_type))
+		hash = safe_hash_opaque(record) || (safe_keyed_map_key(record) >= 0)
+	list[int] locals = new list[int]
 	int body = -1
 	int expression = -1
 	int child = safe_first[id]
 	while (child >= 0):
 		retained_record* n = retained_record_at(child)
 		if (n.kind == retained_local):
-			if (local >= 0): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
-			local = safe_index(n.binding)
+			if (locals.length && (hash == 0)): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
+			locals.push(safe_index(n.binding))
 		else if (n.kind == retained_expression_group): expression = safe_expr_root(child)
 		else if (n.kind == retained_statement): body = child
 		child = safe_next[child]
-	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
-	int type = retained_bindings[safe_locals[local]].type
-	int borrowed = safe_kind(type) == 2
+	if ((locals.length < 1) || (locals.length > 2) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
 	if (storage):
-		if (borrowed == 0): safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
-		# The hidden slot borrows the container; an owning temporary would
-		# have no owner to destroy it after the loop.
+		# The hidden slot borrows; owning call results need a named home so
+		# normal scope cleanup owns their destruction on every loop exit.
 		retained_node value
 		retained_node_load(expression, &value)
 		if ((safe_kind(value.semantic_type) == 1) && ((value.op == 'C') || (value.op == 'G') || (value.op == 'W'))):
 			safe_error(id, c"safe: owned-storage iteration requires a named owner or a borrow", -1)
-	if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
-	safe_type_check(id, type)
 	int guard = safe_add(id, -1, iterator, 8, -1, next)
-	int action = 6
-	if (borrowed): action = 9
-	int write = safe_add(id, -1, local, action, -1, -1)
-	safe_graph[write].iterator = iterator
-	safe_graph[write].next = safe_build(body, guard, next, guard)
-	safe_graph[guard].next = write
+	int writes = safe_build(body, guard, next, guard)
+	int i = locals.length
+	while (i > 0):
+		i = i - 1
+		int local = locals[i]
+		if (local < 0): safe_error(id, c"safe: unsupported iteration representation", -1)
+		int type = retained_bindings[safe_locals[local]].type
+		int borrowed = safe_kind(type) == 2
+		if (storage && (hash == 0) && (retained_record_at(id).iteration == 0) && (borrowed == 0)):
+			safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
+		if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
+		safe_type_check(id, type)
+		if (i == 0): safe_protocol_iteration_check(id, iterator_type, type)
+		int action = 6
+		if (borrowed): action = 9
+		int write = safe_add(id, -1, local, action, writes, -1)
+		safe_graph[write].iterator = iterator
+		writes = write
+	safe_graph[guard].next = writes
 	int capture = safe_add(id, expression, iterator, 1, guard, -1)
-	# A reference exists only on the body edge, never on an empty loop.
-	int initialize = 4
-	if (borrowed): initialize = 10
-	return safe_add(id, -1, local, initialize, capture, -1)
+	for j in range(locals.length):
+		int local = locals[j]
+		int initialize = 4
+		if (safe_kind(retained_bindings[safe_locals[local]].type) == 2): initialize = 10
+		capture = safe_add(id, -1, local, initialize, capture, -1)
+	locals.free()
+	return capture
 
 
 # Each clause owns its label expressions and body. Unmatched labels
@@ -3006,7 +3074,8 @@ void safe_function_check(int function):
 				retained_node value
 				retained_node_load(safe_expr_root(child), &value)
 				int type = safe_unqualified(value.semantic_type)
-				if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
+				if ((type >= 0) && (n.iteration != 0)): type = safe_protocol_iteration_type(type)
+				else if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
 				if ((type >= 0) && (safe_kind(type) == 2)):
 					retained_binding* binding = new retained_binding
 					binding.name = retained_intern(c"<iterator>")

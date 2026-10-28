@@ -1102,11 +1102,11 @@ The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
 `switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
 scalar conditional expressions. Range bounds and step evaluate once in source
 order; `continue` reaches the implicit index update. Switch labels retain
-their evaluation order and W's no-fallthrough behavior. Shared checked slices
-support scalar iteration as described below. Other container iteration,
-generators, arbitrary `goto`, GPU operations and legacy container operations
-remain unsupported. The audited concrete storage APIs
-below are the supported growable-container interface.
+their evaluation order and W's no-fallthrough behavior. Checked slices,
+audited owned buffers and maps/sets, and checked user cursor protocols
+support iteration as described below. Generators, arbitrary `goto`, GPU
+operations and legacy container operations remain unsupported. The audited
+storage APIs below provide the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
 
@@ -1142,8 +1142,8 @@ same rules. A reference to a previous element remains valid when the cursor
 advances because it points into the nonmutated backing storage.
 
 A checked mutable slice must first be reborrowed as a shared slice. Direct
-iteration of mutable slices, exclusive element iteration and user cursor
-protocols remain rejected. Legacy raw iteration retains its existing behavior
+iteration of mutable slices, exclusive element iteration remain rejected. Checked user cursor protocols
+are described below. Legacy raw iteration retains its existing behavior
 outside checked functions.
 
 ### Owned-storage iteration
@@ -1180,6 +1180,54 @@ clears the container, and checks the W_DEBUG_ALLOC allocation balance across
 x86/x64 optimization variants, Wine and ARM64. The `--ast-required` variant is
 not run: `lib/safe_owned_vector.w` itself takes a generic function's address,
 an expression the AST-required front end does not yet support.
+
+### Checked cursor protocols and hash iteration
+
+Checked user containers use the ordinary four-function cursor convention:
+
+```w
+int Bag_iter_begin(ref Bag* bag)
+int Bag_iter_done(ref Bag* bag, int cursor)
+int Bag_iter_next(ref Bag* bag, int cursor)
+ref[a] Item* Bag_iter_value(ref[a] Bag* bag, int cursor)
+```
+
+The value function may instead return a word-sized scalar. All four operations
+must take the same nonoptional shared container reference; begin, done and
+next return `int`. A reference result borrows from that container's declared
+lifetime. Generic containers specialize these functions with the container's
+actual type arguments, including multiple arguments and nested applications.
+The compiler checks the resolved implementations and signatures of these
+implicit calls, including forward declarations, imported aliases and generic
+bodies. Raw, owning or exclusive operation parameters, owning/exclusive/raw
+results, and a mismatched loop variable fail explicitly. These contracts apply
+with and without `--safe`.
+
+A loop evaluates its iterable once and holds a shared backing loan across
+begin, done, value and next. Each nested loop has its own cursor. `continue`
+advances it; `break` and `return` end its implicit reads. A saved or returned
+shared value extends the backing lifetime independently of the loop. The
+container must have an owner or be borrowed: an owning call result or bare
+allocation needs a named owner before iteration, so ordinary scope cleanup
+releases it exactly once on every exit. The cursor is an integer, not a
+separately allocated resource; the protocol performs no hidden allocation.
+User operations remain responsible for traversal order and termination, but
+their checked bodies cannot use an arbitrary cursor to bypass bounds checks.
+
+`for key in map` iterates an audited `WMap[K,V]` or `WSet[K]`, copying each
+integral key. `for key, value in map` additionally lends each map value as
+`ref V*`, including scalar values. `WKeyedMap[K,V]` uses the same forms and
+lends its owned keys as `ref K*`; ownership remains in the map. Explicit
+reference variables must be shared. Traversal skips empty and deleted slots;
+order is unspecified. Live iterators or saved references block insertion,
+replacement, removal, clear and destruction, even with spare capacity.
+Mutation resumes after the last possible read. Traversal allocates no
+snapshot and scans the table capacity once, with constant stack storage.
+
+`safe_cursor_iteration_test` checks accepted and rejected programs on x86 and
+x64, with/without `--safe`, through both check and compile; rejections leave
+no binary. Its runtime fixture covers nested loops, every ordinary loop exit,
+scoped cleanup and recursively owned keys with debug-allocator balance.
 
 ## Checked buffers and byte strings
 
@@ -1375,8 +1423,8 @@ Mutation resumes after its last use. All metadata stays private; ordinary
 
 `map_keys`, `map_values` and `set_values` return owned `WBuffer` snapshots.
 Their elements are copies, so they survive clearing or destroying the original.
-Range loops over their checked slices are available; direct checked container
-iteration remains a separate step. Snapshot order follows the table and has no
+Range loops over their checked slices and direct checked container iteration
+are available. Snapshot order follows the table and has no
 stability guarantee. Scope exits, owner replacement and recursive destruction
 free the wrapper and table exactly once, including maps nested in owned buffers.
 
@@ -1433,7 +1481,7 @@ are private. Trust binds to the pinned contents of `lib/safe_keyed_map.w` and
 its runtime closure: a changed or shadowed copy fails with `runtime
 implementation differs`, and private helpers are not checked contracts.
 Thread rules recurse into `K`, so a thread-affine key keeps the map on its
-thread. Iteration over keyed maps is not provided.
+thread. Iteration lends stored keys and values shared, as described above.
 
 ## Synchronous foreign byte I/O
 
