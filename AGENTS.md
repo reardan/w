@@ -231,7 +231,7 @@ working in this repo.
 
 ## Working on GitHub issues
 
-- Before starting any work, check open PRs (including drafts) and unmerged branches in `reardan/w` and `reardan/w-private` for overlap, and build on or report existing work instead of duplicating it.
+- Before starting any work, check open PRs (including drafts) and unmerged branches for overlap, and build on or report existing work instead of duplicating it.
 - When asked to implement an issue, keep working until the issue is fully
   complete. Don't stop after a first slice and don't block waiting on the
   maintainer: make reasonable calls, note them, and split independent parts
