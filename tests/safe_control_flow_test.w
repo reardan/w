@@ -145,8 +145,8 @@ void test_checked_defer():
 # the safe checker's container-iteration and selector rejections, which
 # no earlier case exercised.
 void test_unsupported_iteration_and_selectors():
-	# container iteration is named 'for' in the retained tree: rejected
-	# by the control-flow guard (compiler/safe.w safe_build)
-	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tlist[int] xs\n\txs.push(1)\n\tfor x in xs:\n\t\tpass\n\treturn 0\n", c"safe: unsupported control flow or deferred operation")
+	# container iteration over a built-in list is not checked storage:
+	# rejected by the iteration guard (compiler/safe.w safe_iteration)
+	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tlist[int] xs\n\txs.push(1)\n\tfor x in xs:\n\t\tpass\n\treturn 0\n", c"safe: iteration requires a checked shared slice or owned storage")
 	# a pointer selector is not scalar (compiler/safe.w safe_control_scalar)
 	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tchar* msg = \"x\"\n\tswitch msg:\n\t\tdefault: return 1\n\treturn 0\n", c"safe: range and switch expressions require scalar values")
