@@ -45,7 +45,14 @@ void malloc_provenance_grow():
 	else if (malloc_provenance_live * 4 >= capacity): capacity = capacity * 2
 	int bytes = capacity * 2 * __word_size__
 	int address = mmap(0, bytes, 3, 34)
-	if ((address < 0) && (address > -4096)): malloc_free_fatal(c"foreign provenance: bookkeeping allocation failed\n")
+	if ((address < 0) && (address > -4096)):
+		# The registry lock is held. A stack trace would allocate again,
+		# recursively growing this table or deadlocking on the same lock.
+		char* message = c"foreign provenance: bookkeeping allocation failed\n"
+		int length = 0
+		while (message[length] != 0): length += 1
+		write(2, message, length)
+		exit(1)
 	int* slots = cast(int*, address)
 	for i in range(malloc_provenance_capacity):
 		int pointer = malloc_provenance_table[i * 2]
