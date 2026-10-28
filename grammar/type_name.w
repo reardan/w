@@ -187,6 +187,7 @@ int type_name():
 	# count: a substituted type parameter may already be a pointer, so
 	# 'T*' with T = char* must build char**, not char* (pointer records
 	# store the base type's name, so base_name is stable across levels).
+	if (peek(c"*")): type = type_pointer_base(type)
 	char* base_name = type_get_name(type)
 	while (accept(c"*")):
 		pointer_indirection = pointer_indirection + 1
