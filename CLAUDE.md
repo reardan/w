@@ -232,6 +232,30 @@ imports them needs one `./wbuild` first.
 - Design docs for major features live in `docs/projects/*.md`;
   `docs/todo.txt` tracks the working/missing inventory.
 
+## Before starting any work: check open PRs and branches
+
+Work in flight often sits in open (frequently **draft**) PRs and unmerged
+branches for days, so `main` and the commit history do not show it. Before
+planning or writing code for any task — an issue, a follow-up round, a fix:
+
+- List the open PRs, drafts included, in **both** `reardan/w` and
+  `reardan/w-private` (`gh pr list --state open --repo <repo>`, or the
+  GitHub MCP `list_pull_requests` / `search_pull_requests`), and search
+  them for the area you are about to touch (directory, issue number,
+  feature name).
+- List recently pushed branches without a PR (`git ls-remote --heads
+  origin`, `git branch -r --sort=-committerdate`) and skim the newest ones
+  that look related.
+- If an open PR or branch already covers the task, build on it (branch
+  from its head, or push to it if you own it) or report it to the
+  requester instead of redoing it. Measure progress from that PR's state,
+  not from `main`.
+- Say in your plan or PR description which open PRs you checked and how
+  your work relates to them.
+
+(This rule exists because w-private#184 redid the Linux-kernel round that
+open draft w-private#182 had already finished, after checking only `main`.)
+
 ## Working on GitHub issues
 
 - When asked to implement an issue, keep working until the issue is fully
