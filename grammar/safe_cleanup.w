@@ -24,6 +24,72 @@ void safe_owner_clear_slot(int slot):
 	pop_eax_slot()
 
 
+# Compiler-inserted calls bind to their defining file, not a local or
+# parameter with the helper's spelling. Follow the same-name symbol chain
+# so cleanup remains constant-time in the usual unshadowed case.
+int safe_global_symbol(char* name, char* source):
+	sym_index_sync()
+	if (sym_name_index == 0): return -1
+	if ((name in sym_name_index) == 0): return -1
+	int position = sym_name_index[name]
+	while (position >= 0):
+		int symbol = sym_index_offset(position)
+		if ((table[symbol + 1] == 'D') || (table[symbol + 1] == 'U')):
+			if (ends_with(debug_file_name(sym_decl_file_index(symbol)), source)): return symbol
+		position = load_int(sym_index_prev + position * 4)
+	return -1
+
+
+int safe_global_function(char* name, char* source):
+	int symbol = safe_global_symbol(name, source)
+	if (symbol < 0): return -1
+	if (load_int(table + symbol + 10) != 2): return -1
+	return symbol
+
+
+int safe_runtime_call_begin(char* name, char* source):
+	int symbol = safe_global_function(name, source)
+	if (symbol < 0): error(c"safe: audited cleanup or provenance implementation is missing")
+	int saved = stack_pos
+	if (direct_callee_ok(symbol)):
+		direct_call_record(saved, 1, symbol)
+	else:
+		sym_emit_value(symbol, name)
+		push_slot()
+		direct_call_record(saved, 0, 0)
+	return saved
+
+
+# A user foreign contract is a nominal, same-file raw function. Its body is
+# audited with the containing module, never inherited from an import or an
+# identically named type. Drop declares opacity; send/sync declare threading.
+int safe_foreign_file_attested(char* source):
+	if (import_attested_paths == 0): return 0
+	for i in range(import_attested_paths.length):
+		if (import_path_matches_file(import_attested_paths[i], source)): return 1
+	return 0
+
+
+int safe_foreign_hook(int element, char* prefix, int require_definition = 0):
+	element = type_unqualified(element)
+	if ((type_get_pointer_level(element) != 0) || (type_num_args(element) == 0)): return -1
+	if (safe_foreign_file_attested(debug_file_name(type_decl_file_index(element))) == 0): return -1
+	char* name = strjoin(prefix, type_get_name(element))
+	int symbol = safe_global_symbol(name, debug_file_name(type_decl_file_index(element)))
+	free(name)
+	if (symbol < 0): return -1
+	if (require_definition && (table[symbol + 1] != 'D')):
+		error(c"safe: audited foreign hook requires a definition in its type's module")
+	if ((load_int(table + symbol + 10) != 2) || (sym_num_args(symbol) != 1) || (load_int(table + symbol + 6) != type_lookup(c"void"))):
+		error(c"safe: audited foreign hook requires void hook(Type*)")
+	int parameter = type_unqualified(sym_param_type(symbol, 0))
+	if ((type_safe_kind(parameter) != 0) || (type_get_pointer_level(parameter) != 1)):
+		error(c"safe: audited foreign hook requires void hook(Type*)")
+	if (type_unqualified(type_lookup_previous_pointer(parameter)) != element):
+		error(c"safe: audited foreign hook requires void hook(Type*)")
+	return symbol
+
+
 # Generated destructor calls have no source expression for the safety pass
 # to resolve. Match the sealed type and the already-defined helper against
 # the same audited source; safe_audit_runtime also verifies its content hash.
@@ -35,6 +101,8 @@ char* safe_owner_drop_helper(int element):
 	# The helper's parameter points at this record, except that every
 	# WSafeGuard[T] instance shares one helper over its mutex's lock word.
 	int pointee = element
+	int foreign = safe_foreign_hook(element, c"__w_foreign_drop_")
+	if (foreign >= 0): return strjoin(c"__w_foreign_drop_", name)
 	# Dropping an unjoined checked thread handle waits for its child.
 	if (ends_with(source, c"/lib/safe_thread.w")):
 		if (strcmp(name, c"WSafeThread") == 0): helper = c"__w_safe_thread_drop"
@@ -85,7 +153,7 @@ char* safe_owner_drop_helper(int element):
 	else if (strcmp(name, c"WOwnedIntBuffer") == 0): helper = c"__w_owned_int_buffer_drop"
 	else if (strcmp(name, c"WByteArena") == 0): helper = c"__w_byte_arena_drop"
 	if (helper == 0): return 0
-	int symbol = sym_lookup(helper)
+	int symbol = safe_global_function(helper, source)
 	if (symbol < 0): error(c"safe: audited destructor implementation is missing")
 	if ((table[symbol + 1] != 'D') || (strcmp(debug_file_name(sym_decl_file_index(symbol)), source) != 0)):
 		error(c"safe: audited destructor resolved to a different implementation")
@@ -97,6 +165,25 @@ char* safe_owner_drop_helper(int element):
 	if ((pointee < 0) || (type_unqualified(type_lookup_previous_pointer(parameter)) != pointee)):
 		error(c"safe: audited destructor signature differs from its contract")
 	return helper
+
+
+# Validate owner-valued calls, including calls through a checked function
+# value. The runtime is disabled unless the linked program attests a module.
+# A nominal foreign destructor deliberately replaces W allocator provenance.
+void safe_foreign_owner_result(int type):
+	if (type_safe_kind(type) != 1): return
+	int element = type_unqualified(type_lookup_previous_pointer(type))
+	int size = type_get_size(element)
+	if (safe_foreign_hook(element, c"__w_foreign_drop_") >= 0): size = 0 - size
+	int value = push_slot()
+	int call_stack = safe_runtime_call_begin(c"__w_foreign_owner_check", c"/lib/memory_provenance.w")
+	push_slot_copy(value)
+	mov_eax_int(size)
+	push_slot()
+	mov_eax_int(type_get_kind(type_unqualified(type)) == type_kind_optown)
+	push_slot()
+	rt_call_end(call_stack)
+	drop_slots(1)
 
 
 # Drop owned fields in reverse declaration order, then the allocation.
@@ -114,7 +201,7 @@ void safe_owner_drop_value(int type, int depth, int* remaining):
 	int element = type_lookup_previous_pointer(type)
 	char* helper = safe_owner_drop_helper(element)
 	if (helper != 0):
-		int helper_stack = rt_call_begin(helper)
+		int helper_stack = safe_runtime_call_begin(helper, debug_file_name(type_decl_file_index(type_unqualified(element))))
 		push_slot_copy(object_slot)
 		rt_call_end(helper_stack)
 		drop_slots(1)
@@ -129,7 +216,7 @@ void safe_owner_drop_value(int type, int depth, int* remaining):
 			add_eax_int32(type_get_field_offset_at(element, field))
 			promote(field_type)
 			safe_owner_drop_value(field_type, depth + 1, remaining)
-	int call_stack = rt_call_begin(c"free")
+	int call_stack = safe_runtime_call_begin(c"free", c"/lib/memory.w")
 	push_slot_copy(object_slot)
 	rt_call_end(call_stack)
 	drop_slots(1)
@@ -149,7 +236,7 @@ void safe_owner_drop_slot(int slot, int type):
 	if (recursive == 0):
 		int done = be_ctrl_block()
 		be_br_zero(done)
-		int call_stack = rt_call_begin(c"free")
+		int call_stack = safe_runtime_call_begin(c"free", c"/lib/memory.w")
 		push_slot_copy(slot)
 		rt_call_end(call_stack)
 		mov_eax_int(0)

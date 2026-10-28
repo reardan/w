@@ -26,6 +26,9 @@ int buffer_result_type(int type):
 	return type_get_slice_value(buffer_element_type(type))
 
 
+void safe_foreign_owner_result(int type);
+
+
 # Emit the bounds-trap block: call helper_name(ebx, eax) — the offending
 # index in ebx, the length/limit it violated in eax (issue #228). Reached
 # only on the trap path, so register state and the machine stack are
@@ -313,6 +316,7 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 		if (callee_type != 4): promote(callee_type)
 		call_eax()
 	pop_to(s)
+	safe_foreign_owner_result(declared_return)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos

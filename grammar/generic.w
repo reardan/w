@@ -1,3 +1,6 @@
+void safe_foreign_owner_result(int type);
+
+
 /*
 Generics with explicit instantiation (docs/projects/generics.md).
 
@@ -1633,6 +1636,7 @@ int generic_call_infer_expr(int def):
 		generic_inst_emit_callee(inst)
 		call_eax()
 	pop_to(s)
+	safe_foreign_owner_result(return_type)
 	last_call_return_type = return_type
 	last_call_end = codepos
 	return type_value(return_type)

@@ -1,3 +1,4 @@
+# wbuild: deps=tests/safe_foreign_contract_runtime_fixture.w deps=tests/safe_foreign_contract_module.w
 # wbuild: x64
 # wbuild: timeout=1800000
 # wbuild: deps=tests/safe_opt_order_fixture.w deps=tests/safe_opt_order_manual_fixture.w deps=tests/safe_opt_bounds_fixture.w deps=tests/safe_opt_log.w

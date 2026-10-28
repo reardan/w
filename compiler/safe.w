@@ -316,11 +316,15 @@ void safe_borrowed_copy(safe_borrowed* target, safe_borrowed* source, int count)
 int safe_return_parameter(int id, retained_binding* binding);
 
 
+int safe_attested_opaque(int type);
+
+
 int safe_plain(int type, int depth):
 	type = safe_unqualified(type)
 	if ((type < 0) || (depth > 32)): return 0
 	retained_type* t = retained_types[type]
 	if (t.pointer_level || safe_kind(type)): return 0
+	if (safe_attested_opaque(type)): return 0
 	if (((t.kind == 0) && (t.fields.length > 0)) || (t.kind == type_kind_array)):
 		if (t.kind == type_kind_array): return safe_plain(t.target, depth + 1)
 		for i in range(t.fields.length):
@@ -515,6 +519,18 @@ int safe_hash_opaque(int type):
 
 
 # The audited WForeign[T] owner of a foreign object (lib/safe_foreign_owner.w).
+int safe_attested_hook(int type, char* prefix):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (safe_trusted(record.source) != 2)): return 0
+	return safe_foreign_hook(record.origin, prefix, 1) >= 0
+
+
+int safe_attested_opaque(int type):
+	return safe_attested_hook(type, c"__w_foreign_drop_")
+
+
 int safe_foreign_record(int type):
 	type = safe_unqualified(type)
 	if type < 0: return 0
@@ -525,6 +541,7 @@ int safe_foreign_record(int type):
 
 
 int safe_opaque(int type):
+	if (safe_attested_opaque(type)): return 1
 	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type) || safe_foreign_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
@@ -599,7 +616,7 @@ int safe_thread_sealed(int type):
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
 	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
-	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type)): return 0
+	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type) || safe_attested_opaque(type)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -637,8 +654,17 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
-	# Foreign libraries state their own threading rules; none is audited.
-	if (safe_foreign_record(type)): return c"is a foreign object without a thread contract"
+	# Foreign threading is an explicit assertion in the attested type's
+	# defining file. Sharing also requires transfer (release may run there).
+	int foreign = safe_attested_opaque(type)
+	int foreign_type = type
+	if (safe_foreign_record(type)):
+		foreign = 1
+		foreign_type = safe_pointee(retained_types[type].fields[0].type)
+	if (foreign):
+		if (safe_attested_hook(foreign_type, c"__w_foreign_send_") == 0): return c"is a foreign object without a thread contract"
+		if (sharing && (safe_attested_hook(foreign_type, c"__w_foreign_sync_") == 0)): return c"is a foreign object without a shared thread contract"
+		return 0
 	# A shared typed arena could allocate on two threads at once
 	# (typed_arena_alloc_shared mutates through a shared borrow).
 	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
@@ -3226,6 +3252,9 @@ void safe_check_finish():
 	int wasm = (target_isa == 2) && (target_os == 3)
 	if ((darwin == 0) && (wasm == 0) && ((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, win64, arm64_darwin and wasm targets are supported")
 	safe_audit_runtime()
+	if ((import_attested_paths != 0) && import_attested_paths.length):
+		int provenance = sym_address(c"malloc_provenance_enabled")
+		if (provenance): save_i(data + provenance - data_offset, 1, word_size)
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
 	safe_next = cast(int*, malloc(count * __word_size__))

@@ -1666,10 +1666,11 @@ The owner is opaque. Checked code can move, lend, close or drop it, but cannot
 read its fields, construct one, take its raw pointer, adopt or disown. Those
 three calls have raw signatures, so only audited code makes them. A foreign
 transfer that can fail takes the owner and returns `optown WForeign[T]*`,
-which is present when the foreign side refused it. Foreign libraries state
-their own threading rules, and none is audited, so a foreign owner never
-crosses to another thread: `is a foreign object without a thread contract`,
-for spawned payloads and scoped arguments alike.
+which is present when the foreign side refused it. Foreign libraries state their own threading rules. A foreign owner remains
+thread-affine unless its attested payload module declares the explicit
+thread contracts described below. Unmarked owners retain the diagnostic
+`is a foreign object without a thread contract`, for spawned payloads and
+scoped arguments alike.
 
 Each adopted object costs one two-word descriptor allocation. Its drop is one
 indirect call to the release function and one free. On the x86-64 host, a
@@ -3578,3 +3579,77 @@ errors moved earlier; its updated rejection test and the subsequent complete
 ordinary/instrumented runs pass. Every tracked W source is identical before
 and after rebasing onto the prerequisite's final validation commit. This step
 supports #697/#698 under #644; their remaining deliverables stay open.
+
+### Nominal foreign types and thread contracts
+
+An attested module can expose its own opaque record `Resource` by defining
+`void __w_foreign_drop_Resource(Resource* value)` in the same file. The hook declaration
+must precede owning uses of the type; its matching definition may follow
+and is required by the final contract check. It releases the complete object,
+including its descriptor; generated cleanup does not also free that object.
+The compiler checks the exact nominal parameter, void result, defining file,
+and resolved function. A local or parameter with the same spelling cannot
+replace a compiler-inserted cleanup call. Ordinary records without this hook
+retain their existing structural semantics.
+
+Checked callers use `own Resource*`, `ref Resource*`, and `refmut Resource*`
+through the module's checked signatures. They cannot construct the record,
+copy it by value, or access any field, even pointer-free fields. Owners may
+be nested in checked owning records and containers; every supported cleanup
+exit calls the hook exactly once. The module's attestation covers the hook
+and its private representation. These names are ordinary W functions, so
+there is no new declaration syntax or legacy pointer ABI.
+
+Two additional same-file hooks declare audited thread obligations:
+
+```w
+void __w_foreign_send_Resource(Resource* value):
+	pass
+
+void __w_foreign_sync_Resource(Resource* value):
+	pass
+```
+
+These declaration bodies are never called by the thread checker. `send`
+asserts that exclusive ownership, access and destruction can move to another
+thread. `sync`, together with `send`, asserts that all operations exposed
+through shared references are safe concurrently. Exclusive mutation still
+requires `refmut`. Omitting either hook retains the corresponding rejection.
+For `WForeign[T]`, the hooks belong to `T`'s attested defining module and also
+cover the recorded release function. An unrelated module, a same-spelled
+record, a wrong signature, or an unattested helper grants no permission.
+
+### Runtime allocator provenance at foreign boundaries
+
+Programs with attested imports enable an exact live-allocation registry in
+their initial data image. Owner-valued call results, including checked
+function-pointer and generic calls, are checked before use: a nonoptional
+result cannot be null, and a normal `own T*` must identify the start of a
+live W allocation containing at least `sizeof(T)` bytes. Interior, freed,
+foreign-allocator, undersized and arbitrary unmapped addresses fail with a
+`foreign owner:` diagnostic without reading through the returned pointer.
+Optional null results remain valid. A nominal foreign type with its own
+destructor instead checks nullness and alignment; its custom allocator is
+part of the audited contract.
+
+The registry tracks malloc/free/realloc, including failed realloc recovery
+and allocations transferred between threads. Bookkeeping uses mmap storage
+and a separate lock when thread heaps are installed; it never recurses into
+the allocator. Lookup is expected constant time. The table holds two words
+per slot, grows with peak live allocations and compacts tombstones under
+churn. It is process-lifetime metadata, not an allocation owned by a program
+value. Programs without attestations leave registration disabled.
+
+These checks establish allocator provenance and extent, not initialization,
+uniqueness, type identity, or recursive validity of fields. Those remain
+explicit obligations of audited code; source attestation is not a proof of
+its implementation. Raw legacy calls retain their existing representation.
+
+On this Linux x64 host, seven-run medians for one million malloc/write/free
+cycles were 0.0291 s with registration disabled and 0.0499 s enabled, about
+21 ns per cycle for bookkeeping. This microbenchmark isolates registration;
+it does not include the additional owner-result lookup or a foreign call.
+Tombstone reuse keeps repeat-address churn constant-time. The contract and
+runtime tests exercise invalid results, indirect and inferred-generic calls,
+helper shadowing, failed realloc, hash collisions, growth, and concurrent
+allocation/transfer under both Linux word sizes.

@@ -426,9 +426,22 @@ char* th_locked_realloc(void* old, int oldlen, int newlen):
 
 # Called by thread_spawn before the first clone (main thread, no
 # worker exists yet, so the plain stores below race with nothing).
+int th_provenance_lock_word
+
+
+void th_provenance_acquire():
+	while (atomic_cas(&th_provenance_lock_word, 0, 1) != 0): th_yield()
+
+
+void th_provenance_release():
+	atomic_cas(&th_provenance_lock_word, 1, 0)
+
+
 void thread_heap_install():
 	if (th_installed): return
 	th_installed = 1
+	malloc_provenance_lock_hook = cast(int, th_provenance_acquire)
+	malloc_provenance_unlock_hook = cast(int, th_provenance_release)
 	malloc_init_mode()
 	if (malloc_debug_mode):
 		malloc_hook_set(cast(int, th_locked_malloc), cast(int, th_locked_free), cast(int, th_locked_realloc))

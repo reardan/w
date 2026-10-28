@@ -48,6 +48,7 @@ void malloc_init_mode();
 import lib.linux
 import lib.memory_freelist
 import lib.memory_debug
+import lib.memory_provenance
 
 
 int malloc_mode_determined /* 0 until the first malloc/free/realloc call, or malloc_force_debug_mode() */
@@ -192,14 +193,18 @@ type __malloc_hook_malloc_callback = fn(int) -> void*
 
 void* malloc(int size):
 	if (malloc_size_invalid(size)): return malloc_reject_size(size)
-	if (malloc_hook_malloc != 0): return cast(void*, (cast(__malloc_hook_malloc_callback*, malloc_hook_malloc))(size))
-	return malloc_backend(size)
+	void* result
+	if (malloc_hook_malloc != 0): result = cast(void*, (cast(__malloc_hook_malloc_callback*, malloc_hook_malloc))(size))
+	else: result = malloc_backend(size)
+	if (malloc_provenance_enabled): malloc_provenance_record(result, size)
+	return result
 
 
 type __malloc_hook_free_callback = fn(void*) -> int
 
 
 int free(void* mem_address):
+	if (malloc_provenance_enabled): malloc_provenance_forget(mem_address)
 	if (malloc_hook_free != 0): return (cast(__malloc_hook_free_callback*, malloc_hook_free))(mem_address)
 	return malloc_backend_free(mem_address)
 
@@ -209,7 +214,16 @@ int free(void* mem_address):
 type __malloc_hook_realloc_callback = fn(void*, int, int) -> char*
 
 
-char *realloc(void* old, int oldlen, int newlen):
+char* realloc(void* old, int oldlen, int newlen):
 	if (malloc_size_invalid(newlen)): return cast(char*, malloc_reject_size(newlen))
-	if (malloc_hook_realloc != 0): return cast(char*, (cast(__malloc_hook_realloc_callback*, malloc_hook_realloc))(old, oldlen, newlen))
-	return malloc_backend_realloc(old, oldlen, newlen)
+	int provenance_size = -1
+	if (malloc_provenance_enabled):
+		provenance_size = malloc_provenance_size(old)
+		malloc_provenance_forget(old)
+	char* result
+	if (malloc_hook_realloc != 0): result = cast(char*, (cast(__malloc_hook_realloc_callback*, malloc_hook_realloc))(old, oldlen, newlen))
+	else: result = malloc_backend_realloc(old, oldlen, newlen)
+	if (malloc_provenance_enabled):
+		if (result != 0): malloc_provenance_record(result, newlen)
+		else if (provenance_size >= 0): malloc_provenance_record(old, provenance_size)
+	return result
