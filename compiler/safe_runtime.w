@@ -5,10 +5,11 @@
 import lib.sha256
 
 char* safe_runtime_digest(char* path):
+	if (ends_with(path, c"/lib/memory_provenance.w")): return c"7058d2771dd74852ea8438f2e880372ef2860b09c50b2569dd5b999f491560fb"
 	if (ends_with(path, c"/lib/safe_foreign_owner.w")): return c"0bddc7c2a00a2478f14e9aa0ab6b472e5f9c3ef20fcd5c5c56771f584b7d682e"
-	if (ends_with(path, c"/lib/safe_typed_arena.w")): return c"93ea2de75ad2609d3d62578e48a75c8fc9eec565d47ec2f940a0c533780ee4d2"
-	if (ends_with(path, c"/lib/safe_keyed_map.w")): return c"4ac8798410a01979b79986efaf3f116cb2e48af3bd057085e7b08254569eba3f"
-	if (ends_with(path, c"/lib/safe_hash.w")): return c"47492fd6d7b8649271aa13bee1925263fa69d2dff8a617be77ed4b6248ff89f0"
+	if (ends_with(path, c"/lib/safe_typed_arena.w")): return c"a51e590b63b45371f40ef1b793a45415a15a472fa9156dbb7be85a41efb8567e"
+	if (ends_with(path, c"/lib/safe_keyed_map.w")): return c"81d55248c6cc3e43a16ca73b9a701af63a7e20172767c94a8d598be5bf180dde"
+	if (ends_with(path, c"/lib/safe_hash.w")): return c"d17e7e8030b112ef4532d71b1c1142f24dff5242fcba7b7576b86caa9bc59660"
 	if (ends_with(path, c"/lib/safe_owned_vector.w")): return c"a2c00bac9caea4e5ad93e427ea794f80603fcd6ca610963c5ad210915e9a2630"
 	if (ends_with(path, c"/lib/safe_vector.w")): return c"d430d21aaa3f39358a4ca381f6d519ae5f2ec90de9ed7aa3cfabba1db6c76757"
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
@@ -52,7 +53,7 @@ char* safe_runtime_digest(char* path):
 	# malloc_host_freelist_mode only fixes the backend choice before the
 	# first allocation; memory_debug retries a failed free-time mprotect
 	# after draining its quarantine. No allocation, bounds or output change.
-	if (ends_with(path, c"/lib/memory.w")): return c"faa38900bd8d36a0d0a7bb830bb182d15c08383087be8759892311b02a5aa1cd"
+	if (ends_with(path, c"/lib/memory.w")): return c"6f777b0997260ae2c4ea8c527ad70b916a79d17e916148a70f901c9935699b7a"
 	if (ends_with(path, c"/lib/memory_debug.w")): return c"e2ee8be6fca7a3510eb1cba141b6fd1702dc001a68a163e10600b36f906c3926"
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
@@ -68,7 +69,7 @@ char* safe_runtime_digest(char* path):
 	# allocation are unchanged.
 	if (ends_with(path, c"/lib/signal.w")): return c"62ee27c31dbac1e17f4390b2824ca74e0279d9b039af6be8b005b67b2e148d57"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"
-	if (ends_with(path, c"/lib/thread_heap.w")): return c"3f24f1928dba3f28eb26a133a807fe1bb87225b4fc643e0c2fb72ecd8953124e"
+	if (ends_with(path, c"/lib/thread_heap.w")): return c"d41ee413ab1b5f636599f62d7526c4d4b269010073e20d58810441fa3d68b01f"
 	# st_call_site accepts LLVM's indirect call forms; reads stay bounded
 	# by the same st_base check.
 	if (ends_with(path, c"/lib/stack_trace.w")): return c"40acb1c77dba5d72aa0b2de333c115bc7284626ab1d114599c79fa4bb17a7b52"

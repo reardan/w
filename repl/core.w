@@ -289,7 +289,7 @@ void repl_thread_snapshot_take():
 	repl_thread_snapshot_count = repl_thread_scan(repl_thread_snapshot)
 
 
-# Addresses of the session allocator's three hook words (lib/memory.w),
+# Addresses of the session allocator and provenance lock hooks,
 # found once, before any entry can shadow their names.
 int* repl_hook_words
 # 1 while a rollback kept the thread runtime the hooks point into.
@@ -321,7 +321,9 @@ void repl_threads_enable():
 	repl_hook_words[0] = sym_address(c"malloc_hook_malloc")
 	repl_hook_words[1] = sym_address(c"malloc_hook_free")
 	repl_hook_words[2] = sym_address(c"malloc_hook_realloc")
-	for i in range(3): asserts(c"session allocator hooks missing", repl_hook_words[i] != 0)
+	repl_hook_words[3] = sym_address(c"malloc_provenance_lock_hook")
+	repl_hook_words[4] = sym_address(c"malloc_provenance_unlock_hook")
+	for i in range(5): asserts(c"session allocator hooks missing", repl_hook_words[i] != 0)
 	repl_threads_enabled = 1
 
 
@@ -368,14 +370,14 @@ void repl_hooks_restore(int kept_end):
 	if (repl_hook_words == 0): return;
 	int boundary = code_offset + kept_end
 	int stale = 0
-	for i in range(3):
+	for i in range(5):
 		int target = load_word(cast(char*, repl_hook_words[i]))
 		if ((target != 0) && (target >= boundary) && (target < code_offset + code_size)): stale = 1
 	if (stale == 0): return;
 	if (repl_keep_code):
 		repl_thread_runtime_kept = 1
 		return;
-	for i in range(3): save_word(cast(char*, repl_hook_words[i]), 0)
+	for i in range(5): save_word(cast(char*, repl_hook_words[i]), 0)
 	repl_thread_runtime_kept = 0
 
 
@@ -835,6 +837,7 @@ struct repl_state:
 	int number_of_args
 	int type_count
 	int imported_count
+	int attestations
 	int alias_base
 	int alias_count
 	int plain_base
@@ -875,6 +878,8 @@ void repl_state_capture(repl_state* st):
 	st.number_of_args = number_of_args
 	st.type_count = type_count()
 	st.imported_count = imported_count
+	st.attestations = 0
+	if (import_attested_paths != 0): st.attestations = import_attested_paths.length
 	st.alias_base = import_alias_base
 	st.alias_count = import_alias_count
 	st.plain_base = import_plain_base
@@ -891,6 +896,13 @@ void repl_state_capture(repl_state* st):
 # rollback restores.
 void repl_state_restore(repl_state* st):
 	retained_rollback(&st.retained)
+	# Attestation is a declaration in the rolled-back entry, not permanent
+	# permission for a later import reusing the same resolved source path.
+	if (import_attested_paths != 0):
+		while (import_attested_paths.length > st.attestations):
+			free(import_attested_paths.pop())
+			free(import_attested_digests.pop())
+			import_attested_nodes.pop()
 	# Retained source IDs are reused after rollback: no trust or checker
 	# cache may outlive the source it was computed for.
 	safe_session_sync_sources()
@@ -1632,6 +1644,12 @@ void repl_inprocess_setup():
 	else: define_asm_functions()
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+	# A later entry may introduce an attested foreign boundary. Track the
+	# session allocator from its first allocation so existing owners can
+	# cross that boundary too. The compiler's host allocator stays separate.
+	int provenance = sym_address(c"malloc_provenance_enabled")
+	asserts(c"session allocation provenance missing", provenance != 0)
+	save_i(data + provenance - data_offset, 1, word_size)
 	# The auto-imported runtime closure is audited, as in link_impl.
 	safe_trust_sources(0)
 

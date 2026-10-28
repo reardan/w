@@ -177,6 +177,12 @@ const int retained_semantic_columns = 10
 # compiled without the expression arena (compiler/module_dependencies.w).
 const int retained_op_warning = 137
 
+# Resolved implicit cursor calls. Arena-owned with the enclosing loop.
+struct retained_iteration:
+	int* bindings
+	char** names
+
+
 # P1.2b: storage of every node but an expression operand.
 struct retained_record:
 	int kind
@@ -207,6 +213,7 @@ struct retained_record:
 	char* tile_payload
 	char* function_payload
 	retained_initializer* initializer
+	retained_iteration* iteration
 
 struct retained_checkpoint:
 	char* pending_import
@@ -542,6 +549,7 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 	node.tile_payload = 0
 	node.function_payload = 0
 	node.initializer = 0
+	node.iteration = 0
 	return node
 
 

@@ -41,6 +41,8 @@ map[int, int] safe_iterator_locals
 # access checks, scope invalidation and reborrow ancestry.
 struct safe_borrowed:
 	int[32] roots
+	# Writable storage excludes shared external lifetime dependencies.
+	int[32] writable
 	int[32] parents
 
 list[safe_borrowed*] safe_components
@@ -292,6 +294,7 @@ int safe_field_group(int type, int field_type, int component):
 void safe_borrowed_clear(safe_borrowed* value):
 	for i in range(32):
 		value.roots[i] = -1
+		value.writable[i] = -1
 		value.parents[i] = -1
 
 
@@ -310,10 +313,14 @@ void safe_borrowed_copy(safe_borrowed* target, safe_borrowed* source, int count)
 	if (target == 0): return
 	for i in range(count):
 		target.roots[i] = source.roots[i]
+		target.writable[i] = source.writable[i]
 		target.parents[i] = source.parents[i]
 
 
 int safe_return_parameter(int id, retained_binding* binding);
+
+
+int safe_attested_opaque(int type);
 
 
 int safe_plain(int type, int depth):
@@ -321,6 +328,7 @@ int safe_plain(int type, int depth):
 	if ((type < 0) || (depth > 32)): return 0
 	retained_type* t = retained_types[type]
 	if (t.pointer_level || safe_kind(type)): return 0
+	if (safe_attested_opaque(type)): return 0
 	if (((t.kind == 0) && (t.fields.length > 0)) || (t.kind == type_kind_array)):
 		if (t.kind == type_kind_array): return safe_plain(t.target, depth + 1)
 		for i in range(t.fields.length):
@@ -453,7 +461,7 @@ int safe_owned_storage_element(int type):
 
 
 # WBudgetArena[T]: a typed arena that also borrows a WArenaBudget
-# exclusively, so it is only ever a labeled owner own[b] WBudgetArena[T]*
+# shared, so it is only ever a labeled owner own[b] WBudgetArena[T]*
 # (safe_mixed_owned_shape). Holes make it non-iterable, like WTypedArena.
 int safe_budget_arena_element(int type):
 	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WBudgetArena$", 8)
@@ -515,6 +523,18 @@ int safe_hash_opaque(int type):
 
 
 # The audited WForeign[T] owner of a foreign object (lib/safe_foreign_owner.w).
+int safe_attested_hook(int type, char* prefix):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (safe_trusted(record.source) != 2)): return 0
+	return safe_foreign_hook(record.origin, prefix, 1) >= 0
+
+
+int safe_attested_opaque(int type):
+	return safe_attested_hook(type, c"__w_foreign_drop_")
+
+
 int safe_foreign_record(int type):
 	type = safe_unqualified(type)
 	if type < 0: return 0
@@ -525,6 +545,7 @@ int safe_foreign_record(int type):
 
 
 int safe_opaque(int type):
+	if (safe_attested_opaque(type)): return 1
 	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type) || safe_foreign_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
@@ -599,7 +620,7 @@ int safe_thread_sealed(int type):
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
 	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
-	if ((safe_budget_arena_element(type) >= 0) || safe_foreign_record(type)): return 0
+	if ((safe_budget_arena_element(type) >= 0) || safe_arena_budget(type) || safe_foreign_record(type) || safe_attested_opaque(type)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -637,14 +658,25 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
-	# Foreign libraries state their own threading rules; none is audited.
-	if (safe_foreign_record(type)): return c"is a foreign object without a thread contract"
+	# Foreign threading is an explicit assertion in the attested type's
+	# defining file. Sharing also requires transfer (release may run there).
+	int foreign = safe_attested_opaque(type)
+	int foreign_type = type
+	if (safe_foreign_record(type)):
+		foreign = 1
+		foreign_type = safe_pointee(retained_types[type].fields[0].type)
+	if (foreign):
+		if (safe_attested_hook(foreign_type, c"__w_foreign_send_") == 0): return c"is a foreign object without a thread contract"
+		if (sharing && (safe_attested_hook(foreign_type, c"__w_foreign_sync_") == 0)): return c"is a foreign object without a shared thread contract"
+		return 0
 	# A shared typed arena could allocate on two threads at once
 	# (typed_arena_alloc_shared mutates through a shared borrow).
-	if (sharing && (safe_typed_arena_element(type) >= 0)): return c"has unsynchronized interior mutation"
+	if (sharing && ((safe_typed_arena_element(type) >= 0) || safe_arena_budget(type))): return c"has unsynchronized interior mutation"
 	# A budget arena always borrows its budget, whatever the payload's
 	# declared type says (spawn's payload is an unlabeled own T*).
-	if (detached && (safe_budget_arena_element(type) >= 0)): return c"carries a borrowed lifetime"
+	if (safe_budget_arena_element(type) >= 0):
+		if (detached): return c"carries a borrowed lifetime"
+		return c"has an unsynchronized shared budget"
 	int stored = safe_owned_storage_element(type)
 	if (stored < 0): stored = safe_budget_arena_element(type)
 	if (stored < 0): stored = safe_keyed_map_key(type)
@@ -1166,51 +1198,119 @@ int safe_owned_iteration_type(int type):
 	int kind = safe_kind(type)
 	if ((kind < 1) || (kind > 3)): return -1
 	int storage = safe_unqualified(safe_pointee(type))
-	if (safe_owned_buffer_element(storage) < 0): return -1
+	if ((safe_owned_buffer_element(storage) < 0) && (safe_hash_opaque(storage) == 0) && (safe_keyed_map_key(storage) < 0)): return -1
 	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
+# User cursors borrow one checked container shared. The cursor itself is a
+# plain int; no callback may mutate the backing object or transfer its owner.
+int safe_protocol_iteration_type(int type):
+	if ((type < 0) || safe_optional(type) || safe_slice(type) || safe_record(type)): return -1
+	int kind = safe_kind(type)
+	if ((kind < 1) || (kind > 3)): return -1
+	int storage = safe_unqualified(safe_pointee(type))
+	if (storage < 0): return -1
+	return retained_type_note(type_get_safe(type_get_next_pointer(retained_types[storage].origin), 2))
+
+
+void safe_implementation_check(int id, int binding, int callable);
+int safe_same_contract_type_at(int a, int b, int depth, int* remaining);
+
+
+void safe_protocol_iteration_check(int id, int iterator_type, int variable_type):
+	retained_iteration* protocol = retained_record_at(id).iteration
+	if (protocol == 0): return
+	for i in range(4):
+		retained_node call
+		call.binding = protocol.bindings[i]
+		call.op = 'G'
+		call.payload_text = protocol.names[i]
+		int binding = safe_call_binding(&call)
+		if (binding < 0): safe_error(id, c"safe: iterator operation has no checked implementation", -1)
+		retained_binding* callee = retained_bindings[binding]
+		int arity = 2
+		if (i == 0): arity = 1
+		if (callee.parameters.length != arity): safe_error(id, c"safe: iterator operation has wrong arity", -1)
+		int first = callee.parameters[0]
+		int remaining = 256
+		if ((safe_kind(first) != 2) || safe_optional(first) || (safe_same_contract_type_at(first, iterator_type, 0, &remaining) == 0)):
+			safe_error(id, c"safe: iterator operations require a shared container reference", -1)
+		if (arity == 2):
+			int cursor = safe_unqualified(callee.parameters[1])
+			if ((cursor < 0) || (strcmp(retained_types[cursor].name, c"int") != 0)):
+				safe_error(id, c"safe: iterator cursor must have type int", -1)
+		int result = safe_unqualified(callee.return_type)
+		if (i < 3):
+			if ((result < 0) || (strcmp(retained_types[result].name, c"int") != 0)):
+				safe_error(id, c"safe: iterator begin, done and next must return int", -1)
+		else:
+			int shared = (safe_kind(result) == 2) && (safe_slice(result) == 0) && (safe_record(result) == 0) && (safe_optional(result) == 0)
+			if ((safe_scalar_type(result) == 0) && (shared == 0)):
+				safe_error(id, c"safe: iterator values must be scalars or shared references", -1)
+			remaining = 256
+			if (safe_same_contract_type_at(result, variable_type, 0, &remaining) == 0):
+				safe_error(id, c"safe: incompatible iterator variable type", -1)
+			if (shared): safe_return_parameter(id, callee)
+		safe_implementation_check(id, binding, 0)
 
 
 int safe_iteration(int id, int next):
 	int iterator = safe_iterator_locals.get(id, -1)
 	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice or owned storage", -1)
-	int storage = safe_slice(retained_bindings[safe_locals[iterator]].type) == 0
-	int local = -1
+	int iterator_type = retained_bindings[safe_locals[iterator]].type
+	int storage = safe_slice(iterator_type) == 0
+	int hash = 0
+	if (storage):
+		int record = safe_unqualified(safe_pointee(iterator_type))
+		hash = safe_hash_opaque(record) || (safe_keyed_map_key(record) >= 0)
+	list[int] locals = new list[int]
 	int body = -1
 	int expression = -1
 	int child = safe_first[id]
 	while (child >= 0):
 		retained_record* n = retained_record_at(child)
 		if (n.kind == retained_local):
-			if (local >= 0): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
-			local = safe_index(n.binding)
+			if (locals.length && (hash == 0)): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
+			locals.push(safe_index(n.binding))
 		else if (n.kind == retained_expression_group): expression = safe_expr_root(child)
 		else if (n.kind == retained_statement): body = child
 		child = safe_next[child]
-	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
-	int type = retained_bindings[safe_locals[local]].type
-	int borrowed = safe_kind(type) == 2
+	if ((locals.length < 1) || (locals.length > 2) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
 	if (storage):
-		if (borrowed == 0): safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
-		# The hidden slot borrows the container; an owning temporary would
-		# have no owner to destroy it after the loop.
+		# The hidden slot borrows; owning call results need a named home so
+		# normal scope cleanup owns their destruction on every loop exit.
 		retained_node value
 		retained_node_load(expression, &value)
 		if ((safe_kind(value.semantic_type) == 1) && ((value.op == 'C') || (value.op == 'G') || (value.op == 'W'))):
 			safe_error(id, c"safe: owned-storage iteration requires a named owner or a borrow", -1)
-	if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
-	safe_type_check(id, type)
 	int guard = safe_add(id, -1, iterator, 8, -1, next)
-	int action = 6
-	if (borrowed): action = 9
-	int write = safe_add(id, -1, local, action, -1, -1)
-	safe_graph[write].iterator = iterator
-	safe_graph[write].next = safe_build(body, guard, next, guard)
-	safe_graph[guard].next = write
+	int writes = safe_build(body, guard, next, guard)
+	int i = locals.length
+	while (i > 0):
+		i = i - 1
+		int local = locals[i]
+		if (local < 0): safe_error(id, c"safe: unsupported iteration representation", -1)
+		int type = retained_bindings[safe_locals[local]].type
+		int borrowed = safe_kind(type) >= 2
+		if (storage && (hash == 0) && (retained_record_at(id).iteration == 0) && (borrowed == 0)):
+			safe_error(id, c"safe: owned-storage iteration requires a shared reference variable", -1)
+		if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
+		safe_type_check(id, type)
+		if (i == 0): safe_protocol_iteration_check(id, iterator_type, type)
+		int action = 6
+		if (borrowed): action = 9
+		int write = safe_add(id, -1, local, action, writes, -1)
+		safe_graph[write].iterator = iterator
+		writes = write
+	safe_graph[guard].next = writes
 	int capture = safe_add(id, expression, iterator, 1, guard, -1)
-	# A reference exists only on the body edge, never on an empty loop.
-	int initialize = 4
-	if (borrowed): initialize = 10
-	return safe_add(id, -1, local, initialize, capture, -1)
+	for j in range(locals.length):
+		int local = locals[j]
+		int initialize = 4
+		if (safe_kind(retained_bindings[safe_locals[local]].type) >= 2): initialize = 10
+		capture = safe_add(id, -1, local, initialize, capture, -1)
+	locals.free()
+	return capture
 
 
 # Each clause owns its label expressions and body. Unmatched labels
@@ -1500,7 +1600,7 @@ int safe_return_path_allowed(int allowed, int root):
 int safe_exclusive_roots_selected(int type, safe_borrowed* components, int selected):
 	int roots = -1
 	for group in range(safe_lifetime_count(type)):
-		if ((selected & (1 << group)) && safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.roots[group])
+		if ((selected & (1 << group)) && safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.writable[group])
 	return roots
 
 
@@ -1529,15 +1629,40 @@ int safe_shared_parent(int parents):
 	return -1
 
 
-void safe_access(int roots, int via, int write, int id, char* state):
+# All roots keep storage alive. Only writable roots conflict with another
+# shared borrower when a mutable view accesses its own descriptor/objects.
+int safe_component_writable(safe_borrowed* components, int count):
+	int roots = -1
+	for group in range(count): roots = safe_set_union(roots, components.writable[group])
+	return roots
+
+
+int safe_access_writable(int roots, int via):
+	if (via < 0): return roots
+	int writable = -1
+	for parent in range(safe_real_locals):
+		if (safe_set_has(via, parent) == 0): continue
+		int type = retained_bindings[safe_locals[parent]].type
+		if (safe_owned_borrowed(type)):
+			writable = safe_set_union(writable, parent)
+			writable = safe_set_union(writable, safe_exclusive_roots(type, safe_components[parent]))
+		else: writable = safe_set_union(writable, safe_component_writable(safe_components[parent], safe_lifetime_count(type)))
+	int selected = -1
+	for root in range(safe_locals.length):
+		if (safe_set_has(roots, root) && safe_set_overlap(writable, root)): selected = safe_set_union(selected, root)
+	return selected
+
+
+void safe_access(int roots, int via, int write, int id, char* state, int writable = -2):
 	if ((roots < 0) || (safe_validate == 0)): return
+	if (writable == -2): writable = safe_access_writable(roots, via)
 	for root in range(safe_locals.length):
 		if (safe_set_has(roots, root)): safe_read(root, id, state)
 	int shared = safe_shared_parent(via)
 	if ((shared >= 0) && write):
 		safe_error(id, c"safe: write through a shared reference", safe_birth[shared])
 	for i in range(safe_call_roots.length):
-		int conflict = safe_set_overlap(safe_call_roots[i], roots) && (write || (safe_call_kinds[i] != 2))
+		int conflict = (write && safe_set_overlap(safe_call_roots[i], writable)) || ((safe_call_kinds[i] != 2) && safe_set_overlap(safe_call_roots[i], roots))
 		# Kind 4 reserves only the destination allocation. Child transfers
 		# cannot invalidate that saved address, but a parent move can.
 		if (safe_call_kinds[i] == 4): conflict = write && safe_paths_cover(roots, safe_call_roots[i])
@@ -1560,11 +1685,12 @@ void safe_access(int roots, int via, int write, int id, char* state):
 		if (safe_set_overlap(origins, roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
-		int exclusive = safe_local_kind(i) == 3
-		if ((safe_local_kind(i) == 1) && (write == 0)):
+		int exclusive = 0
+		if (safe_local_kind(i) == 3): exclusive = safe_set_overlap(safe_exclusive_roots(retained_bindings[safe_locals[i]].type, safe_components[i]), roots)
+		if (safe_local_kind(i) == 1):
 			int type = retained_bindings[safe_locals[i]].type
 			exclusive = safe_set_overlap(safe_exclusive_roots_selected(type, safe_components[i], selected), roots)
-		if (write || exclusive):
+		if ((write && safe_set_overlap(origins, writable)) || exclusive):
 			safe_error(id, c"safe: conflicting access while a borrow is live", safe_birth[i])
 
 
@@ -1648,8 +1774,10 @@ void safe_components_join(int index, safe_borrowed* value, int count):
 	for i in range(count):
 		int roots = safe_set_union(safe_components[index].roots[i], value.roots[i])
 		int parents = safe_set_union(safe_components[index].parents[i], value.parents[i])
-		if ((roots != safe_components[index].roots[i]) || (parents != safe_components[index].parents[i])): safe_origins_changed = 1
+		int writable = safe_set_union(safe_components[index].writable[i], value.writable[i])
+		if ((roots != safe_components[index].roots[i]) || (parents != safe_components[index].parents[i]) || (writable != safe_components[index].writable[i])): safe_origins_changed = 1
 		safe_components[index].roots[i] = roots
+		safe_components[index].writable[i] = writable
 		safe_components[index].parents[i] = parents
 
 
@@ -1756,6 +1884,7 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components, int ac
 		int roots = safe_borrow_groups(left, base.semantic_type, state, &parent, &view, -1, access_kind)
 		for component in range(safe_lifetime_count(node.semantic_type)):
 			components.roots[component] = roots
+			components.writable[component] = safe_component_writable(&view, safe_lifetime_count(base.semantic_type))
 			components.parents[component] = parent
 		return parent
 	int template = safe_pointee(base.semantic_type)
@@ -1772,6 +1901,7 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components, int ac
 		int group = safe_field_group(template, field, component)
 		if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 		components.roots[component] = parent.roots[group]
+		components.writable[component] = parent.writable[group]
 		components.parents[component] = parent.parents[group]
 	return root
 
@@ -1821,6 +1951,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 				int group = safe_field_group(retained_types[safe_unqualified(want)].target, type, component)
 				if (group < 0): safe_error(entry, c"safe: unnamed borrowed aggregate group", -1)
 				components.roots[group] = safe_set_union(components.roots[group], field_components.roots[component])
+				components.writable[group] = safe_set_union(components.writable[group], field_components.writable[component])
 				components.parents[group] = safe_set_union(components.parents[group], field_components.parents[component])
 			roots = safe_set_union(roots, root)
 			*parent = safe_set_union(*parent, via)
@@ -1887,6 +2018,7 @@ void safe_owner_construct(int id, retained_node* n, int want, char* state, safe_
 					int group = safe_field_group(template, type, component)
 					if (group < 0): safe_error(entry, c"safe: unnamed owner field group", -1)
 					components.roots[group] = safe_set_union(components.roots[group], incoming.roots[component])
+					components.writable[group] = safe_set_union(components.writable[group], incoming.writable[component])
 					components.parents[group] = safe_set_union(components.parents[group], incoming.parents[component])
 			# Shared and exclusive groups retain separate reservations.
 			safe_reserve_components(type, &incoming, via, value, state)
@@ -1994,6 +2126,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 				if (mask & (1 << component)):
 					int group = safe_field_group(template, field_type, component)
 					components.roots[component] = base_components.roots[group]
+					components.writable[component] = base_components.writable[group]
 					components.parents[component] = base_components.parents[group]
 					root = safe_set_union(root, components.roots[component])
 					via = safe_set_union(via, components.parents[component])
@@ -2003,6 +2136,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 			root = safe_borrow_groups(safe_child(&n, n.left), base.semantic_type, state, &via, &base_components, -1, kind)
 			for component in range(safe_lifetime_count(want)):
 				components.roots[component] = root
+				components.writable[component] = safe_component_writable(&base_components, safe_lifetime_count(base.semantic_type))
 				components.parents[component] = via
 		else if (safe_owned_borrowed(base.semantic_type) && (safe_kind(n.semantic_type) >= 2)):
 			if ((kind == 3) && (safe_kind(n.semantic_type) == 2)): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
@@ -2019,6 +2153,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					int group = safe_field_group(template, field, component)
 					if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 					components.roots[component] = owner.roots[group]
+					components.writable[component] = owner.writable[group]
 					components.parents[component] = owner.parents[group]
 					root = safe_set_union(root, owner.roots[group])
 					via = safe_set_union(via, owner.parents[group])
@@ -2075,6 +2210,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 			for component in range(safe_lifetime_count(want)):
 				if (mask & (1 << component)):
 					components.roots[component] = safe_components[index].roots[component]
+					components.writable[component] = safe_components[index].writable[component]
 					components.parents[component] = index
 					root = safe_set_union(root, components.roots[component])
 	else: safe_error(id, c"safe: reference requires a stable place", -1)
@@ -2088,9 +2224,10 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 		via = -1
 		safe_borrowed_clear(components)
 	if (safe_lifetime_count(want) == 1):
+		if (components.roots[0] < 0): components.writable[0] = safe_access_writable(root, via)
 		components.roots[0] = root
 		components.parents[0] = via
-	safe_access(root, via, kind == 3, id, state)
+	safe_access(root, via, kind == 3, id, state, safe_component_writable(components, safe_lifetime_count(want)))
 	*parent = via
 	return root
 
@@ -2381,6 +2518,7 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 				for group in range(safe_lifetime_count(callee.return_type)):
 					if (safe_return_from(callee, return_parameter, slot, group)):
 						components.roots[group] = safe_set_union(components.roots[group], argument.roots[component])
+						components.writable[group] = safe_set_union(components.writable[group], argument.writable[component])
 						components.parents[group] = safe_set_union(components.parents[group], argument.parents[component])
 						return_root = safe_set_union(return_root, argument.roots[component])
 						*parent = safe_set_union(*parent, argument.parents[component])
@@ -2389,11 +2527,16 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		# Scalar arguments copy their value; only pointer contracts keep
 		# storage reserved while later arguments are evaluated.
 		if ((root >= 0) && kind):
+			int writable = root
+			if (kind >= 2): writable = safe_exclusive_roots(want, &argument)
 			for i in range(saved, safe_call_roots.length):
-				if (safe_set_overlap(safe_call_roots[i], root) && ((kind != 2) || (safe_call_kinds[i] != 2))):
+				if ((safe_set_overlap(safe_call_roots[i], root) && (safe_call_kinds[i] != 2)) || ((kind != 2) && safe_set_overlap(safe_call_roots[i], writable))):
 					safe_error(arg, c"safe: conflicting call arguments", -1)
 			safe_call_roots.push(root)
-			safe_call_kinds.push(kind)
+			safe_call_kinds.push(2)
+			if (kind != 2):
+				safe_call_roots.push(writable)
+				safe_call_kinds.push(kind)
 		retained_node a
 		retained_node_load(arg, &a)
 		arg = safe_child(&a, a.next_arg)
@@ -2492,6 +2635,7 @@ void safe_replacement_components_at_root(int id, safe_borrowed* incoming, safe_b
 	for component in range(safe_lifetime_count(owner.semantic_type)):
 		int group = safe_parent_field_group(id, component)
 		mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+		mapped.writable[group] = safe_set_union(mapped.writable[group], incoming.writable[component])
 		mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
 	safe_replacement_components_at_root(safe_child(&owner, owner.left), &mapped, result)
 
@@ -2547,6 +2691,7 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 			int group = safe_field_group(template, field.semantic_type, component)
 			if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
 			mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+			mapped.writable[group] = safe_set_union(mapped.writable[group], incoming.writable[component])
 			mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
 		int parent = -1
 		int external = safe_borrowed_roots(&incoming, safe_lifetime_count(field.semantic_type), &parent)
@@ -2906,10 +3051,11 @@ void safe_transfer(int event, char* state):
 	else if (f.action == 9):
 		int iterator = f.iterator
 		safe_read(iterator, f.node, state)
-		safe_access(safe_origin[iterator], iterator, 0, f.node, state)
+		safe_access(safe_origin[iterator], iterator, safe_local_kind(index) == 3, f.node, state)
 		safe_borrowed components
 		safe_borrowed_clear(&components)
 		components.roots[0] = safe_origin[iterator]
+		components.writable[0] = safe_component_writable(safe_components[iterator], 1)
 		components.parents[0] = iterator
 		safe_components_join(index, &components, 1)
 		safe_origin_join(index, safe_origin[iterator], iterator)
@@ -2973,6 +3119,14 @@ void safe_function_check(int function):
 		if (retained_node_table[id] & 1): continue
 		retained_record* n = retained_record_at(id)
 		if ((n.kind != retained_statement) || (strcmp(n.name, c"for") != 0) || (safe_within(id, function) == 0)): continue
+		# Match the hidden loan to element access, not the receiver qualifier.
+		# A refmut slice can still be iterated shared or by scalar copies.
+		int access = 2
+		int variable = safe_first[id]
+		while (variable >= 0):
+			retained_record* part = retained_record_at(variable)
+			if ((part.kind == retained_local) && (safe_kind(retained_bindings[part.binding].type) == 3)): access = 3
+			variable = safe_next[variable]
 		int child = safe_first[id]
 		while (child >= 0):
 			retained_record* part = retained_record_at(child)
@@ -2980,8 +3134,14 @@ void safe_function_check(int function):
 				retained_node value
 				retained_node_load(safe_expr_root(child), &value)
 				int type = safe_unqualified(value.semantic_type)
-				if ((type >= 0) && (retained_types[type].kind != type_kind_safe_slice)): type = safe_owned_iteration_type(type)
-				if ((type >= 0) && (safe_kind(type) == 2)):
+				if ((type >= 0) && (n.iteration != 0)): type = safe_protocol_iteration_type(type)
+				else if (safe_inline_slice(type)):
+					type = retained_type_note(type_get_safe_slice(retained_types[retained_types[type].target].origin, 0, access))
+				else:
+					type = safe_owned_iteration_type(type)
+					if ((type >= 0) && (access == 3)):
+						type = retained_type_note(type_get_safe(type_get_next_pointer(retained_types[safe_pointee(type)].origin), 3))
+				if ((type >= 0) && (safe_kind(type) >= 2)):
 					retained_binding* binding = new retained_binding
 					binding.name = retained_intern(c"<iterator>")
 					binding.key = strclone(c"<checked iterator>")
@@ -3010,10 +3170,12 @@ void safe_function_check(int function):
 		retained_binding* binding = retained_bindings[safe_locals[i]]
 		if (binding.scope == 'A'):
 			components.roots[0] = i
+			components.writable[0] = i
 			int first_group = 1
 			if (safe_owned_borrowed(binding.type)): first_group = 0
 			for group in range(first_group, safe_lifetime_count(binding.type)):
 				components.roots[group] = safe_locals.length
+				components.writable[group] = safe_locals.length
 				safe_locals.push(safe_locals[i])
 	safe_path_parent = new list[int]
 	safe_path_offset = new list[int]
@@ -3104,6 +3266,7 @@ void safe_function_check(int function):
 				for group in range(safe_lifetime_count(safe_return_type)):
 					if (safe_return_from(retained_bindings[fn.binding], return_parameter, slot, group)):
 						safe_return_components.roots[group] = safe_set_union(safe_return_components.roots[group], root)
+						safe_return_components.writable[group] = safe_set_union(safe_return_components.writable[group], root)
 			parameter = parameter + 1
 			initial[i] = 2
 			if (safe_optional(type)): initial[i] = 50
@@ -3226,6 +3389,9 @@ void safe_check_finish():
 	int wasm = (target_isa == 2) && (target_os == 3)
 	if ((darwin == 0) && (wasm == 0) && ((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, win64, arm64_darwin and wasm targets are supported")
 	safe_audit_runtime()
+	if ((import_attested_paths != 0) && import_attested_paths.length):
+		int provenance = sym_address(c"malloc_provenance_enabled")
+		if (provenance): save_i(data + provenance - data_offset, 1, word_size)
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
 	safe_next = cast(int*, malloc(count * __word_size__))

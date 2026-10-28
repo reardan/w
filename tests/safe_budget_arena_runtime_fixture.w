@@ -72,10 +72,41 @@ int shared_values():
 	return total + *first + typed_arena_length[int](arena)
 
 
+# Independent objects share one quota. Charging/refunding one arena never
+# invalidates another arena's objects; refusal returns the original owner.
+int shared_budget_round(ref WArenaBudget* budget, int early):
+	own[a] WBudgetArena[BudgetNode]* first = budget_arena_new[BudgetNode](budget, -1)
+	own[b] WBudgetArena[BudgetNode]* second = budget_arena_new[BudgetNode](budget, -1)
+	budget_arena_insert[BudgetNode](first, budget_node(2))
+	budget_arena_insert[BudgetNode](second, budget_node(3))
+	optrefmut BudgetNode* x = budget_arena_get_mut[BudgetNode](first, 0)
+	optrefmut BudgetNode* y = budget_arena_get_mut[BudgetNode](second, 0)
+	if (x && y):
+		x.number += 1
+		y.number += 1
+		if (x.number + y.number != 7): return 1
+	if (arena_budget_used(budget) != sizeof(BudgetNode) * 2): return 2
+	for i in range(14): budget_arena_insert[BudgetNode](first, budget_node(i))
+	optown BudgetNode* refused = budget_arena_try_insert[BudgetNode](second, budget_node(10))
+	if (refused == 0): return 3
+	if (refused.number != 10): return 4
+	budget_arena_destroy[BudgetNode](first, 1)
+	optown BudgetNode* retried = budget_arena_try_insert[BudgetNode](second, refused)
+	if (retried): return 5
+	if (early): return 0
+	budget_arena_reset[BudgetNode](first)
+	if (arena_budget_used(budget) != sizeof(BudgetNode) * 2): return 6
+	budget_arena_release[BudgetNode](second)
+	if (arena_budget_used(budget) != 0): return 7
+	return 0
+
+
 int budget_exercise():
 	int total = 0
 	for repetition in range(20):
 		own WArenaBudget* budget = arena_budget_new(sizeof(BudgetNode) * 16)
+		if (shared_budget_round(budget, repetition % 2)): return -4
+		if (arena_budget_used(budget) != 0): return -5
 		total += budget_early(budget, repetition % 8)
 		if (arena_budget_used(budget) != 0): return -1
 		total += budget_fill(budget)

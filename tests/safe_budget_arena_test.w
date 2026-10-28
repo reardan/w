@@ -105,13 +105,13 @@ void test_budget_arena_0():
 void test_budget_arena_1():
 	budget_arena_case(c"import lib.safe_typed_arena\nint fill(refmut WArenaBudget* budget):\n\town[b] WBudgetArena[int]* values = budget_arena_new[int](budget, -1)\n\trefmut int* first = budget_arena_alloc[int](values, 1)\n\tint seen = *first\n\toptrefmut int* second = budget_arena_try_alloc[int](values, 2)\n\tif (second): return 0\n\treturn seen\nint main():\n\town WArenaBudget* budget = arena_budget_new(sizeof(int))\n\tif (fill(budget) != 1): return 1\n\tif (arena_budget_used(budget) != 0): return 2\n\tif (1):\n\t\town[b] WBudgetArena[int]* again = budget_arena_new[int](budget, -1)\n\t\trefmut int* third = budget_arena_alloc[int](again, 3)\n\t\t*third = 4\n\treturn arena_budget_remaining(budget) - arena_budget_limit(budget)\n", 0)
 
-# The arena borrows its budget exclusively until it is dropped.
+# Shared budget reads observe the total charged by every live arena.
 void test_budget_arena_2():
-	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[b] WBudgetArena[int]* values = budget_arena_new[int](budget, -1)\n\tbudget_arena_insert[int](values, new int)\n\treturn arena_budget_used(budget)\n", c"conflicting access while a borrow is live")
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[b] WBudgetArena[int]* values = budget_arena_new[int](budget, -1)\n\tbudget_arena_insert[int](values, new int)\n\treturn arena_budget_used(budget) - sizeof(int)\n", 0)
 
-# One budget backs one live arena.
+# One budget may back several independent live arenas.
 void test_budget_arena_3():
-	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[b] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[c] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\tbudget_arena_insert[int](first, new int)\n\treturn 0\n", c"conflicting")
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[b] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[c] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\tbudget_arena_insert[int](first, new int)\n\treturn 0\n", 0)
 
 # The budget cannot move while an arena borrows it.
 void test_budget_arena_4():
@@ -172,3 +172,87 @@ void test_budget_arena_17():
 # Objects with owned fields are destroyed exactly once on every exit, and recursion stays bounded.
 void test_budget_arena_18():
 	budget_arena_case(c"import lib.safe_typed_arena\nstruct Node:\n\town int* value\n\town WArenaBudget* nested\nint build(refmut WArenaBudget* budget, int early):\n\town[b] WBudgetArena[Node]* nodes = budget_arena_new[Node](budget, 4)\n\tfor i in range(4):\n\t\tbudget_arena_insert[Node](nodes, new Node(new int, arena_budget_new(i)))\n\t\tif (early && (i == 1)): return 1\n\tbudget_arena_destroy[Node](nodes, 2)\n\tbudget_arena_release[Node](nodes)\n\treturn budget_arena_slots[Node](nodes)\nint main():\n\town WArenaBudget* budget = arena_budget_new(1024)\n\tif (build(budget, 1) != 1): return 1\n\tif (build(budget, 0) != 0): return 2\n\treturn arena_budget_used(budget)\n", 0)
+
+
+void test_shared_budget_independent_mutable_views():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(sizeof(int) * 3)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\trefmut int* x = budget_arena_alloc[int](first, 1)\n\trefmut int* y = budget_arena_alloc[int](second, 2)\n\t*x += 1\n\t*y += 1\n\tif (arena_budget_used(budget) != sizeof(int) * 2): return 1\n\treturn *x + *y - 5\n", 0)
+
+
+void test_shared_budget_shared_parameters_and_return():
+	budget_arena_case(c"import lib.safe_typed_arena\nown[b] WBudgetArena[int]* make(ref[b] WArenaBudget* budget):\n\treturn budget_arena_new[int](budget, -1)\nrefmut[a] int* allocate(refmut[a] WBudgetArena[int]* arena):\n\treturn budget_arena_alloc[int](arena, 7)\nint populate(ref WArenaBudget* budget):\n\town[a] WBudgetArena[int]* first = make(budget)\n\town[b] WBudgetArena[int]* second = make(budget)\n\trefmut int* x = allocate(first)\n\trefmut int* y = allocate(second)\n\t*x += 1\n\treturn *x + *y - 15\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\tif (populate(budget)): return 1\n\treturn arena_budget_used(budget)\n", 0)
+
+
+void test_shared_budget_holder_aliases():
+	budget_arena_case(c"import lib.safe_typed_arena\ntype Budget = WArenaBudget\nstruct Holder:\n\town[a] WBudgetArena[int]* arena\n\tint tag\nint main():\n\town Budget* budget = arena_budget_new(64)\n\town[a] Holder* first = new Holder(budget_arena_new[int](budget, -1), 1)\n\town[b] Holder* second = new Holder(budget_arena_new[int](budget, -1), 2)\n\trefmut int* x = budget_arena_alloc[int](first.arena, 3)\n\trefmut int* y = budget_arena_alloc[int](second.arena, 4)\n\t*x += 1\n\treturn *x + *y - 8\n", 0)
+
+
+void test_shared_budget_call_argument_reservations():
+	budget_arena_case(c"import lib.safe_typed_arena\nint both(refmut WBudgetArena[int]* first, refmut WBudgetArena[int]* second):\n\tbudget_arena_insert[int](first, new int)\n\tbudget_arena_insert[int](second, new int)\n\treturn 0\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\treturn both(first, second)\n", 0)
+
+
+void test_shared_budget_same_arena_arguments():
+	budget_arena_case(c"import lib.safe_typed_arena\nint both(refmut WBudgetArena[int]* first, refmut WBudgetArena[int]* second):\n\treturn budget_arena_length[int](first) + budget_arena_length[int](second)\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\treturn both(first, first)\n", c"conflicting")
+
+
+void test_shared_budget_second_arena_keeps_budget_alive():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\tfirst = 0\n\tbudget = arena_budget_new(128)\n\treturn budget_arena_length[int](second)\n", c"conflicting")
+
+
+void test_shared_budget_destruction_keeps_budget_alive():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\tbudget = arena_budget_new(128)\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_first_view_blocks_first_reset():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\trefmut int* x = budget_arena_alloc[int](first, 1)\n\tbudget_arena_insert[int](second, new int)\n\tbudget_arena_reset[int](first)\n\treturn *x\n", c"conflicting")
+
+
+void test_shared_budget_branch_join_preserves_writes():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\toptrefmut int* value = 0\n\tif (arena_budget_limit(budget) == 64): value = budget_arena_alloc[int](first, 1)\n\telse: value = budget_arena_alloc[int](second, 2)\n\tbudget_arena_reset[int](second)\n\tif (value): return *value\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_branch_loop_cleanup():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* budget = arena_budget_new(sizeof(int) * 2)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\tbudget_arena_insert[int](first, new int)\n\tfor i in range(6):\n\t\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\t\toptrefmut int* x = budget_arena_try_alloc[int](second, i)\n\t\tif (x): *x += 1\n\t\telse: return 1\n\t\tif (i == 1): continue\n\t\tif (i == 3): break\n\tif (arena_budget_used(budget) != sizeof(int)): return 2\n\tbudget_arena_release[int](first)\n\treturn arena_budget_used(budget)\n", 0)
+
+
+void test_shared_budget_shared_budget_thread_rejected():
+	budget_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\ntype Reader = fn[](ref WArenaBudget*) -> int\nint read_budget(ref WArenaBudget* budget):\n\treturn arena_budget_used(budget)\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\tReader* work = read_budget\n\tref WArenaBudget* first = budget\n\tref WArenaBudget* second = budget\n\treturn safe_thread_fork_join(work, first, second)\n", c"unsynchronized interior mutation")
+
+
+void test_shared_budget_shared_owner_sources():
+	budget_arena_case(c"struct View:\n\tref[a] int* shared\n\tint value\nvoid edit(refmut View* item):\n\titem.value += 3\nint main():\n\town int* number = new int\n\t*number = 3\n\town[a] View* first = new View(number, 1)\n\town[b] View* second = new View(number, 2)\n\tedit(first)\n\tedit(second)\n\treturn first.value + second.value - 9\n", 0)
+
+
+void test_shared_budget_shared_source_still_borrowed():
+	budget_arena_case(c"struct View:\n\tref[a] int* shared\n\tint value\nint main():\n\town int* number = new int\n\town[a] View* first = new View(number, 1)\n\town[b] View* second = new View(number, 2)\n\trefmut View* x = first\n\trefmut View* y = second\n\t*number = 3\n\treturn x.value + y.value\n", c"conflicting")
+
+
+void test_shared_budget_scoped_arenas_rejected():
+	budget_arena_case(c"import lib.safe_typed_arena\nimport lib.safe_thread\ntype Worker = fn[](refmut WBudgetArena[int]*) -> int\nint fill_budget(refmut WBudgetArena[int]* arena):\n\tbudget_arena_insert[int](arena, new int)\n\treturn 0\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\trefmut WBudgetArena[int]* left = first\n\trefmut WBudgetArena[int]* right = second\n\tWorker* work = fill_budget\n\treturn safe_thread_fork_join(work, left, right)\n", c"unsynchronized shared budget")
+
+
+void test_shared_budget_import_alias():
+	budget_arena_case(c"import lib.safe_typed_arena as arena\nint main():\n\town WArenaBudget* budget = arena.arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = arena.budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = arena.budget_arena_new[int](budget, -1)\n\tarena.budget_arena_insert[int](first, new int)\n\tarena.budget_arena_insert[int](second, new int)\n\treturn arena.arena_budget_used(budget) - sizeof(int) * 2\n", 0)
+
+
+void test_shared_budget_shared_read_argument():
+	budget_arena_case(c"import lib.safe_typed_arena\nint add(refmut WBudgetArena[int]* arena, ref WArenaBudget* budget):\n\tbudget_arena_insert[int](arena, new int)\n\treturn arena_budget_used(budget)\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](budget, -1)\n\tif (add(first, budget) != sizeof(int)): return 1\n\treturn add(second, budget) - sizeof(int) * 2\n", 0)
+
+
+void test_shared_budget_exclusive_budget_argument_rejected():
+	budget_arena_case(c"import lib.safe_typed_arena\nint add(refmut WBudgetArena[int]* arena, refmut WArenaBudget* budget):\n\treturn budget_arena_length[int](arena) + arena_budget_used(budget)\nint main():\n\town WArenaBudget* budget = arena_budget_new(64)\n\town[a] WBudgetArena[int]* first = budget_arena_new[int](budget, -1)\n\treturn add(first, budget)\n", c"conflicting")
+
+
+void test_shared_budget_left_budget_in_owner_join():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\tleft = arena_budget_new(128)\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_right_budget_in_owner_join():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\tright = arena_budget_new(128)\n\treturn 0\n", c"conflicting")
+
+
+void test_shared_budget_owner_join_preserves_shared_sources():
+	budget_arena_case(c"import lib.safe_typed_arena\nint main():\n\town WArenaBudget* left = arena_budget_new(64)\n\town WArenaBudget* right = arena_budget_new(64)\n\toptown[a] WBudgetArena[int]* chosen = 0\n\tif (arena_budget_limit(left) == 64): chosen = budget_arena_new[int](left, -1)\n\telse: chosen = budget_arena_new[int](right, -1)\n\town[b] WBudgetArena[int]* second = budget_arena_new[int](left, -1)\n\tbudget_arena_insert[int](second, new int)\n\tif (chosen):\n\t\trefmut int* value = budget_arena_alloc[int](chosen, 9)\n\t\t*value += 1\n\t\treturn *value - 10\n\treturn 1\n", 0)
+
+
+void test_shared_budget_borrowed_container_payload_rejected():
+	budget_arena_case(c"import lib.safe_typed_arena\nstruct Holder:\n\town[a] WBudgetArena[int]* arena\nint main():\n\town WOwnedBuffer[Holder]* holders = owned_buffer_new[Holder](-1)\n\treturn 0\n", c"unsupported type or reference-bearing aggregate")

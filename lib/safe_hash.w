@@ -123,3 +123,25 @@ own WBuffer[K]* set_values[K](ref WSet[K]* value):
 	own WBuffer[K]* values = buffer_new[K]()
 	for K key in set.entries: buffer_push[K](values, key)
 	return values
+
+
+# Private traversal used by checked for loops. The compiler retains a shared
+# borrow of the wrapper across every implicit read. Slots never escape raw.
+int __w_checked_hash_iter_begin(__WCheckedHashHeader* value):
+	return __w_map_iter_begin(value.entries)
+
+
+int __w_checked_hash_iter_done(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_done(value.entries, cursor)
+
+
+int __w_checked_hash_iter_next(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_next(value.entries, cursor)
+
+
+int __w_checked_hash_iter_key(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_key(value.entries, cursor)
+
+
+void* __w_checked_hash_iter_value(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_value_addr(value.entries, cursor)
