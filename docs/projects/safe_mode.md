@@ -1316,9 +1316,9 @@ invariant. Empty strings and empty views are supported.
 Negative or out-of-range indices, empty pop, size overflow and allocation
 failure trap. Growth checks arithmetic before allocation and reads only the
 initialized prefix. The exact library source is pinned by the compiler;
-changed implementations do not inherit its audited contract. Generic
-buffers, owned-element containers, maps, sets and concurrent access remain
-future extensions, except for the concrete owned-element buffer below.
+changed implementations do not inherit its audited contract. The following
+sections describe the generic buffers, owned-element containers, maps and
+sets; the concurrency section specifies their transfer/share rules.
 
 ### Buffers of owned integers
 
@@ -1337,8 +1337,8 @@ remaining elements in reverse order. Automatic buffer destruction clears the
 elements, frees slot storage, then frees metadata. Owned records may contain
 this buffer. Metadata and raw slot helpers remain inaccessible.
 
-This concrete API does not yet provide arbitrary element types, generic
-collection wrappers, maps, sets or escaping iterators.
+This concrete API stores owned integers. Use the generic owned-element
+buffers and checked collection APIs below for other element types.
 
 ### Checked byte arena
 
@@ -1385,7 +1385,8 @@ Moving the owner transfers the descriptor and allocation together; its
 scope-exit destructor releases both. Metadata is opaque and cannot be
 constructed, copied or modified from checked code. Get/set bounds, empty
 pop and allocation overflow are fatal checks. Allocation failure currently
-traps; fallible insertion with ownership recovery remains a separate gate.
+traps. Recoverable insertion of owned elements is provided by
+`WOwnedBuffer[T]` below.
 
 This is an audited runtime boundary: the compiler binds the accepted API
 and destructor to the exact resolved `lib/safe_vector.w` contents. The
@@ -1393,9 +1394,9 @@ runtime uses private raw storage and descriptor construction; checked
 callers cannot invoke its private helpers. Explicit contracts have the
 same semantics without `--safe`.
 
-This step covers pointer-free sequential storage in #697. Owned-element
-storage, maps/sets, checked iteration and fallible insertion remain required;
-it does not close #697 or #644.
+Pointer-free buffers are one part of the checked-container APIs in #697.
+Owned storage, maps/sets, iteration and recoverable owner insertion have
+separate contracts described in this document.
 
 ### Generic owned-element buffers
 
@@ -1437,9 +1438,8 @@ marker anywhere in the element graph is reported under the containing field
 path, for example `thread payload field 'items.affinity' is explicitly
 thread-affine`.
 
-This extends the sequential-container deliverable in #697. Maps/sets and
-checked iteration retain their independent implementation and merge gates;
-#697 and #644 remain open.
+This supplies the owned sequential-container API in #697. Maps/sets and
+checked iteration are described in their own sections.
 
 ### Checked generic maps and sets
 
@@ -1724,7 +1724,9 @@ audited function returns or stores through a checked parameter:
   type, and owned fields are themselves valid owners.
 - *Provenance:* an `own T*` result comes from the W allocator (`new`), because
   its drop calls the W allocator's free and its fields' destructors. A foreign
-  allocation is wrapped in `WForeign[T]` instead.
+  allocation is wrapped in `WForeign[T]` or a nominal opaque type with its
+  own attested destructor instead. Runtime checks enforce the top-level
+  allocation provenance described below.
 - *Aliasing:* no other path writes through a `ref` result while it is live,
   and no other path reads or writes through a `refmut` result. A result keeps
   the lifetime its signature names, and the module retains no checked pointer
