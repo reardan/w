@@ -25,6 +25,11 @@ int: 142: 1 for thread_local globals
 int: 146: register a promoted local lives in (hardware number: x86 esi 6 /
           edi 7, x64 r12-r15), 0 for a stack-resident local
           (docs/projects/register_allocation_pgo.md §2.2)
+int: 150: pending rel32 call sites (A4)
+int: 154: register entry address (O5)
+int: 158: the parameters' registers (O5)
+int: 162: 1 for an enum constant (a global of enum type is 0: its
+          value is not known at compile time)
 */
 char* table
 int table_size
@@ -94,7 +99,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 162
+const int symbol_data_size = 166
 
 
 int next_token(int t):
@@ -507,6 +512,7 @@ void sym_declare(char* s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 150, 0)  /* no pending rel32 call sites (A4) */
 	save_int(table + t + 154, 0)  /* no register entry (O5) */
 	save_int(table + t + 158, 0)  /* its parameters' registers (O5) */
+	save_int(table + t + 162, 0)  /* not an enum constant */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -730,6 +736,18 @@ int sym_is_thread_local(int t):
 
 void sym_set_thread_local(int t):
 	save_int(table + t + 142, 1)
+
+
+# 1 when the symbol at table offset t is an enum constant, whose int32
+# value the enum declaration stored at its address. A global variable
+# of enum type has the same type kind but holds a runtime value, so the
+# constant folders (grammar/program.w) must ask this, not the type.
+int sym_is_enum_constant(int t):
+	return load_int(table + t + 162)
+
+
+void sym_set_enum_constant(int t):
+	save_int(table + t + 162, 1)
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.

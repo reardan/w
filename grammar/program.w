@@ -75,7 +75,7 @@ int const_symbol_value(int t):
 	if (is_object):
 		int type = load_int(table + t + 6)
 		int addr = load_int(table + t + 2)
-		if (type_get_kind(type) == type_kind_enum):
+		if (sym_is_enum_constant(t)):
 			# in the code stream on the native targets, in the data
 			# segment on wasm (enum_declaration.w)
 			if (target_isa == 2): return load_int32(data + (addr - data_offset))
@@ -121,7 +121,7 @@ void const_global_note(int t, int start):
 	int type = load_int(table + t + 6)
 	int t_real = type_unqualified(type)
 	char* p = 0
-	if (type_get_kind(type) == type_kind_enum):
+	if (sym_is_enum_constant(t)):
 		p = code + load_int(table + t + 2) - code_offset
 		t_real = type
 	else:

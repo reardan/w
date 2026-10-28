@@ -35,6 +35,7 @@ int enum_declaration():
 				value = parse_constant_literal(c"enum value", value_name)
 			int current_symbol = sym_declare_global(value_name, type_index, 1)
 			sym_set_decl_location(current_symbol, decl_file_index(), value_line, value_column)
+			sym_set_enum_constant(current_symbol)
 			# The constant's int32 lives at the symbol's address
 			# (identifier.w loads it like a global). Inline in the code
 			# stream, except on wasm, where code is not addressable
