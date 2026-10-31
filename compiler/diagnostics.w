@@ -204,9 +204,20 @@ void diag_out_char(int c):
 	diag_out_buffer_pos = diag_out_buffer_pos + 1
 
 
+# Optional destination for the buffered output: when nonzero, diag_flush
+# hands it to sink(bytes, length) -- one complete --json record per call
+# from diag_emit -- instead of writing it to stdout. An embedder of the
+# in-process compiler (repl/embed.w) sets it with diag_json to capture a
+# load's diagnostics for its own UI.
+int diag_sink
+
+type __diag_sink_callback = fn(char*, int) -> void
+
+
 void diag_flush():
 	if (diag_out_buffer_pos > 0):
-		write(1, diag_out_buffer, diag_out_buffer_pos)
+		if (diag_sink != 0): (cast(__diag_sink_callback*, diag_sink))(diag_out_buffer, diag_out_buffer_pos)
+		else: write(1, diag_out_buffer, diag_out_buffer_pos)
 		diag_out_buffer_pos = 0
 
 
