@@ -185,6 +185,7 @@ void ast_raw_walk_close(int walk, statement_ast* node);
 # Like a string literal, but the bytes are executable code.
 int raw_asm_literal():
 	if (peek(c"raw_asm") == 0): return 0
+	script_profile_reject(c"script profile: raw_asm is not allowed")
 	statement_ast local_node
 	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_raw_asm

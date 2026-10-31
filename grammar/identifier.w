@@ -40,6 +40,7 @@ int identifier():
 			if (alias_index >= 0): return import_alias_member(alias_index)
 		import_warn_unqualified(token)
 		import_warn_transitive(token)
+		script_profile_identifier(token)
 		strcpy(last_identifier, token)
 		return identifier_value(token)
 	return -1
