@@ -1633,3 +1633,21 @@ file, the way its `filename` already does. An attested module whose
 digest no longer matches is also hidden from `bin/wtest changed`, for
 the same reason as the pinned runtime entry above: `deps` fails the
 safe audit and prints no closure.
+
+## A host-heap overflow in the REPL surfaced far away (2026-10-31, scripting P2)
+
+Adding one compiler-side `map[char*, int]` (the script profile's trusted
+files) made `repl_test`'s `:sh` step die with `free(): invalid pointer
+(not a heap block)` inside `retained_sources.push`. The cause was an
+old overflow in `repl_threads_enable`: `repl_hook_words` was allocated
+with 3 words and filled with 5, so the two extra words landed in
+whatever block followed, and only a changed heap layout made that block
+matter. `W_DEBUG_ALLOC=1` did not help: in the REPL and wdbg it selects
+the session's allocator, while the compiler and the frontend (the host)
+stay on the free list, so the guard-page allocator never saw the host
+write. Bisecting by disabling the new allocation found it. Direction: let
+the REPL host opt into `lib/memory_debug.w` too (say `W_DEBUG_ALLOC=host`),
+so a host-side overflow faults at the write instead of at a later
+`free()`. The same entry also needed `tools/wfixture.w` to take several
+selector words (`# wfixture: --profile=script --import-root=r`) and a
+`--streaming` run mode; both are in now.

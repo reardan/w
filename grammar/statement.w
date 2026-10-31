@@ -361,6 +361,7 @@ void statement_impl():
 	# An explicit raw-operation boundary. Keep it contextual like a label;
 	# an existing symbol named unsafe retains its ordinary meaning.
 	else if (peek(c"unsafe") && (nextc == ':') && (sym_lookup(c"unsafe") < 0)):
+		script_profile_reject(c"script profile: unsafe blocks are not allowed")
 		if (retained >= 0): retained_record_at(retained).name = retained_intern(c"unsafe block")
 		enclosing_tab_level = tab_level
 		get_token()

@@ -204,9 +204,20 @@ void diag_out_char(int c):
 	diag_out_buffer_pos = diag_out_buffer_pos + 1
 
 
+# Optional destination for the buffered output: when nonzero, diag_flush
+# hands it to sink(bytes, length) -- one complete --json record per call
+# from diag_emit -- instead of writing it to stdout. An embedder of the
+# in-process compiler (repl/embed.w) sets it with diag_json to capture a
+# load's diagnostics for its own UI.
+int diag_sink
+
+type __diag_sink_callback = fn(char*, int) -> void
+
+
 void diag_flush():
 	if (diag_out_buffer_pos > 0):
-		write(1, diag_out_buffer, diag_out_buffer_pos)
+		if (diag_sink != 0): (cast(__diag_sink_callback*, diag_sink))(diag_out_buffer, diag_out_buffer_pos)
+		else: write(1, diag_out_buffer, diag_out_buffer_pos)
 		diag_out_buffer_pos = 0
 
 
@@ -1092,3 +1103,12 @@ void diag_code_table():
 	diag_code_row(c"W0414", c"map add does not support bfloat16 values")
 	diag_code_row(c"W0415", c"cast of malloc() memory to a struct with fixed-size array fields leaves their descriptors unset; allocate it with 'new' [malloc-array-fields]")
 	diag_code_row(c"W0416", c"thread_local storage exceeds the in-process session's 64KB per-thread block; start a new session")
+	diag_code_row(c"W0417", c"script profile: asm blocks are not allowed")
+	diag_code_row(c"W0418", c"script profile: raw_asm is not allowed")
+	diag_code_row(c"W0419", c"script profile: built-in '@' is not allowed")
+	diag_code_row(c"W0420", c"script profile: extern declarations are not allowed")
+	diag_code_row(c"W0421", c"script profile: c_lib is not allowed")
+	diag_code_row(c"W0422", c"script profile: c_import is not allowed")
+	diag_code_row(c"W0423", c"script profile: unsafe blocks are not allowed")
+	diag_code_row(c"W0424", c"script profile: cast to a pointer type is not allowed")
+	diag_code_row(c"W0425", c"script profile: import '@' is not in an import root")
