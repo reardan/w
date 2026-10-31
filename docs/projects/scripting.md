@@ -322,7 +322,7 @@ A2 (macOS) remaining work, none of it testable without a Mac:
 3. **Wired, untested:** `lib/__arch__/arm64_darwin/jit_host.w` maps with
    `MAP_JIT` (raw mmap 197), toggles `pthread_jit_write_protect_np`
    (write mode in `repl_jit_open`, execute mode in `repl_jit_commit`)
-   and flushes with `sys_icache_invalidate`; `repl_a64_configure` sets
+   and flushes with `sys_icache_invalidate`; `repl_a64_configure` (behind the `repl_jit_configure` hook) sets
    `target_os` 1 and `sigcontext_darwin`; the stub page has a Darwin
    `sa_tramp` that switches to the alternate stack, calls
    `repl_fault(sig, uc->uc_mcontext)` and ends in `sigreturn(uc,

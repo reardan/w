@@ -342,3 +342,44 @@ void repl_jit_commit():
 	# table grow for the whole session.
 	rebase_count = 0
 	if (jit_host_darwin()): jit_host_write_protect(1)
+
+
+# ---------------------------------------------------------------------------
+# The per-target hooks repl/core.w calls on every architecture
+# (repl/__arch__/<arch>/jit.w binds this file on the arm64 targets and
+# x86-family versions elsewhere). Each returns what core.w needs, so
+# core.w has no AArch64 branches of its own.
+
+# Configure the in-process compiler for this target.
+void repl_jit_configure():
+	repl_a64_configure()
+
+
+# Map the code buffer of size bytes (flags: core.w's x86 mmap flags,
+# unused here: arm64 maps at fixed low hints).
+int repl_jit_map_code(int size, int flags):
+	return repl_a64_map_code(size)
+
+
+# Carve the session's data arena out of the mapping; returns the code
+# part's size.
+int repl_jit_data_init(int buffer, int size):
+	return repl_a64_data_init(buffer, size)
+
+
+# Align the next inline session global for atomics.
+void repl_jit_align_global():
+	repl_a64_align_global()
+
+
+# Install a fault handler; 1: handled here (core.w's x86 path is skipped).
+int repl_jit_install(int signum, int handler, int flags):
+	repl_a64_install(signum, handler, flags)
+	return 1
+
+
+# Resume a recovered fault by returning from the handler; 1: done (no
+# long jump).
+int repl_jit_fault_resume(int context, int resume_pc, int stack):
+	repl_a64_fault_resume(context, resume_pc, stack)
+	return 1

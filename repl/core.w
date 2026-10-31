@@ -649,7 +649,7 @@ int repl_infer_declaration():
 	repl_item_kind = 2
 	repl_item_symbol = global_symbol
 	int gskip = repl_skip_start()
-	repl_a64_align_global()
+	repl_jit_align_global()
 	sym_define_global(global_symbol)
 	emit_global_storage(decl_type)
 	repl_skip_end(gskip)
@@ -745,7 +745,7 @@ void repl_entry_item(int entry_symbol):
 		repl_item_kind = 1
 		repl_item_symbol = global_symbol
 		int gskip = repl_skip_start()
-		repl_a64_align_global()
+		repl_jit_align_global()
 		sym_define_global(global_symbol)
 		emit_global_storage(decl_type)
 		repl_skip_end(gskip)
@@ -1325,9 +1325,7 @@ int repl_fault_emit_handler_thunk(int handler):
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void repl_fault_install(int signum, int handler, int flags):
 	if (repl_fault_act == 0): repl_fault_act = cast(int*, malloc(5 * __word_size__))
-	if (__target_isa__ == 1):
-		repl_a64_install(signum, handler, flags)
-		return;
+	if (repl_jit_install(signum, handler, flags)): return;
 	int* act = repl_fault_act
 	if (__word_size__ == 8):
 		repl_fault_thunk_init()
@@ -1438,11 +1436,9 @@ void repl_fault(int sig, int context):
 		dbg_fault_banner(c"runtime fault: ", sig, context)
 		repl_fault_trace(context)
 		println(c"entry rolled back")
-	if (__target_isa__ == 1):
-		# arm64: return through sigreturn into repl_fault_resumed on the
-		# checkpoint's W stack (repl/jit_arm64.w explains why)
-		repl_a64_fault_resume(context, cast(int, repl_fault_resumed), load_word(cast(char*, repl_fault_jump_buffer) + __word_size__))
-		return;
+	# arm64: return through sigreturn into repl_fault_resumed on the
+	# checkpoint's W stack (repl/jit_arm64.w explains why)
+	if (repl_jit_fault_resume(context, cast(int, repl_fault_resumed), load_word(cast(char*, repl_fault_jump_buffer) + __word_size__))): return;
 	repl_longjmp(repl_fault_jump_buffer, 1)
 
 
@@ -1677,7 +1673,7 @@ void repl_inprocess_setup():
 	word_size_log2 = 2
 	if (word_size == 8): word_size_log2 = 3
 	# arm64 (docs/projects/scripting.md Phase A): the A64 emitter
-	if (__target_isa__ == 1): repl_a64_configure()
+	repl_jit_configure()
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = cast(char*, malloc(8000))
@@ -1694,14 +1690,12 @@ void repl_inprocess_setup():
 	if (repl_buffer_size > 0):
 		buffer_size = repl_buffer_size
 		mmap_flags = mmap_flags + 16384 /* MAP_NORESERVE */
-	int buffer = 0
 	# arm64 has no MAP_32BIT: fixed low hints instead (repl/jit_arm64.w)
-	if (__target_isa__ == 1): buffer = repl_a64_map_code(buffer_size)
-	else: buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
+	int buffer = repl_jit_map_code(buffer_size, mmap_flags)
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
 	code_size = buffer_size
-	if (__target_isa__ == 1): code_size = repl_a64_data_init(buffer, buffer_size)
+	code_size = repl_jit_data_init(buffer, buffer_size)
 	code_fixed = 1
 	code_fixed_error_hook = cast(int, error)
 	codepos = 0
