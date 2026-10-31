@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64
 # The addon engine with the script profile (repl/embed.w engine_script,
 # docs/projects/scripting.md P2): addon sources compile under
 # --profile=script, the host's own binds do not, and a rejected reload

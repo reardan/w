@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64
 # wbuild: deps=examples/scripting/
 # wbuild: step="env W_ADDON_CHECKED=1 bin/addon_host_test --filter provenance,bind_and_load" expect_stdout="All tests passed"
 # wbuild: step="bin/wv2 x64 examples/scripting/addon_host.w -o bin/addon_host_example"
@@ -180,9 +180,11 @@ void test_segfault_recovery():
 	engine_call1(engine_symbol(c"sf_lib"), 0, &ok)
 	assert_equal(0, ok)
 	assert_contains(engine_fault_text, c"in addon 'sf_addon' function sf_lib (in strlen)")
-	engine_call1(engine_symbol(c"sf_div"), 0, &ok)
-	assert_equal(0, ok)
-	assert_contains(engine_fault_text, c"SIGFPE in addon 'sf_addon' function sf_div")
+	# AArch64 sdiv returns 0 for a zero divisor instead of trapping
+	if (__target_isa__ != 1):
+		engine_call1(engine_symbol(c"sf_div"), 0, &ok)
+		assert_equal(0, ok)
+		assert_contains(engine_fault_text, c"SIGFPE in addon 'sf_addon' function sf_div")
 	# the engine keeps working
 	assert_equal(5, addon_test_call(c"sf_div", 2))
 

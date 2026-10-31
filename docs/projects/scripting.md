@@ -7,8 +7,9 @@ at its top), saved variables are `lib/saved_vars.w`,
 `tests/addon_host_test.w` / `tests/saved_vars_test.w` (with x64 twins)
 cover them; the script profile is `--profile=script` /
 `script_profile_mode` with the curated root in `tools/script_modules.txt`
-(§5); the in-process engine runs on arm64 Linux (`repl/jit_arm64.w`,
-`repl_test_arm64`). A2 (macOS), A3, P3, R and W are tracked below. Companion study with the
+(§5); the in-process engine and the whole engine API run on arm64
+Linux (`repl/jit_arm64.w`; `repl_test_arm64`, `addon_host_test_arm64`,
+`addon_profile_test_arm64` under qemu). A2 (macOS), A3, P3, R and W are tracked below. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
 
