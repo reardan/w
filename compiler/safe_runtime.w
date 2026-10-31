@@ -9,7 +9,9 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/safe_foreign_owner.w")): return c"0bddc7c2a00a2478f14e9aa0ab6b472e5f9c3ef20fcd5c5c56771f584b7d682e"
 	if (ends_with(path, c"/lib/safe_typed_arena.w")): return c"a51e590b63b45371f40ef1b793a45415a15a472fa9156dbb7be85a41efb8567e"
 	if (ends_with(path, c"/lib/safe_keyed_map.w")): return c"81d55248c6cc3e43a16ca73b9a701af63a7e20172767c94a8d598be5bf180dde"
-	if (ends_with(path, c"/lib/safe_hash.w")): return c"d17e7e8030b112ef4532d71b1c1142f24dff5242fcba7b7576b86caa9bc59660"
+	# map_find looks the key up with __w_hash_table_find (an entry index,
+	# -1 when absent) now that the slot/state arrays are gone; same contract.
+	if (ends_with(path, c"/lib/safe_hash.w")): return c"1978f02465ec171c12704a75fabc021f00fb5b9db2e5bbec81c5b2d2b36be89a"
 	if (ends_with(path, c"/lib/safe_owned_vector.w")): return c"a2c00bac9caea4e5ad93e427ea794f80603fcd6ca610963c5ad210915e9a2630"
 	if (ends_with(path, c"/lib/safe_vector.w")): return c"d430d21aaa3f39358a4ca381f6d519ae5f2ec90de9ed7aa3cfabba1db6c76757"
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
@@ -76,7 +78,13 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/syscalls_linux_x86.w")): return c"8f9eeccd5c165f9c89b482c2e97b0b5d6171c6aff16b538ce383bd4b0fe5119d"
 	if (ends_with(path, c"/lib/valgrind.w")): return c"793fe83498d76b5e8840c7ecdd807de90b935cd20a57eee6ec532105d93459dd"
 	if (ends_with(path, c"/lib/win32_stubs.w")): return c"7a5c41c01f0b3278c637301f2797b2e5002231003d12b696220c63c361b704f1"
-	if (ends_with(path, c"/structures/hash_table.w")): return c"d0d9411e5cc530b3b4cbb14f76ccf7ccdbf37fd9c51b7073c8cddd133e08c8ef"
+	# Compact-dict layout (docs/projects/scripting.md Phase R1): an
+	# insertion-ordered entries array plus an (entry, hash) int32 index.
+	# Every allocation is __w_alloc with __w_size_mul-checked sizes, entry
+	# and index accesses stay below used / capacity, and the entry points
+	# keep their signatures and contracts (value addresses stay valid until
+	# the next insertion rebuilds the table, as before).
+	if (ends_with(path, c"/structures/hash_table.w")): return c"9bc166c4ae6dc4ffc6f5c51bdadeac4f96c24cb8204343cbf2a28764158afc16"
 	if (ends_with(path, c"/structures/prelude.w")): return c"f31e10b8d3101e7087b15f61307bfafd3a3ab8af534ccc91d1a1d73151786867"
 	if (ends_with(path, c"/structures/w_list.w")): return c"b875e28fb7e09e3278943aa95e6586f41973654ad903dca29369f534abd09a25"
 	return 0

@@ -1633,3 +1633,19 @@ file, the way its `filename` already does. An attested module whose
 digest no longer matches is also hidden from `bin/wtest changed`, for
 the same reason as the pinned runtime entry above: `deps` fails the
 safe audit and prints no closure.
+
+## Checking and profiling the auto-imported runtime (2026-10-31, scripting R1)
+
+`bin/wv2 check --json structures/hash_table.w` prints `skipping
+'structures/hash_table.w' (already compiled)` and exits 0: the file is
+auto-imported into every program, so the root is skipped and the check
+says nothing about the edit an agent just made (warnings in it only
+surface later, as a `--strict` failure in `./wbuild build`). Direction:
+treat a root that is also part of the auto-imported runtime as the
+root. Separately, valgrind does not read W's symbol table, so
+`callgrind_annotate` on a W binary names functions `file.w:0x0805...`;
+`tools/wbench.w` resolves them with `nm` internally, but there is no
+standalone `bin/wprof`-style command to annotate an arbitrary callgrind
+profile, so profiling a runtime change meant a throwaway nm + bisect
+script. Direction: a `wbench --annotate <callgrind.out> <binary>` (or
+`wprof callgrind`) subcommand reusing `prog_function_name`.

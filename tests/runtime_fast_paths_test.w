@@ -3,9 +3,9 @@
 # paths they shortcut: string_builder appends across capacity
 # boundaries, the size helpers' edge values, the word-key merge sort
 # (stability, signed words, C strings, separate key lists, narrow
-# elements still on the generic path), the word-key HalfSipHash against
-# the byte-reading one, and rehash placement (every key reachable, no
-# hole on its probe path) with tombstones and string keys.
+# elements still on the generic path), the keyed word-key hash, and
+# rehash placement (every key reachable, no hole on its probe path) with
+# tombstones and string keys.
 # wbuild: x64
 import lib.testing
 import structures.string
@@ -142,38 +142,58 @@ void test_sort_narrow_elements_generic_path():
 	assert_equal('d', l[4])
 
 
-void test_sip_word_matches_bytes():
+# The word-key hash is keyed by the table's seed, fits 31 bits, and
+# spreads sequential and strided keys over the low bits the index uses.
+void test_word_hash_seeded():
 	__w_hash_table* table = __w_hash_table_new(1, 0, 16)
-	int seed = 0
-	while (seed < 4):
-		table.seed0 = seed * 0x1e3779b9 + 1
-		table.seed1 = seed * 0x7f4a7c15 + 2
-		int k = 0 - 600
-		while (k < 600):
-			int key = k * 104729 + (k << 20)
-			int word = key
-			assert_equal(__w_hash_sip(table, cast(int, &word), __word_size__), __w_hash_sip_word(table, key))
+	int stride = 0
+	while (stride < 3):
+		table.seed0 = stride * 0x1e3779b9 + 1
+		table.seed1 = stride * 0x7f4a7c15 + 2
+		set[int] buckets = new set[int]
+		int k = 0
+		while (k < 4096):
+			int key = k
+			if (stride == 1): key = k << 12
+			if (stride == 2): key = (k * 104729) - 2000000
+			int h = __w_hash_word(table, key)
+			assert1(h >= 0)
+			assert_equal(h, __w_hash_key_hash(table, key))
+			buckets.add(h & 4095)
 			k = k + 1
-		seed = seed + 1
+		# 4096 random throws into 4096 buckets fill about 2589.
+		assert1(buckets.length > 2400)
+		buckets.free()
+		int before = __w_hash_word(table, 12345)
+		table.seed0 = table.seed0 + 1
+		assert1(before != __w_hash_word(table, 12345))
+		stride = stride + 1
+	__w_map_free(table)
 
 
-# Every live key is found, and the probe path from its home slot to
-# where it sits holds no empty slot.
+# Every live entry is found at its own index, its index slot carries its
+# hash, and the probe path from the hash's home slot to that slot holds
+# no empty slot.
 void rf_check_placement(__w_hash_table* table):
-	int mask = table.capacity - 1
+	int mask = table.capacity * 2 - 1
+	int32* index = table.index
 	int live = 0
-	int i = table.order_head
-	while (i >= 0):
-		assert_equal(1, table.states[i])
-		int key = table.keys[i]
-		assert_equal(i, __w_hash_table_slot(table, key))
-		int p = __w_hash_key_hash(table, key) & mask
-		while (p != i):
-			assert1(table.states[p] != 0)
-			p = (p + 1) & mask
-		live = live + 1
-		i = table.order_next[i]
+	int i = 0
+	while (i < table.used):
+		int* e = __w_hash_entry(table, i)
+		if (e[0] >= 0):
+			assert_equal(i, __w_hash_table_find(table, e[1]))
+			assert_equal(e[0], __w_hash_key_hash(table, e[1]))
+			int q = (e[0] * 2) & mask
+			while (index[q] != i + 1):
+				assert1(index[q] != 0)
+				q = (q + 2) & mask
+			assert_equal(e[0], index[q + 1])
+			live = live + 1
+		else: assert_equal(-1, e[0])
+		i = i + 1
 	assert_equal(table.count, live)
+	assert1(table.used <= table.entry_cap)
 
 
 void test_rehash_int_keys():
@@ -250,3 +270,61 @@ void test_rehash_struct_values():
 		assert_equal(i * 2, v.y)
 		assert_equal(0 - i, v.z)
 		i = i + 1
+
+
+# Add/remove churn on a small live set rebuilds the table at the same
+# size (compacting dead entries) once it has room, instead of growing
+# without bound, and keeps the insertion order: removed-and-re-added
+# keys move to the end.
+void test_churn_compacts_in_order():
+	map[int, int] m = new map[int, int]
+	int i = 0
+	while (i < 10):
+		m[i] = i
+		i = i + 1
+	__w_hash_table* table = cast(__w_hash_table*, m)
+	int capacity = 0
+	int round = 0
+	while (round < 1000):
+		if (round == 100): capacity = table.capacity
+		int key = round % 10
+		assert_equal(1, m.remove(key))
+		m[key] = round
+		round = round + 1
+	assert_equal(capacity, table.capacity)
+	assert_equal(10, m.length)
+	rf_check_placement(table)
+	# Round 999 re-added key 9 last, so the order is 0..9 again.
+	list[int] keys = m.keys()
+	i = 0
+	while (i < 10):
+		assert_equal(i, keys[i])
+		assert_equal(990 + i, m[i])
+		i = i + 1
+	m.free()
+
+
+# Removing the current key, or a later one, inside the loop is safe;
+# keys added inside the loop (without growing the table) are visited.
+void test_iteration_with_mutation():
+	map[int, int] m = new map[int, int]
+	int i = 0
+	while (i < 6):
+		m[i] = i * 10
+		i = i + 1
+	list[int] seen = new list[int]
+	for key, value in m:
+		seen.push(key)
+		assert_equal(key * 10, value)
+		if (key == 1): m.remove(1)
+		if (key == 2): m.remove(4)
+		if (key == 5): m[6] = 60
+	assert_equal(6, seen.length)
+	assert_equal(0, seen[0])
+	assert_equal(1, seen[1])
+	assert_equal(2, seen[2])
+	assert_equal(3, seen[3])
+	assert_equal(5, seen[4])
+	assert_equal(6, seen[5])
+	assert_equal(5, m.length)
+	m.free()

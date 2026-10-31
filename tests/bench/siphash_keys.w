@@ -1,11 +1,11 @@
 # bench siphash_keys: map inserts and lookups -- size int keys into a
 # map[int, int] and size/2 string keys into a map[char*, int]. The work
-# is the container runtime's HalfSipHash (structures/hash_table.w
-# __w_hash_sip, 12% of the self-compile, §1.2) and its linear-probing
-# slot search, including table growth and insertion-order links. The
-# checksum folds every value read back, so it does not depend on the
-# process's random hash seed. C twin: tests/bench/c/siphash_keys.c, a
-# port of the runtime's table (with a fixed seed).
+# is the container runtime's hashing (structures/hash_table.w: HalfSipHash
+# for the string keys, the keyed word finalizer for the int keys) and its
+# index probe, including table growth. The checksum folds every value
+# read back, so it does not depend on the process's random hash seed.
+# C twin: tests/bench/c/siphash_keys.c, on a port of the runtime's table
+# (tests/bench/c/w_hash_table.h, with a fixed seed).
 # wbuild: target=bench_siphash_keys tag=bench dep=wv2
 # wbuild: step="bin/wv2 tests/bench/siphash_keys.w -o bin/bench_siphash_keys"
 # wbuild: step="bin/bench_siphash_keys" expect_stdout="siphash_keys size=500000 checksum=462cc7d8"

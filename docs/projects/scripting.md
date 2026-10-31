@@ -1,10 +1,10 @@
 # W as an embedded scripting language: the addon engine plan
 
-Status: **plan** (2026-10-31). Nothing below is implemented except the
-prototype in `examples/scripting/`, which drives the existing REPL engine
-as an addon host. Companion study with the full inventory, three tier
-prototypes and benchmark sources: the project folder
-`scripting/w_as_scripting_language.md` (not in this repository).
+Status: **plan** (2026-10-31). Implemented so far: the prototype in
+`examples/scripting/`, which drives the existing REPL engine as an addon
+host, and Phase R1 (the `map` runtime, §3). Companion study with the
+full inventory, three tier prototypes and benchmark sources: the project
+folder `scripting/w_as_scripting_language.md` (not in this repository).
 
 ## 0. Goal
 
@@ -53,6 +53,14 @@ in C (`gcc -O2`), W AOT, W loaded through the engine, node 22, LuaJIT
 | `map(2M)` int keys | 189 | 2631 | 2775 | 755 | 15 | 70 |
 | `strings(1M)` f-strings | 88 | 499 | 719 (3257 with provenance on) | 255 | 373 | 1556 |
 
+Re-measured after Phase R1 on another x64 cloud
+container, every column on the same machine, best of 5 (LuaJIT and Lua
+were not installed there; the W engine column was not re-run):
+
+| benchmark | C | W AOT before | W AOT after | V8 |
+|---|---:|---:|---:|---:|
+| `map(2M)` int keys | 114 | 975 | 233 | 283 |
+
 So the compiler is not the problem: calls and loops are already ahead of
 V8 and LuaJIT and within 1.4-4x of gcc (the single-pass codegen gap,
 `docs/projects/codegen_gap_plan.md`). The script-shaped weaknesses are
@@ -78,7 +86,7 @@ prototype:
 | G5 | Isolation edge cases | stack overflow is fatal; faults on addon-started threads are fatal by design; no preemption of a runaway loop |
 | G6 | Code is never unloaded | shadowed definitions stay in a fixed 8 MB buffer; rollback is LIFO (`repl_state`) |
 | G7 | Reload is function-granular | globals and struct layouts are not migrated; old code keeps old globals |
-| G8 | Runtime speed for script shapes | `map[int,int]` 14x slower than C and superlinear; provenance tracking costs 5x on allocation-heavy code |
+| G8 | Runtime speed for script shapes | `map[int,int]` 14x slower than C and superlinear (fixed by R1: 2x C, linear); provenance tracking costs 5x on allocation-heavy code |
 | G9 | Two heaps | addon code uses the session's `lib/lib.w` allocator, the host its own |
 
 ## 3. Plan
@@ -187,15 +195,58 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
 
 ### Phase R: runtime speed for script shapes (G8)
 
-- **R1 `map` runtime** (M). `structures/hash_table.w` SipHashes every
-  key including word keys and keeps five parallel arrays per table
-  (keys, values, states, order_next, order_prev), so each probe touches
-  five cache lines; 250k entries took 204 ms and 2M took 4.4 s. Plan:
-  a cheap multiplicative hash for word keys (keep SipHash for strings,
-  the flooding case), interleaved key/value/state slots, and optionally
-  a dense array part for small non-negative int keys as Lua does. Gate:
-  the existing map/set tests plus a `tests/bench/` entry; target within
-  3x of the C open-addressing twin.
+- **R1 `map` runtime** (M) — **done** (2026-10-31). The old
+  `structures/hash_table.w` SipHashed every key, word keys included, and
+  kept five parallel arrays per table (keys, values, states, order_next,
+  order_prev), so each probe touched five cache lines. The superlinear
+  scaling was the layout, not the probe sequence or resizing: per-op
+  instruction counts were flat (HalfSipHash was 55% of them; linear
+  probing at <= 3/4 load averaged short probes; rehashing was ~9%), but
+  at 2M entries the five arrays spanned 132 MB on x64 and every insert
+  and lookup took five random cache misses plus TLB misses. Swapping in
+  a cheap hash alone (old layout) cut 250k from ~60 to ~45 ms but left
+  2M at 620-960 ms. The runtime is now a compact dict (CPython 3.6+
+  style): entries `[hash][key][value]` interleaved in one array in
+  insertion order, plus an open-addressing index of `(entry + 1, hash)`
+  int32 pairs at <= 1/2 load, so probing compares hashes inside the
+  index and reads one entry per hit; insertion order is free (iteration
+  walks the entries and skips dead ones, which also makes removing the
+  current key inside a `for` loop safe); growth reallocs the entries in
+  place and rebuilds only the index, and add/remove churn compacts at
+  the same size. Word keys hash with a keyed murmur3-style finalizer
+  (`__w_hash_word`); string keys keep seeded HalfSipHash (issue #528).
+  A Lua-style dense array part was not added: it would break insertion
+  order for keys not inserted ascending, and sequential int keys already
+  touch consecutive entries. Measured on an x64 container (best of 5,
+  same machine; ms):
+
+  | workload | C | before | after |
+  |---|---:|---:|---:|
+  | `map(2M)` int keys, insert + lookup (study's bench) | 114 | 975 | 233 |
+  | `map_scale` 250k insert + lookup | | 58 | 22 |
+  | `map_scale` 2M insert + lookup | | 913 | 223 |
+  | `map_keys` 1M keys, strides 1 / 7 / 1000003 / 2654435761 | | 325-344 | 99-104 |
+  | 500k `char*` keys: insert / lookup | | 174 / 50 | 68 / 32 |
+  | 500k `string` keys: insert | | 227 | 83 |
+  | `tests/bench/siphash_keys.w` x86 / x64 (C twin 99) | 99 | 259 / 290 | 135 / 139 |
+  | `tests/bench/map_ops.w` x86 / x64 (C twin 534) | 534 | 1532 / 2222 | 854 / 703 |
+  | self-compile `w.w`, x86 / x64 compiler | | 1222 / 1236 | 1195 / 1209 |
+
+  Scaling 250k -> 2M is now 10x time for 8x entries (was 16x), and the
+  `map(2M)` row is 2.0x C (target 3x) and ahead of V8 (283 ms). Under
+  callgrind the 250k insert + lookup loop fell from 411 M to 112 M
+  instructions. Consumers that read the table layout directly were
+  `lib/safe_hash.w` (`map_find`; its pin and `hash_table.w`'s in
+  `compiler/safe_runtime.w` were re-audited) and two white-box tests
+  (`tests/runtime_fast_paths_test.w`, `tests/stdlib_complexity_test.w`);
+  the compiler, the wasm/LLVM backends, the json codec and the REPL only
+  call the `__w_map_*`/`__w_set_*` entry points, whose signatures are
+  unchanged. The new allocation pattern exposed a pre-existing heap
+  overflow in `repl/core.w` (`repl_hook_words` allocated 3 words, wrote
+  5), fixed alongside. Benchmark: `tests/bench/map_ops.w` (int keys,
+  `m.add` counting, churn, ordered iteration, string keys) with the C
+  twin `tests/bench/c/map_ops.c` on a port of the new table
+  (`tests/bench/c/w_hash_table.h`, shared with `siphash_keys.c`).
 - **R2 provenance default** (S, folded into E1).
 - **R3 string building** (M, later). `strings(1M)` is 2x behind V8 in
   AOT; profile f-string lowering and the string builder before
