@@ -1661,3 +1661,30 @@ per generation pass. The message names the token after the early close
 quote, not the quoting mistake; saying "unbalanced quote in step= value
 (use single quotes inside it)" and printing the error once would have
 saved a round trip.
+
+## Checking and profiling the auto-imported runtime (2026-10-31, scripting R1)
+
+`bin/wv2 check --json structures/hash_table.w` prints `skipping
+'structures/hash_table.w' (already compiled)` and exits 0: the file is
+auto-imported into every program, so the root is skipped and the check
+says nothing about the edit an agent just made (warnings in it only
+surface later, as a `--strict` failure in `./wbuild build`). Direction:
+treat a root that is also part of the auto-imported runtime as the
+root. Separately, valgrind does not read W's symbol table, so
+`callgrind_annotate` on a W binary names functions `file.w:0x0805...`;
+`tools/wbench.w` resolves them with `nm` internally, but there is no
+standalone `bin/wprof`-style command to annotate an arbitrary callgrind
+profile, so profiling a runtime change meant a throwaway nm + bisect
+script. Direction: a `wbench --annotate <callgrind.out> <binary>` (or
+`wprof callgrind`) subcommand reusing `prog_function_name`.
+Third, `./wbuild profile_refresh` regenerates `profiles/self.wprof` without
+checking that the result still passes `verify_pgo`, and on the current tree
+it does not (AST and streaming PGO builds differ, see
+register_allocation_pgo.md "Known issue"); finding the culprit took a
+hand-written ddmin script over profile lines. Direction: have
+`profile_refresh` run the `verify_pgo` comparison on the new profile, and a
+`wprof reduce <profile> -- <cmd>` that shrinks a profile to the lines a
+failing command needs. Also, `profile_check`'s `bench.wprof` file list is
+hand-maintained in build.base.json and had fallen behind the corpus
+(`regex_pathological.w` missing, so a fresh profile read 76%); it could be
+derived from `tests/bench/` the way `wprof corpus` derives its programs.

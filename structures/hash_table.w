@@ -6,21 +6,42 @@ stored as words in the MVP; small scalar values occupy the low bits. String
 keys are cloned so map/set ownership does not depend on literal or stack
 lifetimes.
 
-Iteration follows INSERTION ORDER (Python-dict semantics): a doubly-linked
-chain through the occupied slots records the order keys were first
-inserted. Updating an existing key keeps its position; removing and
-re-inserting moves it to the end. Rehashing re-inserts in chain order, so
-growth preserves it.
+Layout (a "compact dict", as in CPython 3.6+):
+the entries live in one dense array in INSERTION ORDER, each entry
+[hash][key][value slot] interleaved, and a separate open-addressing
+index maps a hash to an entry. An index slot is two int32s, the entry
+word (0 = empty, -1 = tombstone, k > 0 = entry k - 1) and the entry's
+31-bit hash, so linear probing (power-of-two size) compares hashes
+inside the index and reads an entry only on a full hash match: a lookup
+touches one index line and one entry, where the old five parallel
+arrays (keys, values, states and two order links) touched five lines
+per probe. Insertion order costs nothing: iteration walks the entries
+array and skips the dead ones. Removing marks the entry dead (hash -1)
+and tombstones its index slot; re-inserting appends a fresh entry at
+the end; updating an existing key keeps its position. The entries array
+holds half as many entries as the index has slots; when it fills up the
+table is rebuilt (doubled, or at the same size when at least half the
+entries are dead), compacting live entries in order, so growth
+preserves insertion order and, when nothing was removed, keeps every
+entry index (an iteration cursor) valid.
 
-Hashing is keyed (issue #528): every key, string or word, goes through
-HalfSipHash-1-3 under a per-process random 64-bit seed drawn from
-getrandom(2) when the first table is created, so keys cannot be chosen
-in advance to collide (hash flooding). Each table copies the seed at
-creation, so __w_hash_set_seed only affects tables created after it.
-Nothing observable depends on the seed: iteration walks the insertion
-chain, never slot order, and __w_map_free releases keys in chain order,
-so allocation patterns (and therefore the compiler's own output) stay
-deterministic run to run.
+Hashing is keyed (issue #528) under a per-process random 64-bit seed
+drawn from getrandom(2) when the first table is created; each table
+copies the seed at creation, so __w_hash_set_seed only affects tables
+created after it. String keys (char* and string) go through
+HalfSipHash-1-3, so keys cannot be chosen in advance to collide (hash
+flooding). Word keys (integers, bools, other pointers) use a keyed
+murmur3-style finalizer, __w_hash_word: a few multiplies instead of a
+SipHash per operation, which made map[int, V] several times faster
+(docs/projects/scripting.md, Phase R1). It is a bijection of the key
+mixed with the seed and has good avalanche, but it is not a PRF, so an
+attacker who can measure timing has more leverage than against
+SipHash; a program that keys a map by attacker-chosen integers and
+needs SipHash's guarantee can key it by their decimal strings instead.
+Nothing observable depends on the seed: iteration walks the entries
+array, never index order, and __w_map_free releases keys in insertion
+order, so allocation patterns (and therefore the compiler's own output)
+stay deterministic run to run.
 */
 import lib.memory
 import structures.w_list
@@ -56,21 +77,18 @@ char* __w_strclone(char *c):
 
 
 struct __w_hash_table:
-	int capacity
-	int count
+	int capacity      # index slots, a power of two
+	int count         # live entries
 	int key_kind
 	int value_size
-	int* keys
-	int* values
-	char* states
-	int* order_next   # slot -> next slot in insertion order, -1 at the tail
-	int* order_prev   # slot -> previous slot, -1 at the head
-	int order_head    # first inserted live slot, -1 when empty
-	int order_tail    # last inserted live slot, -1 when empty
+	int32* index      # capacity slots of (entry word, hash): see the header
+	char* entries     # entry_cap entries in insertion order, entry_size bytes each
+	int used          # entries appended so far, live and dead
+	int entry_cap     # entries allocated: capacity / 2
+	int entry_size    # 2 words (hash, key) + the value slot
 	int default_kind  # missing-key policy: __w_hash_default_* (0 = trap)
 	int default_value # stored word / factory address / container descriptor
-	int deleted       # tombstone slots (state 2); they count toward the load
-	int seed0         # HalfSipHash key words, copied from the process seed
+	int seed0         # hash key words, copied from the process seed
 	int seed1
 
 
@@ -84,10 +102,14 @@ int __w_hash_slot_size(__w_hash_table* table):
 	return ((table.value_size + __word_size__ - 1) / __word_size__) * __word_size__
 
 
+# Entry i: word 0 is its 31-bit hash (-1 once removed), word 1 its key,
+# then the value slot.
+int* __w_hash_entry(__w_hash_table* table, int i):
+	return cast(int*, table.entries + i * table.entry_size)
+
+
 char* __w_hash_value_addr(__w_hash_table* table, int i):
-	# Scalar values (the common case) skip the __w_hash_slot_size call.
-	if (table.value_size < __word_size__): return cast(char*, table.values) + i * __word_size__
-	return cast(char*, table.values) + i * __w_hash_slot_size(table)
+	return table.entries + i * table.entry_size + 2 * __word_size__
 
 
 void __w_hash_value_copy(char* dst, char* src, int count):
@@ -232,57 +254,36 @@ int __w_hash_sip(__w_hash_table* table, int data, int length):
 	return v1 ^ v3
 
 
-# __w_hash_sip over the __word_size__ bytes of key itself (word keys):
-# the same blocks the generic loop reads from memory, taken from the
-# word directly. A word is one (x86) or two (x64) full little-endian
-# 4-byte blocks followed by the length block, which holds no tail bytes.
-int __w_hash_sip_word(__w_hash_table* table, int key):
-	uint32 v0 = table.seed0
-	uint32 v1 = table.seed1
-	uint32 v2 = 0x6c796765 ^ v0
-	uint32 v3 = 0x74656462 ^ v1
-	int blocks = __word_size__ / 4
-	int b = 0
-	while (b <= blocks):
-		uint32 m = __word_size__ << 24
-		if (b == 0): m = key
-		else if (b < blocks): m = (key >> 16) >> 16
-		v3 = v3 ^ m
-		v0 = v0 + v1
-		v1 = rotl(v1, 5) ^ v0
-		v0 = rotl(v0, 16)
-		v2 = v2 + v3
-		v3 = rotl(v3, 8) ^ v2
-		v0 = v0 + v3
-		v3 = rotl(v3, 7) ^ v0
-		v2 = v2 + v1
-		v1 = rotl(v1, 13) ^ v2
-		v2 = rotl(v2, 16)
-		v0 = v0 ^ m
-		b = b + 1
-	v2 = v2 ^ 255
-	int r = 0
-	while (r < 3):
-		v0 = v0 + v1
-		v1 = rotl(v1, 5) ^ v0
-		v0 = rotl(v0, 16)
-		v2 = v2 + v3
-		v3 = rotl(v3, 8) ^ v2
-		v0 = v0 + v3
-		v3 = rotl(v3, 7) ^ v0
-		v2 = v2 + v1
-		v1 = rotl(v1, 13) ^ v2
-		v2 = rotl(v2, 16)
-		r = r + 1
-	return v1 ^ v3
+# Keyed hash for word keys (see the header): the murmur3 fmix32 rounds
+# over the key's low 32 bits xor seed0. On 64-bit targets the high half
+# is added after a first multiply-xorshift of the low half, so the two
+# halves cannot cancel each other independently of the seed. uint32
+# arithmetic keeps every step a masked 32-bit word on each target (the
+# multipliers are murmur3's and the golden ratio's, spelled negative to
+# avoid bit-31 literals). Returns 31 bits, like __w_hash_key_hash.
+int __w_hash_word(__w_hash_table* table, int key):
+	uint32 h = key ^ table.seed0
+	if (__word_size__ == 8):
+		h = h * (0 - 1640531535)
+		h = h ^ (h >> 15)
+		h = h + ((key >> 16) >> 16)
+	h = h + table.seed1
+	h = h ^ (h >> 16)
+	h = h * (0 - 2048144789)
+	h = h ^ (h >> 13)
+	h = h * (0 - 1028477387)
+	h = h ^ (h >> 16)
+	return h & 0x7fffffff
 
 
+# The key's 31-bit hash: non-negative, so an entry's hash word can
+# double as its live flag (-1 marks a removed entry).
 int __w_hash_key_hash(__w_hash_table* table, int key):
 	int kind = table.key_kind
-	if (kind == __w_hash_key_cstr): return __w_hash_sip(table, key, __w_strlen(cast(char*, key)))
+	if (kind == __w_hash_key_cstr): return __w_hash_sip(table, key, __w_strlen(cast(char*, key))) & 0x7fffffff
 	if (kind == __w_hash_key_string):
-		return __w_hash_sip(table, load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
-	return __w_hash_sip_word(table, key)
+		return __w_hash_sip(table, load_ptr(cast(char*, key)), load_ptr(key + __word_size__)) & 0x7fffffff
+	return __w_hash_word(table, key)
 
 
 int __w_hash_string_equal(int left, int right):
@@ -339,157 +340,177 @@ void __w_hash_key_free(int kind, int key):
 	if ((kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)): free(cast(void*, key))
 
 
-# Append slot i to the insertion-order chain.
-void __w_hash_order_link(__w_hash_table* table, int i):
-	table.order_next[i] = -1
-	table.order_prev[i] = table.order_tail
-	if (table.order_tail >= 0): table.order_next[table.order_tail] = i
-	else: table.order_head = i
-	table.order_tail = i
+# Allocate a zeroed index of capacity slots (two int32 each), sized for
+# capacity / 2 entries.
+void __w_hash_index_alloc(__w_hash_table* table, int capacity):
+	table.capacity = capacity
+	table.entry_cap = capacity / 2
+	table.index = cast(int32*, __w_alloc(__w_size_mul(capacity, 8)))
+	# The index is a whole number of words, so it clears by words.
+	int* words = cast(int*, table.index)
+	int n = (capacity * 8) / __word_size__
+	int i = 0
+	while (i < n):
+		words[i] = 0
+		i = i + 1
 
 
-# Remove slot i from the insertion-order chain.
-void __w_hash_order_unlink(__w_hash_table* table, int i):
-	int p = table.order_prev[i]
-	int n = table.order_next[i]
-	if (p >= 0): table.order_next[p] = n
-	else: table.order_head = n
-	if (n >= 0): table.order_prev[n] = p
-	else: table.order_tail = p
+# A fresh index and an empty entries array. Entries need no
+# initialization: one is written in full when it is appended.
+void __w_hash_table_alloc(__w_hash_table* table, int capacity):
+	__w_hash_index_alloc(table, capacity)
+	table.entries = cast(char*, __w_alloc(__w_size_mul(table.entry_cap, table.entry_size)))
+	table.used = 0
+	table.count = 0
 
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16): capacity = 16
-	__w_hash_table* table = cast(__w_hash_table*, __w_alloc(16 * __word_size__))
+	__w_hash_table* table = cast(__w_hash_table*, __w_alloc(sizeof(__w_hash_table)))
 	if (__w_hash_seed_state == 0): __w_hash_seed_init(cast(int, table))
 	table.seed0 = __w_hash_seed0
 	table.seed1 = __w_hash_seed1
-	table.capacity = capacity
-	table.count = 0
-	table.deleted = 0
 	table.key_kind = key_kind
 	table.value_size = value_size
 	table.default_kind = __w_hash_default_none
 	table.default_value = 0
-	int slot_size = __w_hash_slot_size(table)
-	table.keys = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
-	table.values = cast(int*, __w_alloc(__w_size_mul(capacity, slot_size)))
-	table.states = cast(char*, __w_alloc(capacity))
-	# Only chain-linked slots are ever read, so the order arrays need no
-	# initialization beyond the empty head/tail sentinels.
-	table.order_next = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
-	table.order_prev = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
-	table.order_head = -1
-	table.order_tail = -1
-	int i = 0
-	while (i < capacity):
-		table.keys[i] = 0
-		table.states[i] = 0
-		i = i + 1
-	char* value_bytes = cast(char*, table.values)
-	i = 0
-	while (i < capacity * slot_size):
-		value_bytes[i] = 0
-		i = i + 1
+	table.entry_size = 2 * __word_size__ + __w_hash_slot_size(table)
+	__w_hash_table_alloc(table, capacity)
 	return table
 
 
-int __w_hash_table_slot(__w_hash_table* table, int key):
-	int mask = table.capacity - 1
-	int i = __w_hash_key_hash(table, key) & mask
-	int first_deleted = -1
-	int probes = 0
+# Index position (the int32 offset of a slot's entry word, always even)
+# whose entry holds key, or -1 when key is absent. Entries fill at most
+# half the index, so the walk always reaches an empty slot, and a
+# slot's hash word means only a full 31-bit hash match reads the entry.
+int __w_hash_probe(__w_hash_table* table, int key):
 	int kind = table.key_kind
-	char* states = table.states
-	int* keys = table.keys
-	# Identical words are equal keys under every kind (a C string or
-	# descriptor equals itself), so only non-identical pointer keys need
-	# the content compare.
 	int by_content = (kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)
-	while ((states[i] != 0) && (probes < table.capacity)):
-		if (states[i] == 1):
-			int stored = keys[i]
-			if (stored == key): return i
-			if (by_content):
-				if (__w_hash_key_equal(kind, stored, key)): return i
-		else if (first_deleted < 0): first_deleted = i
-		i = (i + 1) & mask
-		probes = probes + 1
-	if (first_deleted >= 0):
-		return first_deleted
-	return i
+	int hv = __w_hash_key_hash(table, key)
+	int mask = table.capacity * 2 - 1
+	int32* index = table.index
+	int q = (hv + hv) & mask
+	while (1):
+		int slot = index[q]
+		if (slot > 0):
+			if (index[q + 1] == hv):
+				int* e = cast(int*, table.entries + (slot - 1) * table.entry_size)
+				int stored = e[1]
+				# Identical words are equal keys under every kind (a C
+				# string or descriptor equals itself), so only
+				# non-identical pointer keys need the content compare.
+				if (stored == key): return q
+				if (by_content):
+					if (__w_hash_key_equal(kind, stored, key)): return q
+		else if (slot == 0): return -1
+		q = (q + 2) & mask
+	return -1
 
 
-# Rebuild the table at new_capacity, dropping every tombstone.
+# Entry index of key, or -1 when it is absent: __w_hash_probe with the
+# word-key hash inlined, since every lookup comes through here.
+int __w_hash_table_find(__w_hash_table* table, int key):
+	int kind = table.key_kind
+	int by_content = (kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)
+	int hv = 0
+	if (by_content): hv = __w_hash_key_hash(table, key)
+	else:
+		# __w_hash_word
+		uint32 h = key ^ table.seed0
+		if (__word_size__ == 8):
+			h = h * (0 - 1640531535)
+			h = h ^ (h >> 15)
+			h = h + ((key >> 16) >> 16)
+		h = h + table.seed1
+		h = h ^ (h >> 16)
+		h = h * (0 - 2048144789)
+		h = h ^ (h >> 13)
+		h = h * (0 - 1028477387)
+		h = h ^ (h >> 16)
+		hv = h & 0x7fffffff
+	int mask = table.capacity * 2 - 1
+	int32* index = table.index
+	int q = (hv + hv) & mask
+	while (1):
+		int slot = index[q]
+		if (slot > 0):
+			if (index[q + 1] == hv):
+				int* e = cast(int*, table.entries + (slot - 1) * table.entry_size)
+				int stored = e[1]
+				if (stored == key): return slot - 1
+				if (by_content):
+					if (__w_hash_key_equal(kind, stored, key)): return slot - 1
+		else if (slot == 0): return -1
+		q = (q + 2) & mask
+	return -1
+
+
+# Rebuild at new_capacity. With no dead entries (plain growth) the
+# entries stay where they are -- realloc extends the block in place when
+# it is the newest allocation -- and only the index is rebuilt from
+# their stored hashes. Otherwise the live entries move to the front of a
+# fresh entries array in insertion order, dropping the dead ones and
+# every tombstone.
 void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
-	int old_capacity = table.capacity
-	int* old_keys = table.keys
-	int* old_values = table.values
-	char* old_states = table.states
-	int* old_next = table.order_next
-	int* old_prev = table.order_prev
-	int old_head = table.order_head
-	int slot_size = __w_hash_slot_size(table)
-
-	table.capacity = new_capacity
-	table.count = 0
-	table.deleted = 0
-	table.keys = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
-	table.values = cast(int*, __w_alloc(__w_size_mul(table.capacity, slot_size)))
-	table.states = cast(char*, __w_alloc(table.capacity))
-	table.order_next = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
-	table.order_prev = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
-	table.order_head = -1
-	table.order_tail = -1
-	int* keys = table.keys
-	char* states = table.states
+	int32* old_index = table.index
+	char* old_entries = table.entries
+	int old_used = table.used
+	int size = table.entry_size
+	int mask = new_capacity * 2 - 1
+	int32* index = cast(int32*, 0)
+	int* e = cast(int*, 0)
+	int hv = 0
+	int q = 0
 	int i = 0
-	while (i < new_capacity):
-		keys[i] = 0
-		states[i] = 0
+	if (table.count == old_used):
+		int old_bytes = table.entry_cap * size
+		free(old_index)
+		__w_hash_index_alloc(table, new_capacity)
+		table.entries = __w_realloc(old_entries, old_bytes, __w_size_mul(table.entry_cap, size))
+		index = table.index
+		char* entries = table.entries
+		while (i < old_used):
+			e = cast(int*, entries + i * size)
+			hv = e[0]
+			q = (hv + hv) & mask
+			while (index[q] != 0): q = (q + 2) & mask
+			i = i + 1
+			index[q] = i
+			index[q + 1] = hv
+		return
+	__w_hash_table_alloc(table, new_capacity)
+	index = table.index
+	char* fresh = table.entries
+	int words = size / __word_size__
+	int n = 0
+	int* dst = cast(int*, 0)
+	int w = 0
+	while (i < old_used):
+		e = cast(int*, old_entries + i * size)
+		hv = e[0]
+		if (hv >= 0):
+			dst = cast(int*, fresh + n * size)
+			w = 0
+			while (w < words):
+				dst[w] = e[w]
+				w = w + 1
+			q = (hv + hv) & mask
+			while (index[q] != 0): q = (q + 2) & mask
+			n = n + 1
+			index[q] = n
+			index[q + 1] = hv
 		i = i + 1
-	# slot_size is a word multiple, so the value storage clears by words.
-	int slot_words = slot_size / __word_size__
-	int* value_words = table.values
-	i = 0
-	while (i < new_capacity * slot_words):
-		value_words[i] = 0
-		i = i + 1
-
-	# Re-insert by walking the old chain so growth preserves insertion
-	# order. The new table has no tombstones and the keys are distinct,
-	# so __w_hash_table_slot's probe would stop at the first empty slot
-	# without a key ever comparing equal: probe for that slot directly.
-	int mask = new_capacity - 1
-	i = old_head
-	while (i >= 0):
-		int key = old_keys[i]
-		int slot = __w_hash_key_hash(table, key) & mask
-		while (states[slot] != 0): slot = (slot + 1) & mask
-		states[slot] = 1
-		keys[slot] = key
-		table.count = table.count + 1
-		__w_hash_order_link(table, slot)
-		int* dst = &value_words[slot * slot_words]
-		int* src = &old_values[i * slot_words]
-		int w = 0
-		while (w < slot_words):
-			dst[w] = src[w]
-			w = w + 1
-		i = old_next[i]
-	free(old_keys)
-	free(old_values)
-	free(old_states)
-	free(old_next)
-	free(old_prev)
+	table.used = n
+	table.count = n
+	free(old_index)
+	free(old_entries)
 
 
-# Keep live + tombstone slots under 3/4 of the capacity: grow when live
-# keys fill it, rehash in place when tombstones from add/remove churn
-# do (probing needs empty slots to terminate quickly).
-void __w_hash_table_reserve_one(__w_hash_table* table):
-	if ((table.count + table.deleted) * 4 < table.capacity * 3): return
-	if (table.deleted > table.count): __w_hash_table_rehash(table, table.capacity)
+# The entries array is full: double the table, or rebuild it at the same
+# size when at least half the entries are dead (add/remove churn), which
+# compacts them.
+void __w_hash_table_grow(__w_hash_table* table):
+	if (table.count * 2 <= table.used): __w_hash_table_rehash(table, table.capacity)
 	else: __w_hash_table_rehash(table, __w_size_mul(table.capacity, 2))
 
 
@@ -497,25 +518,76 @@ __w_hash_table* __w_map_new(int key_kind, int value_size):
 	return __w_hash_table_new(key_kind, value_size, 16)
 
 
-# Insert or find the slot for key, growing and cloning the key as needed.
-# A new key joins the tail of the insertion-order chain; an existing key
-# keeps its position.
+# Insert or find the entry for key, growing and cloning the key as
+# needed. A new key is appended after every existing entry (insertion
+# order) with a zeroed value slot and takes the first tombstone on its
+# probe path, else the empty slot that ended it; an existing key keeps
+# its position. The lookup is __w_hash_table_find's, inlined.
 int __w_map_insert_slot(__w_hash_table* table, int key):
-	__w_hash_table_reserve_one(table)
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1):
-		if (table.states[i] == 2): table.deleted = table.deleted - 1
-		table.states[i] = 1
-		table.keys[i] = __w_hash_key_clone(table.key_kind, key)
-		table.count = table.count + 1
-		__w_hash_order_link(table, i)
+	int kind = table.key_kind
+	int by_content = (kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)
+	int hv = 0
+	if (by_content): hv = __w_hash_key_hash(table, key)
+	else:
+		# __w_hash_word
+		uint32 h = key ^ table.seed0
+		if (__word_size__ == 8):
+			h = h * (0 - 1640531535)
+			h = h ^ (h >> 15)
+			h = h + ((key >> 16) >> 16)
+		h = h + table.seed1
+		h = h ^ (h >> 16)
+		h = h * (0 - 2048144789)
+		h = h ^ (h >> 13)
+		h = h * (0 - 1028477387)
+		h = h ^ (h >> 16)
+		hv = h & 0x7fffffff
+	int mask = table.capacity * 2 - 1
+	int32* index = table.index
+	int q = (hv + hv) & mask
+	int tomb = -1
+	while (1):
+		int slot = index[q]
+		if (slot > 0):
+			if (index[q + 1] == hv):
+				int* found = cast(int*, table.entries + (slot - 1) * table.entry_size)
+				int stored = found[1]
+				if (stored == key): return slot - 1
+				if (by_content):
+					if (__w_hash_key_equal(kind, stored, key)): return slot - 1
+		else if (slot == 0): break
+		else if (tomb < 0): tomb = q
+		q = (q + 2) & mask
+	if (table.used >= table.entry_cap):
+		# Rare (each growth doubles the room): rebuild, then insert
+		# into the rebuilt table from scratch.
+		__w_hash_table_grow(table)
+		return __w_map_insert_slot(table, key)
+	if (tomb >= 0): q = tomb
+	int i = table.used
+	int size = table.entry_size
+	int* e = cast(int*, table.entries + i * size)
+	e[0] = hv
+	if (by_content): key = __w_hash_key_clone(kind, key)
+	e[1] = key
+	if (size == 3 * __word_size__): e[2] = 0
+	else:
+		int words = size / __word_size__
+		int w = 2
+		while (w < words):
+			e[w] = 0
+			w = w + 1
+	index[q] = i + 1
+	index[q + 1] = hv
+	table.used = i + 1
+	table.count = table.count + 1
 	return i
 
 
 void __w_map_set(__w_hash_table* table, int key, int value):
 	int i = __w_map_insert_slot(table, key)
-	int* slot = cast(int*, __w_hash_value_addr(table, i))
-	slot[0] = value
+	int* e = cast(int*, table.entries + i * table.entry_size)
+	e[2] = value
 
 
 # Aggregate values (structs) are passed by address: copy one slot's worth
@@ -525,19 +597,19 @@ void __w_map_set_bytes(__w_hash_table* table, int key, char* value_src):
 	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
-# m.add(key, delta): insert-or-accumulate for integer-valued maps. Value
-# storage is zeroed on allocation, growth and removal, so a missing key
-# accumulates from zero. Returns the updated value.
+# m.add(key, delta): insert-or-accumulate for integer-valued maps. A new
+# key's value slot starts zeroed, so a missing key accumulates from
+# zero. Returns the updated value.
 int __w_map_add(__w_hash_table* table, int key, int delta):
 	int i = __w_map_insert_slot(table, key)
-	int* slot = cast(int*, __w_hash_value_addr(table, i))
-	slot[0] = slot[0] + delta
-	return slot[0]
+	int* e = cast(int*, table.entries + i * table.entry_size)
+	int sum = e[2] + delta
+	e[2] = sum
+	return sum
 
 
 int __w_map_contains(__w_hash_table* table, int key):
-	int i = __w_hash_table_slot(table, key)
-	return table.states[i] == 1
+	return __w_hash_table_find(table, key) >= 0
 
 
 # Install the missing-key policy chosen at 'new map[K, V](...)' time.
@@ -590,37 +662,36 @@ int __w_map_vivify(__w_hash_table* table, int key):
 # 'new map[K, V](...)' default vivify missing keys instead of trapping;
 # every other map keeps the documented trap.
 int __w_map_get(__w_hash_table* table, int key):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1):
+	int i = __w_hash_table_find(table, key)
+	if (i < 0):
 		if (table.default_kind == __w_hash_default_none): __w_map_missing_key(table, key)
 		return __w_map_vivify(table, key)
-	int* slot = cast(int*, __w_hash_value_addr(table, i))
-	return slot[0]
+	int* e = cast(int*, table.entries + i * table.entry_size)
+	return e[2]
 
 
 # Aggregate read: the address of the stored value bytes. Only valid until
 # the next insertion rehashes the table, so callers copy immediately.
 char* __w_map_get_addr(__w_hash_table* table, int key):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1): __w_map_missing_key(table, key)
+	int i = __w_hash_table_find(table, key)
+	if (i < 0): __w_map_missing_key(table, key)
 	return __w_hash_value_addr(table, i)
 
 
 # m.get(key, default): scalar value at key, or default when key is absent.
 int __w_map_get_or(__w_hash_table* table, int key, int default_value):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] == 1):
-		int* slot = cast(int*, __w_hash_value_addr(table, i))
-		return slot[0]
-	return default_value
+	int i = __w_hash_table_find(table, key)
+	if (i < 0): return default_value
+	int* e = cast(int*, table.entries + i * table.entry_size)
+	return e[2]
 
 
 # Aggregate get-with-default: the stored value's address at key, or
 # default_addr (the caller's default storage) when key is absent.
 char* __w_map_get_or_addr(__w_hash_table* table, int key, char* default_addr):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] == 1): return __w_hash_value_addr(table, i)
-	return default_addr
+	int i = __w_hash_table_find(table, key)
+	if (i < 0): return default_addr
+	return __w_hash_value_addr(table, i)
 
 
 # m.keys() / s.keys(): snapshot of the keys (set members) in insertion
@@ -629,10 +700,11 @@ char* __w_map_get_or_addr(__w_hash_table* table, int key, char* default_addr):
 # valid until that key is removed.
 __w_list* __w_map_keys(__w_hash_table* table, int element_size):
 	__w_list* result = __w_list_new(element_size)
-	int i = table.order_head
-	while (i >= 0):
-		__w_list_push(result, table.keys[i])
-		i = table.order_next[i]
+	int i = 0
+	while (i < table.used):
+		int* e = __w_hash_entry(table, i)
+		if (e[0] >= 0): __w_list_push(result, e[1])
+		i = i + 1
 	return result
 
 
@@ -640,27 +712,25 @@ __w_list* __w_map_keys(__w_hash_table* table, int element_size):
 # the list's element width; struct values copy their stored bytes.
 __w_list* __w_map_values(__w_hash_table* table, int element_size):
 	__w_list* result = __w_list_new(element_size)
-	int i = table.order_head
-	while (i >= 0):
-		__w_list_push_bytes(result, __w_hash_value_addr(table, i))
-		i = table.order_next[i]
+	int i = 0
+	while (i < table.used):
+		int* e = __w_hash_entry(table, i)
+		if (e[0] >= 0): __w_list_push_bytes(result, __w_hash_value_addr(table, i))
+		i = i + 1
 	return result
 
 
+# The entry goes dead in place (hash -1, key cleared) and its index slot
+# becomes a tombstone; the next rebuild drops both.
 int __w_map_remove(__w_hash_table* table, int key):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1): return 0
-	__w_hash_key_free(table.key_kind, table.keys[i])
-	table.keys[i] = 0
-	char* slot = __w_hash_value_addr(table, i)
-	int j = 0
-	while (j < __w_hash_slot_size(table)):
-		slot[j] = 0
-		j = j + 1
-	table.states[i] = 2
+	int q = __w_hash_probe(table, key)
+	if (q < 0): return 0
+	int* e = __w_hash_entry(table, table.index[q] - 1)
+	__w_hash_key_free(table.key_kind, e[1])
+	e[0] = -1
+	e[1] = 0
+	table.index[q] = -1
 	table.count = table.count - 1
-	table.deleted = table.deleted + 1
-	__w_hash_order_unlink(table, i)
 	return 1
 
 
@@ -668,9 +738,20 @@ int __w_map_length(__w_hash_table* table):
 	return table.count
 
 
-# The cursor is a slot index on the insertion-order chain; -1 ends the walk.
+# The cursor is an entry index; -1 ends the walk. Dead entries are
+# skipped, so removing the current key (or a later one) inside the loop
+# is safe, and keys inserted inside the loop are visited.
+int __w_hash_next_live(__w_hash_table* table, int i):
+	int used = table.used
+	while (i < used):
+		int* e = __w_hash_entry(table, i)
+		if (e[0] >= 0): return i
+		i = i + 1
+	return -1
+
+
 int __w_map_iter_begin(__w_hash_table* table):
-	return table.order_head
+	return __w_hash_next_live(table, 0)
 
 
 int __w_map_iter_done(__w_hash_table* table, int cursor):
@@ -678,28 +759,32 @@ int __w_map_iter_done(__w_hash_table* table, int cursor):
 
 
 int __w_map_iter_next(__w_hash_table* table, int cursor):
-	return table.order_next[cursor]
+	return __w_hash_next_live(table, cursor + 1)
+
+
+# The live entry at the cursor; traps on a dead or out-of-range cursor.
+int* __w_hash_iter_entry(__w_hash_table* table, int cursor):
+	if ((cursor < 0) || (cursor >= table.used)): __w_trap(c"invalid map iterator")
+	int* e = __w_hash_entry(table, cursor)
+	if (e[0] < 0): __w_trap(c"invalid map iterator")
+	return e
 
 
 int __w_map_iter_key(__w_hash_table* table, int cursor):
-	if (cursor < 0): __w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
-	return table.keys[cursor]
+	int* e = __w_hash_iter_entry(table, cursor)
+	return e[1]
 
 
-# Scalar value at the cursor's slot (for "for key, value in map").
+# Scalar value at the cursor's entry (for "for key, value in map").
 int __w_map_iter_value(__w_hash_table* table, int cursor):
-	if (cursor < 0): __w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
-	int* slot = cast(int*, __w_hash_value_addr(table, cursor))
-	return slot[0]
+	int* e = __w_hash_iter_entry(table, cursor)
+	return e[2]
 
 
 # Aggregate value: the address of the stored bytes, valid until the next
 # insertion rehashes the table.
 char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
-	if (cursor < 0): __w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
+	__w_hash_iter_entry(table, cursor)
 	return __w_hash_value_addr(table, cursor)
 
 
@@ -709,31 +794,28 @@ char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
 # lib/memory.w free contract); as a cheap best-effort safety the header
 # is zeroed first — the freelist backend only rewrites the block's own
 # header words on free, so until the block is reused a stale .length
-# reads 0 and stale iteration sees an empty chain instead of plausible
+# reads 0 and stale iteration sees no entries instead of plausible
 # garbage (the debug backend unmaps the page, so any stale use faults
 # outright).
 void __w_map_free(__w_hash_table* table):
-	# Chain order, not slot order: slot positions depend on the seed, and
-	# a seed-dependent free order would make later allocations differ
-	# from run to run.
-	int i = table.order_head
-	while (i >= 0):
-		__w_hash_key_free(table.key_kind, table.keys[i])
-		i = table.order_next[i]
-	free(table.keys)
-	free(table.values)
-	free(table.states)
-	free(table.order_next)
-	free(table.order_prev)
+	# Insertion order, never index order: index positions depend on the
+	# seed, and a seed-dependent free order would make later allocations
+	# differ from run to run.
+	int kind = table.key_kind
+	if ((kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)):
+		int i = 0
+		while (i < table.used):
+			int* e = __w_hash_entry(table, i)
+			if (e[0] >= 0): __w_hash_key_free(kind, e[1])
+			i = i + 1
+	free(table.index)
+	free(table.entries)
 	table.capacity = 0
 	table.count = 0
-	table.keys = 0
-	table.values = 0
-	table.states = 0
-	table.order_next = 0
-	table.order_prev = 0
-	table.order_head = -1
-	table.order_tail = -1
+	table.used = 0
+	table.entry_cap = 0
+	table.index = 0
+	table.entries = 0
 	free(table)
 
 

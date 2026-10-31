@@ -61,24 +61,40 @@ literal tables are deferred.
 
 ## Runtime layout
 
-The runtime uses open addressing with linear probing, power-of-two capacity,
-and growth before the table reaches 75% load. Slot states are:
+The runtime (`structures/hash_table.w`) is a "compact dict" in the style
+of CPython 3.6+ (rewritten for docs/projects/scripting.md Phase R1):
 
-- `0`: empty
-- `1`: live
-- `2`: tombstone
+- **Entries** live in one dense array in insertion order, each entry
+  `[hash][key][value slot]` interleaved (3 words for scalar values).
+  The hash word doubles as the live flag: `-1` marks a removed entry.
+- **The index** is an open-addressing table (linear probing,
+  power-of-two size) of `(entry + 1, hash)` int32 pairs: `0` is empty,
+  `-1` a tombstone. Probing compares the 31-bit hash inside the index
+  and reads an entry only on a full hash match, so a lookup touches one
+  index line and one entry.
+- The entries array holds half as many entries as the index has slots.
+  When it is full the table is rebuilt: doubled, or compacted at the
+  same size when at least half the entries are dead (add/remove churn).
+  Plain growth keeps the entries in place (`realloc`) and only rebuilds
+  the index, so entry indices -- the `__w_map_iter_*` cursor -- stay
+  valid; compaction moves the live entries to the front in order.
 
-A doubly-linked chain through the occupied slots (`order_next`/
-`order_prev` plus head/tail indices) records insertion order; the
-`__w_map_iter_*` cursor walks that chain instead of scanning slots, and
-rehashing re-inserts by walking the old chain so growth preserves it.
-Two extra words per slot buy deterministic, insertion-ordered iteration
-on every target.
+Iteration walks the entries array and skips dead entries, so insertion
+order is free; removing and re-inserting appends a fresh entry.
+Removing the current (or a later) key inside a `for` loop is safe, and
+keys added inside the loop are visited.
 
-The first implementation stores word-sized key and value payloads in parallel
-arrays. Smaller scalar values occupy the low bits of a word. Larger aggregate
-values should be added by extending the value array to byte-addressed storage
-and copying `type_get_size(V)` bytes at set/get boundaries.
+Hashing: string keys (`char*`, `string`) use HalfSipHash-1-3 under the
+per-process random seed (issue #528, hash flooding); word keys use a
+keyed murmur3-style finalizer (`__w_hash_word`), a few multiplies
+instead of a SipHash per operation. The word hash is keyed and well
+mixed but not a PRF; a program that keys a map by attacker-chosen
+integers and needs SipHash's guarantee can key it by strings.
+
+The previous layout (until 2026-10) kept five parallel arrays per table
+(keys, values, states, and `order_next`/`order_prev` insertion-order
+links) and SipHashed every key, so each probe touched five cache lines;
+see docs/projects/scripting.md Phase R1 for the measurements.
 
 ## Keys and ownership
 

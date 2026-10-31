@@ -322,6 +322,8 @@ void repl_threads_enable():
 	asserts(c"__w_tls_set stub missing", set_symbol >= 0)
 	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, load_int(table + set_symbol + 2))
 	install(block)
+	# Five hooks (the provenance pair joined the allocator three): a
+	# three-word block here overflowed into the next heap block's header.
 	repl_hook_words = cast(int*, malloc(5 * __word_size__))
 	repl_hook_words[0] = sym_address(c"malloc_hook_malloc")
 	repl_hook_words[1] = sym_address(c"malloc_hook_free")
