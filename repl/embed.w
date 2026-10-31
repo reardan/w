@@ -30,8 +30,8 @@
 #       is engine_ok, engine_error (nothing changed) or engine_faulted (its
 #       top-level code faulted and was rolled back), result.diagnostics
 #       the compiler's NDJSON records (`w check --json` shape, "file"
-#       naming the addon), valid until the next compile. A name that is
-#       already loaded is a bad request.
+#       naming the addon), valid until the next compile. Loading a name
+#       that is already loaded reloads it (engine_reload).
 #   int engine_call0(int address, int* ok) ... engine_call3(address, a, b, c, ok)
 #       Call a session function with 0-3 word arguments inside the fault
 #       window: a SIGSEGV/SIGFPE/SIGILL/SIGBUS or a stack overflow in the
@@ -41,6 +41,24 @@
 #       Calls nest (addon -> host -> engine_call). A host may also call an
 #       addon function pointer directly, with no window, on hot paths.
 #       Addon calls must run on the thread that called engine_init.
+#   engine_result engine_reload(char* addon, char* text)
+#       Replace an addon with new source (text 0: reload its current
+#       source, which resets its state). The new text is compile-checked
+#       first: a compile error rejects the reload with the diagnostics and
+#       leaves the running version and its state untouched. Otherwise the
+#       session rolls back to the addon's checkpoint and compiles it and
+#       every unit loaded after it again, in order (WoW's /reload): the
+#       replaced code is released, not shadowed, so reloads do not fill
+#       the buffer. Reload resets state: functions repatch, data does not
+#       migrate (globals start over; keep what must survive in saved
+#       variables, lib/saved_vars.w). Addresses from engine_symbol for the
+#       reloaded units and everything after them are stale afterwards:
+#       look them up again.
+#   engine_generation* engine_checkpoint() / engine_rollback(g) /
+#   engine_generation_free(g)
+#       Capture the session between compiles; rolling back releases every
+#       addon and bind loaded since (LIFO), and g can be rolled back to
+#       again.
 #   int engine_addon_symbol(char* addon, char* name)
 #       Like engine_symbol, but only among the addon's own definitions.
 #   void engine_shutdown()
@@ -394,6 +412,9 @@ int engine_bind(char* name, char* signature, int address):
 	return r.status == engine_ok
 
 
+engine_result engine_reload(char* addon, char* text);
+
+
 engine_result engine_load(char* addon, char* text):
 	engine_result res
 	res.status = engine_bad_request
@@ -402,7 +423,7 @@ engine_result engine_load(char* addon, char* text):
 	res.warnings = 0
 	res.ms = 0
 	if ((engine_ready == 0) || (addon == 0) || (text == 0)): return res
-	if (engine_unit_index(addon) >= 0): return res
+	if (engine_unit_index(addon) >= 0): return engine_reload(addon, text)
 	return engine_compile(engine_unit_new(addon, text, 0))
 
 
@@ -649,3 +670,163 @@ int engine_call3(int address, int a, int b, int c, int* ok):
 	engine_window_leave(outer)
 	if (ok != 0): *ok = 1
 	return result
+
+# ---------------------------------------------------------------------------
+# E5: generations. A checkpoint captures the session between compiles;
+# rolling back to it releases everything compiled since (code, globals,
+# symbols, types, imports, late-bind sites, staged files), LIFO. Reload is
+# built on it: roll back to the addon's own checkpoint and compile it and
+# every unit after it again, in order (WoW's /reload), so replaced code
+# never accumulates in the buffer.
+
+struct engine_generation:
+	repl_state* state
+	int units
+	int staged
+
+
+# Late-bind sites below a rollback point that a later definition had
+# repatched into the released code are pointed back at the newest
+# surviving definition of their name (or left alone when none survives).
+void engine_sites_rebind(int released_from):
+	int boundary = code_offset + released_from
+	for k in range(repl_sites_count):
+		char* site = repl_sites + k * 3 * __word_size__
+		char* name = cast(char*, load_word(site))
+		int slot = load_word(site + __word_size__)
+		int direct = load_word(site + 2 * __word_size__)
+		int target = 0
+		if (direct == 0): target = be_addr_slot_read(slot)
+		else: target = code_offset + slot + 4 + load_int32(code + slot)
+		if ((target >= boundary) && (target < code_offset + code_size)):
+			int t = sym_lookup(name)
+			if ((t >= 0) && (table[t + 1] == 'D') && (load_int(table + t + 10) == 2)):
+				int address = load_int(table + t + 2)
+				if (direct == 0): be_addr_slot_write(slot, address)
+				else: save_int(code + slot, address - (code_offset + slot + 4))
+
+
+# Roll the session back to st (captured between compiles), as :reset does
+# for its genesis snapshot, then drop the staged files from staged on.
+void engine_restore(repl_state* st, int staged):
+	repl_state_restore(st)
+	current_function_symbol = st.function_symbol
+	repl_discard_late_bind()
+	repl_sites_truncate(st.sites_count)
+	repl_state_clear_context()
+	engine_sites_rebind(st.codepos)
+	engine_unstage(staged)
+
+
+# Free the units from index first on (they were rolled back).
+void engine_units_truncate(int first):
+	if (engine_units == 0): return;
+	while (engine_units.length > first): engine_unit_free(engine_units.pop())
+
+
+engine_generation* engine_checkpoint():
+	engine_generation* g = new engine_generation
+	g.state = new repl_state
+	repl_state_capture(g.state)
+	g.units = 0
+	if (engine_units != 0): g.units = engine_units.length
+	g.staged = repl_staged_count
+	return g
+
+
+# Roll back to g: every addon and bind loaded after it is gone. g stays
+# valid for another rollback; engine_generation_free releases it.
+void engine_rollback(engine_generation* g):
+	engine_restore(g.state, g.staged)
+	engine_units_truncate(g.units)
+
+
+void engine_generation_free(engine_generation* g):
+	free(cast(char*, g.state))
+	free(cast(char*, g))
+
+
+# Append b's diagnostics to a's (both engine-owned text).
+char* engine_join_text(char* a, char* b):
+	if ((a == 0) || (a[0] == 0)): return strclone(b)
+	if ((b == 0) || (b[0] == 0)): return strclone(a)
+	return strjoin(a, b)
+
+
+char* engine_reload_text
+
+
+# Reload an addon from new source (text 0: its current source, which
+# resets its state). The new text is first compiled at the end of the
+# session without running; a compile error there rejects the reload with
+# the diagnostics and leaves the running version, and its state,
+# untouched. Otherwise the session rolls back to the addon's checkpoint,
+# compiles the new text, then every unit loaded after it, in order. If the
+# new text faults in its top-level code the previous text is loaded again
+# (status engine_faulted). A later unit that no longer compiles is dropped
+# and its diagnostics are appended.
+engine_result engine_reload(char* addon, char* text):
+	engine_result res
+	res.status = engine_bad_request
+	res.diagnostics = c""
+	res.errors = 0
+	res.warnings = 0
+	res.ms = 0
+	int index = engine_unit_index(addon)
+	if ((engine_ready == 0) || (index < 0)): return res
+	int t0 = time_monotonic_ms()
+	engine_unit* old = engine_units[index]
+	char* source = text
+	if (source == 0): source = old.text
+	# 1. compile check at the end of the session, nothing runs
+	engine_generation* probe = engine_checkpoint()
+	repl_no_run = 1
+	engine_diag_begin()
+	repl_result checked = repl_eval(source)
+	engine_diag_end(repl_staged_path, addon)
+	repl_no_run = 0
+	engine_rollback(probe)
+	engine_generation_free(probe)
+	if (checked.status != engine_ok):
+		res.status = engine_error
+		res.diagnostics = engine_diag_text
+		res.errors = engine_diag_errors
+		res.warnings = engine_diag_warnings
+		res.ms = time_monotonic_ms() - t0
+		return res
+	# 2. roll back to the addon's checkpoint, keeping the units to replay
+	list[engine_unit*] replay = new list[engine_unit*]
+	for i in range(index + 1, engine_units.length): replay.push(engine_units[i])
+	repl_state* st = old.checkpoint
+	engine_restore(st, old.staged)
+	while (engine_units.length > index): engine_units.pop()
+	# 3. the addon itself, falling back to its previous text
+	char* previous = strclone(old.text)
+	res = engine_compile(engine_unit_new(addon, source, 0))
+	char* log = strclone(res.diagnostics)
+	if (res.status != engine_ok):
+		engine_result back = engine_compile(engine_unit_new(addon, previous, 0))
+		char* joined = engine_join_text(log, back.diagnostics)
+		free(log)
+		log = joined
+	free(previous)
+	engine_unit_free(old)
+	# 4. everything after it
+	int errors = res.errors
+	int warnings = res.warnings
+	for i in range(replay.length):
+		engine_unit* u = replay[i]
+		engine_result r = engine_compile(engine_unit_new(u.name, u.text, u.bind_address))
+		if (r.status != engine_ok):
+			char* joined = engine_join_text(log, r.diagnostics)
+			free(log)
+			log = joined
+			errors = errors + r.errors
+		engine_unit_free(u)
+	if (engine_reload_text != 0): free(engine_reload_text)
+	engine_reload_text = log
+	res.diagnostics = log
+	res.errors = errors
+	res.warnings = warnings
+	res.ms = time_monotonic_ms() - t0
+	return res
