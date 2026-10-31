@@ -16,6 +16,14 @@
 #       MAP_NORESERVE in the low 2 GB, so only touched pages cost memory).
 #       Faults in addon code run their handler on an alternate signal
 #       stack, so a stack overflow is recovered like a segfault.
+#   int engine_bind(char* name, char* signature, int address)
+#       Expose a host function to addons: declares name in the session as
+#       a pointer of the W function type signature ("fn(char*) -> void")
+#       and stores address in it, so addon code calls name(...) natively.
+#       1 on success. Bind before loading the addons that call it.
+#   int engine_symbol(char* name)
+#       Address of the newest session definition of name (a function's
+#       entry point, a global's storage), or 0.
 #   void engine_shutdown()
 #       Remove the engine's staged sources (call once, at exit).
 import repl.core
@@ -112,3 +120,52 @@ void engine_shutdown():
 	if (engine_ready == 0): return;
 	repl_session_end()
 	repl_cleanup()
+
+
+# ---------------------------------------------------------------------------
+# E2: the host API. engine_bind declares a typed function-pointer global in
+# the session and stores the host function's address in it, so addon code
+# calls host_log(c"hi") natively through the pointer.
+
+# 1 for a name that can be declared as a W identifier.
+int engine_identifier(char* name):
+	if ((name == 0) || (name[0] == 0)): return 0
+	int i = 0
+	while (name[i] != 0):
+		int c = name[i]
+		int alpha = ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || (c == '_')
+		int digit = (c >= '0') && (c <= '9')
+		if ((alpha == 0) && ((digit == 0) || (i == 0))): return 0
+		i = i + 1
+	return 1
+
+
+# The session entry that declares a bound name: a function type and a
+# pointer global of that type.
+char* engine_bind_text(char* name, char* signature):
+	return cstr(f"type __engine_fn_{name} = {signature}\n__engine_fn_{name}* {name}\n")
+
+
+# Store a host address in the bound global's storage (session globals
+# live in the JIT buffer at their symbol address).
+int engine_bind_store(char* name, int address):
+	int slot = sym_address(name)
+	if (slot == 0): return 0
+	save_word(cast(char*, slot), address)
+	return 1
+
+
+int engine_bind(char* name, char* signature, int address):
+	if (engine_ready == 0): return 0
+	if ((engine_identifier(name) == 0) || (signature == 0) || (starts_with(signature, c"fn(") == 0)): return 0
+	char* text = engine_bind_text(name, signature)
+	repl_result r = repl_eval(text)
+	free(text)
+	if (r.status != 1): return 0
+	return engine_bind_store(name, address)
+
+
+# Address of the newest defined session symbol called name (a function's
+# entry point, a global's storage), or 0.
+int engine_symbol(char* name):
+	return sym_defined_address(name)
