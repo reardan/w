@@ -32,6 +32,15 @@
 #       the compiler's NDJSON records (`w check --json` shape, "file"
 #       naming the addon), valid until the next compile. A name that is
 #       already loaded is a bad request.
+#   int engine_call0(int address, int* ok) ... engine_call3(address, a, b, c, ok)
+#       Call a session function with 0-3 word arguments inside the fault
+#       window: a SIGSEGV/SIGFPE/SIGILL/SIGBUS or a stack overflow in the
+#       callee returns 0 with *ok = 0 instead of killing the host, and
+#       engine_fault_text names the addon and the faulting function
+#       ("SIGSEGV in addon 'a' function on_crash (pc ..., address 0x0)").
+#       Calls nest (addon -> host -> engine_call). A host may also call an
+#       addon function pointer directly, with no window, on hot paths.
+#       Addon calls must run on the thread that called engine_init.
 #   int engine_addon_symbol(char* addon, char* name)
 #       Like engine_symbol, but only among the addon's own definitions.
 #   void engine_shutdown()
@@ -53,6 +62,8 @@ const int engine_altstack_size = 262144
 int engine_ready
 int engine_flags
 int engine_init_ms
+# The host thread engine_init ran on: addon calls run there.
+int engine_tid
 # Set from engine_script by engine_init: the hook point for the
 # compiler-side --profile=script switch (see engine_init).
 int engine_script_profile_requested
@@ -89,6 +100,9 @@ int engine_altstack_arm():
 	return signal_altstack_install(alt, engine_altstack_size) == 0
 
 
+void engine_fault_record(int sig, int context);
+
+
 int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	if (engine_ready): return 1
 	int t0 = time_monotonic_ms()
@@ -110,6 +124,9 @@ int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	retained_semantic_mode = 1
 	repl_semantic_mode = 1
 	repl_init()
+	# Faults are reported through engine_fault_text, not printed.
+	repl_fault_hook = cast(int, engine_fault_record)
+	engine_tid = repl_gettid()
 	engine_ready = 1
 	engine_init_ms = time_monotonic_ms() - t0
 	return 1
@@ -191,6 +208,9 @@ struct engine_unit:
 
 
 list[engine_unit*] engine_units
+# The unit engine_compile is compiling and running, until it is kept or
+# freed: a fault in its top-level code is attributed to it.
+engine_unit* engine_loading
 
 
 # The outcome of engine_load/engine_reload. status: engine_ok, engine_error
@@ -311,6 +331,10 @@ void engine_unit_free(engine_unit* u):
 	free(cast(char*, u))
 
 
+void engine_fault_scope(int scan_top);
+void engine_fault_describe();
+
+
 # Compile and run one unit at the end of the session, capturing its
 # diagnostics. On success the unit is appended to engine_units; otherwise
 # repl_eval already rolled it back and the unit is freed.
@@ -326,10 +350,16 @@ engine_result engine_compile(engine_unit* u):
 	repl_state_capture(u.checkpoint)
 	u.staged = repl_staged_count
 	engine_diag_begin()
+	engine_fault_scope(cast(int, &u))
+	engine_loading = u
 	repl_result r = repl_eval(u.text)
+	engine_fault_scope(0)
 	engine_diag_end(repl_staged_path, u.name)
 	u.table_end = table_pos
 	res.status = r.status
+	# The rolled-back records are still intact here: name them now.
+	if (r.status == engine_faulted): engine_fault_describe()
+	engine_loading = 0
 	if ((r.status == engine_ok) && (u.bind_address != 0)):
 		if (engine_bind_store(u.name, u.bind_address) == 0): res.status = engine_error
 	res.diagnostics = engine_diag_text
@@ -396,8 +426,226 @@ int engine_addon_symbol(char* addon, char* name):
 # Name of the addon whose symbol range holds the record at name offset t,
 # or 0.
 char* engine_addon_of(int t):
-	if ((engine_units == 0) || (t < 0)): return 0
+	if (t < 0): return 0
+	if ((engine_loading != 0) && (engine_loading.bind_address == 0) && (t >= engine_loading.checkpoint.table_pos)): return engine_loading.name
+	if (engine_units == 0): return 0
 	for i in range(engine_units.length):
 		engine_unit* u = engine_units[i]
 		if ((u.bind_address == 0) && (t >= u.checkpoint.table_pos) && (t < u.table_end)): return u.name
 	return 0
+
+# ---------------------------------------------------------------------------
+# E4: calling into addons inside the fault window. A SIGSEGV, SIGFPE,
+# SIGILL or SIGBUS (or a stack overflow) in the called code long-jumps back
+# into the engine_call that armed the window, which reports it instead of
+# letting the host die; the call returns 0 with *ok = 0, and
+# engine_fault_text describes the fault:
+#   SIGSEGV in addon 'tracker' function on_crash (pc 0x..., address 0x0)
+
+# The last fault, recorded by engine_fault_record inside the handler.
+int engine_fault_signal
+int engine_fault_pc
+int engine_fault_address
+# Name offsets of the innermost session function at the fault and of the
+# innermost frame that belongs to an addon, or -1.
+int engine_fault_function
+int engine_fault_frame
+# Upper bound for the handler's stack scan: an address in the frame of the
+# engine call that armed the window.
+int engine_scan_top
+char* engine_fault_text
+
+
+# Name offset of the innermost session function whose code holds addr, or
+# -1. Allocates nothing (the fault handler calls it).
+int engine_function_at(int addr):
+	int offset = addr - code_offset
+	if ((offset < 0) || (offset >= codepos)): return -1
+	int t = 0
+	int best = -1
+	int best_size = 0
+	while (t < table_pos):
+		int name_at = t
+		while (table[t] != 0): t = t + 1
+		if ((table[t + 1] == 'D') && (load_int(table + t + 10) == 2)):
+			int start = load_int(table + t + 2)
+			int size = load_int(table + t + 14)
+			if ((size > 0) && (addr >= start) && (addr < start + size) && ((best < 0) || (size < best_size))):
+				best = name_at
+				best_size = size
+		t = next_token(t)
+	return best
+
+
+# 1 when the record at name offset t lies in an addon's symbol range.
+int engine_in_addon(int t):
+	if (t < 0): return 0
+	if ((engine_loading != 0) && (engine_loading.bind_address == 0) && (t >= engine_loading.checkpoint.table_pos)): return 1
+	if (engine_units == 0): return 0
+	for i in range(engine_units.length):
+		engine_unit* u = engine_units[i]
+		if ((u.bind_address == 0) && (t >= u.checkpoint.table_pos) && (t < u.table_end)): return 1
+	return 0
+
+
+# repl_fault_hook: record the fault and the functions it happened in, for
+# engine_fault_describe after the long jump. Runs in the signal handler, on
+# the alternate stack: no allocation. When the faulting pc is not in an
+# addon function (a library routine the addon called, say), the stack from
+# the fault's stack pointer up to the arming frame is scanned for return
+# addresses into addon code.
+void engine_fault_record(int sig, int context):
+	engine_fault_signal = sig
+	engine_fault_pc = ctx_eip(context)
+	engine_fault_address = 0
+	if ((sig == 11) || (sig == 7)): engine_fault_address = ctx_reg(context, sigcontext_cr2())
+	engine_fault_function = engine_function_at(engine_fault_pc)
+	engine_fault_frame = -1
+	if (engine_in_addon(engine_fault_function)): engine_fault_frame = engine_fault_function
+	int sp = ctx_esp(context)
+	# Unsigned-safe: i386 stack addresses are negative as ints.
+	int span = engine_scan_top - sp
+	if ((engine_scan_top == 0) || (sp == 0) || (span <= 0) || (span > 67108864)): return;
+	int at = sp
+	int words = 0
+	while ((words < span / __word_size__) && (words < 65536) && ((engine_fault_function < 0) || (engine_fault_frame < 0))):
+		int f = engine_function_at(load_word(cast(char*, at)))
+		if (f >= 0):
+			if (engine_fault_function < 0): engine_fault_function = f
+			if ((engine_fault_frame < 0) && engine_in_addon(f)): engine_fault_frame = f
+		at = at + __word_size__
+		words = words + 1
+
+
+char* engine_signal_name(int sig):
+	if (sig == 11): return c"SIGSEGV"
+	if (sig == 4): return c"SIGILL"
+	if (sig == 7): return c"SIGBUS"
+	if (sig == 8): return c"SIGFPE"
+	return c"signal"
+
+
+# Display name of a session function: an addon's top-level code compiles
+# into an anonymous __repl_N entry function.
+char* engine_function_name(int t):
+	if (t < 0): return c"?"
+	if (starts_with(table + t, c"__repl_")): return c"<top level>"
+	return table + t
+
+
+# Build engine_fault_text from the recorded fault (outside the handler).
+void engine_fault_describe():
+	if (engine_fault_text != 0): free(engine_fault_text)
+	char* sig = engine_signal_name(engine_fault_signal)
+	char* pc = hex_word(engine_fault_pc)
+	char* address = hex_word(engine_fault_address)
+	char* where = c"outside addon code"
+	char* owned = 0
+	if (engine_fault_frame >= 0):
+		char* addon = engine_addon_of(engine_fault_frame)
+		char* fname = engine_function_name(engine_fault_frame)
+		if ((engine_fault_function >= 0) && (engine_fault_function != engine_fault_frame)):
+			owned = cstr(f"in addon '{addon}' function {fname} (in {engine_function_name(engine_fault_function)})")
+		else: owned = cstr(f"in addon '{addon}' function {fname}")
+		where = owned
+	else if (engine_fault_function >= 0):
+		owned = cstr(f"in session function {engine_function_name(engine_fault_function)}")
+		where = owned
+	engine_fault_text = cstr(f"{sig} {where} (pc {pc}, address {address})")
+	if (owned != 0): free(owned)
+	free(pc)
+	free(address)
+
+
+type engine_fn0 = fn() -> int
+
+
+type engine_fn1 = fn(int) -> int
+
+
+type engine_fn2 = fn(int, int) -> int
+
+
+type engine_fn3 = fn(int, int, int) -> int
+
+
+# Arm the fault window for one engine call. A call made while another is
+# in flight (addon -> host -> engine_call) saves the outer window, which
+# engine_window_leave puts back. Returns the saved state, or 0.
+char* engine_window_enter(int scan_top):
+	char* outer = 0
+	if (repl_fault_active):
+		outer = cast(char*, malloc((jmp_buf_words + 2) * __word_size__))
+		for i in range(jmp_buf_words): save_word(outer + i * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
+		save_word(outer + jmp_buf_words * __word_size__, engine_scan_top)
+		save_word(outer + (jmp_buf_words + 1) * __word_size__, repl_fault_tid)
+	repl_fault_tid = engine_tid
+	engine_scan_top = scan_top
+	repl_fault_active = 1
+	return outer
+
+
+void engine_window_leave(char* outer):
+	if (outer == 0):
+		repl_fault_active = 0
+		engine_scan_top = 0
+		return;
+	for i in range(jmp_buf_words): save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(outer + i * __word_size__))
+	engine_scan_top = load_word(outer + jmp_buf_words * __word_size__)
+	repl_fault_tid = load_word(outer + (jmp_buf_words + 1) * __word_size__)
+	repl_fault_active = 1
+	free(outer)
+
+
+# Set the stack-scan bound for a compile's fault window (repl_eval arms
+# the window itself).
+void engine_fault_scope(int scan_top):
+	engine_scan_top = scan_top
+
+
+# After the long jump: report and close the window.
+int engine_window_fault(char* outer, int* ok):
+	repl_keep_code = 0
+	engine_window_leave(outer)
+	engine_fault_describe()
+	if (ok != 0): *ok = 0
+	return 0
+
+
+# Call the session function at address with 0-3 word arguments inside the
+# fault window. *ok (when ok is not 0) is 1 when it returned and 0 when it
+# faulted. A void function's result is meaningless.
+int engine_call0(int address, int* ok):
+	char* outer = engine_window_enter(cast(int, &address))
+	if (repl_setjmp(repl_fault_jump_buffer)): return engine_window_fault(outer, ok)
+	int result = (cast(engine_fn0*, address))()
+	engine_window_leave(outer)
+	if (ok != 0): *ok = 1
+	return result
+
+
+int engine_call1(int address, int a, int* ok):
+	char* outer = engine_window_enter(cast(int, &address))
+	if (repl_setjmp(repl_fault_jump_buffer)): return engine_window_fault(outer, ok)
+	int result = (cast(engine_fn1*, address))(a)
+	engine_window_leave(outer)
+	if (ok != 0): *ok = 1
+	return result
+
+
+int engine_call2(int address, int a, int b, int* ok):
+	char* outer = engine_window_enter(cast(int, &address))
+	if (repl_setjmp(repl_fault_jump_buffer)): return engine_window_fault(outer, ok)
+	int result = (cast(engine_fn2*, address))(a, b)
+	engine_window_leave(outer)
+	if (ok != 0): *ok = 1
+	return result
+
+
+int engine_call3(int address, int a, int b, int c, int* ok):
+	char* outer = engine_window_enter(cast(int, &address))
+	if (repl_setjmp(repl_fault_jump_buffer)): return engine_window_fault(outer, ok)
+	int result = (cast(engine_fn3*, address))(a, b, c)
+	engine_window_leave(outer)
+	if (ok != 0): *ok = 1
+	return result
