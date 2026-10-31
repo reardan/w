@@ -235,9 +235,10 @@ imply.
   the staged entry files — they are already kept per entry for generics).
 - **Staging hygiene** (D6): a per-session `mkdtemp`-style directory,
   cleaned up on exit.
-- **arm64 / darwin REPL**: stubs exist; needs `define_asm_functions_arm64`
-  wiring in `repl.w`, an arm64 low-address buffer strategy (no
-  `MAP_32BIT`), and mac signal plumbing once fault recovery lands. The
+- **arm64 / darwin REPL**: arm64 Linux done (scripting.md Phase A1,
+  `repl/jit_arm64.w`, `repl_test_arm64`); macOS (A2) still needs low
+  addresses or wider address fields, an in-process data split for
+  `MAP_JIT`, and a Mac run of the prepared Darwin branches. The
   Mac is a primary dev platform per `w/CLAUDE.md`.
 - **Buffer exhaustion** (D7): in REPL mode, replace the realloc path with
   a clear diagnostic (embedded absolute addresses make moving the buffer

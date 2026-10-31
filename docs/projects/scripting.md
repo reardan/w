@@ -1,13 +1,14 @@
 # W as an embedded scripting language: the addon engine plan
 
-Status: **Phase E (E1-E6), Phase S (S1, S2) and Phase P (P1, P2)
-implemented** (2026-10-31): the engine API is `repl/embed.w` (documented
+Status: **Phase E (E1-E6), Phase S (S1, S2), Phase A1 (arm64 Linux)
+and Phase P (P1, P2) implemented** (2026-10-31): the engine API is `repl/embed.w` (documented
 at its top), saved variables are `lib/saved_vars.w`,
 `examples/scripting/addon_host.w` runs on the API, and
 `tests/addon_host_test.w` / `tests/saved_vars_test.w` (with x64 twins)
 cover them; the script profile is `--profile=script` /
 `script_profile_mode` with the curated root in `tools/script_modules.txt`
-(§5). Phases A, R and W are tracked below. Companion study with the
+(§5); the in-process engine runs on arm64 Linux (`repl/jit_arm64.w`,
+`repl_test_arm64`). A2 (macOS), A3, P3, R and W are tracked below. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
 
@@ -240,6 +241,90 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   platform order applies.
 - **A3 threads in the engine on arm64** (M, optional): today the
   session thread rules (`repl_threads_enable`) are x86/x64 only.
+
+**Status (A1 done, A2 prepared).** The engine runs on arm64 Linux:
+`bin/wv2 arm64 repl.w` builds a working REPL, and `repl_test_arm64`
+(tag `tests_arm64`, run under qemu by the CI arm64 job) covers entries,
+persistence, echo (ints, floats, strings, structs), imports, generics,
+containers, late binding (#114), compile-error and runtime-fault
+recovery, file mode, `:load`/`:reset`/`:save`/`:type`/`:time`, `-e`,
+`--json` and shell mode. The arm64 pieces live in `repl/jit_arm64.w`
+behind `__target_isa__ == 1` branches in `repl/core.w`; the x86/x64
+paths are unchanged. How each A1 bullet was met:
+
+- *Buffer*: the hint approach works, so the address fields were not
+  widened. `repl_a64_map_code` maps at fixed hints from 1 GB in 64 MB
+  steps with `MAP_FIXED_NOREPLACE` (the range x64's `MAP_32BIT` uses)
+  and keeps the first that lands exactly there. The A64 back end puts
+  string descriptors in the data segment even with `data_split` 0, so
+  the top eighth of the mapping is a fixed data arena (`data ==
+  data_offset`); `ensure_data` now stops an in-process session instead
+  of reallocating it (`data_fixed_exhausted`, same W0412 message as the
+  code side), and rollback restores `datapos`. Inline globals are
+  word-aligned on arm64 (atomics fault on a misaligned word):
+  `grammar/program.w`, `code_generator/global_ast.w` and the REPL's
+  persistent variables.
+- *Entry ABI*: an entry function pushes x30 into the return slot
+  `ret()` pops (x86's `call` pushes it itself); `repl_skip_end` patches
+  its jump with `be_align_code` + `be_branch_patch` (byte-identical on
+  x86).
+- *Faults*: an alternate signal stack is mandatory (the W stack x28
+  grows down from the initial sp, so a frame built below sp lands on
+  live W frames). Per-handler thunks on a W^X stub page switch x28 to a
+  128 KB region of that stack and call `repl_fault(sig, &uc_mcontext)`;
+  `debugger/sigcontext.w` has the AArch64 offsets (esp reads x28).
+  Recovery rewrites the context (pc = `repl_fault_resumed`, x28 = the
+  checkpoint's saved W stack) and returns through `rt_sigreturn`, so sp
+  and the signal mask come back too, and a W stack overflow recovers
+  like any segfault. A `debugger` statement (brk, SIGTRAP) rolls the
+  entry back; wdbg's breakpoint machinery is still x86-only. Integer
+  division by zero does not trap on AArch64 (`1 / 0` is 0), so the
+  SIGFPE cases have no arm64 twin.
+- *Instruction cache*: one helper, `repl_jit_commit`, cleans and
+  invalidates the whole used code range (`dc cvau` / `ic ivau` / `dsb
+  ish` / `isb` with CTR_EL0 line sizes and the IDC/DIC shortcuts) after
+  setup, every compile (also a failed one), `:load`, the echo's codec
+  descriptors and every late-binding repatch. Whole-range on purpose:
+  older code is rewritten too (repatches, prototype backpatch chains,
+  rollback reusing offsets), and qemu cannot catch a missing flush.
+  `repl_jit_open` marks the start of each write window (a no-op on
+  Linux).
+
+A2 (macOS) remaining work, none of it testable without a Mac:
+
+1. **Low addresses.** Every arm64 Mach-O image has a 4 GB `__PAGEZERO`,
+   so `repl_a64_map_code` cannot find a buffer below 2 GB and stops with
+   a diagnostic. Either try a smaller `__PAGEZERO` in the REPL's image
+   (`code_generator/macho_64.w`) and check that the kernel accepts it,
+   or widen the symbol-table address field and the chain cells to 64
+   bits (touches the seed-compiled compiler and every back end; the
+   adrp+add slots already round-trip any address within +-4 GB).
+2. **W^X data split in process.** A `MAP_JIT` page is writable or
+   executable per thread, so JIT code cannot store to globals inline in
+   the code buffer while it runs. Set `data_split` 1 in process with a
+   separate read-write arena (the arena of A1 is the template), route
+   the REPL's persistent variables through `define_global_variable`,
+   and restore `datapos` on rollback (done). Linux arm64 can rehearse
+   this under qemu by mapping the code buffer RW and flipping it RX in
+   `repl_jit_open`/`repl_jit_commit`.
+3. **Wired, untested:** `lib/__arch__/arm64_darwin/jit_host.w` maps with
+   `MAP_JIT` (raw mmap 197), toggles `pthread_jit_write_protect_np`
+   (write mode in `repl_jit_open`, execute mode in `repl_jit_commit`)
+   and flushes with `sys_icache_invalidate`; `repl_a64_configure` sets
+   `target_os` 1 and `sigcontext_darwin`; the stub page has a Darwin
+   `sa_tramp` that switches to the alternate stack, calls
+   `repl_fault(sig, uc->uc_mcontext)` and ends in `sigreturn(uc,
+   infostyle, token)`. Check on a Mac that the stub page's RW -> RX
+   mprotect is permitted and that XNU honours the rewritten pc/x28 on
+   sigreturn.
+4. **Gate:** `repl_darwin_compile_test` (in `tests`) keeps
+   `bin/wv2 arm64_darwin repl.w -o bin/repl_darwin` compiling. On the
+   Mac, after `./wbuild build_darwin`: `bin/repl_darwin -e '40 + 2'`
+   (today: the low-address diagnostic of item 1), then the
+   `repl_test_arm64` stdin cases piped into `bin/repl_darwin`; once they
+   pass, add `bin/repl_darwin` runs to `tools/mac/run_darwin_tests.sh`
+   (it execs binaries without stdin, so the REPL cases need `-e`
+   arguments or a small driver like `tools/repl_giant_entry_e2e.w`).
 
 ### Phase P: script profile (G4)
 

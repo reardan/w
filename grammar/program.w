@@ -596,6 +596,8 @@ int global_storage_size(int type):
 # string/JSON blobs) keep using the code segment.
 void define_global_variable(int current_symbol, int decl_type):
 	if (data_split == 0):
+		# arm64 in process (repl/jit_arm64.w): an atomic on a misaligned word faults
+		if (target_isa == 1): emit_zeros((8 - (codepos & 7)) & 7)
 		sym_define_global(current_symbol)
 		emit_global_storage(decl_type)
 		return

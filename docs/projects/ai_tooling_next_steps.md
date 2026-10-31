@@ -1651,3 +1651,13 @@ so a host-side overflow faults at the write instead of at a later
 `free()`. The same entry also needed `tools/wfixture.w` to take several
 selector words (`# wfixture: --profile=script --import-root=r`) and a
 `--streaming` run mode; both are in now.
+
+## Quoting inside a sidecar `step=` value (2026-10-31, scripting.md A1)
+
+`./wbuild --list` rejected a sidecar line whose `step="..."` value held
+a double-quoted argument (`step="script -qc "bin/wrun arm64 bin/repl"
+/dev/null"`) with `not a 'step=' field (...): 'bin/wrun'`, repeated once
+per generation pass. The message names the token after the early close
+quote, not the quoting mistake; saying "unbalanced quote in step= value
+(use single quotes inside it)" and printing the error once would have
+saved a round trip.
