@@ -60,6 +60,7 @@ were not installed there; the W engine column was not re-run):
 | benchmark | C | W AOT before | W AOT after | V8 |
 |---|---:|---:|---:|---:|
 | `map(2M)` int keys | 114 | 975 | 233 | 283 |
+| `strings(1M)` f-strings (R3 `string_append_int` only) | 58 | 272 | 186 | 133 |
 
 So the compiler is not the problem: calls and loops are already ahead of
 V8 and LuaJIT and within 1.4-4x of gcc (the single-pass codegen gap,
@@ -249,8 +250,29 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   (`tests/bench/c/w_hash_table.h`, shared with `siphash_keys.c`).
 - **R2 provenance default** (S, folded into E1).
 - **R3 string building** (M, later). `strings(1M)` is 2x behind V8 in
-  AOT; profile f-string lowering and the string builder before
-  deciding.
+  AOT. Profiled (callgrind, x64, 200k iterations of the study's
+  `f"item-{i}-{i * 7}"` loop): about 3600 instructions per
+  f-string, half of them in the allocator. Each f-string did a
+  `string_new()` builder struct plus a 16-byte buffer, one `itoa`
+  malloc + free per interpolated int (plus `strlen`, `strcpy` and the
+  digit reversal, another ~20%), a `realloc` to 32 bytes once the text
+  passes 16, and the result descriptor; every one of those goes through
+  `malloc -> malloc_init_mode -> malloc_size_invalid -> malloc_backend
+  -> freelist_malloc -> size_bin`. The one small win is done:
+  `string_append_int` now formats on the stack and appends the digits
+  directly (no `itoa` allocation, `strlen` or copy), 717 M -> ~495 M
+  instructions and 272 -> 186 ms on x64 (x86 unchanged within noise,
+  221 vs 223 ms, where the 32-bit `idiv` per digit dominates). What
+  would close the rest of the V8 gap (133 ms): (1) the compiler passes
+  `__w_template_new` a capacity hint (literal bytes + 21 per
+  interpolated int), removing the `realloc`; prototyped with a fixed
+  32 it gives 161 ms; (2) a small-size fast path at the top of `malloc`
+  /`free` in `lib/memory.w` (audited runtime, so it needs a re-pin)
+  that skips the mode/validity checks for a bin hit, which is where
+  most of the remaining allocator time is; (3) digit formatting without
+  one division per digit (reciprocal multiply or a two-digit table).
+  Reusing the builder block as the result descriptor was also tried and
+  saved only 3.5% of instructions, so it was not kept.
 
 ### Phase W: wasm tier JIT (optional, only if untrusted scripts matter)
 

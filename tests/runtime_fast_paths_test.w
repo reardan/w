@@ -51,6 +51,38 @@ void test_string_append_bulk():
 	string_free(s)
 
 
+# string_append_int formats on the stack instead of through itoa; the
+# digits must match itoa's for edge values on both word sizes, including
+# the word minimum (whose negation overflows) and maximum.
+void rf_check_append_int(int v):
+	string_builder* s = string_new_sized(8)
+	string_append(s, c"<")
+	string_append_int(s, v)
+	char* digits = itoa(v)
+	assert_equal(strlen(digits) + 1, s.length)
+	assert_strings_equal(digits, s.data + 1)
+	free(digits)
+	string_free(s)
+
+
+void test_string_append_int_matches_itoa():
+	int top = 1 << (__word_size__ * 8 - 1)
+	rf_check_append_int(0)
+	rf_check_append_int(7)
+	rf_check_append_int(-7)
+	rf_check_append_int(10)
+	rf_check_append_int(-10)
+	rf_check_append_int(1234567)
+	rf_check_append_int(top)
+	rf_check_append_int(top - 1)
+	rf_check_append_int(top + 1)
+	int v = 1
+	while (v < 1000000000):
+		rf_check_append_int(v * 9)
+		rf_check_append_int(0 - v * 9 - 1)
+		v = v * 10
+
+
 void test_size_helpers():
 	int max = __w_word_max()
 	assert_equal(max, __w_size_add(max - 1, 1))

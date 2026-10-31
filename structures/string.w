@@ -74,12 +74,6 @@ string_builder* string_from(char* c):
 	return s
 
 
-void string_append_int(string_builder* s, int v):
-	char* digits = itoa(v)
-	string_append(s, digits)
-	free(digits)
-
-
 int string_equals(string_builder* s, char* c):
 	return strcmp(s.data, c) == 0
 
@@ -92,6 +86,32 @@ void string_append_bytes(string_builder* s, char* data, int length):
 	for i in range(length): dst[i] = data[i]
 	s.length = s.length + length
 	s.data[s.length] = 0
+
+
+# Decimal digits formatted on the stack and appended: no itoa
+# allocation, strlen or copy (every int an f-string interpolates comes
+# through here, docs/projects/scripting.md Phase R3). Like itoa, digits
+# come off v itself, negative or not, so INT_MIN works, and one division
+# per digit yields both quotient and remainder.
+void string_append_int(string_builder* s, int v):
+	# Filled from the end; 20 digits and a sign cover a 64-bit INT_MIN.
+	char[24] buf
+	int i = 24
+	int negative = v < 0
+	if (v == 0):
+		i = i - 1
+		buf[i] = '0'
+	while (v != 0):
+		int q = v / 10
+		int digit = v - q * 10
+		if (digit < 0): digit = 0 - digit
+		i = i - 1
+		buf[i] = digit + '0'
+		v = q
+	if (negative):
+		i = i - 1
+		buf[i] = '-'
+	string_append_bytes(s, &buf[i], 24 - i)
 
 
 # Append a string descriptor's bytes (data pointer + length pair).
