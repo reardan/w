@@ -109,9 +109,11 @@ an addon grow the buffer by 0 bytes. Notes on how the units landed:
   `repl_fault_hook`). The 64 MB buffer stays `MAP_32BIT` on x64 (the
   symbol and chain tables hold 32-bit addresses). The alternate signal
   stack is the calling thread's (the host's main thread). Roots are one
-  `:`-separated string. `--profile=script` (P2) has a marked hook point
-  in `engine_init_sized` and the reserved flag `engine_script`
-  (`engine_script_profile_requested`).
+  `:`-separated string. The flag `engine_script` compiles every addon
+  source (loads and the reload compile check) under `--profile=script`
+  (P2) by setting `script_profile_mode` around it; binds and the
+  engine's helper entries stay unprofiled. `tests/addon_profile_test.w`
+  (+ x64 twin) covers it.
 - E2: binds are units too, so a reload replays them in order.
 - E3: the sink is `diag_sink` in `compiler/diagnostics.w`; the engine
   turns `diag_json` on around each compile, so results carry the

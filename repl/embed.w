@@ -10,7 +10,9 @@
 #       docs/projects/compilation_model.md §7). flags: engine_checked keeps
 #       the session allocator's provenance tracking on (needed by checked
 #       addons crossing attested boundaries; off by default, it costs ~5x
-#       on allocation-heavy code). Returns 1, or 0 when a root is not a
+#       on allocation-heavy code); engine_script compiles every addon
+#       source under --profile=script (scripting.md P2; pass the curated
+#       root from bin/script_root in roots). Returns 1, or 0 when a root is not a
 #       directory. engine_init_sized(roots, flags, bytes) picks the JIT
 #       buffer size (default engine_default_buffer: 64 MB, reserved with
 #       MAP_NORESERVE in the low 2 GB, so only touched pages cost memory).
@@ -81,7 +83,9 @@ import lib.saved_vars
 
 # engine_init flags
 const int engine_checked = 1
-# Reserved for the script profile (docs/projects/scripting.md P2).
+# Compile addon sources under --profile=script (docs/projects/scripting.md
+# P2): no asm, syscall builtins, extern/c_lib/c_import, unsafe:, pointer
+# casts, and imports only from import roots.
 const int engine_script = 2
 
 const int engine_default_buffer = 67108864
@@ -92,8 +96,8 @@ int engine_flags
 int engine_init_ms
 # The host thread engine_init ran on: addon calls run there.
 int engine_tid
-# Set from engine_script by engine_init: the hook point for the
-# compiler-side --profile=script switch (see engine_init).
+# Set from engine_script by engine_init: addon compiles set the
+# compiler's script_profile_mode while this is on.
 int engine_script_profile_requested
 
 
@@ -140,13 +144,12 @@ int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	repl_buffer_size = buffer_bytes
 	repl_provenance_off = (flags & engine_checked) == 0
 	if (engine_altstack_arm()): repl_fault_flags = signal_sa_onstack
-	# TODO(--profile=script, scripting.md P2): the compiler side is
-	# `int script_profile_mode` (compiler/script_profile.w, not merged
-	# yet), read at every check. Wire it in engine_compile (marked there):
-	# 1 around the addon's repl_eval when engine_script_profile_requested
-	# and the unit is an addon (bind_address == 0), 0 after. Addon
-	# imports must then resolve inside an import root, so pass the curated
-	# root (bin/script_root's output, e.g. bin/addon_root) in roots.
+	# --profile=script (scripting.md P2): engine_compile and the reload
+	# compile check set script_profile_mode (compiler/script_profile.w)
+	# around addon sources only; binds and the engine's own helper entries
+	# stay unprofiled. Profiled addons may import only from an import
+	# root, so pass the curated root (bin/script_root's output, e.g.
+	# bin/addon_root) in roots.
 	engine_script_profile_requested = (flags & engine_script) != 0
 	# The AST front end with retained emission, as the REPL defaults to
 	# (repl_ast_options without flags).
@@ -498,9 +501,9 @@ engine_result engine_compile(engine_unit* u):
 	engine_diag_begin()
 	engine_fault_scope(cast(int, &u))
 	engine_loading = u
-	# TODO(--profile=script): script_profile_mode = engine_script_profile_requested && (u.bind_address == 0)
+	script_profile_mode = engine_script_profile_requested && (u.bind_address == 0)
 	repl_result r = repl_eval(u.text)
-	# TODO(--profile=script): script_profile_mode = 0
+	script_profile_mode = 0
 	engine_fault_scope(0)
 	engine_diag_end(repl_staged_path, u.name)
 	u.table_end = table_pos
@@ -932,7 +935,9 @@ engine_result engine_reload(char* addon, char* text):
 	list[engine_type_saved*] probe_types = engine_types_snapshot(source)
 	repl_no_run = 1
 	engine_diag_begin()
+	script_profile_mode = engine_script_profile_requested
 	repl_result checked = repl_eval(source)
+	script_profile_mode = 0
 	engine_diag_end(repl_staged_path, addon)
 	repl_no_run = 0
 	engine_rollback(probe)
