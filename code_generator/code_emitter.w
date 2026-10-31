@@ -21,7 +21,9 @@ int code_fixed_error_hook
 # (`data`) mapped at data_offset, so the executable segment stays
 # read-execute and the data segment read-write. The in-process REPL and
 # debugger leave data_split at 0, keeping globals inline in the single
-# executed buffer (their mmap is RWX), so nothing changes for them.
+# executed buffer (their mmap is RWX), so nothing changes for them. The
+# arm64 back end still puts string descriptors in `data`; the arm64
+# engine points it at a fixed arena (repl/jit_arm64.w).
 char* data
 int data_size
 int datapos
@@ -297,8 +299,21 @@ void emit_i(int v, int n):
 # Global-variable storage is appended here through these helpers, keeping
 # the hot code-emission path (emit / emit_i) untouched.
 
+# An in-process session's data lives in its fixed code mapping too (the
+# arm64 engine carves a data arena from it, repl/jit_arm64.w): like the
+# code, it cannot be reallocated under the absolute addresses already
+# compiled against it.
+# coverage: exempt in-process arm64 sessions only; the coverage suite runs on x86-64 hosts
+void data_fixed_exhausted(): # coverage: exempt in-process arm64 sessions only
+	char* message = c"in-process code buffer exhausted; start a new session"
+	if (code_fixed_error_hook): (cast(code_fixed_error_callback*, code_fixed_error_hook))(message)
+	println2(message)
+	exit(1)
+
+
 void ensure_data(int n):
 	if (data_size <= datapos + n):
+		if (code_fixed): data_fixed_exhausted()
 		int x = (datapos + n) << 1
 		if (x < 4096): x = 4096
 		data = realloc(data, data_size, x)

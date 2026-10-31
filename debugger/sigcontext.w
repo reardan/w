@@ -13,8 +13,21 @@ that register convention into a W stack call carrying &uc_mcontext.
 
 The accessor names keep the i386 register names; on x64 they read the
 corresponding r-register (eip -> rip, esp -> rsp, eax -> rax).
+
+AArch64 (the in-process engine, repl/jit_arm64.w): Linux passes the
+kernel's struct sigcontext (uc_mcontext, ucontext + 176: fault_address,
+x0..x30, sp, pc, pstate); Darwin passes its __darwin_mcontext64 (the
+uc_mcontext pointer: __es {far, esr, exception} then __ss {x0..x28, fp,
+lr, sp, pc, cpsr}). esp reads x28, the W stack pointer, not sp; cr2
+reads the fault address (fault_address / far). Only the accessors the
+engine uses have an AArch64 offset; the rest are x86-only.
 */
 import lib.lib
+
+
+# 1 when the context is a Darwin __darwin_mcontext64 (set by the arm64
+# engine on macOS); 0 for the Linux layouts.
+int sigcontext_darwin
 
 
 int sigcontext_edi():
@@ -26,10 +39,16 @@ int sigcontext_esi():
 		return 72 /* rsi */
 	return 20
 int sigcontext_ebp():
+	if (__target_isa__ == 1):
+		if (sigcontext_darwin): return 248 /* fp */
+		return 240 /* x29 */
 	if (__word_size__ == 8):
 		return 80 /* rbp */
 	return 24
 int sigcontext_esp():
+	if (__target_isa__ == 1):
+		if (sigcontext_darwin): return 240 /* x28 */
+		return 232 /* x28 */
 	if (__word_size__ == 8):
 		return 120 /* rsp */
 	return 28
@@ -46,6 +65,9 @@ int sigcontext_ecx():
 		return 112 /* rcx */
 	return 40
 int sigcontext_eax():
+	if (__target_isa__ == 1):
+		if (sigcontext_darwin): return 16 /* x0 */
+		return 8 /* x0 */
 	if (__word_size__ == 8):
 		return 104 /* rax */
 	return 44
@@ -56,6 +78,9 @@ int sigcontext_err():
 	if (__word_size__ == 8): return 152
 	return 52
 int sigcontext_eip():
+	if (__target_isa__ == 1):
+		if (sigcontext_darwin): return 272 /* pc */
+		return 264 /* pc */
 	if (__word_size__ == 8):
 		return 128 /* rip */
 	return 56
@@ -64,6 +89,7 @@ int sigcontext_eflags():
 	return 64
 # Fault address of the last page fault (only meaningful for SIGSEGV)
 int sigcontext_cr2():
+	if (__target_isa__ == 1): return 0 /* fault_address / far */
 	if (__word_size__ == 8): return 176
 	return 84
 # x64-only: r8..r15 sit at the start of the 64-bit sigcontext

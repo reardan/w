@@ -1633,3 +1633,13 @@ file, the way its `filename` already does. An attested module whose
 digest no longer matches is also hidden from `bin/wtest changed`, for
 the same reason as the pinned runtime entry above: `deps` fails the
 safe audit and prints no closure.
+
+## Quoting inside a sidecar `step=` value (2026-10-31, scripting.md A1)
+
+`./wbuild --list` rejected a sidecar line whose `step="..."` value held
+a double-quoted argument (`step="script -qc "bin/wrun arm64 bin/repl"
+/dev/null"`) with `not a 'step=' field (...): 'bin/wrun'`, repeated once
+per generation pass. The message names the token after the early close
+quote, not the quoting mistake; saying "unbalanced quote in step= value
+(use single quotes inside it)" and printing the error once would have
+saved a round trip.

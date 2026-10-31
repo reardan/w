@@ -341,3 +341,21 @@ render as JSON via the compiler's `to_json` codec, and `:help` documents
 `x := expr`. Staging hygiene (D6) and the two stray compile warnings
 (D4) are also done (`repl_stage_init`'s pid-tagged directory,
 `repl_warning_test`). All are exercised by `repl_test`/`repl_test_x64`.
+
+arm64 (docs/projects/scripting.md Phase A1): the REPL, and the engine
+in `repl/core.w` under it, run on arm64 Linux (`bin/wv2 arm64 repl.w`;
+`repl_test_arm64` under qemu, tag `tests_arm64`). The architecture
+pieces live in `repl/jit_arm64.w`: a code buffer mapped below 2 GB at
+fixed hints with `MAP_FIXED_NOREPLACE` (there is no `MAP_32BIT`), with a
+data arena at its top for the A64 back end's string descriptors;
+instruction-cache maintenance after every compile and repatch
+(`repl_jit_commit`); fault handlers on an alternate signal stack that
+recover by rewriting the signal context and returning through
+`rt_sigreturn` rather than long-jumping out of the handler, so a W stack
+overflow recovers too. Differences from x86/x64: integer division by
+zero does not fault (AArch64 `sdiv` returns 0); a `debugger` statement
+rolls the entry back (SIGTRAP) instead of entering wdbg, whose
+breakpoint and context code is x86-only; `thread_local` and entry
+threads (`repl_threads_enable`) stay x86/x64-only. macOS is Phase A2:
+`bin/wv2 arm64_darwin repl.w` compiles, and the remaining steps are
+listed in scripting.md.
