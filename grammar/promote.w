@@ -512,6 +512,7 @@ int parse_coerced(int want, char* context):
 # context: cast(int, arr) equals cast(int, arr.data), matching
 # cast(char*, arr) — the descriptor's own address has no cast() spelling.
 void coerce_explicit(int want, int got):
+	script_profile_cast(want)
 	int want_real = type_unqualified(want)
 	int got_real = type_unqualified(got)
 	int got_address_sized = type_get_pointer_level(got_real) > 0

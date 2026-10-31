@@ -317,7 +317,7 @@ void repl_threads_enable():
 	asserts(c"__w_tls_set stub missing", set_symbol >= 0)
 	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, load_int(table + set_symbol + 2))
 	install(block)
-	repl_hook_words = cast(int*, malloc(3 * __word_size__))
+	repl_hook_words = cast(int*, malloc(5 * __word_size__))
 	repl_hook_words[0] = sym_address(c"malloc_hook_malloc")
 	repl_hook_words[1] = sym_address(c"malloc_hook_free")
 	repl_hook_words[2] = sym_address(c"malloc_hook_realloc")

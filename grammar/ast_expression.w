@@ -3778,6 +3778,7 @@ void ast_expression_replay_event(expression_ast* tree, int id, int at):
 		if (tree.qualified[id] == 0):
 			import_warn_unqualified(token)
 			import_warn_transitive(token)
+		script_profile_identifier(token)
 		strcpy(last_identifier, token)
 		# This is the committed use: update unused-local tracking
 		# only now, at the same source token as identifier().

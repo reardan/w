@@ -23,8 +23,11 @@ so the manifest stays exact. Prints "script_root OK: <n> modules,
 
 Run from the checkout root (the manifest's paths are repository
 relative). The script_root_test target (directives at the end of this
-file) builds bin/addon_root/ this way; the profile tests then compile
-addon fixtures with '--profile=script --import-root=bin/addon_root'.
+file) builds bin/addon_root/ this way, then compiles the addon fixtures
+that need it ('--profile=script --import-root=bin/addon_root', see
+tests/script_profile_root_fixture.w) and runs every script-profile
+fixture once more under the streaming front end (the
+script_profile_error_test fixture group pins the default AST one).
 */
 import lib.lib
 import lib.file
@@ -165,5 +168,7 @@ int main(int argc, int argv):
 	if (script_root_failed): return 1
 	script_root_out(f"script_root OK: {modules.length} modules, {listed.length} files\n")
 	return 0
-# wbuild: target=script_root_test tag=tests dep=wv2 dep=script_root data=tools/script_modules.txt data=lib/ data=structures/ data=libs/standard/text/ data=code_generator/integer.w
+# wbuild: target=script_root_test tag=tests dep=wv2 dep=script_root dep=wfixture data=tools/script_modules.txt data=lib/ data=structures/ data=libs/standard/text/ data=code_generator/integer.w
 # wbuild: step="bin/script_root bin/wv2 tools/script_modules.txt bin/addon_root" expect_stdout="script_root OK"
+# wbuild: step="bin/wfixture bin/wv2 tests/script_profile_root_fixture.w tests/script_profile_root_error_fixture.w"
+# wbuild: step="bin/wfixture --streaming bin/wv2 tests/script_profile_asm_error_fixture.w tests/script_profile_c_import_error_fixture.w tests/script_profile_c_lib_error_fixture.w tests/script_profile_cast_int_error_fixture.w tests/script_profile_cast_pointer_error_fixture.w tests/script_profile_extern_error_fixture.w tests/script_profile_import_error_fixture.w tests/script_profile_raw_asm_error_fixture.w tests/script_profile_syscall_error_fixture.w tests/script_profile_thread_error_fixture.w tests/script_profile_unsafe_error_fixture.w tests/script_profile_ok_fixture.w tests/script_profile_root_fixture.w tests/script_profile_root_error_fixture.w"

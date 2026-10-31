@@ -25,7 +25,10 @@ first non-comment line (later comments are not scanned):
 	                               argv, between the compiler path and
 	                               the fixture path (e.g. "x64" for a
 	                               fixture that only reproduces under
-	                               the x64 target). Optional, no
+	                               the x64 target). Space-separated
+	                               words become separate arguments
+	                               ("--profile=script --import-root=r").
+	                               Optional, no
 	                               default, and does not itself count
 	                               as a directive (a fixture using it
 	                               still needs an expect_stderr/
@@ -59,13 +62,17 @@ against the captured stderr, and prints one PASS/FAIL line per fixture
 with expected-vs-actual detail on failure. The exit status is nonzero
 when any fixture fails.
 
+With --streaming, every fixture compiles with the streaming front end
+(the flag goes before the selector), so one fixture list can pin both
+front ends' diagnostics.
+
 With --ast-expressions, successful fixtures require AST expression compilation;
 expected failures use permissive AST expression mode to retain their existing
 diagnostics. A fixture with an explicit --streaming or --ast-* selector
 keeps its chosen front end, just like an explicitly selected audit step.
 Architecture selectors still receive the appropriate injected AST mode.
 
-Usage: wfixture [--ast-expressions] <compiler> <fixture.w>...
+Usage: wfixture [--ast-expressions|--streaming] <compiler> <fixture.w>...
 */
 import lib.lib
 import lib.env
@@ -79,6 +86,7 @@ import lib.str
 list[char*] wfixture_expects   # expect_stderr needles, in directive order
 list[char*] wfixture_rejects   # reject_stderr needles, in directive order
 int wfixture_ast_mode          # enforce AST expressions for successful fixtures
+int wfixture_streaming         # --streaming: compile every fixture streaming
 int wfixture_expect_fail       # 1 when the compile must exit nonzero
 int wfixture_directives        # total directives parsed for this fixture
 char* wfixture_selector        # '# wfixture: <selector>' argv token, 0 = none
@@ -86,7 +94,7 @@ char* wfixture_selector        # '# wfixture: <selector>' argv token, 0 = none
 
 void wfixture_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wfixture [--ast-expressions] <compiler> <fixture.w>...")
+	stream_write_line(err, c"usage: wfixture [--ast-expressions|--streaming] <compiler> <fixture.w>...")
 	stream_flush(err)
 
 
@@ -228,15 +236,44 @@ char* wfixture_resolve_program(char* name):
 	return found
 
 
+# The selector's space-separated words.
+list[char*] wfixture_selector_words():
+	list[char*] words = new list[char*]
+	if (wfixture_selector == 0): return words
+	string_builder* word = string_new()
+	int i = 0
+	while (1):
+		int c = wfixture_selector[i]
+		if ((c == ' ') || (c == 0)):
+			if (word.length > 0):
+				words.push(strclone(word.data))
+				string_clear(word)
+			if (c == 0): break
+		else: string_append_char(word, c)
+		i = i + 1
+	string_free(word)
+	return words
+
+
+# 1 when a selector word picks the front end itself.
+int wfixture_selector_picks_front_end():
+	int picks = 0
+	for char* word in wfixture_selector_words():
+		if ((strcmp(word, c"--streaming") == 0) || starts_with(word, c"--ast-")): picks = 1
+	return picks
+
+
 char* wfixture_compiler_mode():
+	if (wfixture_streaming):
+		if (wfixture_selector_picks_front_end()): return 0
+		return c"--streaming"
 	if (wfixture_ast_mode == 0): return 0
 	# A mode-specific diagnostic fixture owns its front-end selection.
 	# Keep audit behavior consistent with tools/ast_audit.w: do not
 	# combine --streaming with an AST-only flag or strengthen an explicit
 	# permissive AST fixture into required mode. Ordinary fixtures still
 	# require AST coverage, including those selecting only an architecture.
-	if (wfixture_selector != 0):
-		if ((strcmp(wfixture_selector, c"--streaming") == 0) || starts_with(wfixture_selector, c"--ast-")): return 0
+	if (wfixture_selector_picks_front_end()): return 0
 	if (wfixture_expect_fail): return c"--ast-full-expressions"
 	return c"--ast-required"
 
@@ -319,18 +356,18 @@ int wfixture_run(char* compiler, char* fixture):
 
 	char* out_path = wfixture_output_path(fixture)
 	wfixture_echo_command(compiler, fixture, out_path)
-	int has_selector = wfixture_selector != 0
+	list[char*] selector_words = wfixture_selector_words()
 	char* mode = wfixture_compiler_mode()
 	int has_mode = mode != 0
-	char** argv = strv_new(4 + has_selector + has_mode)
+	char** argv = strv_new(4 + selector_words.length + has_mode)
 	int a = 0
 	strv_set(argv, a, compiler)
 	a = a + 1
 	if (mode != 0):
 		strv_set(argv, a, mode)
 		a = a + 1
-	if (has_selector):
-		strv_set(argv, a, wfixture_selector)
+	for char* word in selector_words:
+		strv_set(argv, a, word)
 		a = a + 1
 	strv_set(argv, a, fixture)
 	a = a + 1
@@ -372,8 +409,9 @@ int main(int argc, int argv):
 		return 1
 	int first = 1
 	char** compiler_arg = argv + __word_size__
-	if (strcmp(*compiler_arg, c"--ast-expressions") == 0):
-		wfixture_ast_mode = 1
+	if ((strcmp(*compiler_arg, c"--ast-expressions") == 0) || (strcmp(*compiler_arg, c"--streaming") == 0)):
+		if (strcmp(*compiler_arg, c"--streaming") == 0): wfixture_streaming = 1
+		else: wfixture_ast_mode = 1
 		first = 2
 		if (argc < 4):
 			wfixture_usage()

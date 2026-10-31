@@ -2,8 +2,9 @@
 
 Status: **plan** (2026-10-31). Nothing below is implemented except the
 prototype in `examples/scripting/`, which drives the existing REPL engine
-as an addon host, and Phase P1 (§5.1). Companion study with the full inventory, three tier
-prototypes and benchmark sources: the project folder
+as an addon host, and Phases P1 and P2 (§5). Companion study with the
+full inventory, three tier prototypes and benchmark sources: the project
+folder
 `scripting/w_as_scripting_language.md` (not in this repository).
 
 ## 0. Goal
@@ -173,17 +174,19 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   holding only the curated modules (`tools/script_modules.txt`, built
   and checked by `bin/script_root`), passed to E1, wins over the upward
   search (`--import-root` precedence, `compilation_model.md` §7).
-- **P2 `--profile=script`** (M). A compiler flag (also settable by the
-  engine) that rejects `asm`, the `syscall*` builtins, `c_lib`/`extern`,
-  `thread_create`, `unsafe:` and `cast` to pointer types in addon
-  sources, with frozen diagnostics and fixtures like the other
-  `*_error_fixture.w` targets. This is API gating in the WoW sense; it
+- **P2 `--profile=script`** (M). **Done**, §5.2: a compiler flag (the
+  engine sets the global `script_profile_mode`) that rejects `asm`,
+  `raw_asm`, the raw built-ins (`syscall*`, `thread_create`, ...),
+  `c_lib`/`extern`/`c_import`, `unsafe:`, `cast` to pointer types and
+  imports outside the import roots in addon sources, with frozen
+  diagnostics and fixtures. This is API gating in the WoW sense; it
   does not make the code memory-safe.
 - **P3 checked addons** (L). Extend `compiler/safe_session.w`'s session
   rules so a whole addon file can be required to use checked pointers
   only (today a requested `--safe` is rejected in process). With
   bounds checks this gives memory safety at compile time, with the
-  compiler itself as the trust boundary.
+  compiler itself as the trust boundary. What it needs on top of P2,
+  and what blocks it: §5.3.
 
 ### Phase R: runtime speed for script shapes (G8)
 
@@ -301,6 +304,177 @@ the roots the session has when the addon compiles.
 `lib/unicode_text_data.w` and `lib/linebreak_data.w` are generated files
 (issue #323); `./wbuild` builds them before any target, and a host that
 packages a root copies the generated files like the rest.
+
+### 5.2 P2: `--profile=script`
+
+**Turning it on.** On the command line, `--profile=script` (compile,
+`check`, `deps`, `symbols`; whole-program like `--safe`, so its position
+does not matter): `./bin/wv2 check --profile=script
+--import-root=bin/addon_root addon.w`. In process, the engine sets the
+global `int script_profile_mode` (`compiler/script_profile.w`) to 1
+before it compiles an addon and back to 0 afterwards:
+
+```w
+script_profile_mode = 1
+repl_result r = repl_eval(addon_text)     # or E3's engine_load
+script_profile_mode = 0
+```
+
+The flag is read at every check, so toggling it between compiles is the
+whole API; nothing else needs resetting. `link_impl` clears it for every
+command-line compile. `engine_init` adds the curated root with
+`import_root_add` (§5.1), or addon imports cannot resolve at all.
+
+**Scope.** While the flag is set, a source is profiled unless it was
+opened as an import:
+
+- profiled: the command-line input files, and every REPL/engine entry
+  (each `repl_eval` text compiles from its own staged file);
+- trusted: everything compiled through an import, wherever it resolved:
+  the auto-imported container runtime, `lib/lib.w` and the other modules
+  `repl_init` preloads, the on-demand runtimes (print, f-strings,
+  `to_json`, `var`), and the curated modules an addon imports from an
+  import root. Their own casts, `asm` bodies and built-in calls are
+  theirs, not the addon's.
+
+Trust follows the file path, not the compile order: a generic or
+`inline` body replayed from a trusted module stays trusted when it is
+instantiated inside an addon, and an addon's own generic is checked
+when anything instantiates it. Compare `--safe`, which trusts the
+runtime by retained source index (`safe_trust_sources`) and audited
+modules by digest; the profile needs neither, because it has no proof
+obligations to discharge, only constructs to refuse.
+
+**Imports.** An `import` written in a profiled source resolves only
+inside the import roots; the default upward search and the compiler
+directory fallback are closed to it. A module path that is already
+compiled (the runtime, a preloaded module, a module another addon
+imported) is a no-op import and is always allowed. With no import roots
+at all, an addon can import nothing new.
+
+**Rejected constructs.** Each is a compile error in a profiled source,
+on both front ends; the texts are frozen by the fixtures and have codes:
+
+| Construct | Diagnostic | Code |
+|---|---|---|
+| `asm <isa>:` function blocks | `script profile: asm blocks are not allowed` | W0417 |
+| `raw_asm(...)` | `script profile: raw_asm is not allowed` | W0418 |
+| a raw built-in: every asm runtime stub the compiler declares (`syscall`, `syscall7`, `thread_create`, `stack_create`, `get_context`/`store_context`, `repl_setjmp`/`repl_longjmp`, `gen_switch`, `function_call`, the socket stubs, `__w_tls_set`, ...) except the pure `swap_endian`/`swap_endian16` | `script profile: built-in 'syscall' is not allowed` | W0419 |
+| `extern` declarations | `script profile: extern declarations are not allowed` | W0420 |
+| `c_lib "..."` | `script profile: c_lib is not allowed` | W0421 |
+| `c_import "..." "..."` | `script profile: c_import is not allowed` | W0422 |
+| `unsafe:` blocks | `script profile: unsafe blocks are not allowed` | W0423 |
+| `cast(T, x)` with a pointer or function-pointer `T` | `script profile: cast to a pointer type is not allowed` | W0424 |
+| an import outside the import roots | `script profile: import 'lib.file' is not in an import root` | W0425 |
+
+A built-in is matched by what the name resolves to, so a local named
+`bind` or `connect` is fine; only a use that reaches the compiler's stub
+is refused. Compiler-generated calls to stubs (generator lowering calls
+`gen_switch`) are not spelled by the addon and are not affected.
+
+**Pointer casts: one rule for both directions.** `cast(int*, n)` from an
+integer forges an address. `cast(int*, p)` from another pointer
+reinterprets memory at a different width, and `cast(char*, f)` from a
+function address hands out writable bytes inside the engine's RWX code
+buffer. Telling the cases apart buys nothing, so every cast whose target
+is a pointer or function-pointer type is rejected, whatever the operand.
+Casts to integers, floats and other scalars stay legal (`cast(int, p)`,
+`cast(float, n)`), as do `new`, `&x` and typed function pointers (the
+form the host's bound API takes, E2).
+
+**Where the checks sit.** One shared choke point per construct, so the
+AST and streaming front ends cannot drift (the fixtures run under both):
+program items (`extern_statement`, `c_import_statement`) and statements
+(`unsafe:`, `raw_asm_literal`, `asm_function_body`) are parsed by the
+same rules for both front ends; every `cast` of either front end ends in
+`coerce_explicit`; both identifier paths call `script_profile_identifier`
+next to their `import_warn_transitive` call; imports are gated in
+`import_statement` and `compile_relative_path`. No syntax was added, so
+`tests/parser_generator/w.pg` is unchanged.
+
+**Tests.** The `script_profile_error_test` fixture group
+(`tests/script_profile_*_fixture.w`, `# wfixture: --profile=script`)
+pins every diagnostic on the default front end, plus a positive fixture
+(structs, `new`, lists, maps, generics, f-strings, function pointers,
+scalar casts, a local shadowing a built-in's name). `script_root_test`
+builds `bin/addon_root`, compiles an addon that imports curated modules
+from it and one that tries `lib.file` with the root present, then reruns
+every fixture with `wfixture --streaming`. `script_profile_repl_test`
+(and its x64 twin) toggles `script_profile_mode` between `repl_eval`
+entries: addon entries are rejected and rolled back, host entries with
+the flag off compile the same constructs, and an addon may call a host
+function that uses them.
+
+**Limits** (P2 is API gating, not a sandbox):
+
+- **The runtime's global namespace.** W has one flat namespace, and the
+  runtime every session compiles defines raw entry points: `lib/lib.w`
+  and `lib/linux.w` wrap system calls as ordinary W functions (`open`,
+  `write`, `unlink`, `mmap`, `exit`, `kill`, ...). The profile refuses
+  the stubs and the imports, but an addon can still call those wrappers
+  by name. Closing that needs a per-source visibility rule (a deny list
+  keyed by declaring file and name, or a split of `lib/lib.w` into a
+  pure prelude and a system layer the engine keeps out of the addon's
+  view). That is a follow-up (call it P2b); it matters for
+  community-addon trust, which P3 or the wasm tier supersede anyway.
+- **Raw pointers stay raw.** Pointer arithmetic, indexing and field
+  access through `T*` are unchanged, so an addon can still read or write
+  any address it can compute from a pointer it holds. Memory safety is
+  P3's job.
+- **Denial of service.** Runaway loops, deep recursion (G5) and the
+  `debugger` statement (`int3`, which the fault window does not catch)
+  are not refused.
+- **The allowlist is the union of the roots** the session has when the
+  addon compiles. A host that adds a full `lib/` root for itself opens
+  it to addons too, so keep the curated root the only one, or add host
+  roots only around host compiles.
+
+### 5.3 P3: checked addons (not started)
+
+On top of P2, P3 would require every profiled source to be checked code:
+no raw pointer types, raw indexing or pointer arithmetic in the addon,
+only the checked forms of `safe_mode.md` (owners, `ref`/`refmut`,
+checked slices and views, the audited containers). What it needs:
+
+1. **A per-source checked requirement.** `--safe` today means "check
+   every untrusted source", and in-process entry points reject it
+   (`safe_mode.md` "Entry points, diagnostics and costs";
+   `repl_compile_entry`'s `target_option_error`). P3 needs P2's split:
+   check exactly the profiled sources and trust every import. The pieces
+   exist (`safe_trust_sources` marks runtime sources, `safe_trusted()`
+   reads them per retained source); P3 would mark every import trusted
+   and reject any raw pointer use in the profiled files.
+2. **Checked sessions for whole addon files.** The #713 session rules
+   (transcript replay, generations, rollback) check prompt entries that
+   mention checked bindings. An addon is a whole file loaded once and
+   reloaded by rollback (E5); its top-level checked state needs the same
+   transcript treatment, and E5's rollback must truncate the checker's
+   records with the code (the session already truncates trusted-runtime
+   records on rollback).
+3. **A checked curated API.** The P1 modules have raw signatures
+   (`char*` everywhere), and checked code may call an audited module only
+   through checked signatures (`safe: audited module function has a raw
+   signature; call it inside an unsafe block`, and P2 bans `unsafe:`).
+   P3's curated set would be the checked library (`lib/safe_vector.w`,
+   `lib/safe_hash.w`, `lib/safe_keyed_map.w`, `lib/safe_buffer.w`, ...)
+   plus checked string helpers that do not exist yet, each pinned or
+   attested.
+4. **A checked host binding.** `engine_bind` signatures would have to be
+   checked contracts (slices and views instead of `char*`), which the
+   quantified function contracts allow for function pointers.
+5. **Bounds checks stay on** (`--bounds=off` conflicts with checked
+   pointers). The REPL's provenance tracking is not needed for
+   compile-time checking, so E1 can still turn it off.
+
+What blocks it in the safe-mode roadmap (`safe_mode_roadmap.md`):
+milestone 3 (containers, strings and audited library interfaces, #697)
+is the big one, since without checked strings an addon cannot do the
+text work addons mostly do; #713 admits checked bindings in sessions but
+keeps a requested `--safe` rejected in process, which is the switch P3
+flips; and the checked targets (Linux x86/x64/arm64, win64,
+arm64_darwin, wasm) cover the engine's x86/x64 today but must follow
+Phase A to arm64 and darwin. Until then untrusted code belongs in the
+wasm tier.
 
 ## 6. References
 
