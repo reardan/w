@@ -1245,6 +1245,20 @@ int repl_fault_jump_buffer
 # cannot long-jump onto that thread's stack.
 int repl_fault_tid
 
+# Optional fault report hook (repl/embed.w): when nonzero, repl_fault
+# calls hook(sig, context) in place of printing the banner, the stack
+# trace and "entry rolled back", then long-jumps as usual. It runs inside
+# the signal handler (on the alternate signal stack when one is armed),
+# so it must not allocate.
+int repl_fault_hook
+
+type __repl_fault_hook_callback = fn(int, int) -> void
+
+# Extra sa_flags for the fault handlers, set by an embedder before
+# repl_init: repl/embed.w adds SA_ONSTACK (0x08000000) after arming an
+# alternate signal stack, so a stack overflow recovers like a segfault.
+int repl_fault_flags
+
 int repl_fault_thunk_page
 int repl_fault_thunk_pos
 int repl_fault_restorer
@@ -1388,9 +1402,11 @@ void repl_fault(int sig, int context):
 			return;
 		# Older threads may run code this entry defined: keep it.
 		repl_keep_code = repl_other_threads() > 0
-	dbg_fault_banner(c"runtime fault: ", sig, context)
-	repl_fault_trace(context)
-	println(c"entry rolled back")
+	if (repl_fault_hook != 0): (cast(__repl_fault_hook_callback*, repl_fault_hook))(sig, context)
+	else:
+		dbg_fault_banner(c"runtime fault: ", sig, context)
+		repl_fault_trace(context)
+		println(c"entry rolled back")
 	repl_longjmp(repl_fault_jump_buffer, 1)
 
 
@@ -1405,10 +1421,11 @@ void repl_fault_entry(int sig):
 void repl_fault_install_handlers():
 	int handler = cast(int, repl_fault_entry)
 	if (__word_size__ == 8): handler = cast(int, repl_fault)
-	repl_fault_install(4, handler, 1073741824) /* SIGILL */
-	repl_fault_install(7, handler, 1073741824) /* SIGBUS */
-	repl_fault_install(8, handler, 1073741824) /* SIGFPE */
-	repl_fault_install(11, handler, 1073741824) /* SIGSEGV */
+	int flags = 1073741824 | repl_fault_flags
+	repl_fault_install(4, handler, flags) /* SIGILL */
+	repl_fault_install(7, handler, flags) /* SIGBUS */
+	repl_fault_install(8, handler, flags) /* SIGFPE */
+	repl_fault_install(11, handler, flags) /* SIGSEGV */
 
 
 # ---------------------------------------------------------------------------
@@ -1587,6 +1604,15 @@ void repl_ast_options():
 	repl_semantic_mode = retained_semantic_mode
 
 
+# Embedder parameters (repl/embed.w), read by repl_inprocess_setup; all
+# 0 for the REPL and wdbg. repl_buffer_size: the JIT buffer's size in
+# bytes, reserved with MAP_NORESERVE (0: the fixed 8 MB). Nonzero
+# repl_provenance_off leaves the session allocator's provenance tracking
+# off (it costs ~5x on allocation-heavy code; checked boundaries need it).
+int repl_buffer_size
+int repl_provenance_off
+
+
 # Initialize the session: the compiler configured for in-process
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
@@ -1620,6 +1646,9 @@ void repl_inprocess_setup():
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
 	if (word_size == 8): mmap_flags = 34 + 64
+	if (repl_buffer_size > 0):
+		buffer_size = repl_buffer_size
+		mmap_flags = mmap_flags + 16384 /* MAP_NORESERVE */
 	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
@@ -1649,7 +1678,7 @@ void repl_inprocess_setup():
 	# cross that boundary too. The compiler's host allocator stays separate.
 	int provenance = sym_address(c"malloc_provenance_enabled")
 	asserts(c"session allocation provenance missing", provenance != 0)
-	save_i(data + provenance - data_offset, 1, word_size)
+	if (repl_provenance_off == 0): save_i(data + provenance - data_offset, 1, word_size)
 	# The auto-imported runtime closure is audited, as in link_impl.
 	safe_trust_sources(0)
 
