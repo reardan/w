@@ -1649,3 +1649,14 @@ standalone `bin/wprof`-style command to annotate an arbitrary callgrind
 profile, so profiling a runtime change meant a throwaway nm + bisect
 script. Direction: a `wbench --annotate <callgrind.out> <binary>` (or
 `wprof callgrind`) subcommand reusing `prog_function_name`.
+Third, `./wbuild profile_refresh` regenerates `profiles/self.wprof` without
+checking that the result still passes `verify_pgo`, and on the current tree
+it does not (AST and streaming PGO builds differ, see
+register_allocation_pgo.md "Known issue"); finding the culprit took a
+hand-written ddmin script over profile lines. Direction: have
+`profile_refresh` run the `verify_pgo` comparison on the new profile, and a
+`wprof reduce <profile> -- <cmd>` that shrinks a profile to the lines a
+failing command needs. Also, `profile_check`'s `bench.wprof` file list is
+hand-maintained in build.base.json and had fallen behind the corpus
+(`regex_pathological.w` missing, so a fresh profile read 76%); it could be
+derived from `tests/bench/` the way `wprof corpus` derives its programs.
