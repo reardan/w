@@ -2,7 +2,7 @@
 
 Status: **plan** (2026-10-31). Nothing below is implemented except the
 prototype in `examples/scripting/`, which drives the existing REPL engine
-as an addon host. Companion study with the full inventory, three tier
+as an addon host, and Phase P1 (§5.1). Companion study with the full inventory, three tier
 prototypes and benchmark sources: the project folder
 `scripting/w_as_scripting_language.md` (not in this repository).
 
@@ -18,7 +18,7 @@ already does for the REPL and wdbg.
 
 Non-goals: Erlang-style live state migration (reload resets addon state,
 see §3), and a memory sandbox for untrusted in-process code (the wasm
-interpreter and `wvm` cells remain the answer for untrusted scripts, §5).
+interpreter and `wvm` cells remain the answer for untrusted scripts, §4).
 
 ## 1. What exists and what was measured
 
@@ -169,10 +169,10 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
 
 ### Phase P: script profile (G4)
 
-- **P1 import allowlist** (S). Zero compiler change: an addon import
-  root containing only the curated modules, passed to E1, wins over the
-  upward search (`--import-root` precedence, `compilation_model.md` §7).
-  Document the curated set.
+- **P1 import allowlist** (S). **Done**, §5.1: an addon import root
+  holding only the curated modules (`tools/script_modules.txt`, built
+  and checked by `bin/script_root`), passed to E1, wins over the upward
+  search (`--import-root` precedence, `compilation_model.md` §7).
 - **P2 `--profile=script`** (M). A compiler flag (also settable by the
   engine) that rejects `asm`, the `syscall*` builtins, `c_lib`/`extern`,
   `thread_create`, `unsafe:` and `cast` to pointer types in addon
@@ -240,7 +240,69 @@ Made by this plan:
 - The host owns the API surface by binding named functions (E2); addons
   never link against host symbols directly.
 
-## 5. References
+## 5. Script profile (Phase P)
+
+### 5.1 P1: the curated import root
+
+An addon sees exactly the modules its import roots hold. The curated set
+is `tools/script_modules.txt`; `bin/script_root <wv2> <manifest> <dir>`
+copies it into `<dir>` and proves the directory closed, and
+`script_root_test` (in `tests`) does that into `bin/addon_root/`.
+
+**What is curated** (`module` lines, 35 modules): pure computation, text,
+containers and codecs, the things a WoW addon gets from Lua's string,
+table and math libraries.
+
+| Area | Modules |
+|---|---|
+| Text | `lib/str`, `lib/utf8`, `lib/format`, `lib/float_text`, `lib/hex`, `lib/edit_distance`, `lib/emoji`, `lib/unicode_text` (+ `_data`), `lib/bidi`, `lib/linebreak` (+ `_data`), `lib/regex` + `libs/standard/text/re`, `structures/string` |
+| Bytes | `lib/bytes`, `lib/byte_buf`, `lib/byte_map`, `lib/checked`, `lib/result`, `lib/sha256`, `lib/rle` |
+| Numerics | `lib/math`, `lib/fmath`, `lib/stats`, `lib/rand` (seeded xorshift, no entropy source), `lib/array` |
+| Containers, codecs | `lib/assert`, `lib/container`, `lib/generator`, `structures/bitset`, `structures/deque`, `structures/heap`, `structures/json`, `structures/json_codec` |
+
+**What is not**, and why: everything that reaches an ambient capability
+the host should hand out through `engine_bind` instead: files and
+directories (`lib/file`, `lib/dir`, `lib/fs*`, `lib/io*`, `lib/stream`,
+`lib/path`, which reads `$HOME` through `lib/env`), the environment and
+arguments (`lib/env`, `lib/args`), clocks (`lib/time`, `lib/wclock`;
+the host binds a frame time), processes, shells and terminals
+(`lib/process`, `lib/shell*`, `lib/pty`, `lib/termios`), the network
+(`lib/net`, `lib/socket*`, `lib/http`, `lib/transport*`), threads and
+tasks (`lib/thread*`, `lib/task*`, `lib/executor`, `lib/event_loop`),
+signals and non-local control (`lib/signal`, `lib/setjmp`), dynamic
+loading and native interop (`lib/dlcall`, `lib/cuda`, `lib/kvm`, `lib/vmm`),
+allocator and raw-memory helpers (`lib/memory*`, `lib/mem`, `lib/ptr`,
+`lib/arena`), and the float64-only modules (`lib/fmath64`,
+`lib/float64_format`), which do not compile on the 32-bit target. A
+module joins only when its whole import closure stays inside the set;
+`bin/script_root` names any file a new module drags in.
+
+**Runtime lines.** The root also holds the files the compiler compiles
+into every program (`structures/hash_table.w`, `structures/w_list.w`
+and their imports: `lib/memory*`, `lib/linux.w`, the
+`lib/__arch__/{x86,x64}` syscall shims, ...), `lib/lib.w` (the engine's
+prelude) and the on-demand runtimes (print, f-strings with `float` and
+`float64`, `to_json`, `var`). They must ship so an engine can start
+outside a checkout (G2), and the engine compiles all of them before the
+first addon. Importing one from an addon is a no-op (a module path
+compiles once per program), so they are not addon API, but their
+functions are already in the session's global namespace; §5.2 "Limits"
+says what that means.
+
+**How a root interacts with the runtime.** Import roots apply to every
+import, the runtime included (`compilation_model.md` §7.1). A host that
+passes the curated root alone therefore compiles the runtime from the
+root's copies, which are byte-identical to the checkout's. A host that
+also passes a full `lib/` root for its own preloaded modules must put the
+curated root first, and must remember that a module found in *any* root
+is importable under the profile (§5.2): the allowlist is the union of
+the roots the session has when the addon compiles.
+
+`lib/unicode_text_data.w` and `lib/linebreak_data.w` are generated files
+(issue #323); `./wbuild` builds them before any target, and a host that
+packages a root copies the generated files like the rest.
+
+## 6. References
 
 - `repl/core.w` (engine), `repl/incremental.w` (prefix-reuse API),
   `debugger/eval.w` (the other embedder), `compiler/safe_session.w`.

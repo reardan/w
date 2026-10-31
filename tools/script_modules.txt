@@ -1,0 +1,106 @@
+# The curated addon import root (docs/projects/scripting.md, Phase P1).
+#
+# bin/script_root (tools/script_root.w) copies every file listed here into
+# one directory, the root an embedding host passes as an import root for
+# addon code, and checks that the root is closed: each 'module' line's
+# import closure, plus the runtime the compiler compiles into every
+# program, resolves inside the root on x86 and x64 (no fallback to the
+# upward search). Under --profile=script an addon may import only modules
+# found in an import root (compiler/compiler.w, script_profile_*).
+#
+# Line forms (paths are repository-relative):
+#   module <path>    curated: an addon may 'import' it (pure computation,
+#                    text, containers, codecs; no files, processes,
+#                    network, environment, clocks, threads, signals,
+#                    dynamic loading or raw memory/allocator access)
+#   runtime <path>   compiled by the compiler or the engine itself before
+#                    any addon code (the auto-imported container runtime,
+#                    lib/lib.w and the on-demand runtimes); it must ship in
+#                    the root so the engine can start outside a checkout,
+#                    but it is not addon API
+#
+# Adding a module: append a 'module' line and run './wbuild
+# script_root_test'; it names every file the new module's closure pulls
+# in that the root does not hold. Keep a module out when that closure
+# reaches lib/file.w, lib/env.w, lib/time.w, lib/process.w, lib/thread.w,
+# lib/dlcall.w, lib/net.w or anything else with an ambient capability.
+
+# Text and strings
+module lib/str.w
+module lib/utf8.w
+module lib/format.w
+module lib/float_text.w
+module lib/hex.w
+module lib/edit_distance.w
+module lib/emoji.w
+module lib/unicode_text.w
+module lib/unicode_text_data.w
+module lib/bidi.w
+module lib/linebreak.w
+module lib/linebreak_data.w
+module lib/regex.w
+module libs/standard/text/re.w
+module structures/string.w
+
+# Bytes and checked arithmetic
+module lib/bytes.w
+module lib/byte_buf.w
+module lib/byte_map.w
+module lib/checked.w
+module lib/result.w
+module lib/sha256.w
+module lib/rle.w
+
+# Math and numerics
+module lib/math.w
+module lib/fmath.w
+module lib/stats.w
+module lib/rand.w
+module lib/array.w
+
+# Containers, codecs and language support
+module lib/assert.w
+module lib/container.w
+module lib/generator.w
+module structures/bitset.w
+module structures/deque.w
+module structures/heap.w
+module structures/json.w
+module structures/json_codec.w
+
+# Runtime: the auto-imported container closure (structures/hash_table.w,
+# structures/w_list.w and their imports)
+runtime structures/hash_table.w
+runtime structures/w_list.w
+runtime lib/memory.w
+runtime lib/memory_freelist.w
+runtime lib/memory_debug.w
+runtime lib/memory_provenance.w
+runtime lib/valgrind.w
+runtime lib/stack_trace.w
+runtime lib/page_size.w
+runtime lib/linux.w
+runtime lib/not_android.w
+runtime lib/syscalls_linux_x86.w
+runtime lib/win32_stubs.w
+runtime code_generator/integer.w
+runtime lib/__arch__/x86/android.w
+runtime lib/__arch__/x86/syscalls.w
+runtime lib/__arch__/x64/android.w
+runtime lib/__arch__/x64/syscalls.w
+
+# Runtime: lib/lib.w (the engine's prelude) and the on-demand runtimes
+# (print, f-strings, to_json/from_json, var)
+runtime lib/lib.w
+runtime lib/__arch__/x86/context.w
+runtime lib/__arch__/x64/context.w
+runtime lib/context_x86_64.w
+runtime structures/prelude.w
+runtime structures/print_float.w
+runtime structures/template_float.w
+runtime structures/template_float64.w
+runtime structures/w_dynamic.w
+runtime structures/json_float64_stub.w
+runtime structures/__arch__/x86/json_float64.w
+runtime structures/__arch__/x64/json_float64.w
+runtime structures/json_float64_impl.w
