@@ -59,6 +59,15 @@
 #       Capture the session between compiles; rolling back releases every
 #       addon and bind loaded since (LIFO), and g can be rolled back to
 #       again.
+#   int engine_saved_vars(char* addon, char* global)
+#       Keep an addon global (a struct, or a pointer to one, that to_json
+#       can encode) across engine_reload: it is stored as JSON before the
+#       rollback and restored after the reload into the freshly
+#       initialized value, matched by member name, so a changed struct
+#       layout still loads (lib/saved_vars.w). engine_saved_vars_store /
+#       engine_saved_vars_restore(addon or 0) do the same on demand, e.g.
+#       around saved_vars_write_file/saved_vars_read_file at exit and
+#       start.
 #   int engine_addon_symbol(char* addon, char* name)
 #       Like engine_symbol, but only among the addon's own definitions.
 #   void engine_shutdown()
@@ -67,6 +76,7 @@ import repl.core
 import lib.signal
 import lib.str
 import lib.time
+import lib.saved_vars
 
 
 # engine_init flags
@@ -130,9 +140,13 @@ int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	repl_buffer_size = buffer_bytes
 	repl_provenance_off = (flags & engine_checked) == 0
 	if (engine_altstack_arm()): repl_fault_flags = signal_sa_onstack
-	# TODO(--profile=script, scripting.md P2): when the compiler-side
-	# switch lands, enable it here for every addon compile, e.g.
-	#   if (engine_script_profile_requested): <compiler global> = 1
+	# TODO(--profile=script, scripting.md P2): the compiler side is
+	# `int script_profile_mode` (compiler/script_profile.w, not merged
+	# yet), read at every check. Wire it in engine_compile (marked there):
+	# 1 around the addon's repl_eval when engine_script_profile_requested
+	# and the unit is an addon (bind_address == 0), 0 after. Addon
+	# imports must then resolve inside an import root, so pass the curated
+	# root (bin/script_root's output, e.g. bin/addon_root) in roots.
 	engine_script_profile_requested = (flags & engine_script) != 0
 	# The AST front end with retained emission, as the REPL defaults to
 	# (repl_ast_options without flags).
@@ -213,6 +227,115 @@ int engine_symbol(char* name):
 # it defined, so engine_reload can roll back to it (E5) and a fault report
 # can name the addon a faulting function belongs to (E4).
 
+# A struct, union or enum redefinition resets the existing type record in
+# place (type_reset_for_redefinition) rather than pushing a new one, so
+# rolling the type table back by count does not undo it. Before each
+# compile the engine saves the layout of every existing type the text
+# redefines at top level, and puts it back whenever that compile is
+# undone.
+struct engine_type_saved:
+	int index
+	int num_fields
+	int total_size
+	int pointer_level
+	int decl_file_index
+	int decl_line
+	int decl_column
+	list[char*] names
+	list[int] types
+
+
+# Name declared by a top-level "struct NAME", "union NAME" or "enum NAME"
+# line, or 0.
+char* engine_declared_type(char* line):
+	int at = 0
+	if (starts_with(line, c"struct ")): at = 7
+	else if (starts_with(line, c"union ")): at = 6
+	else if (starts_with(line, c"enum ")): at = 5
+	else: return 0
+	while (line[at] == ' '): at = at + 1
+	int end = at
+	while (((line[end] >= 'a') && (line[end] <= 'z')) || ((line[end] >= 'A') && (line[end] <= 'Z')) || ((line[end] >= '0') && (line[end] <= '9')) || (line[end] == '_')): end = end + 1
+	if (end == at): return 0
+	return substring(line, at, end)
+
+
+# The to_json/from_json codec caches one descriptor blob per type index
+# (grammar/json_builtin.w). Entries whose blob lies in released code, or
+# whose type record was truncated, are dropped after a rollback; entries
+# for a type about to be redefined in place are dropped before the
+# compile, so its next use emits a descriptor for the new layout.
+void engine_codec_drop_if(int type_index, int released_from):
+	int boundary = code_offset + released_from
+	int kept = 0
+	for i in range(json_codec_count):
+		int type = load_int(json_codec_types + i * 4)
+		int address = load_int(json_codec_addresses + i * 4)
+		int released = (released_from >= 0) && ((address - boundary >= 0) || (type >= type_count()))
+		if ((type != type_index) && (released == 0)):
+			save_int(json_codec_types + kept * 4, type)
+			save_int(json_codec_addresses + kept * 4, address)
+			kept = kept + 1
+	json_codec_count = kept
+
+
+list[engine_type_saved*] engine_types_snapshot(char* text):
+	list[engine_type_saved*] saved = 0
+	list[char*] lines = split(text, '\n')
+	for line in lines:
+		char* name = engine_declared_type(line)
+		if (name != 0):
+			int index = type_lookup(name)
+			if (index >= 0):
+				engine_codec_drop_if(index, -1)
+				if (saved == 0): saved = new list[engine_type_saved*]
+				type_rec* t = cast(type_rec*, type_records[index])
+				engine_type_saved* e = new engine_type_saved
+				e.index = index
+				e.num_fields = t.num_fields
+				e.total_size = t.total_size
+				e.pointer_level = t.pointer_level
+				e.decl_file_index = t.decl_file_index
+				e.decl_line = t.decl_line
+				e.decl_column = t.decl_column
+				e.names = new list[char*]
+				e.types = new list[int]
+				for k in range(t.field_names.length): e.names.push(t.field_names[k])
+				for k in range(t.field_types.length): e.types.push(t.field_types[k])
+				saved.push(e)
+			free(name)
+	for line in lines: free(line)
+	list_free[char*](lines)
+	return saved
+
+
+# Put saved layouts back (records the rollback truncated are skipped).
+void engine_types_restore(list[engine_type_saved*] saved):
+	if (saved == 0): return;
+	for e in saved:
+		if (e.index < type_count()):
+			type_rec* t = cast(type_rec*, type_records[e.index])
+			t.num_fields = e.num_fields
+			t.total_size = e.total_size
+			t.pointer_level = e.pointer_level
+			t.decl_file_index = e.decl_file_index
+			t.decl_line = e.decl_line
+			t.decl_column = e.decl_column
+			t.field_names.clear()
+			t.field_types.clear()
+			for k in range(e.names.length): t.field_names.push(e.names[k])
+			for k in range(e.types.length): t.field_types.push(e.types[k])
+
+
+void engine_types_free(list[engine_type_saved*] saved):
+	if (saved == 0): return;
+	for e in saved:
+		list_free[char*](e.names)
+		list_free[int](e.types)
+		free(cast(char*, e))
+	list_free[engine_type_saved*](saved)
+
+
 struct engine_unit:
 	char* name
 	char* text
@@ -223,6 +346,8 @@ struct engine_unit:
 	int staged
 	# its symbols are the records in [checkpoint.table_pos, table_end)
 	int table_end
+	# layouts of the existing types it redefined, as they were before it
+	list[engine_type_saved*] types
 
 
 list[engine_unit*] engine_units
@@ -339,6 +464,7 @@ engine_unit* engine_unit_new(char* name, char* text, int bind_address):
 	u.checkpoint = 0
 	u.staged = 0
 	u.table_end = 0
+	u.types = 0
 	return u
 
 
@@ -346,6 +472,7 @@ void engine_unit_free(engine_unit* u):
 	free(u.name)
 	free(u.text)
 	if (u.checkpoint != 0): free(cast(char*, u.checkpoint))
+	engine_types_free(u.types)
 	free(cast(char*, u))
 
 
@@ -367,10 +494,13 @@ engine_result engine_compile(engine_unit* u):
 	u.checkpoint = new repl_state
 	repl_state_capture(u.checkpoint)
 	u.staged = repl_staged_count
+	u.types = engine_types_snapshot(u.text)
 	engine_diag_begin()
 	engine_fault_scope(cast(int, &u))
 	engine_loading = u
+	# TODO(--profile=script): script_profile_mode = engine_script_profile_requested && (u.bind_address == 0)
 	repl_result r = repl_eval(u.text)
+	# TODO(--profile=script): script_profile_mode = 0
 	engine_fault_scope(0)
 	engine_diag_end(repl_staged_path, u.name)
 	u.table_end = table_pos
@@ -389,6 +519,8 @@ engine_result engine_compile(engine_unit* u):
 		if (engine_units == 0): engine_units = new list[engine_unit*]
 		engine_units.push(u)
 	else:
+		engine_types_restore(u.types)
+		engine_codec_drop_if(-1, u.checkpoint.codepos)
 		engine_unstage(u.staged)
 		engine_unit_free(u)
 	return res
@@ -715,6 +847,7 @@ void engine_restore(repl_state* st, int staged):
 	repl_sites_truncate(st.sites_count)
 	repl_state_clear_context()
 	engine_sites_rebind(st.codepos)
+	engine_codec_drop_if(-1, st.codepos)
 	engine_unstage(staged)
 
 
@@ -722,6 +855,17 @@ void engine_restore(repl_state* st, int staged):
 void engine_units_truncate(int first):
 	if (engine_units == 0): return;
 	while (engine_units.length > first): engine_unit_free(engine_units.pop())
+
+
+# Undo in-place type redefinitions of the units from index first on,
+# newest first, so the oldest unit's saved layout wins. Call after the
+# type table was rolled back.
+void engine_units_restore_types(int first):
+	if (engine_units == 0): return;
+	int i = engine_units.length - 1
+	while (i >= first):
+		engine_types_restore(engine_units[i].types)
+		i = i - 1
 
 
 engine_generation* engine_checkpoint():
@@ -738,6 +882,7 @@ engine_generation* engine_checkpoint():
 # valid for another rollback; engine_generation_free releases it.
 void engine_rollback(engine_generation* g):
 	engine_restore(g.state, g.staged)
+	engine_units_restore_types(g.units)
 	engine_units_truncate(g.units)
 
 
@@ -754,6 +899,10 @@ char* engine_join_text(char* a, char* b):
 
 
 char* engine_reload_text
+
+
+int engine_saved_vars_store_log(char* addon, char** log);
+int engine_saved_vars_restore_log(char* addon, char** log);
 
 
 # Reload an addon from new source (text 0: its current source, which
@@ -780,12 +929,15 @@ engine_result engine_reload(char* addon, char* text):
 	if (source == 0): source = old.text
 	# 1. compile check at the end of the session, nothing runs
 	engine_generation* probe = engine_checkpoint()
+	list[engine_type_saved*] probe_types = engine_types_snapshot(source)
 	repl_no_run = 1
 	engine_diag_begin()
 	repl_result checked = repl_eval(source)
 	engine_diag_end(repl_staged_path, addon)
 	repl_no_run = 0
 	engine_rollback(probe)
+	engine_types_restore(probe_types)
+	engine_types_free(probe_types)
 	engine_generation_free(probe)
 	if (checked.status != engine_ok):
 		res.status = engine_error
@@ -794,13 +946,21 @@ engine_result engine_reload(char* addon, char* text):
 		res.warnings = engine_diag_warnings
 		res.ms = time_monotonic_ms() - t0
 		return res
-	# 2. roll back to the addon's checkpoint, keeping the units to replay
+	# 2. save the registered globals of every unit about to roll back (S2)
+	char* saved_log = 0
+	list[char*] reloaded = new list[char*]
+	for i in range(index, engine_units.length):
+		if (engine_units[i].bind_address == 0):
+			reloaded.push(strclone(engine_units[i].name))
+			engine_saved_vars_store_log(engine_units[i].name, &saved_log)
+	# 3. roll back to the addon's checkpoint, keeping the units to replay
 	list[engine_unit*] replay = new list[engine_unit*]
 	for i in range(index + 1, engine_units.length): replay.push(engine_units[i])
 	repl_state* st = old.checkpoint
 	engine_restore(st, old.staged)
+	engine_units_restore_types(index)
 	while (engine_units.length > index): engine_units.pop()
-	# 3. the addon itself, falling back to its previous text
+	# 4. the addon itself, falling back to its previous text
 	char* previous = strclone(old.text)
 	res = engine_compile(engine_unit_new(addon, source, 0))
 	char* log = strclone(res.diagnostics)
@@ -811,7 +971,7 @@ engine_result engine_reload(char* addon, char* text):
 		log = joined
 	free(previous)
 	engine_unit_free(old)
-	# 4. everything after it
+	# 5. everything after it
 	int errors = res.errors
 	int warnings = res.warnings
 	for i in range(replay.length):
@@ -823,6 +983,15 @@ engine_result engine_reload(char* addon, char* text):
 			log = joined
 			errors = errors + r.errors
 		engine_unit_free(u)
+	# 6. saved globals back into the new versions (S2)
+	for name in reloaded:
+		engine_saved_vars_restore_log(name, &saved_log)
+		free(name)
+	if (saved_log != 0):
+		char* joined = engine_join_text(log, saved_log)
+		free(log)
+		free(saved_log)
+		log = joined
 	if (engine_reload_text != 0): free(engine_reload_text)
 	engine_reload_text = log
 	res.diagnostics = log
@@ -830,3 +999,118 @@ engine_result engine_reload(char* addon, char* text):
 	res.warnings = warnings
 	res.ms = time_monotonic_ms() - t0
 	return res
+
+
+# ---------------------------------------------------------------------------
+# S2: saved variables across reloads (lib/saved_vars.w). A host registers
+# an addon global whose type is a struct or a pointer to one that
+# to_json/from_json can encode; engine_reload then stores it (as JSON text,
+# in the host's heap) before the rollback and restores it after the
+# reload, matched to the new layout by member name. The addon's own load
+# code must still initialize the global: its fresh value is the default
+# the stored members are merged into.
+
+struct engine_saved:
+	char* addon
+	char* global
+
+
+list[engine_saved*] engine_saved_list
+
+
+# The session side: structures.json for the store/restore entries, and the
+# two saved_vars functions bound in.
+int engine_saved_setup():
+	if (engine_unit_index(c"__engine_saved_vars") >= 0): return 1
+	engine_result r = engine_load(c"__engine_saved_vars", c"import structures.json\n")
+	if (r.status != engine_ok): return 0
+	if (engine_bind(c"__engine_sv_store", c"fn(char*, char*) -> void", cast(int, saved_vars_store)) == 0): return 0
+	return engine_bind(c"__engine_sv_restore", c"fn(char*, char*) -> char*", cast(int, saved_vars_restore))
+
+
+int engine_saved_vars(char* addon, char* global):
+	if ((engine_ready == 0) || (engine_identifier(global) == 0) || (addon == 0)): return 0
+	if (engine_saved_setup() == 0): return 0
+	if (engine_saved_list == 0): engine_saved_list = new list[engine_saved*]
+	for s in engine_saved_list:
+		if ((strcmp(s.addon, addon) == 0) && (strcmp(s.global, global) == 0)): return 1
+	engine_saved* s = new engine_saved
+	s.addon = strclone(addon)
+	s.global = strclone(global)
+	engine_saved_list.push(s)
+	return 1
+
+
+# Run one helper entry (compiled at the end of the session), capturing its
+# diagnostics into log; the entry is rolled back afterwards, but what it
+# executed (stores into older globals, saved_vars calls) stays done.
+int engine_saved_eval(char* text, char** log):
+	engine_generation* g = engine_checkpoint()
+	engine_diag_begin()
+	repl_result r = repl_eval(text)
+	engine_diag_end(repl_staged_path, c"<saved vars>")
+	if ((r.status != engine_ok) && (engine_diag_length > 0)):
+		char* joined = engine_join_text(*log, engine_diag_text)
+		if (*log != 0): free(*log)
+		*log = joined
+	engine_rollback(g)
+	engine_generation_free(g)
+	return r.status == engine_ok
+
+
+char* engine_saved_key(engine_saved* s):
+	return cstr(f"{s.addon}.{s.global}")
+
+
+# Store the registered globals of addon (0: of every addon). Returns how
+# many were stored; failures append diagnostics to *log when log is not 0.
+int engine_saved_vars_store_log(char* addon, char** log):
+	if (engine_saved_list == 0): return 0
+	char* sink = 0
+	if (log == 0): log = &sink
+	int stored = 0
+	for s in engine_saved_list:
+		if (((addon == 0) || (strcmp(s.addon, addon) == 0)) && (engine_addon_symbol(s.addon, s.global) != 0)):
+			char* key = engine_saved_key(s)
+			char* text = cstr(f"__engine_sv_store(c\"{key}\", json_stringify(to_json({s.global})))\n")
+			stored = stored + engine_saved_eval(text, log)
+			free(text)
+			free(key)
+	if (sink != 0): free(sink)
+	return stored
+
+
+# Restore the registered globals of addon (0: of every addon) from the
+# store. Returns how many were restored.
+int engine_saved_vars_restore_log(char* addon, char** log):
+	if (engine_saved_list == 0): return 0
+	char* sink = 0
+	if (log == 0): log = &sink
+	int restored = 0
+	for s in engine_saved_list:
+		char* stored_key = engine_saved_key(s)
+		int has = saved_vars_has(stored_key)
+		free(stored_key)
+		if (((addon == 0) || (strcmp(s.addon, addon) == 0)) && (engine_addon_symbol(s.addon, s.global) != 0) && has):
+			int t = sym_lookup(s.global)
+			int type = load_int(table + t + 6)
+			int level = type_get_pointer_level(type)
+			char* base = type_get_name(type)
+			char* key = engine_saved_key(s)
+			char* assign = cstr(f"{s.global} = __engine_sv_value")
+			if (level == 0): assign = cstr(f"{s.global} = *__engine_sv_value")
+			char* text = cstr(f"{base}* __engine_sv_value = from_json({base}, json_parse(__engine_sv_restore(c\"{key}\", json_stringify(to_json({s.global})))))\nif (__engine_sv_value != 0): {assign}\n")
+			restored = restored + engine_saved_eval(text, log)
+			free(text)
+			free(assign)
+			free(key)
+	if (sink != 0): free(sink)
+	return restored
+
+
+int engine_saved_vars_store(char* addon):
+	return engine_saved_vars_store_log(addon, 0)
+
+
+int engine_saved_vars_restore(char* addon):
+	return engine_saved_vars_restore_log(addon, 0)

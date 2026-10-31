@@ -1,9 +1,10 @@
 # W as an embedded scripting language: the addon engine plan
 
-Status: **Phase E (E1-E6) and S1 implemented** (2026-10-31): the engine
-API is `repl/embed.w` (documented at its top),
-`examples/scripting/addon_host.w` runs on the API, and
-`tests/addon_host_test.w` (with an x64 twin) covers it. S2 is next. Phases A, P, R and W remain plans. Companion study with the
+Status: **Phase E (E1-E6) and Phase S (S1, S2) implemented**
+(2026-10-31): the engine API is `repl/embed.w` (documented at its top),
+saved variables are `lib/saved_vars.w`, `examples/scripting/addon_host.w`
+runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
+(with x64 twins) cover them. Phases A, P, R and W remain plans. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
 
@@ -168,7 +169,8 @@ the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
 
 ### Phase S: reload semantics and saved state (G7)
 
-**S1 implemented** (below and in `docs/projects/repl.md`).
+**Implemented**: S1 below and in `docs/projects/repl.md`; S2 in
+`lib/saved_vars.w` plus `engine_saved_vars` in `repl/embed.w`.
 
 - **S1 policy** (S, doc): reload = reset addon state; functions
   repatch, data does not migrate. Concretely, `engine_reload` rolls the
@@ -190,6 +192,25 @@ the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
   `saved_vars_restore` after reload. Struct layout changes are handled
   by JSON's field-name matching, which is the Lua behaviour addon
   authors expect.
+  As landed: the store keeps JSON *text* in the host's heap (only text
+  crosses between the host and session heaps), and
+  `saved_vars_restore(key, defaults_json)` reshapes the stored value to
+  the layout of the freshly loaded default (`saved_vars_merge`: members
+  by name, a type change keeps the default, int/float convert, arrays
+  and strings whole), because `from_json` is strict and would reject an
+  added or removed member. `saved_vars_write_file`/`_read_file` persist
+  the whole store as one JSON object. On the engine side
+  `engine_saved_vars(addon, global)` registers a struct or struct-pointer
+  global; `engine_reload` stores it before the rollback and restores it
+  after the reload through two bound functions and short helper entries
+  (`to_json`/`from_json` compiled in the session, rolled back after they
+  run). Landing it exposed two rollback gaps the engine now closes: a
+  struct/union/enum redefinition resets its type record in place, which
+  a count-based type-table rollback does not undo (the engine saves and
+  restores the layouts a unit redefines), and the `to_json` descriptor
+  cache (`grammar/json_builtin.w`) kept entries pointing into released
+  code (pruned on every rollback, and dropped for a type about to be
+  redefined). The REPL's own rollback and `:reset` still have both gaps.
 
 ### Phase A: arm64 Linux, then macOS (G1) — the long pole for a Mac game
 

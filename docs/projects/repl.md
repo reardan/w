@@ -377,4 +377,13 @@ after a reload
   stale and must be looked up again.
 
 State that must survive a reload goes through saved variables
-(scripting.md S2).
+(`lib/saved_vars.w`, `engine_saved_vars`): JSON text kept in the host's
+heap, stored before the rollback and restored after the reload by member
+name, so a changed struct layout still loads.
+
+Two rollback gaps the engine closes but the REPL's per-entry rollback and
+`:reset` still have: a `struct`/`union`/`enum` redefinition resets its
+type record in place (`type_reset_for_redefinition`), which rolling the
+type table back by count does not undo, and the `to_json`/`from_json`
+descriptor cache (`grammar/json_builtin.w`) is never truncated, so it can
+hand out a descriptor for an old layout or from released code.

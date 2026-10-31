@@ -241,3 +241,70 @@ void test_generation_rollback():
 	engine_rollback(g)
 	assert_equal(pos, codepos)
 	engine_generation_free(g)
+
+
+# Session helper returning a char* (a JSON string, say).
+char* addon_test_text(char* name):
+	return cast(char*, addon_test_call(name, 0))
+
+
+void test_struct_redefinition_rolls_back():
+	addon_test_engine()
+	assert_equal(engine_ok, engine_load(c"sr_base", c"import structures.json\nstruct sr_pt:\n\tint x\n\nsr_pt* sr_v = new sr_pt(5)\nchar* sr_json(int unused):\n\treturn json_stringify(to_json(sr_v))\n").status)
+	assert_strings_equal(c"{\"x\":5}", addon_test_text(c"sr_json"))
+	engine_generation* g = engine_checkpoint()
+	# a later addon redefines the struct (in place in the type table) and
+	# encodes it
+	assert_equal(engine_ok, engine_load(c"sr_over", c"struct sr_pt:\n\tint x\n\tint y\n\nsr_pt* sr_w = new sr_pt(1, 2)\nchar* sr_json2(int unused):\n\treturn json_stringify(to_json(sr_w))\n").status)
+	assert_strings_equal(c"{\"x\":1,\"y\":2}", addon_test_text(c"sr_json2"))
+	engine_rollback(g)
+	engine_generation_free(g)
+	# the original layout is back for new compiles, codec included
+	assert_equal(engine_ok, engine_load(c"sr_after", c"char* sr_json3(int unused):\n\treturn json_stringify(to_json(sr_v))\n").status)
+	assert_strings_equal(c"{\"x\":5}", addon_test_text(c"sr_json3"))
+	# a rejected reload that redefines the struct leaves it alone too
+	engine_result bad = engine_reload(c"sr_after", c"struct sr_pt:\n\tint q\n\nchar* sr_json3(int unused):\n\treturn sr_missing\n")
+	assert_equal(engine_error, bad.status)
+	assert_equal(engine_ok, engine_load(c"sr_last", c"char* sr_json4(int unused):\n\treturn json_stringify(to_json(sr_v))\n").status)
+	assert_strings_equal(c"{\"x\":5}", addon_test_text(c"sr_json4"))
+
+
+void test_saved_vars_survive_reload_with_layout_change():
+	addon_test_engine()
+	assert_equal(engine_ok, engine_load(c"sv_addon", c"struct sv_db:\n\tint kills\n\tchar* name\n\nsv_db* sv_state = new sv_db(0, c\"fresh\")\nint sv_kill(int n):\n\tsv_state.kills = sv_state.kills + n\n\treturn sv_state.kills\n").status)
+	asserts(c"register", engine_saved_vars(c"sv_addon", c"sv_state"))
+	addon_test_call(c"sv_kill", 5)
+	addon_test_call(c"sv_kill", 2)
+	# v2 adds a field in front and renames nothing: kills carries over by
+	# name, level keeps v2's initializer
+	engine_result r = engine_reload(c"sv_addon", c"struct sv_db:\n\tint level\n\tint kills\n\tchar* name\n\nsv_db* sv_state = new sv_db(9, 0, c\"fresh\")\nint sv_kill(int n):\n\tsv_state.kills = sv_state.kills + n\n\treturn sv_state.kills * 100 + sv_state.level\n")
+	assert_equal(engine_ok, r.status)
+	assert_strings_equal(c"", r.diagnostics)
+	assert_equal(809, addon_test_call(c"sv_kill", 1))
+	assert_contains(saved_vars_get(c"sv_addon.sv_state"), c"\"kills\":7")
+	# a plain reload of the same source keeps it as well
+	assert_equal(engine_ok, engine_reload(c"sv_addon", 0).status)
+	assert_equal(909, addon_test_call(c"sv_kill", 1))
+
+
+void test_saved_vars_value_struct_and_files():
+	addon_test_engine()
+	assert_equal(engine_ok, engine_load(c"sw_addon", c"struct sw_cfg:\n\tint volume\n\tint muted\n\nsw_cfg sw_settings\nsw_settings.volume = 50\nint sw_set(int v):\n\tsw_settings.volume = v\n\treturn sw_settings.volume\n\nint sw_get(int unused):\n\treturn sw_settings.volume\n").status)
+	asserts(c"register", engine_saved_vars(c"sw_addon", c"sw_settings"))
+	addon_test_call(c"sw_set", 77)
+	# store on demand and persist, as a host does at exit
+	assert_equal(1, engine_saved_vars_store(c"sw_addon"))
+	char* path = c"bin/addon_host_saved_vars.json"
+	assert_equal(1, saved_vars_write_file(path))
+	addon_test_call(c"sw_set", 1)
+	saved_vars_forget(c"sw_addon.sw_settings")
+	# ... and loads it back at the next start, after the addon loaded
+	assert_equal(1, saved_vars_read_file(path))
+	unlink(path)
+	assert_equal(1, engine_saved_vars_restore(c"sw_addon"))
+	assert_equal(77, addon_test_call(c"sw_get", 0))
+	# a reload stores the live value first, then restores it (a value
+	# struct global is assigned by copy)
+	addon_test_call(c"sw_set", 64)
+	assert_equal(engine_ok, engine_reload(c"sw_addon", 0).status)
+	assert_equal(64, addon_test_call(c"sw_get", 0))
