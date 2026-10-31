@@ -1,10 +1,11 @@
 # W as an embedded scripting language: the addon engine plan
 
-Status: **plan** (2026-10-31). Nothing below is implemented except the
-prototype in `examples/scripting/`, which drives the existing REPL engine
-as an addon host. Companion study with the full inventory, three tier
-prototypes and benchmark sources: the project folder
-`scripting/w_as_scripting_language.md` (not in this repository).
+Status: **Phase E (E1-E6) and S1 implemented** (2026-10-31): the engine
+API is `repl/embed.w` (documented at its top),
+`examples/scripting/addon_host.w` runs on the API, and
+`tests/addon_host_test.w` (with an x64 twin) covers it. S2 is next. Phases A, P, R and W remain plans. Companion study with the
+full inventory, three tier prototypes and benchmark sources: the project
+folder `scripting/w_as_scripting_language.md` (not in this repository).
 
 ## 0. Goal
 
@@ -39,7 +40,7 @@ that engine and the symbol table:
 | Host -> addon call through a `fn` pointer | 5 ns |
 | Compile error in a reload | rejected, previous definitions stay live |
 | Null dereference in addon code | caught inside the fault window, host continues |
-| Stack overflow in addon code | **kills the process** (no `sigaltstack`) |
+| Stack overflow in addon code | **killed the process** (no `sigaltstack`); recovered since E1 |
 | Host binary | 3.4 MB (the compiler is inside) |
 
 Speed of the generated code is native W: the same four micro-benchmarks
@@ -90,6 +91,40 @@ coverage gate for `compiler/`, `grammar/`, `code_generator/` lines.
 
 ### Phase E: the engine API (G3, G2, G5 part, G6, G8 part) — first
 
+**Implemented** (E1-E6, `repl/embed.w`). Measured on the x64 Linux cloud
+container with the API (best of a few runs, a loaded 4-core machine):
+`engine_init` 58 ms; loading the benchmark addon from source 6 ms
+(17 ms with `import structures.json`); `engine_reload` of it with one
+later unit replayed 22 ms; `engine_call1` 6 ns per call against 2 ns
+through a raw function pointer; `strings(1M)` 292 ms with provenance off
+(the engine default) against 2312 ms with `engine_checked`; 20 reloads of
+an addon grow the buffer by 0 bytes. Notes on how the units landed:
+
+- E1: `repl/core.w` only gained embedder parameters, all 0 for the REPL
+  and wdbg (`repl_buffer_size`, `repl_provenance_off`, `repl_fault_flags`,
+  `repl_fault_hook`). The 64 MB buffer stays `MAP_32BIT` on x64 (the
+  symbol and chain tables hold 32-bit addresses). The alternate signal
+  stack is the calling thread's (the host's main thread). Roots are one
+  `:`-separated string. `--profile=script` (P2) has a marked hook point
+  in `engine_init_sized` and the reserved flag `engine_script`
+  (`engine_script_profile_requested`).
+- E2: binds are units too, so a reload replays them in order.
+- E3: the sink is `diag_sink` in `compiler/diagnostics.w`; the engine
+  turns `diag_json` on around each compile, so results carry the
+  `w check --json` records with "file" naming the addon.
+- E4: `engine_call0..3(address, args..., &ok)`; the fault is recorded by
+  `repl_fault_hook` inside the handler without allocating (innermost
+  session function at the pc, plus the innermost addon frame from a
+  stack scan bounded by the arming frame), and `engine_fault_text` reads
+  `SIGSEGV in addon 'a' function lib_crash (in strlen) (pc ..., address
+  0x0)`. Calls must run on the thread that called `engine_init`.
+- E5: rollback also re-points late-bind sites below the rollback point
+  that had been repatched into released code, and removes the released
+  entries' staged files. `engine_reload` compile-checks the new text at
+  the end of the session first, so a rejected reload keeps the running
+  version and its state; a top-level fault in the new text reloads the
+  previous text.
+
 Everything else builds on a frozen surface, so this is the only phase
 that must come first. Module: `repl/embed.w`, importing `repl.core`;
 the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
@@ -133,9 +168,22 @@ the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
 
 ### Phase S: reload semantics and saved state (G7)
 
+**S1 implemented** (below and in `docs/projects/repl.md`).
+
 - **S1 policy** (S, doc): reload = reset addon state; functions
-  repatch, data does not migrate. Written into `docs/projects/repl.md`
-  and this file.
+  repatch, data does not migrate. Concretely, `engine_reload` rolls the
+  session back to the addon's checkpoint and compiles the addon and every
+  unit loaded after it again, in order:
+  - every function of those units is the new code, and late-bound call
+    sites below the rollback point are repatched to it;
+  - every global of those units starts over from its initializer; old
+    values, old struct layouts and heap objects reachable only from them
+    are not carried over (the old heap blocks leak: the session heap is
+    not rolled back);
+  - the replaced code is released, not shadowed;
+  - addresses a host looked up for those units are stale afterwards.
+  Units loaded before the reloaded addon keep their state. What must
+  survive goes through saved variables (S2).
 - **S2 `lib/saved_vars.w`** (M). SavedVariables for addons on top of
   `to_json`/`from_json` (`structures/json_codec.w`): a host calls
   `saved_vars_store(addon, value)` before rollback and
@@ -196,7 +244,8 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   a dense array part for small non-negative int keys as Lua does. Gate:
   the existing map/set tests plus a `tests/bench/` entry; target within
   3x of the C open-addressing twin.
-- **R2 provenance default** (S, folded into E1).
+- **R2 provenance default** (S, folded into E1; done: the engine
+  leaves provenance off unless `engine_checked`).
 - **R3 string building** (M, later). `strings(1M)` is 2x behind V8 in
   AOT; profile f-string lowering and the string builder before
   deciding.
