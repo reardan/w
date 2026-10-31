@@ -48,7 +48,7 @@ import structures.json
 import structures.json_codec
 import compiler.safe_session
 import lib.__arch__.thread_id
-import repl.jit_arm64
+import repl.__arch__.jit
 
 
 # Result of one repl_eval() call. status 1: the entry compiled and ran
