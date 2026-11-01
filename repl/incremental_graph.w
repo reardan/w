@@ -147,7 +147,7 @@ incremental_result incremental_graph_update(list[char*] sources):
 		if (changed[i]):
 			int symbol = sym_probe(names[i])
 			assert1(symbol >= 0 && table[symbol + 1] == 'D')
-			entry.address = load_int(table + symbol + 2)
+			entry.address = sym_value_at(symbol)
 			result.compiled = result.compiled + 1
 			repl_queue_late_bind(entry.name, entry.address)
 		else:

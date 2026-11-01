@@ -1,8 +1,8 @@
 # W as an embedded scripting language: the addon engine plan
 
-Status: **Phase E (E1-E6), Phase S (S1, S2), Phase A1 (arm64 Linux),
+Status: **Phase E (E1-E6), Phase S (S1, S2), Phase A1/A2 (arm64 Linux and macOS),
 Phase P (P1, P2) and Phase R1 (the `map` runtime) implemented**
-(2026-10-31): the engine API is `repl/embed.w` (documented at its top),
+(A2 added 2026-11-01): the engine API is `repl/embed.w` (documented at its top),
 saved variables are `lib/saved_vars.w`, `examples/scripting/addon_host.w`
 runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
 (with x64 twins) cover them; the script profile is `--profile=script` /
@@ -10,7 +10,7 @@ runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
 (§5); the in-process engine and the whole engine API run on arm64 Linux
 (`repl/jit_arm64.w`; `repl_test_arm64`, `addon_host_test_arm64`,
 `addon_profile_test_arm64` under qemu); `map[int,int]` is 4.2x faster
-(2.0x C, ahead of V8). A2 (macOS), A3, P3, the rest of R3 and W are
+(2.0x C, ahead of V8). A3, P3, the rest of R3 and W are
 tracked below. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
@@ -249,12 +249,12 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   `pthread_jit_write_protect_np` toggling around emission (the W^X
   rule the Mach-O writer already follows for files), no signing for
   JIT pages, BSD signal delivery for the fault window,
-  `tools/mac/run_darwin_tests.sh` gate. Needs a Mac run; the CLAUDE.md
-  platform order applies.
+  `tools/mac/run_darwin_tests.sh` gate. Native execution is covered by
+  `repl_test_darwin` and the addon tests in the macOS suite.
 - **A3 threads in the engine on arm64** (M, optional): today the
   session thread rules (`repl_threads_enable`) are x86/x64 only.
 
-**Status (A1 done, A2 prepared).** The engine runs on arm64 Linux:
+**Status (A1 and A2 implemented).** The engine runs on arm64 Linux:
 `bin/wv2 arm64 repl.w` builds a working REPL, and `repl_test_arm64`
 (tag `tests_arm64`, run under qemu by the CI arm64 job) covers entries,
 persistence, echo (ints, floats, strings, structs), imports, generics,
@@ -264,8 +264,8 @@ recovery, file mode, `:load`/`:reset`/`:save`/`:type`/`:time`, `-e`,
 behind `__target_isa__ == 1` branches in `repl/core.w`; the x86/x64
 paths are unchanged. How each A1 bullet was met:
 
-- *Buffer*: the hint approach works, so the address fields were not
-  widened. `repl_a64_map_code` maps at fixed hints from 1 GB in 64 MB
+- *Buffer*: A1 retained low hints; A2 later widened symbol values for
+  macOS. On Linux, `repl_a64_map_code` maps from 1 GB in 64 MB
   steps with `MAP_FIXED_NOREPLACE` (the range x64's `MAP_32BIT` uses)
   and keeps the first that lands exactly there. The A64 back end puts
   string descriptors in the data segment even with `data_split` 0, so
@@ -302,41 +302,35 @@ paths are unchanged. How each A1 bullet was met:
   `repl_jit_open` marks the start of each write window (a no-op on
   Linux).
 
-A2 (macOS) remaining work, none of it testable without a Mac:
+A2 (macOS) uses the same API and A64 emitter, with native host support:
 
-1. **Low addresses.** Every arm64 Mach-O image has a 4 GB `__PAGEZERO`,
-   so `repl_a64_map_code` cannot find a buffer below 2 GB and stops with
-   a diagnostic. Either try a smaller `__PAGEZERO` in the REPL's image
-   (`code_generator/macho_64.w`) and check that the kernel accepts it,
-   or widen the symbol-table address field and the chain cells to 64
-   bits (touches the seed-compiled compiler and every back end; the
-   adrp+add slots already round-trip any address within +-4 GB).
-2. **W^X data split in process.** A `MAP_JIT` page is writable or
-   executable per thread, so JIT code cannot store to globals inline in
-   the code buffer while it runs. Set `data_split` 1 in process with a
-   separate read-write arena (the arena of A1 is the template), route
-   the REPL's persistent variables through `define_global_variable`,
-   and restore `datapos` on rollback (done). Linux arm64 can rehearse
-   this under qemu by mapping the code buffer RW and flipping it RX in
-   `repl_jit_open`/`repl_jit_commit`.
-3. **Wired, untested:** `lib/__arch__/arm64_darwin/jit_host.w` maps with
-   `MAP_JIT` (raw mmap 197), toggles `pthread_jit_write_protect_np`
-   (write mode in `repl_jit_open`, execute mode in `repl_jit_commit`)
-   and flushes with `sys_icache_invalidate`; `repl_a64_configure` (behind the `repl_jit_configure` hook) sets
-   `target_os` 1 and `sigcontext_darwin`; the stub page has a Darwin
-   `sa_tramp` that switches to the alternate stack, calls
-   `repl_fault(sig, uc->uc_mcontext)` and ends in `sigreturn(uc,
-   infostyle, token)`. Check on a Mac that the stub page's RW -> RX
-   mprotect is permitted and that XNU honours the rewritten pc/x28 on
-   sigreturn.
-4. **Gate:** `repl_darwin_compile_test` (in `tests`) keeps
-   `bin/wv2 arm64_darwin repl.w -o bin/repl_darwin` compiling. On the
-   Mac, after `./wbuild build_darwin`: `bin/repl_darwin -e '40 + 2'`
-   (today: the low-address diagnostic of item 1), then the
-   `repl_test_arm64` stdin cases piped into `bin/repl_darwin`; once they
-   pass, add `bin/repl_darwin` runs to `tools/mac/run_darwin_tests.sh`
-   (it execs binaries without stdin, so the REPL cases need `-e`
-   arguments or a small driver like `tools/repl_giant_entry_e2e.w`).
+1. **Native addresses.** Keep Mach-O's 4 GB `__PAGEZERO`: a smaller
+   guard was rejected by XNU on the Apple Silicon validation host.
+   The packed symbol table preserves a high address word through
+   `sym_value_at` / `sym_set_value_at`; JSON descriptor caches and
+   temporary address arrays use host-sized pointers. A64 address slots
+   and backpatch chains preserve addresses within their ±4 GB range.
+2. **Separate writable data.** `MAP_JIT` holds code, and an ordinary RW
+   arena holds mutable globals and A64 string descriptors. Read-only
+   JSON/protobuf descriptor blobs remain in code. Persistent REPL
+   variables use `define_global_variable`; checkpoints restore
+   `datapos`. The arena placement is checked against ADRP's reach.
+3. **Write windows and recovery.** `pthread_jit_write_protect_np` gates
+   emission and rollback repatching; `sys_icache_invalidate` publishes
+   code and signal stubs. The Darwin trampoline runs on the alternate
+   stack and returns through `sigreturn(uc, infostyle, token)` after
+   rewriting pc/x28. SIGBUS uses Darwin's signal number 10. Repeated
+   faults and stack overflow recover without leaving the signal stack
+   active. Engine threads remain the separate A3 work item.
+4. **Gates.** `./wbuild tests` on a Mac includes `repl_test_darwin`,
+   `addon_host_darwin_test` and `addon_profile_darwin_test`.
+   Linux retains their Darwin compile gates. The native REPL cases cover
+   expressions, persistent values, containers, imports, late binding,
+   reset, file mode, JSON output and compile/runtime recovery. Addon
+   cases cover host callbacks, reload and rejected reload, saved state,
+   high addresses, separate data storage and repeated SIGBUS recovery.
+   `tools/mac/run_darwin_tests.sh` also runs the addon binaries and
+   a REPL expression/persistent-variable smoke test.
 
 ### Phase P: script profile (G4)
 
@@ -610,8 +604,8 @@ is refused. Compiler-generated calls to stubs (generator lowering calls
 **Pointer casts: one rule for both directions.** `cast(int*, n)` from an
 integer forges an address. `cast(int*, p)` from another pointer
 reinterprets memory at a different width, and `cast(char*, f)` from a
-function address hands out writable bytes inside the engine's RWX code
-buffer. Telling the cases apart buys nothing, so every cast whose target
+function address hands out writable bytes inside the Linux engine's RWX
+code buffer (macOS enforces write protection while addon code runs). Telling the cases apart buys nothing, so every cast whose target
 is a pointer or function-pointer type is rejected, whatever the operand.
 Casts to integers, floats and other scalars stay legal (`cast(int, p)`,
 `cast(float, n)`), as do `new`, `&x` and typed function pointers (the

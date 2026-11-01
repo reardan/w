@@ -1,5 +1,6 @@
-# wbuild: x64 arch=arm64
+# wbuild: x64 arch=arm64 arch=arm64_darwin
 # wbuild: deps=examples/scripting/
+# wbuild: deps=tests/addon_codec_fixture.w
 # wbuild: step="env W_ADDON_CHECKED=1 bin/addon_host_test --filter provenance,bind_and_load" expect_stdout="All tests passed"
 # wbuild: step="bin/wv2 x64 examples/scripting/addon_host.w -o bin/addon_host_example"
 # wbuild: step="bin/addon_host_example examples/scripting/addon_v1.w examples/scripting/addon_v2.w examples/scripting/addon_bad.w" expect_stdout="addon host OK" expect_stdout="demo:2: error: Cannot find symbol: 'no_such_symbol'" expect_stdout="function on_recurse"
@@ -310,3 +311,76 @@ void test_saved_vars_value_struct_and_files():
 	addon_test_call(c"sw_set", 64)
 	assert_equal(engine_ok, engine_reload(c"sw_addon", 0).status)
 	assert_equal(64, addon_test_call(c"sw_get", 0))
+
+
+void test_cached_json_descriptors_after_rollback():
+	addon_test_engine()
+	engine_generation* g = engine_checkpoint()
+	int cached = json_codec_count
+	char* source = c"import structures.json\nstruct cj_leaf:\n\tint value\n\nstruct cj_tree:\n\tcj_leaf leaf\n\tlist[int] values\n\ncj_tree* cj_state = new cj_tree\ncj_state.leaf.value = 7\ncj_state.values = new list[int]\ncj_state.values.push(3)\nchar* cj_json(int unused):\n\treturn json_stringify(to_json(cj_state))\n"
+	for i in range(2):
+		assert_equal(engine_ok, engine_load(c"cj_addon", source).status)
+		assert_strings_equal(c"{\"leaf\":{\"value\":7},\"values\":[3]}", addon_test_text(c"cj_json"))
+		int filled = json_codec_count
+		assert_equal(engine_ok, engine_load(c"cj_again", c"char* cj_json_again(int unused):\n\treturn json_stringify(to_json(cj_state))\n").status)
+		assert_equal(filled, json_codec_count)
+		assert_strings_equal(c"{\"leaf\":{\"value\":7},\"values\":[3]}", addon_test_text(c"cj_json_again"))
+		engine_rollback(g)
+		assert_equal(cached, json_codec_count)
+	engine_generation_free(g)
+
+
+void test_cached_protobuf_descriptors_after_rollback():
+	addon_test_engine()
+	assert_equal(engine_ok, engine_load(c"pc_types", c"import tests.addon_codec_fixture\n").status)
+	engine_generation* g = engine_checkpoint()
+	int cached = protobuf_desc_count
+	# Each builtin after the first proto_descriptor reuses its cached
+	# descriptor. The nested message and label exercise pointer fields.
+	char* source = c"int pc_roundtrip(int value):\n\taddon_codec_record* p = cast(addon_codec_record*, pb_message_new(proto_descriptor(addon_codec_record)))\n\tp.child = cast(addon_codec_leaf*, pb_message_new(proto_descriptor(addon_codec_leaf)))\n\tp.child.value = cast(int32, value)\n\tp.label.data = c\"native\"\n\tp.label.length = 6\n\tpb_bytes* wire = to_proto(p)\n\taddon_codec_record* back = from_proto(addon_codec_record, wire)\n\tint result = cast(int, back.child.value) + back.label.length\n\tpb_free_message(proto_descriptor(addon_codec_record), cast(char*, back))\n\tpb_bytes_free(wire)\n\tfree(cast(char*, p.child))\n\tfree(cast(char*, p))\n\treturn result\n"
+	for i in range(2):
+		assert_equal(engine_ok, engine_load(c"pc_addon", source).status)
+		assert_equal(48, addon_test_call(c"pc_roundtrip", 42))
+		assert_true(protobuf_desc_count > cached)
+		engine_rollback(g)
+		assert_equal(cached, protobuf_desc_count)
+	engine_generation_free(g)
+
+
+# Darwin executes code above 4 GB, with mutable globals outside MAP_JIT.
+# Exercise actual writes and faults as well as the compiler arena layout.
+void test_darwin_write_protection_and_data_rollback():
+	addon_test_engine()
+	if (target_os != 1 || target_isa != 1): return
+	assert_true((code_offset >> 16) > 65535)
+	assert_true((data_offset >> 16) > 65535)
+	assert_equal(1, data_split)
+	assert_true(data_offset + data_size <= code_offset || data_offset >= code_offset + code_size)
+	char* source = c"int wx_value\nint wx_change(int x):\n\twx_value = x\n\treturn wx_value\n\nint wx_write_code(int x):\n\tchar* p = cast(char*, wx_change)\n\tp[0] = 0\n\treturn x\n\nint wx_unaligned(int x):\n\tint[2] words\n\twords[0] = x\n\tchar* p = cast(char*, &words[0])\n\treturn atomic_load(cast(int*, p + 1))\n"
+	assert_equal(engine_ok, engine_load(c"wx_addon", source).status)
+	assert_equal(42, addon_test_call(c"wx_change", 42))
+	int address = engine_symbol(c"wx_value")
+	assert_true(address >= data_offset && address < data_offset + datapos)
+	int pos = datapos
+	for i in range(5):
+		assert_equal(engine_ok, engine_reload(c"wx_addon", source).status)
+		assert_equal(pos, datapos)
+		assert_equal(0, addon_test_global(c"wx_value"))
+		assert_equal(i + 1, addon_test_call(c"wx_change", i + 1))
+	int ok = 1
+	for i in range(2):
+		engine_call1(engine_symbol(c"wx_write_code"), 0, &ok)
+		assert_equal(0, ok)
+		assert_contains(engine_fault_text, c"function wx_write_code")
+		assert_equal(42, addon_test_call(c"wx_change", 42))
+		engine_call1(engine_symbol(c"wx_unaligned"), 0, &ok)
+		assert_equal(0, ok)
+		assert_contains(engine_fault_text, c"SIGBUS in addon 'wx_addon' function wx_unaligned")
+		assert_equal(43, addon_test_call(c"wx_change", 43))
+
+# Native run leg; the generated Darwin twin stays compile-only on Linux.
+# wbuild: target=addon_host_darwin_test tag=tests_darwin dep=addon_host_test_darwin
+# wbuild: step="bin/addon_host_test_darwin" expect_stdout="All tests passed"
+# wbuild: step="env W_ADDON_CHECKED=1 bin/addon_host_test_darwin --filter provenance,bind_and_load" expect_stdout="All tests passed"
+# wbuild: step="bin/wv2 arm64_darwin examples/scripting/addon_host.w -o bin/addon_host_example_darwin"
+# wbuild: step="bin/addon_host_example_darwin examples/scripting/addon_v1.w examples/scripting/addon_v2.w examples/scripting/addon_bad.w" expect_stdout="addon host OK" expect_stdout="function on_recurse"

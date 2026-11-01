@@ -4,7 +4,7 @@ symbol format:
 string: symbol
 char: \0
 char: [DULA]
-int: 2: address
+int: 2: address low word (signed value on 32-bit hosts)
 int: 6: type
 int: 10: symtype
 int: 14: size
@@ -25,6 +25,7 @@ int: 142: 1 for thread_local globals
 int: 146: register a promoted local lives in (hardware number: x86 esi 6 /
           edi 7, x64 r12-r15), 0 for a stack-resident local
           (docs/projects/register_allocation_pgo.md §2.2)
+int: 162: address high word on 64-bit hosts
 */
 char* table
 int table_size
@@ -94,7 +95,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 162
+const int symbol_data_size = 166
 
 
 int next_token(int t):
@@ -239,7 +240,7 @@ void sym_table_info():
 void sym_info(int symbol):
 	print_error(c"sym_info(")
 	int t = cast(int, table) + symbol
-	print_hex0(c"address: ", load_int(t + 2))
+	print_hex0(c"address: ", sym_value_at(symbol))
 	print_error(c", visibility: ")
 	put_error(load_i(t + 1, 1))
 	print_int0(c", type: ", load_int(t + 6))
@@ -332,10 +333,31 @@ int sym_lookup(char* s):
 	return found
 
 
+# Recorded value of the symbol at table offset t: a code/data virtual
+# address on the native targets, a funcref table index for functions on
+# wasm. Only meaningful once the symbol is defined (sym_decl_visibility
+# reports 'D'); before that the cell holds the backpatch chain head.
+int sym_value_at(int t):
+	int low = load_int(table + t + 2)
+	if (__word_size__ == 4): return low
+	# load_int sign-extends bit 31; mask it before joining the two words.
+	int mask = (1 << 16) - 1
+	mask = (mask << 16) | mask
+	return (low & mask) | (load_int(table + t + 162) << 16 << 16)
+
+
+# Keep every other packed field at its historical offset. Appending the
+# high word permits an in-process compiler to retain macOS pointers above
+# 4 GB without changing the target's word size or bootstrap representation.
+void sym_set_value_at(int t, int value):
+	save_int(table + t + 2, value)
+	save_int(table + t + 162, value >> 16 >> 16)
+
+
 int sym_address(char* s):
 	int t = sym_lookup(s)
 	if (t < 0): return 0
-	return load_int(table + t + 2)
+	return sym_value_at(t)
 
 
 # An unresolved prototype contains a backpatch chain, not an address.
@@ -344,7 +366,7 @@ int sym_defined_address(char* s):
 	int t = sym_lookup(s)
 	if (t < 0): return 0
 	if (table[t + 1] != 'D'): return 0
-	return load_int(table + t + 2)
+	return sym_value_at(t)
 
 
 int sym_symtype(char* s):
@@ -490,7 +512,7 @@ void sym_declare(char* s, int type, int visibility, int value, int symtype):
 
 	table[t] = 0
 	table[t + 1] = visibility
-	save_int(table + t + 2, value)
+	sym_set_value_at(t, value)
 	save_int(table + t + 6, type)
 	save_int(table + t + 10, symtype)
 	save_int(table + t + 14, 0) /* size: recycled malloc blocks are not zeroed */
@@ -635,12 +657,12 @@ void sym_define_global_at(int current_symbol, int v):
 	# declaration path that bypasses sym_declare_global) leaves it alone.
 	if (sym_last_declared_offset == current_symbol):
 		sym_set_decl_location(current_symbol, decl_file_index(), sym_last_declared_line, sym_last_declared_column)
-	addr_chain_patch(load_int(table + t + 2), v)
+	addr_chain_patch(sym_value_at(t), v)
 	rel_chain_patch(sym_rel_chain(t), v)
 	sym_set_rel_chain(t, 0)
 
 	table[t + 1] = 'D'
-	save_int(table + t + 2, v)
+	sym_set_value_at(t, v)
 
 
 void sym_define_global(int current_symbol):
@@ -651,14 +673,6 @@ void sym_define_global(int current_symbol):
 
 
 int number_of_args
-
-# Recorded value of the symbol at table offset t: a code/data virtual
-# address on the native targets, a funcref table index for functions on
-# wasm. Only meaningful once the symbol is defined (sym_decl_visibility
-# reports 'D'); before that the cell holds the backpatch chain head.
-int sym_value_at(int t):
-	return load_int(table + t + 2)
-
 
 # Number of declared parameters for the function symbol at table offset t,
 # or -1 when unknown (e.g. asm runtime stubs without a parameter list).
@@ -954,12 +968,12 @@ int sym_emit_value(int t, char* s):
 	# thread_local global: the value is the TLS block offset; no address
 	# slot, no backpatch chain (it is defined where it is declared).
 	if (sym_is_thread_local(t)):
-		be_tls_address(load_int(table + t + 2))
+		be_tls_address(sym_value_at(t))
 		return type
 	if ((scope_type == 'D') || (scope_type == 'U')):
 		int slot_start = codepos
 		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-		be_addr_slot_write(codepos - 4, load_int(table + t + 2))
+		be_addr_slot_write(codepos - 4, sym_value_at(t))
 		# A const integer global or enum constant: promote() may load
 		# its known value as an immediate instead (O1)
 		if ((scope_type == 'D') && (symtype == 1) && (target_isa == 0)): const_global_note(t, slot_start)
@@ -976,7 +990,7 @@ int sym_emit_value(int t, char* s):
 	}
 
 	/* undefined global: link this site into the backpatch chain */
-	else if (scope_type == 'U'): save_int(table + t + 2, codepos + code_offset - 4)
+	else if (scope_type == 'U'): sym_set_value_at(t, codepos + code_offset - 4)
 
 	/* local variable */
 	else if (scope_type == 'L'):
@@ -989,7 +1003,7 @@ int sym_emit_value(int t, char* s):
 			reg_lvalue_end = codepos
 			reg_lvalue_sym = t
 			return type
-		k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
+		k = (stack_pos - sym_value_at(t) - 1) << word_size_log2
 
 	/* argument: register-resident while a loop owns it (R3,
 	   compiler/regalloc_scan.w), the same note as a local */
@@ -1001,7 +1015,7 @@ int sym_emit_value(int t, char* s):
 			reg_lvalue_sym = t
 			return type
 		rg_touch = rg_touch + 1   # O5: the body reads its argument word
-		k = (stack_pos + number_of_args - load_int(table + t + 2) + 1) << word_size_log2
+		k = (stack_pos + number_of_args - sym_value_at(t) + 1) << word_size_log2
 
 	else:
 		diag_part(c"Error getting symbol value for '")
@@ -1046,7 +1060,7 @@ int sym_emit_value(int t, char* s):
 			# can then lower the call site to a direct `call`
 			# (code_generator/wasm.w).
 			if (target_isa == 2):
-				if (scope_type == 'D'): wasm_call_target_note(load_int(table + t + 2))
+				if (scope_type == 'D'): wasm_call_target_note(sym_value_at(t))
 			return 4 /* function */
 
 	return type
@@ -1091,7 +1105,7 @@ void sym_emit_call(int t, char* s):
 		print_error(c": call ")
 		sym_info(t)
 	int slot = 0
-	if (table[t + 1] == 'D'): slot = call_direct_to(load_int(table + t + 2))
+	if (table[t + 1] == 'D'): slot = call_direct_to(sym_value_at(t))
 	else:
 		int head = call_direct_link(sym_rel_chain(t))
 		sym_set_rel_chain(t, head)
@@ -1148,13 +1162,13 @@ void print_symbol_table(int t):
 		print_error(sym)
 
 		print_error(c" type(")
-		put_error(table[t + 6] + '0')
+		print_error(itoa(load_int(table + t + 6)))
 		print_error(c") visibility(")
 		put_error(table[t + 1])
 		print_error(c") address(")
-		print_error(hex(load_int(table + t + 2)))
+		print_error(hex_word(sym_value_at(t)))
 		print_error(c") symtype(")
-		put_error(table[t + 10] + '0')
+		print_error(itoa(load_int(table + t + 10)))
 		print_int0(c") size (", load_int(table + t + 14))
 		print_int0(c") pointer (", load_int(table + t + 18))
 		print_error(c")\x0a")
@@ -1196,7 +1210,7 @@ int emit_symbol_table():
 		int binding = 1  /* global by default */
 		if (visibility != 'D'): binding = 0
 		int symtype = table[t + 10]
-		int address = load_int(table + t + 2)
+		int address = sym_value_at(t)
 		int size = load_int(table + t + 14)
 		elf_emit_sym_table_entry(symbol, address, size, binding, symtype, 1) /* shndx 1 = .text */
 
@@ -1217,7 +1231,7 @@ void macho_collect_symbols():
 		char* sym = table + t
 		t = t + strlen(table + t)
 		if ((table[t + 1] == 'D') && (load_int(table + t + 10) == 2) && (load_int(table + t + 138) == 0)):
-			macho_sym_add(sym, load_int(table + t + 2))
+			macho_sym_add(sym, sym_value_at(t))
 		t = next_token(t)
 
 

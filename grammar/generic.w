@@ -1722,7 +1722,7 @@ void generic_instantiate_function(int inst):
 	function_definition(current_symbol)
 	if (table[current_symbol + 1] != 'D'):
 		error3(c"generic function '", generic_def_name(def), c"' has no body")
-	int address = load_int(table + current_symbol + 2)
+	int address = sym_value_at(current_symbol)
 	retained_source_reparse_close(file)
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
@@ -1842,7 +1842,7 @@ void generic_resolve_forward(int f):
 	if (t >= 0):
 		if (table[t + 1] == 'D'):
 			# already compiled: patch this record's chain directly
-			int address = load_int(table + t + 2)
+			int address = sym_value_at(t)
 			addr_chain_patch(generic_forwards[f].chain, address)
 			free(mangled)
 			free(cast(char*, args))

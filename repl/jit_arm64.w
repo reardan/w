@@ -1,19 +1,14 @@
 /*
 AArch64 support for the in-process engine (docs/projects/scripting.md
-Phase A1, Linux; Phase A2, macOS, prepared but untested). repl/core.w
-calls into this module only where __target_isa__ is 1; the x86 family
-keeps its own buffer, thunks and handlers in core.w. Everything here is
-plain runtime code, so the module compiles (unused) for every target.
+Phase A1, Linux; Phase A2, macOS). The per-target repl/__arch__/ hooks
+select this module on AArch64; the x86 family keeps its own buffer,
+thunks and handlers in core.w.
 
-Code buffer. The compiler's symbol table and backpatch chains store
-addresses in 32-bit fields, and an arm64 address slot (adrp+add) must
-round-trip a chain link below 2^31, so JIT code and its inline globals
-must live in the low 2 GB, as x64 gets with MAP_32BIT. AArch64 has no
-MAP_32BIT: repl_a64_map_code asks for the buffer at a series of fixed
-hints below 2 GB with MAP_FIXED_NOREPLACE (lib/__arch__/arm64/jit_host.w)
-and keeps the first that lands exactly there. On macOS the 4 GB
-__PAGEZERO of every arm64 Mach-O image covers the whole low range, so
-the probe fails there with a diagnostic (A2's remaining work).
+Code buffer. Linux keeps its fixed low hints, as x64 does with MAP_32BIT.
+macOS keeps its mandatory 4 GB __PAGEZERO and maps MAP_JIT at a native
+address. Symbol values preserve both halves of these addresses. The
+separate RW data arena must stay within the A64 adrp addressing range
+of the code buffer (see repl_a64_data_init).
 
 Instruction cache. AArch64 does not keep the instruction cache coherent
 with data writes: every byte the compiler writes into the buffer must be
@@ -55,7 +50,7 @@ restores sp, the signal mask and every other register, and the resumed
 code abandons the faulting frames exactly like a long jump would. The
 saved x28 is a valid stack even when the fault was a W stack overflow.
 
-macOS (untested: needs a Mac run). XNU enters sa_tramp, not the
+macOS. XNU enters sa_tramp, not the
 handler: x0 = the handler, x1 = infostyle, x2 = sig, x3 = siginfo, x4 =
 ucontext, x5 = token, sp on the signal stack. The Darwin trampoline
 below does the same stack switch, calls handler(sig, uc->uc_mcontext)
@@ -75,7 +70,7 @@ import code_generator.code_emitter
 import debugger.sigcontext
 
 
-# Lowest and highest fixed hints repl_a64_map_code tries, and the step.
+# Lowest and highest fixed Linux hints repl_a64_map_code tries, and the step.
 # The range is the one MAP_32BIT uses on x86-64 (1-2 GB): above the
 # image and its brk heap, below the 2^31 limit of the address fields.
 const int repl_a64_hint_first = 0x40000000
@@ -106,8 +101,9 @@ type __repl_a64_flush_callback = fn(int, int) -> void
 
 # Make the in-process compiler emit AArch64 code for this OS: the A64
 # instruction emitter, and on macOS the Darwin syscall stubs and the
-# Mach-O-era runtime conventions (target_os 1). data_split stays 0:
-# globals stay inline in the executable buffer, as on x86/x64.
+# Mach-O-era runtime conventions (target_os 1). Darwin's executable
+# MAP_JIT mapping cannot hold mutable globals: they use a separate RW
+# data arena. Linux keeps its globals inline in the RWX code mapping.
 void repl_a64_configure():
 	target_isa = 1
 	target_os = 0
@@ -115,11 +111,16 @@ void repl_a64_configure():
 		target_os = 1
 		target_apple_platform = 1
 		sigcontext_darwin = 1
+		data_split = 1
 
 
-# Map the executable code buffer below 2 GB (see the header). Returns
-# its address; a session that cannot get one stops here with a reason.
+# Map the executable code buffer: native MAP_JIT addresses on Darwin,
+# fixed low hints on Linux. A failed mapping stops with a diagnostic.
 int repl_a64_map_code(int size):
+	if (jit_host_darwin()):
+		int got = jit_host_map(0, size)
+		asserts(c"mmap of the macOS JIT code buffer failed", (got > 0) || (got < -4095))
+		return got
 	int hint = repl_a64_hint_first
 	while (hint + size <= repl_a64_low_limit):
 		int got = jit_host_map(hint, size)
@@ -128,24 +129,34 @@ int repl_a64_map_code(int size):
 		# elsewhere: release a misplaced mapping and try the next hint.
 		if ((got > 0) || (got < -4095)): munmap(got, size)
 		hint = hint + repl_a64_hint_step
-	if (jit_host_darwin()):
-		println2(c"error: the in-process engine needs its code buffer below 2 GB, which the 4 GB __PAGEZERO of an arm64 macOS image does not allow (docs/projects/scripting.md, Phase A2)")
-	else: println2(c"error: could not map the in-process code buffer below 2 GB")
+	println2(c"error: could not map the in-process code buffer below 2 GB")
 	exit(1)
 	return 0
 
 
 # The A64 back end emits string descriptors into the data segment even
-# with data_split 0 (grammar/string_literal.w), so the session needs one:
-# the top eighth of the code mapping becomes a fixed data arena (data ==
-# data_offset: in process, a vaddr is its own host address), and the
-# rest stays code. Returns the code part's size. ensure_data stops the
-# session when the arena is full (code_emitter.w's data_fixed_exhausted).
+# with data_split 0 (grammar/string_literal.w). Linux carves the arena
+# from the code mapping's top eighth. Darwin maps an ordinary RW arena
+# separately, since MAP_JIT pages cannot be written while JIT code runs.
+# The separate arena stays within the A64 address slots' ADRP range of
+# the code mapping. Returns the usable code size; ensure_data
+# reports a recoverable error when the fixed data arena fills.
 int repl_a64_data_init(int buffer, int size):
 	data_size = size >> 3
 	data_offset = buffer + size - data_size
+	if (jit_host_darwin()):
+		int got = mmap(buffer + size, data_size, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+		asserts(c"mmap of the in-process data arena failed", (got > 0) || (got < -4095))
+		# Every code page must reach every data page via ADRP's signed
+		# 21-bit page displacement. Keep one page of slack at each end.
+		int reach = (1 << 32) - 4096
+		if ((got + data_size - buffer > reach) || (buffer + size - got > reach)):
+			munmap(got, data_size)
+			asserts(c"the in-process data arena is outside the arm64 address range", 0)
+		data_offset = got
 	data = cast(char*, data_offset)
 	datapos = 0
+	if (jit_host_darwin()): return size
 	return size - data_size
 
 
@@ -167,6 +178,7 @@ void repl_a64_page_writable(int writable):
 	int prot = 5 /* R+X */
 	if (writable): prot = 3 /* R+W */
 	asserts(c"mprotect of the arm64 stub page failed", mprotect(repl_a64_page, repl_a64_page_size, prot) == 0)
+	if (writable == 0): jit_host_icache_invalidate(repl_a64_page, repl_a64_pos)
 
 
 # The stub page: the Linux rt_sigreturn restorer, the cache-maintenance
@@ -211,7 +223,7 @@ void repl_a64_stubs_init():
 	repl_a64_word(op(0xd5, 0x033fdf))   # 3: isb
 	repl_a64_word(op(0xd6, 0x5f03c0))   # ret
 
-	# Darwin sa_tramp (untested: needs a Mac run). See the header.
+	# Darwin sa_tramp. Native repeated-fault recovery exercises sigreturn.
 	repl_a64_darwin_tramp = repl_a64_page + repl_a64_pos
 	repl_a64_word(op(0xa9, 0xbe13e1))   # stp x1, x4, [sp, #-32]!   infostyle, ucontext
 	repl_a64_word(op(0xf9, 0x000be5))   # str x5, [sp, #16]         token
@@ -355,14 +367,12 @@ void repl_jit_configure():
 	repl_a64_configure()
 
 
-# Map the code buffer of size bytes (flags: core.w's x86 mmap flags,
-# unused here: arm64 maps at fixed low hints).
+# Map the code buffer of size bytes (core.w's x86 flags are unused).
 int repl_jit_map_code(int size, int flags):
 	return repl_a64_map_code(size)
 
 
-# Carve the session's data arena out of the mapping; returns the code
-# part's size.
+# Initialize the session's data arena; returns the usable code size.
 int repl_jit_data_init(int buffer, int size):
 	return repl_a64_data_init(buffer, size)
 

@@ -135,7 +135,7 @@ int variable_declaration():
 			if (verbosity >= 1):
 				print2(c"variable declaration = expression() right side type: ")
 				type_print(type2)
-		save_int(table + last_declared_symbol + 2, stack_pos)
+		sym_set_value_at(last_declared_symbol, stack_pos)
 		pointer_indirection = 0
 
 		emit_typed_local_storage(type, has_initializer)

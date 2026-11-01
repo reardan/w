@@ -1385,7 +1385,7 @@ void undefined_function_check():
 	while (t <= table_pos - 1):
 		char* name = table + t
 		t = t + strlen(table + t)
-		int pending = (load_int(table + t + 2) != code_offset) || (sym_rel_chain(t) != 0)
+		int pending = (sym_value_at(t) != code_offset) || (sym_rel_chain(t) != 0)
 		int entry_only = (strcmp(name, c"_main") == 0) || ((elf_shared || elf_static) && (strcmp(name, c"main") == 0))
 		if ((table[t + 1] == 'U') && (load_int(table + t + 10) == 2) && pending && (entry_only == 0)):
 			int file_index = sym_decl_file_index(t)

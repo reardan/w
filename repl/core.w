@@ -14,9 +14,10 @@ imports, structs, extern, function definitions and top-level variables
 -- define symbols that persist for the whole session; executable
 statements become the body of the entry function.
 
-Top-level variable declarations become globals with storage in the code
-buffer (jumped over by the entry function), so their values survive
-between entries. Redefining a name declares a fresh symbol that shadows
+Top-level variable declarations become globals, so their values survive
+between entries. On macOS their storage is in the separate writable data
+arena; other hosts keep it inline in the code buffer, jumped over by the
+entry function. Redefining a name declares a fresh symbol that shadows
 the old one: for variables, code compiled earlier keeps its old binding
 and later entries see the new one; for functions, the late-binding
 registry additionally repatches every already-compiled call site to the
@@ -320,7 +321,7 @@ void repl_threads_enable():
 	save_int32(code + tls_size_patch_pos, repl_tls_capacity)
 	int set_symbol = sym_lookup(c"__w_tls_set")
 	asserts(c"__w_tls_set stub missing", set_symbol >= 0)
-	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, load_int(table + set_symbol + 2))
+	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, sym_value_at(set_symbol))
 	install(block)
 	# Five hooks (the provenance pair joined the allocator three): a
 	# three-word block here overflowed into the next heap block's header.
@@ -649,9 +650,7 @@ int repl_infer_declaration():
 	repl_item_kind = 2
 	repl_item_symbol = global_symbol
 	int gskip = repl_skip_start()
-	repl_jit_align_global()
-	sym_define_global(global_symbol)
-	emit_global_storage(decl_type)
+	define_global_variable(global_symbol, decl_type)
 	repl_skip_end(gskip)
 	pointer_indirection = 0
 	# The value (or struct address) is in eax; fetch the storage address
@@ -732,22 +731,20 @@ void repl_entry_item(int entry_symbol):
 			# Only 'D' symbols: a bare prototype ("int f(int);") stays
 			# 'U' and its address slot holds the backpatch chain.
 			if ((table[function_symbol + 1] == 'D') && (repl_transcript_active == 0)):
-				repl_queue_late_bind(decl_name, load_int(table + function_symbol + 2))
+				repl_queue_late_bind(decl_name, sym_value_at(function_symbol))
 			current_function_symbol = entry_symbol
 			number_of_args = 0
 			enclosing_tab_level = 0
 			free(decl_name)
 			return;
 
-		# persistent variable: storage lives in the code buffer (jumped
-		# over); the initializer runs inside the entry function
+		# Persistent storage follows the target's text/data split; the
+		# initializer runs inside the entry function.
 		int global_symbol = repl_declare_global(decl_name, decl_type, 1)
 		repl_item_kind = 1
 		repl_item_symbol = global_symbol
 		int gskip = repl_skip_start()
-		repl_jit_align_global()
-		sym_define_global(global_symbol)
-		emit_global_storage(decl_type)
+		define_global_variable(global_symbol, decl_type)
 		repl_skip_end(gskip)
 		pointer_indirection = 0
 		# Top-level executable code is analyzed by the checked-session
@@ -906,6 +903,35 @@ void repl_state_capture(repl_state* st):
 	st.generic_forwards = generic_forward_count()
 
 
+# The JSON and protobuf codecs cache descriptor blobs per type index.
+# Entries whose blob lies in released code, or
+# whose type record was truncated, are dropped after a rollback; entries
+# for a type about to be redefined in place are dropped before the
+# compile, so its next use emits a descriptor for the new layout.
+void repl_codec_drop_if(int type_index, int released_from):
+	int boundary = code_offset + released_from
+	int kept = 0
+	for i in range(json_codec_count):
+		int type = load_int(json_codec_types + i * 4)
+		int address = load_ptr(json_codec_addresses + i * __word_size__)
+		int released = (released_from >= 0) && ((address - boundary >= 0) || (type >= type_count()))
+		if ((type != type_index) && (released == 0)):
+			save_int(json_codec_types + kept * 4, type)
+			save_ptr(json_codec_addresses + kept * __word_size__, address)
+			kept = kept + 1
+	json_codec_count = kept
+	kept = 0
+	for i in range(protobuf_desc_count):
+		int type = load_int(protobuf_desc_types + i * 4)
+		int address = load_ptr(protobuf_desc_addresses + i * __word_size__)
+		int released = (released_from >= 0) && ((address - boundary >= 0) || (type >= type_count()))
+		if ((type != type_index) && (released == 0)):
+			save_int(protobuf_desc_types + kept * 4, type)
+			save_ptr(protobuf_desc_addresses + kept * __word_size__, address)
+			kept = kept + 1
+	protobuf_desc_count = kept
+
+
 # Everything but current_function_symbol, which only the per-entry
 # rollback restores.
 void repl_state_restore(repl_state* st):
@@ -928,7 +954,7 @@ void repl_state_restore(repl_state* st):
 	# Threads may still run the code and use the globals and thread_local
 	# offsets this rollback would release: keep them (only names roll back).
 	if ((repl_keep_code == 0) || (codepos < st.codepos)): codepos = st.codepos
-	# arm64 string descriptors (repl/jit_arm64.w's data arena)
+	# arm64 string descriptors and Darwin mutable globals share the data arena.
 	if ((repl_keep_code == 0) || (datapos < st.datapos)): datapos = st.datapos
 	repl_tls_restore(st.tls_size)
 	repl_hooks_restore(st.codepos)
@@ -958,6 +984,9 @@ void repl_state_restore(repl_state* st):
 	for_cleanup_truncate(st.for_cleanup_count)
 	number_of_args = st.number_of_args
 	type_table_truncate(st.type_count)
+	# Descriptor caches must follow every rollback, including :reset and
+	# failed REPL entries. codepos retains any code still used by threads.
+	repl_codec_drop_if(-1, codepos)
 	imported_count = st.imported_count
 	import_alias_base = st.alias_base
 	import_alias_count = st.alias_count
@@ -1455,7 +1484,9 @@ void repl_fault_install_handlers():
 	if (__word_size__ == 8): handler = cast(int, repl_fault)
 	int flags = 1073741824 | repl_fault_flags
 	repl_fault_install(4, handler, flags) /* SIGILL */
-	repl_fault_install(7, handler, flags) /* SIGBUS */
+	int bus = 7
+	if (sigcontext_darwin): bus = 10
+	repl_fault_install(bus, handler, flags) /* SIGBUS */
 	repl_fault_install(8, handler, flags) /* SIGFPE */
 	repl_fault_install(11, handler, flags) /* SIGSEGV */
 	# arm64: a 'debugger' statement (brk) rolls the entry back too, until
@@ -1681,16 +1712,16 @@ void repl_inprocess_setup():
 
 	# code_offset makes every embedded address point into this mapping,
 	# so no relocation is needed. x64 address slots are RIP-relative,
-	# but compiler symbol/chain tables still store 32-bit virtual addresses:
-	# keep the JIT arena (and its data) in the low 2GB with
-	# MAP_32BIT (0x40).
+	# but its rel32 prototype chains still store 32-bit virtual addresses:
+	# keep the x64 JIT arena (and its data) in the low 2GB with MAP_32BIT.
+	# The A64 hooks use native addresses on macOS and low hints on Linux.
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
 	if (word_size == 8): mmap_flags = 34 + 64
 	if (repl_buffer_size > 0):
 		buffer_size = repl_buffer_size
 		mmap_flags = mmap_flags + 16384 /* MAP_NORESERVE */
-	# arm64 has no MAP_32BIT: fixed low hints instead (repl/jit_arm64.w)
+	# The target hook supplies MAP_JIT or fixed low hints on A64.
 	int buffer = repl_jit_map_code(buffer_size, mmap_flags)
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
@@ -1846,7 +1877,7 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):
 		if (table[main_symbol + 1] == 'D'):
-			__target_main_callback* target_main = cast(__target_main_callback*, load_int(table + main_symbol + 2))
+			__target_main_callback* target_main = cast(__target_main_callback*, sym_value_at(main_symbol))
 			target_main(argc - 1, argv + __word_size__)
 			return 1
 	return 0

@@ -181,7 +181,7 @@ int gpu_sym_get_value(char* s):
 				if (const_type < 0): const_type = type_push_const(unqual)
 				type = const_type
 		return type
-	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
+	int k = (stack_pos - sym_value_at(t) - 1) << word_size_log2
 	# Aggregates occupy several stack words; point at the lowest address
 	# (last pushed word), like the host path in sym_get_value.
 	int words = type_stack_words(type)

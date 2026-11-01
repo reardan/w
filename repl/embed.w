@@ -208,8 +208,8 @@ char* engine_bind_text(char* name, char* signature):
 	return cstr(f"type __engine_fn_{name} = {signature}\n__engine_fn_{name}* {name}\n")
 
 
-# Store a host address in the bound global's storage (session globals
-# live in the JIT buffer at their symbol address).
+# Store a host address in the bound global's storage (the separate RW
+# data arena on Darwin, inline in the JIT buffer on other hosts).
 int engine_bind_store(char* name, int address):
 	int slot = sym_address(name)
 	if (slot == 0): return 0
@@ -263,25 +263,6 @@ char* engine_declared_type(char* line):
 	return substring(line, at, end)
 
 
-# The to_json/from_json codec caches one descriptor blob per type index
-# (grammar/json_builtin.w). Entries whose blob lies in released code, or
-# whose type record was truncated, are dropped after a rollback; entries
-# for a type about to be redefined in place are dropped before the
-# compile, so its next use emits a descriptor for the new layout.
-void engine_codec_drop_if(int type_index, int released_from):
-	int boundary = code_offset + released_from
-	int kept = 0
-	for i in range(json_codec_count):
-		int type = load_int(json_codec_types + i * 4)
-		int address = load_int(json_codec_addresses + i * 4)
-		int released = (released_from >= 0) && ((address - boundary >= 0) || (type >= type_count()))
-		if ((type != type_index) && (released == 0)):
-			save_int(json_codec_types + kept * 4, type)
-			save_int(json_codec_addresses + kept * 4, address)
-			kept = kept + 1
-	json_codec_count = kept
-
-
 list[engine_type_saved*] engine_types_snapshot(char* text):
 	list[engine_type_saved*] saved = 0
 	list[char*] lines = split(text, '\n')
@@ -290,7 +271,7 @@ list[engine_type_saved*] engine_types_snapshot(char* text):
 		if (name != 0):
 			int index = type_lookup(name)
 			if (index >= 0):
-				engine_codec_drop_if(index, -1)
+				repl_codec_drop_if(index, -1)
 				if (saved == 0): saved = new list[engine_type_saved*]
 				type_rec* t = cast(type_rec*, type_records[index])
 				engine_type_saved* e = new engine_type_saved
@@ -523,7 +504,6 @@ engine_result engine_compile(engine_unit* u):
 		engine_units.push(u)
 	else:
 		engine_types_restore(u.types)
-		engine_codec_drop_if(-1, u.checkpoint.codepos)
 		engine_unstage(u.staged)
 		engine_unit_free(u)
 	return res
@@ -574,7 +554,7 @@ int engine_addon_symbol(char* addon, char* name):
 	int t = u.checkpoint.table_pos
 	while (t < u.table_end):
 		int end = t + strlen(table + t)
-		if ((strcmp(table + t, name) == 0) && (table[end + 1] == 'D')): found = load_int(table + end + 2)
+		if ((strcmp(table + t, name) == 0) && (table[end + 1] == 'D')): found = sym_value_at(end)
 		t = next_token(end)
 	return found
 
@@ -624,7 +604,7 @@ int engine_function_at(int addr):
 		int name_at = t
 		while (table[t] != 0): t = t + 1
 		if ((table[t + 1] == 'D') && (load_int(table + t + 10) == 2)):
-			int start = load_int(table + t + 2)
+			int start = sym_value_at(t)
 			int size = load_int(table + t + 14)
 			if ((size > 0) && (addr >= start) && (addr < start + size) && ((best < 0) || (size < best_size))):
 				best = name_at
@@ -654,7 +634,7 @@ void engine_fault_record(int sig, int context):
 	engine_fault_signal = sig
 	engine_fault_pc = ctx_eip(context)
 	engine_fault_address = 0
-	if ((sig == 11) || (sig == 7)): engine_fault_address = ctx_reg(context, sigcontext_cr2())
+	if ((sig == 11) || ((sig == 7) && (sigcontext_darwin == 0)) || ((sig == 10) && sigcontext_darwin)): engine_fault_address = ctx_reg(context, sigcontext_cr2())
 	engine_fault_function = engine_function_at(engine_fault_pc)
 	engine_fault_frame = -1
 	if (engine_in_addon(engine_fault_function)): engine_fault_frame = engine_fault_function
@@ -676,8 +656,9 @@ void engine_fault_record(int sig, int context):
 char* engine_signal_name(int sig):
 	if (sig == 11): return c"SIGSEGV"
 	if (sig == 4): return c"SIGILL"
-	if (sig == 7): return c"SIGBUS"
+	if (((sig == 7) && (sigcontext_darwin == 0)) || ((sig == 10) && sigcontext_darwin)): return c"SIGBUS"
 	if (sig == 8): return c"SIGFPE"
+	if (sig == 5): return c"SIGTRAP"
 	return c"signal"
 
 
@@ -836,7 +817,7 @@ void engine_sites_rebind(int released_from):
 		if ((target >= boundary) && (target < code_offset + code_size)):
 			int t = sym_lookup(name)
 			if ((t >= 0) && (table[t + 1] == 'D') && (load_int(table + t + 10) == 2)):
-				int address = load_int(table + t + 2)
+				int address = sym_value_at(t)
 				if (direct == 0): be_addr_slot_write(slot, address)
 				else: save_int(code + slot, address - (code_offset + slot + 4))
 
@@ -849,8 +830,9 @@ void engine_restore(repl_state* st, int staged):
 	repl_discard_late_bind()
 	repl_sites_truncate(st.sites_count)
 	repl_state_clear_context()
+	repl_jit_open()
 	engine_sites_rebind(st.codepos)
-	engine_codec_drop_if(-1, st.codepos)
+	repl_jit_commit()
 	engine_unstage(staged)
 
 

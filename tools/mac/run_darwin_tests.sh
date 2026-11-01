@@ -25,6 +25,8 @@ if [ -z "$tests" ]; then
 	# sockaddr/socket-ABI fixes. Linux CI only cross-compiles it; this
 	# script is where it actually runs.
 	tests="bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
+	# Native scripting engine: the REPL case below uses -e instead of a prompt.
+	tests="$tests bin/repl_darwin bin/addon_host_test_darwin bin/addon_profile_test_darwin"
 	# Cocoa window input (#462): synthetic NSEvents through the real
 	# AppKit queue; prints a SKIP line outside a GUI session.
 	tests="$tests bin/graphics_cocoa_input_darwin"
@@ -56,6 +58,7 @@ for t in $tests; do
 	fi
 	cp "$t" "$t.run"
 	case "$t" in
+	bin/repl_darwin) "./$t.run" -e 'int native_engine_value = 5' -e 'native_engine_value + 37' && result=0 || result=$? ;;
 	bin/safe_darwin_contract_native_test) W_SAFE_DARWIN_RUN=1 "./$t.run" && result=0 || result=$? ;;
 	bin/safe_darwin_test|bin/safe_*_darwin_test) W_DEBUG_ALLOC=1 "./$t.run" && result=0 || result=$? ;;
 	*) "./$t.run" && result=0 || result=$? ;;

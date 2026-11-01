@@ -1,4 +1,4 @@
-# wbuild: x64 arch=arm64
+# wbuild: x64 arch=arm64 arch=arm64_darwin
 # The addon engine with the script profile (repl/embed.w engine_script,
 # docs/projects/scripting.md P2): addon sources compile under
 # --profile=script, the host's own binds do not, and a rejected reload
@@ -80,3 +80,7 @@ void test_rejected_reload_keeps_running_version():
 	assert_equal(8, profile_test_call(c"kp", 7))
 	assert_equal(engine_ok, engine_reload(c"keep", c"int kp(int x):\n\treturn x + 2\n").status)
 	assert_equal(9, profile_test_call(c"kp", 7))
+
+# Native run leg; the generated Darwin twin stays compile-only on Linux.
+# wbuild: target=addon_profile_darwin_test tag=tests_darwin dep=addon_profile_test_darwin
+# wbuild: step="bin/addon_profile_test_darwin" expect_stdout="All tests passed"

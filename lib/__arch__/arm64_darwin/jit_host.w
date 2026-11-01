@@ -1,8 +1,7 @@
 # Per-OS pieces of the in-process engine's code buffer on macOS AArch64
 # (repl/jit_arm64.w, docs/projects/scripting.md Phase A2).
 #
-# UNTESTED: needs a Mac run (tools/mac/run_darwin_tests.sh). Apple
-# Silicon refuses RWX pages unless they are mapped with MAP_JIT, and a
+# Native gate: tools/mac/run_darwin_tests.sh. Apple Silicon refuses RWX pages unless they are mapped with MAP_JIT, and a
 # MAP_JIT page is writable or executable per thread, switched by
 # pthread_jit_write_protect_np; instruction-cache maintenance goes through
 # libSystem's sys_icache_invalidate.
