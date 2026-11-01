@@ -359,7 +359,9 @@ breakpoint and context code is x86-only; `thread_local` and entry
 threads (`repl_threads_enable`) stay x86/x64-only. The macOS engine
 (Phase A2) maps code with `MAP_JIT` at native 64-bit addresses and keeps
 mutable globals in a separate RW arena. Write protection and instruction
-cache maintenance surround compilation and repatching. Its alternate-stack
+cache maintenance surround compilation and repatching. On hosts without
+per-thread JIT protection, ordinary pages switch RW/RX via `mprotect`.
+Its alternate-stack
 Darwin signal trampoline restores pc/x28 through `sigreturn`, including
 repeated faults and stack overflow. On a Mac, `./wbuild repl_test_darwin`
 runs the native transcript gate; `./wbuild tests` includes the addon tests

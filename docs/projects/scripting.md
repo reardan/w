@@ -317,7 +317,10 @@ A2 (macOS) uses the same API and A64 emitter, with native host support:
    `datapos`. The arena placement is checked against ADRP's reach.
 3. **Write windows and recovery.** `pthread_jit_write_protect_np` gates
    emission and rollback repatching; `sys_icache_invalidate` publishes
-   code and signal stubs. The Darwin trampoline runs on the alternate
+   code and signal stubs. Hosts without per-thread JIT protection use
+   ordinary pages switched RW/RX with `mprotect`; a forced-path native
+   fixture checks both write and execution protection. The Darwin
+   trampoline runs on the alternate
    stack and returns through `sigreturn(uc, infostyle, token)` after
    rewriting pc/x28. SIGBUS uses Darwin's signal number 10. Repeated
    faults and stack overflow recover without leaving the signal stack

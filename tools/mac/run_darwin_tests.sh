@@ -26,7 +26,7 @@ if [ -z "$tests" ]; then
 	# script is where it actually runs.
 	tests="bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
 	# Native scripting engine: the REPL case below uses -e instead of a prompt.
-	tests="$tests bin/repl_darwin bin/addon_host_test_darwin bin/addon_profile_test_darwin"
+	tests="$tests bin/repl_darwin bin/addon_host_test_darwin bin/addon_profile_test_darwin bin/jit_mprotect_darwin_fixture"
 	# Cocoa window input (#462): synthetic NSEvents through the real
 	# AppKit queue; prints a SKIP line outside a GUI session.
 	tests="$tests bin/graphics_cocoa_input_darwin"
