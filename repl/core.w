@@ -48,6 +48,7 @@ import structures.json
 import structures.json_codec
 import compiler.safe_session
 import lib.__arch__.thread_id
+import repl.__arch__.jit
 
 
 # Result of one repl_eval() call. status 1: the entry compiled and ran
@@ -140,7 +141,11 @@ int repl_skip_start():
 
 
 void repl_skip_end(int pos):
-	save_int32(code + pos - 4, codepos - pos)
+	# arm64: the region may end in data, and the branch target must be a
+	# word-aligned instruction. On x86 the alignment is a no-op and the
+	# patch is the same rel32 store.
+	be_align_code()
+	be_branch_patch(pos, codepos)
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +322,9 @@ void repl_threads_enable():
 	asserts(c"__w_tls_set stub missing", set_symbol >= 0)
 	__repl_tls_set_callback* install = cast(__repl_tls_set_callback*, load_int(table + set_symbol + 2))
 	install(block)
-	repl_hook_words = cast(int*, malloc(3 * __word_size__))
+	# Five hooks (the provenance pair joined the allocator three): a
+	# three-word block here overflowed into the next heap block's header.
+	repl_hook_words = cast(int*, malloc(5 * __word_size__))
 	repl_hook_words[0] = sym_address(c"malloc_hook_malloc")
 	repl_hook_words[1] = sym_address(c"malloc_hook_free")
 	repl_hook_words[2] = sym_address(c"malloc_hook_realloc")
@@ -507,6 +514,7 @@ void repl_apply_late_bind():
 	int others = -1
 	int kept = 0
 	int i = 0
+	if (repl_sites_pending_count > 0): repl_jit_open()
 	while (i < repl_sites_pending_count):
 		char* rec = repl_sites_pending + i * 2 * __word_size__
 		char* name = cast(char*, load_word(rec))
@@ -532,6 +540,8 @@ void repl_apply_late_bind():
 			k = k + 1
 		free(name)
 		i = i + 1
+	# Rewritten slots are code (arm64: adrp+add pairs) that older entries run
+	if (repl_sites_pending_count > 0): repl_jit_commit()
 	repl_sites_pending_count = 0
 	if (kept > 0):
 		println(c"note: threads started by entries are still running, so earlier call sites keep the previous definition of a redefined function")
@@ -639,6 +649,7 @@ int repl_infer_declaration():
 	repl_item_kind = 2
 	repl_item_symbol = global_symbol
 	int gskip = repl_skip_start()
+	repl_jit_align_global()
 	sym_define_global(global_symbol)
 	emit_global_storage(decl_type)
 	repl_skip_end(gskip)
@@ -734,6 +745,7 @@ void repl_entry_item(int entry_symbol):
 		repl_item_kind = 1
 		repl_item_symbol = global_symbol
 		int gskip = repl_skip_start()
+		repl_jit_align_global()
 		sym_define_global(global_symbol)
 		emit_global_storage(decl_type)
 		repl_skip_end(gskip)
@@ -822,6 +834,7 @@ void repl_entry_item(int entry_symbol):
 struct repl_state:
 	retained_checkpoint retained
 	int codepos
+	int datapos
 	int table_pos
 	int stack_pos
 	int loop_depth
@@ -863,6 +876,7 @@ repl_state* repl_genesis
 void repl_state_capture(repl_state* st):
 	retained_capture(&st.retained)
 	st.codepos = codepos
+	st.datapos = datapos
 	st.table_pos = table_pos
 	st.stack_pos = stack_pos
 	st.loop_depth = loop_depth
@@ -914,6 +928,8 @@ void repl_state_restore(repl_state* st):
 	# Threads may still run the code and use the globals and thread_local
 	# offsets this rollback would release: keep them (only names roll back).
 	if ((repl_keep_code == 0) || (codepos < st.codepos)): codepos = st.codepos
+	# arm64 string descriptors (repl/jit_arm64.w's data arena)
+	if ((repl_keep_code == 0) || (datapos < st.datapos)): datapos = st.datapos
 	repl_tls_restore(st.tls_size)
 	repl_hooks_restore(st.codepos)
 	generic_registry_truncate(st.generic_defs, st.generic_insts, st.generic_forwards)
@@ -1101,6 +1117,7 @@ int repl_compile_entry(char* path):
 	# emits, so a redefinition can repatch them later. Armed only while
 	# the engine compiles; the echo path's descriptor building stays out.
 	repl_call_site_hook = cast(int, repl_register_call_site)
+	repl_jit_open()
 	if (repl_setjmp(repl_jump_buffer)):
 		# error() jumped back: roll back the failed entry and skip execution.
 		# A checker diagnostic points the tokenizer's token at a retained
@@ -1117,6 +1134,7 @@ int repl_compile_entry(char* path):
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file): close(file)
 		close(repl_entry_file)
+		repl_jit_commit()
 		return 0
 
 	filename = path
@@ -1153,6 +1171,9 @@ int repl_compile_entry(char* path):
 	int entry_symbol = sym_declare_global(name, 1, 2)
 	sym_define_global(entry_symbol)
 	int entry_start = codepos
+	# arm64: blr leaves the return address in x30; push it into the
+	# return-address slot ret() pops (x86's call pushes it itself)
+	if (target_isa == 1): a64(op(0xf8, 0x1f8f9e))   # str x30, [x28, #-8]!
 	current_function_symbol = entry_symbol
 	number_of_args = 0
 	defer_reset()
@@ -1198,6 +1219,7 @@ int repl_compile_entry(char* path):
 	if (safe_check_requested()): repl_safe_check_entry(repl_saved.retained.nodes)
 	repl_recovery = 0
 	repl_call_site_hook = 0
+	repl_jit_commit()
 
 	int address = sym_address(name)
 	free(name)
@@ -1245,6 +1267,20 @@ int repl_fault_jump_buffer
 # cannot long-jump onto that thread's stack.
 int repl_fault_tid
 
+# Optional fault report hook (repl/embed.w): when nonzero, repl_fault
+# calls hook(sig, context) in place of printing the banner, the stack
+# trace and "entry rolled back", then long-jumps as usual. It runs inside
+# the signal handler (on the alternate signal stack when one is armed),
+# so it must not allocate.
+int repl_fault_hook
+
+type __repl_fault_hook_callback = fn(int, int) -> void
+
+# Extra sa_flags for the fault handlers, set by an embedder before
+# repl_init: repl/embed.w adds SA_ONSTACK (0x08000000) after arming an
+# alternate signal stack, so a stack overflow recovers like a segfault.
+int repl_fault_flags
+
 int repl_fault_thunk_page
 int repl_fault_thunk_pos
 int repl_fault_restorer
@@ -1289,6 +1325,7 @@ int repl_fault_emit_handler_thunk(int handler):
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void repl_fault_install(int signum, int handler, int flags):
 	if (repl_fault_act == 0): repl_fault_act = cast(int*, malloc(5 * __word_size__))
+	if (repl_jit_install(signum, handler, flags)): return;
 	int* act = repl_fault_act
 	if (__word_size__ == 8):
 		repl_fault_thunk_init()
@@ -1363,6 +1400,12 @@ int repl_fault_window_mine():
 	return repl_fault_active && (repl_fault_tid == repl_gettid())
 
 
+# arm64 fault recovery resumes here (from rt_sigreturn, not a call): the
+# W stack pointer is the one repl_eval's repl_setjmp saved.
+void repl_fault_resumed():
+	repl_longjmp(repl_fault_jump_buffer, 1)
+
+
 void repl_fault(int sig, int context):
 	# A thread an entry started faulted: repl_eval's checkpoint lives on
 	# the main thread's stack, so there is nothing to return to. wdbg
@@ -1388,9 +1431,14 @@ void repl_fault(int sig, int context):
 			return;
 		# Older threads may run code this entry defined: keep it.
 		repl_keep_code = repl_other_threads() > 0
-	dbg_fault_banner(c"runtime fault: ", sig, context)
-	repl_fault_trace(context)
-	println(c"entry rolled back")
+	if (repl_fault_hook != 0): (cast(__repl_fault_hook_callback*, repl_fault_hook))(sig, context)
+	else:
+		dbg_fault_banner(c"runtime fault: ", sig, context)
+		repl_fault_trace(context)
+		println(c"entry rolled back")
+	# arm64: return through sigreturn into repl_fault_resumed on the
+	# checkpoint's W stack (repl/jit_arm64.w explains why)
+	if (repl_jit_fault_resume(context, cast(int, repl_fault_resumed), load_word(cast(char*, repl_fault_jump_buffer) + __word_size__))): return;
 	repl_longjmp(repl_fault_jump_buffer, 1)
 
 
@@ -1405,10 +1453,14 @@ void repl_fault_entry(int sig):
 void repl_fault_install_handlers():
 	int handler = cast(int, repl_fault_entry)
 	if (__word_size__ == 8): handler = cast(int, repl_fault)
-	repl_fault_install(4, handler, 1073741824) /* SIGILL */
-	repl_fault_install(7, handler, 1073741824) /* SIGBUS */
-	repl_fault_install(8, handler, 1073741824) /* SIGFPE */
-	repl_fault_install(11, handler, 1073741824) /* SIGSEGV */
+	int flags = 1073741824 | repl_fault_flags
+	repl_fault_install(4, handler, flags) /* SIGILL */
+	repl_fault_install(7, handler, flags) /* SIGBUS */
+	repl_fault_install(8, handler, flags) /* SIGFPE */
+	repl_fault_install(11, handler, flags) /* SIGSEGV */
+	# arm64: a 'debugger' statement (brk) rolls the entry back too, until
+	# wdbg's breakpoint machinery runs there
+	if (__target_isa__ == 1): repl_fault_install(5, handler, flags) /* SIGTRAP */
 
 
 # ---------------------------------------------------------------------------
@@ -1478,8 +1530,12 @@ char* repl_echo_json(int type, int value):
 		ers_reset()
 		filename = saved_filename
 		line_number = saved_line
+		repl_jit_commit()
 		return 0
+	# The descriptor is emitted into the code buffer
+	repl_jit_open()
 	int desc = json_codec_descriptor(type)
+	repl_jit_commit()
 	json_value* encoded = __w_json_encode(desc, cast(char*, value))
 	repl_recovery = 0
 	filename = saved_filename
@@ -1587,6 +1643,15 @@ void repl_ast_options():
 	repl_semantic_mode = retained_semantic_mode
 
 
+# Embedder parameters (repl/embed.w), read by repl_inprocess_setup; all
+# 0 for the REPL and wdbg. repl_buffer_size: the JIT buffer's size in
+# bytes, reserved with MAP_NORESERVE (0: the fixed 8 MB). Nonzero
+# repl_provenance_off leaves the session allocator's provenance tracking
+# off (it costs ~5x on allocation-heavy code; checked boundaries need it).
+int repl_buffer_size
+int repl_provenance_off
+
+
 # Initialize the session: the compiler configured for in-process
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
@@ -1607,6 +1672,8 @@ void repl_inprocess_setup():
 	word_size = __word_size__
 	word_size_log2 = 2
 	if (word_size == 8): word_size_log2 = 3
+	# arm64 (docs/projects/scripting.md Phase A): the A64 emitter
+	repl_jit_configure()
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = cast(char*, malloc(8000))
@@ -1620,10 +1687,15 @@ void repl_inprocess_setup():
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
 	if (word_size == 8): mmap_flags = 34 + 64
-	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
+	if (repl_buffer_size > 0):
+		buffer_size = repl_buffer_size
+		mmap_flags = mmap_flags + 16384 /* MAP_NORESERVE */
+	# arm64 has no MAP_32BIT: fixed low hints instead (repl/jit_arm64.w)
+	int buffer = repl_jit_map_code(buffer_size, mmap_flags)
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
 	code_size = buffer_size
+	code_size = repl_jit_data_init(buffer, buffer_size)
 	code_fixed = 1
 	code_fixed_error_hook = cast(int, error)
 	codepos = 0
@@ -1632,6 +1704,7 @@ void repl_inprocess_setup():
 	ers_reset()
 	code_offset = buffer
 	repl_engine_init()
+	repl_jit_open()
 
 	# Runtime support: syscall stubs first, then the container runtime,
 	# exactly like link_impl: built-in list/map/set lower to
@@ -1640,7 +1713,8 @@ void repl_inprocess_setup():
 	# token) unless the helpers are preloaded here too. This runs once at
 	# startup, before any entry's repl_setjmp checkpoint exists, so
 	# per-entry rollback in repl_compile_entry never touches it.
-	if (word_size == 8): define_asm_functions_x64()
+	if (__target_isa__ == 1): define_asm_functions_arm64()
+	elif (word_size == 8): define_asm_functions_x64()
 	else: define_asm_functions()
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
@@ -1649,9 +1723,10 @@ void repl_inprocess_setup():
 	# cross that boundary too. The compiler's host allocator stays separate.
 	int provenance = sym_address(c"malloc_provenance_enabled")
 	asserts(c"session allocation provenance missing", provenance != 0)
-	save_i(data + provenance - data_offset, 1, word_size)
+	if (repl_provenance_off == 0): save_i(data + provenance - data_offset, 1, word_size)
 	# The auto-imported runtime closure is audited, as in link_impl.
 	safe_trust_sources(0)
+	repl_jit_commit()
 
 
 void repl_init():
@@ -1662,8 +1737,10 @@ void repl_init():
 	repl_fault_install_handlers()
 	# import_module (not compile_save) registers the library modules, so
 	# a loaded file importing lib.lib is not compiled a second time.
+	repl_jit_open()
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
+	repl_jit_commit()
 
 
 # Every file compiled through repl_load_file, using the same absolute
@@ -1759,10 +1836,12 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	int first_node = retained_node_count()
 	int first_import = imported_count
+	repl_jit_open()
 	compile_input_file(path)
 	repl_thread_runtime_check(first_import)
 	repl_finish_load(first_node)
 	repl_call_site_hook = 0
+	repl_jit_commit()
 	if (run_main == 0): return 0
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):

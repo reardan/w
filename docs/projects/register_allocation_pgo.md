@@ -1106,6 +1106,20 @@ counts (`__w_strcmp`, `__w_hash_key_equal`) depend on addresses, so two
 consecutive `profile_refresh` runs differed in 4 of 1,155 lines of
 `self.wprof` (and the Ir of a compile varies ±1.5%, see above); a PR
 commits the refreshed files only when hot code changed, as §3.3 says.
+**Known issue (Oct 2026): a fresh `self.wprof` breaks `verify_pgo`.**
+Regenerating `profiles/self.wprof` against the current tree makes
+`bin/wv3_pgo` and `bin/wv3_pgo_streaming` differ (the
+`cmp bin/wv3_pgo bin/wv3_pgo_streaming` step), already on main 7e0a8c0.
+A delta-debugged two-line profile reproduces it: the `promote` function
+(grammar/promote.w) hot plus the loop in `type_name_index_sync`
+(compiler/type_table.w) hot. Only `promote` comes out different: the AST
+front end records 5 more inline bodies and inlines 63 more call sites
+into it (`promote_eax` 6 sites against 5, `type_lookup` 192 against
+191), so the hot-budget inline path (`inline_site_budget` when the caller
+is profile-hot) is not front-end neutral. Until that is fixed the
+committed x86 `self.wprof` stays at its older refresh (76% of its
+functions still match); `self_x64.wprof` and `bench.wprof` were
+refreshed with the scripting Phase R1 map runtime.
 `bench.wprof` is header-only until B1 lands `tests/bench/`; `wprof
 corpus` runs each program with no arguments, which B1 may need to
 extend. Functions the defhash scan does not record (a script's implicit

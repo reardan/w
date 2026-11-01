@@ -42,6 +42,8 @@ void ast_extern_function(int binding, int return_type, char* name, char* import_
 
 
 int extern_statement():
+	if (peek(c"c_lib")): script_profile_reject(c"script profile: c_lib is not allowed")
+	if (peek(c"extern")): script_profile_reject(c"script profile: extern declarations are not allowed")
 	if (accept(c"c_lib")):
 		if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 			error(c"c_lib expects a \"soname\" string literal")

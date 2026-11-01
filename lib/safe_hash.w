@@ -56,9 +56,9 @@ V map_get_or[K, V](ref WMap[K, V]* value, K key, V fallback):
 optref[a] V* map_find[K, V](ref[a] WMap[K, V]* value, K key):
 	WMap[K, V]* map = cast(WMap[K, V]*, value)
 	__w_hash_table* table = cast(__w_hash_table*, map.entries)
-	int slot = __w_hash_table_slot(table, cast(int, key))
-	if table.states[slot] != 1: return 0
-	return cast(optref[a] V*, __w_hash_value_addr(table, slot))
+	int entry = __w_hash_table_find(table, cast(int, key))
+	if entry < 0: return 0
+	return cast(optref[a] V*, __w_hash_value_addr(table, entry))
 
 
 int map_remove[K, V](refmut WMap[K, V]* value, K key):

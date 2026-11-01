@@ -172,6 +172,7 @@ void asm_skip_body(int body_level):
 #      after it (be_function_define keeps the asm entry as the symbol).
 int asm_function_body(int current_symbol, char* name):
 	if (asm_body_follows() == 0): return 0
+	script_profile_reject(c"script profile: asm blocks are not allowed")
 	get_token()   # the ':'
 	int body_level = tab_level
 	asm_body_reset()

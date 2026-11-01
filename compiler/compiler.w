@@ -8,6 +8,9 @@ import compiler.profile_use
 import lib.assert
 import compiler.type_table
 import compiler.symbol_table
+# --profile=script checks (docs/projects/scripting.md §5.2), before the
+# grammar rules that call them
+import compiler.script_profile
 import code_generator.elf_object
 # Register promotion pre-scan and decision (reads the symbol and type
 # tables; the grammar's function rule calls it)
@@ -116,6 +119,7 @@ int compile_attempt(char* fn):
 	# recognises it by address on every statement (code_generator/dwarf.w,
 	# #714). fn itself stays owned by the caller.
 	filename = debug_source_intern(fn)
+	script_profile_note_open(filename)
 	if (ast_retain_mode):
 		int source = retained_source_begin(filename)
 		if (retained_pending_import != 0): retained_sources[source].import_key = strclone(retained_pending_import)
@@ -522,12 +526,19 @@ void import_root_note_shadows(char* fn):
 # fn must not shadow the global filename: the search-exhausted branch
 # below reads and repoints the global.
 int compile_relative_path(char* fn):
+	# An import written in a --profile=script source resolves only inside
+	# the import roots (compiler/script_profile.w)
+	int profile_gated = script_profile_import_gate
+	script_profile_import_gate = 0
 	# Explicit --import-root roots first, in order (block comment above)
 	if (import_root_count > 0):
 		if (deps_mode): import_root_note_shadows(fn)
 		for r in range(import_root_count):
 			if (compile_joined(import_root_at(r), fn)): return 1
 		deps_pending_shadows = 0
+	if (profile_gated):
+		script_profile_import_outside_roots(import_current_spelling)
+		return 0
 
 	# Get current directory
 	int max_path_size = 4096
@@ -651,8 +662,10 @@ void compile_save(char* fn):
 	# which reaches this same path through import_module).
 	defhash_depth = defhash_depth + 1
 	lint_depth = lint_depth + 1
+	script_profile_import_depth = script_profile_import_depth + 1
 	compile_file(fn)
 	close(file)
+	script_profile_import_depth = script_profile_import_depth - 1
 	lint_depth = lint_depth - 1
 	defhash_depth = defhash_depth - 1
 
@@ -849,6 +862,8 @@ void verbosity_raise():
 int link_option(char* arg, int apply):
 	# Whole-program: the validation pre-scan enables safety before imports.
 	if (strcmp(arg, c"--safe") == 0): return 1
+	# Whole-program like --safe: the pre-scan sets script_profile_mode
+	if (strcmp(arg, c"--profile=script") == 0): return 1
 	if (strcmp(arg, c"--pie") == 0): return 1
 	if (strcmp(arg, c"--shared") == 0): return 1
 	if (strcmp(arg, c"--static") == 0): return 1
@@ -1095,6 +1110,9 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (Android: off, otherwise: ret)")
 	println(c"  --safe                experimental ownership and borrowing checks")
+	println(c"  --profile=script      addon API gating: reject asm, raw_asm, syscall/thread built-ins,")
+	println(c"                        extern/c_lib/c_import, unsafe blocks, casts to pointers and")
+	println(c"                        imports outside the import roots in the input files")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --no-asm              compile portable W bodies, ignoring 'asm <isa>:' blocks")
 	println(c"  --streaming           use the streaming front end instead of the default AST one")
@@ -1433,6 +1451,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	safe_reset()
+	script_profile_reset()
 	type_safe_entrypoint = 1
 	warning_count = 0
 	type_error_count = 0
@@ -1619,6 +1638,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				ast_only_flag = *flag_arg
 			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
 			if (strcmp(*flag_arg, c"--safe") == 0): safe_mode = 1
+			# Every command-line input; imports stay trusted
+			# (compiler/script_profile.w)
+			if (strcmp(*flag_arg, c"--profile=script") == 0): script_profile_mode = 1
 			if (strcmp(*flag_arg, c"--bounds=off") == 0):
 				unsafe_bounds_flag = 1
 				safe_bounds_disabled = 1
@@ -1831,6 +1853,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 					print_error(input)
 					print_error(c"'\x0a")
 				object_root_pending = elf_object
+				# A root is never an import, whatever an earlier root's
+				# recovered error left behind (compiler/script_profile.w)
+				script_profile_import_depth = 0
 				compile_input_file(input)
 				object_root_pending = 0
 				lint_skip_root_open = 0

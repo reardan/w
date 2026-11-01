@@ -1633,3 +1633,58 @@ file, the way its `filename` already does. An attested module whose
 digest no longer matches is also hidden from `bin/wtest changed`, for
 the same reason as the pinned runtime entry above: `deps` fails the
 safe audit and prints no closure.
+
+## A host-heap overflow in the REPL surfaced far away (2026-10-31, scripting P2)
+
+Adding one compiler-side `map[char*, int]` (the script profile's trusted
+files) made `repl_test`'s `:sh` step die with `free(): invalid pointer
+(not a heap block)` inside `retained_sources.push`. The cause was an
+old overflow in `repl_threads_enable`: `repl_hook_words` was allocated
+with 3 words and filled with 5, so the two extra words landed in
+whatever block followed, and only a changed heap layout made that block
+matter. `W_DEBUG_ALLOC=1` did not help: in the REPL and wdbg it selects
+the session's allocator, while the compiler and the frontend (the host)
+stay on the free list, so the guard-page allocator never saw the host
+write. Bisecting by disabling the new allocation found it. Direction: let
+the REPL host opt into `lib/memory_debug.w` too (say `W_DEBUG_ALLOC=host`),
+so a host-side overflow faults at the write instead of at a later
+`free()`. The same entry also needed `tools/wfixture.w` to take several
+selector words (`# wfixture: --profile=script --import-root=r`) and a
+`--streaming` run mode; both are in now.
+
+## Quoting inside a sidecar `step=` value (2026-10-31, scripting.md A1)
+
+`./wbuild --list` rejected a sidecar line whose `step="..."` value held
+a double-quoted argument (`step="script -qc "bin/wrun arm64 bin/repl"
+/dev/null"`) with `not a 'step=' field (...): 'bin/wrun'`, repeated once
+per generation pass. The message names the token after the early close
+quote, not the quoting mistake; saying "unbalanced quote in step= value
+(use single quotes inside it)" and printing the error once would have
+saved a round trip.
+
+## Checking and profiling the auto-imported runtime (2026-10-31, scripting R1)
+
+`bin/wv2 check --json structures/hash_table.w` prints `skipping
+'structures/hash_table.w' (already compiled)` and exits 0: the file is
+auto-imported into every program, so the root is skipped and the check
+says nothing about the edit an agent just made (warnings in it only
+surface later, as a `--strict` failure in `./wbuild build`). Direction:
+treat a root that is also part of the auto-imported runtime as the
+root. Separately, valgrind does not read W's symbol table, so
+`callgrind_annotate` on a W binary names functions `file.w:0x0805...`;
+`tools/wbench.w` resolves them with `nm` internally, but there is no
+standalone `bin/wprof`-style command to annotate an arbitrary callgrind
+profile, so profiling a runtime change meant a throwaway nm + bisect
+script. Direction: a `wbench --annotate <callgrind.out> <binary>` (or
+`wprof callgrind`) subcommand reusing `prog_function_name`.
+Third, `./wbuild profile_refresh` regenerates `profiles/self.wprof` without
+checking that the result still passes `verify_pgo`, and on the current tree
+it does not (AST and streaming PGO builds differ, see
+register_allocation_pgo.md "Known issue"); finding the culprit took a
+hand-written ddmin script over profile lines. Direction: have
+`profile_refresh` run the `verify_pgo` comparison on the new profile, and a
+`wprof reduce <profile> -- <cmd>` that shrinks a profile to the lines a
+failing command needs. Also, `profile_check`'s `bench.wprof` file list is
+hand-maintained in build.base.json and had fallen behind the corpus
+(`regex_pathological.w` missing, so a fresh profile read 76%); it could be
+derived from `tests/bench/` the way `wprof corpus` derives its programs.

@@ -23,7 +23,7 @@ W=bin/wv2
 RUNS=3
 ONLY=
 NO_VALGRIND=0
-PROGRAMS="sum sieve sha256_1m siphash_keys inflate_corpus regex_backtrack matmul_256 strcmp_sort"
+PROGRAMS="sum sieve sha256_1m siphash_keys map_ops inflate_corpus regex_backtrack matmul_256 strcmp_sort"
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-c) W=$2; shift 2 ;;

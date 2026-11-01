@@ -16,7 +16,7 @@
 # wbuild: step="bin/wbench --programs --only sum --size 1000 -n 1 --no-valgrind --prefix bin/wbench_test_prog_ --compare tests/bench/fixtures/baseline_missing_row.txt" expect_fail expect_stdout="sum.x64     missing from the baseline"
 # wbuild: step="bin/wbench --programs --only sum --size 1000 -n 1 --no-valgrind --prefix bin/wbench_test_prog_ --write-baseline bin/wbench_programs_roundtrip.txt"
 # wbuild: step="bin/wbench --programs --only sum --size 1000 -n 1 --no-valgrind --prefix bin/wbench_test_prog_ --compare bin/wbench_programs_roundtrip.txt" expect_stdout="sum.x86     ok" expect_stdout="sum.x64     ok"
-# wbuild: target=bench_report dep=wbench dep=wv2 dep=build_x64 dep=bench_sum dep=bench_sieve dep=bench_sha256_1m dep=bench_siphash_keys dep=bench_inflate_corpus dep=bench_regex_backtrack dep=bench_matmul_256 dep=bench_strcmp_sort
+# wbuild: target=bench_report dep=wbench dep=wv2 dep=build_x64 dep=bench_sum dep=bench_sieve dep=bench_sha256_1m dep=bench_siphash_keys dep=bench_map_ops dep=bench_inflate_corpus dep=bench_regex_backtrack dep=bench_matmul_256 dep=bench_strcmp_sort
 # wbuild: step="bin/wbench --programs -n 3 --write-baseline bin/bench.txt" timeout=3600000
 # wbuild: target=bench_compare dep=wbench dep=wv2 dep=build_x64
 # wbuild: step="bin/wbench --programs -n 3 --write-baseline bin/bench.txt --compare tests/bench/baseline.txt" timeout=3600000
@@ -68,7 +68,8 @@
 #	           [--compare <file> [--tolerance <pct>] [--time-factor <x>]]
 #
 # compiles every program of tests/bench/ (sum, sieve, sha256_1m,
-# siphash_keys, inflate_corpus, regex_backtrack, matmul_256, strcmp_sort)
+# siphash_keys, map_ops, inflate_corpus, regex_backtrack, matmul_256,
+# strcmp_sort)
 # with <compiler> for x86 and for x64, runs each -n times and reports, per
 # <name>.<arch> row, the executable size in bytes, the callgrind
 # instruction count in thousands (kIr; measured once per row when
@@ -479,6 +480,7 @@ list[char*] prog_names():
 	names.push(c"sieve")
 	names.push(c"sha256_1m")
 	names.push(c"siphash_keys")
+	names.push(c"map_ops")
 	names.push(c"inflate_corpus")
 	names.push(c"regex_backtrack")
 	names.push(c"matmul_256")

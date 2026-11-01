@@ -26,6 +26,7 @@ void dbg_fault_banner(char* lead, int sig, int context):
 	elif (sig == 4): print(c"SIGILL")
 	elif (sig == 7): print(c"SIGBUS")
 	elif (sig == 8): print(c"SIGFPE")
+	elif (sig == 5): print(c"SIGTRAP")
 	else:
 		print(c"signal ")
 		dbg_print_dec(sig)

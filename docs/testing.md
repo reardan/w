@@ -395,6 +395,9 @@ code the compiler emits rather than the compiler itself
 (docs/projects/register_allocation_pgo.md §5): `sum` (the two-local
 summation loop), `sieve`, `sha256_1m` (`lib/sha256.w`), `siphash_keys`
 (map inserts and lookups, the container runtime's hash table),
+`map_ops` (the script-shaped map workloads of
+docs/projects/scripting.md: sequential int keys, `m.add` counting,
+add/remove churn, insertion-order iteration, string keys),
 `inflate_corpus` (`libs/extras/compress/inflate.w` over the DEFLATE
 corpus), `regex_backtrack` (`lib/regex.w`), `matmul_256` and
 `strcmp_sort` (`list.sort` on strings), plus `self` (the compiler

@@ -341,3 +341,67 @@ render as JSON via the compiler's `to_json` codec, and `:help` documents
 `x := expr`. Staging hygiene (D6) and the two stray compile warnings
 (D4) are also done (`repl_stage_init`'s pid-tagged directory,
 `repl_warning_test`). All are exercised by `repl_test`/`repl_test_x64`.
+
+arm64 (docs/projects/scripting.md Phase A1): the REPL, and the engine
+in `repl/core.w` under it, run on arm64 Linux (`bin/wv2 arm64 repl.w`;
+`repl_test_arm64` under qemu, tag `tests_arm64`). The architecture
+pieces live in `repl/jit_arm64.w`: a code buffer mapped below 2 GB at
+fixed hints with `MAP_FIXED_NOREPLACE` (there is no `MAP_32BIT`), with a
+data arena at its top for the A64 back end's string descriptors;
+instruction-cache maintenance after every compile and repatch
+(`repl_jit_commit`); fault handlers on an alternate signal stack that
+recover by rewriting the signal context and returning through
+`rt_sigreturn` rather than long-jumping out of the handler, so a W stack
+overflow recovers too. Differences from x86/x64: integer division by
+zero does not fault (AArch64 `sdiv` returns 0); a `debugger` statement
+rolls the entry back (SIGTRAP) instead of entering wdbg, whose
+breakpoint and context code is x86-only; `thread_local` and entry
+threads (`repl_threads_enable`) stay x86/x64-only. macOS is Phase A2:
+`bin/wv2 arm64_darwin repl.w` compiles, and the remaining steps are
+listed in scripting.md.
+
+## Embedding: the addon engine and its reload rule
+
+`repl/embed.w` is the embedding API over this engine for W hosts that
+load W addons (`docs/projects/scripting.md`, Phase E): `engine_init`
+(import roots, provenance off unless `engine_checked`, a 64 MB
+`MAP_NORESERVE` buffer, fault handlers on an alternate signal stack so a
+stack overflow recovers like a segfault), `engine_bind`, `engine_load`
+with captured NDJSON diagnostics (`diag_sink`, `compiler/diagnostics.w`),
+`engine_call0..3` inside the fault window with the faulting addon and
+function named, and generations (`engine_checkpoint`/`engine_rollback`,
+`engine_reload`). The REPL and wdbg do not use it; the embedder knobs it
+sets in `repl/core.w` (`repl_buffer_size`, `repl_provenance_off`,
+`repl_fault_flags`, `repl_fault_hook`) are all 0 for them.
+
+**Reload resets addon state: functions repatch, data does not migrate.**
+At the prompt a redefinition shadows the old function and the late-binding
+registry repatches older callers, while globals keep their old storage in
+earlier code. The engine's reload is stricter and simpler (WoW's
+`/reload`): it rolls the session back to the addon's own checkpoint and
+compiles the addon, then every unit loaded after it, again in order. So
+after a reload
+
+- every function of the reloaded addon and of the later units is the new
+  code, and late-bound call sites below the rollback point are repatched
+  to it (first back to the surviving definition, then to the new one);
+- every global of those units starts over from its initializer: values,
+  struct layouts and heap objects reachable only from them are not
+  carried over (heap blocks the old version allocated are leaked, not
+  freed, since the session heap is not rolled back);
+- the replaced code is released, not shadowed, so reloads do not fill
+  the buffer;
+- addresses the host looked up with `engine_symbol` for those units are
+  stale and must be looked up again.
+
+State that must survive a reload goes through saved variables
+(`lib/saved_vars.w`, `engine_saved_vars`): JSON text kept in the host's
+heap, stored before the rollback and restored after the reload by member
+name, so a changed struct layout still loads.
+
+Two rollback gaps the engine closes but the REPL's per-entry rollback and
+`:reset` still have: a `struct`/`union`/`enum` redefinition resets its
+type record in place (`type_reset_for_redefinition`), which rolling the
+type table back by count does not undo, and the `to_json`/`from_json`
+descriptor cache (`grammar/json_builtin.w`) is never truncated, so it can
+hand out a descriptor for an old layout or from released code.

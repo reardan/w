@@ -165,10 +165,11 @@ void test_hash_known_answers():
 	sc_assert_low32(-1022865351, __w_hash_sip(t, cast(int, c"abc"), 3))
 	sc_assert_low32(154581159, __w_hash_sip(t, cast(int, c"abcd"), 4))
 	sc_assert_low32(1111019042, __w_hash_sip(t, cast(int, c"hello, world!"), 13))
-	# Word keys hash their __word_size__ little-endian bytes.
+	# Word keys use the keyed murmur3-style finalizer (__w_hash_word),
+	# which also folds in the high half of a 64-bit word.
 	__w_hash_table* w = __w_map_new(__w_hash_key_word, __word_size__)
-	if (__word_size__ == 4): sc_assert_low32(-1908146445, __w_hash_key_hash(w, 7))
-	else: sc_assert_low32(-1943404248, __w_hash_key_hash(w, 7))
+	if (__word_size__ == 4): assert_equal(8407402, __w_hash_key_hash(w, 7))
+	else: assert_equal(764129049, __w_hash_key_hash(w, 7))
 	__w_map_free(w)
 	__w_map_free(t)
 
