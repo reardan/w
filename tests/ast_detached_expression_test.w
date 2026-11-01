@@ -346,7 +346,7 @@ void test_local_analysis_does_not_emit_storage():
 	assert_equal(start, codepos)
 	assert_equal(backend_depth, stack_pos)
 	assert_equal(7, node.stack_depth)
-	assert_equal(7, load_int(table + node.binding + 2))
+	assert_equal(7, sym_value_at(node.binding))
 	assert_strings_equal(c"detached_owned_local", node.literal_bytes)
 	assert_equal(type_lookup(c"int"), node.declared_type)
 	# A later declaration must not redirect a typed local's slot update
@@ -359,8 +359,8 @@ void test_local_analysis_does_not_emit_storage():
 	int other = table_pos - symbol_data_size
 	last_declared_symbol = other
 	ast_declaration_bind(typed, 11)
-	assert_equal(11, load_int(table + node.binding + 2))
-	assert_equal(99, load_int(table + other + 2))
+	assert_equal(11, sym_value_at(node.binding))
+	assert_equal(99, sym_value_at(other))
 	assert_equal(start, codepos)
 	assert_equal(backend_depth, stack_pos)
 	table_pos = symbols

@@ -992,7 +992,7 @@ void safe_session_validate():
 void safe_session_call(char* name, int argument):
 	int symbol = sym_lookup(name)
 	if ((symbol < 0) || (table[symbol + 1] != 'D')): error(c"safe: session destructor implementation is missing")
-	__safe_session_drop_callback* callee = cast(__safe_session_drop_callback*, load_int(table + symbol + 2))
+	__safe_session_drop_callback* callee = cast(__safe_session_drop_callback*, sym_value_at(symbol))
 	callee(argument)
 
 
@@ -1019,7 +1019,7 @@ void safe_session_drop(safe_session_binding* b):
 	if (b.dropped || b.discarded || (b.owner == 0)): return
 	b.dropped = 1
 	if ((b.state & 7) != 2): return
-	char* slot = cast(char*, load_int(table + b.symbol + 2))
+	char* slot = cast(char*, sym_value_at(b.symbol))
 	int pointer = load_word(slot)
 	save_word(slot, 0)
 	int remaining = 256
@@ -1083,7 +1083,7 @@ void safe_session_commit():
 	for i in range(safe_session_bindings.length):
 		safe_session_binding* b = safe_session_bindings[i]
 		if (b.owner && (b.dropped == 0) && (b.discarded == 0) && ((b.state & 7) == 4)):
-			save_word(cast(char*, load_int(table + b.symbol + 2)), 0)
+			save_word(cast(char*, sym_value_at(b.symbol)), 0)
 	list[safe_session_binding*] retired = safe_session_retired
 	safe_session_retired = new list[safe_session_binding*]
 	safe_session_touched = 0
@@ -1131,7 +1131,7 @@ void safe_session_end():
 		i = i - 1
 		safe_session_binding* b = safe_session_bindings[i]
 		if (b.owner && (b.dropped == 0) && (b.discarded == 0) && ((b.state & 7) == 2) && safe_session_guard(b.type, 0)):
-			if (load_word(cast(char*, load_int(table + b.symbol + 2))) != 0): guards = guards + 1
+			if (load_word(cast(char*, sym_value_at(b.symbol))) != 0): guards = guards + 1
 		safe_session_drop(b)
 	if (guards > 0):
 		print(c"note: released ")

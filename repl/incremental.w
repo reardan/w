@@ -789,7 +789,7 @@ int incremental_address(char* name):
 	for incremental_entry* entry in incremental_entries:
 		if (strcmp(entry.name, name) == 0):
 			int symbol = sym_probe(name)
-			if (symbol >= 0 && table[symbol + 1] == 'D'): return load_int(table + symbol + 2)
+			if (symbol >= 0 && table[symbol + 1] == 'D'): return sym_value_at(symbol)
 	return 0
 
 

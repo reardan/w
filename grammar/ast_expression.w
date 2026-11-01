@@ -3714,7 +3714,7 @@ void ast_expression_capture_stack_bindings(expression_ast* tree):
 			int scope = table[sym + 1]
 			if ((scope == 'L') || (scope == 'A')):
 				int words = type_stack_words(tree.result_type[id])
-				int offset = 0 - load_int(table + sym + 2) - words
+				int offset = 0 - sym_value_at(sym) - words
 				if (scope == 'A'): offset = offset + number_of_args + 2
 				tree.binding_offset[id] = offset
 				char* name = table + tree.value[id]

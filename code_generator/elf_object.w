@@ -190,7 +190,7 @@ void object_table_symbols(int want_global):
 	while (t <= table_pos - 1):
 		char* name = table + t
 		t = t + strlen(table + t)
-		int value = load_int(table + t + 2)
+		int value = sym_value_at(t)
 		int symtype = load_int(table + t + 10)
 		int type = load_int(table + t + 6)
 		if (table[t + 1] == 'D'):

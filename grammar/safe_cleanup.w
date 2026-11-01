@@ -5,7 +5,7 @@
 # The symbol's home is a stack_pos anchor. Arguments live below the
 # function's local stack and therefore have non-positive anchors.
 int safe_owner_slot(int symbol):
-	int slot = load_int(table + symbol + 2) + 1
+	int slot = sym_value_at(symbol) + 1
 	if (table[symbol + 1] == 'A'): slot = slot - number_of_args - 2
 	return slot
 
@@ -264,7 +264,7 @@ void safe_owner_cleanup(int min_binding, int min_depth, int parameters):
 		if (safe_owner_binding(symbol) == 0): continue
 		if (table[symbol + 1] == 'A'):
 			if (parameters == 0): continue
-		else if (load_int(table + symbol + 2) < min_depth): continue
+		else if (sym_value_at(symbol) < min_depth): continue
 		safe_owner_drop_slot(safe_owner_slot(symbol), load_int(table + symbol + 6))
 
 

@@ -19,11 +19,11 @@ int code_fixed_error_hook
 # file target by docs/projects/wx_split.md). When data_split is set,
 # mutable global-variable storage is emitted into a separate RW buffer
 # (`data`) mapped at data_offset, so the executable segment stays
-# read-execute and the data segment read-write. The in-process REPL and
-# debugger leave data_split at 0, keeping globals inline in the single
-# executed buffer (their mmap is RWX), so nothing changes for them. The
-# arm64 back end still puts string descriptors in `data`; the arm64
-# engine points it at a fixed arena (repl/jit_arm64.w).
+# read-execute and the data segment read-write. The macOS in-process
+# engine uses the same split because its MAP_JIT pages cannot be written
+# while they execute. Linux REPL/debugger sessions keep globals inline
+# in their RWX buffer. The arm64 back end also puts string descriptors
+# in `data`; arm64 engines provide a fixed arena (repl/jit_arm64.w).
 char* data
 int data_size
 int datapos

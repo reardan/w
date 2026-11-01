@@ -74,7 +74,7 @@ int const_symbol_value(int t):
 	if (t >= 0): is_object = (table[t + 1] == 'D') && (load_int(table + t + 10) == 1)
 	if (is_object):
 		int type = load_int(table + t + 6)
-		int addr = load_int(table + t + 2)
+		int addr = sym_value_at(t)
 		if (type_get_kind(type) == type_kind_enum):
 			# in the code stream on the native targets, in the data
 			# segment on wasm (enum_declaration.w)
@@ -107,7 +107,7 @@ map[int, int] const_global_addresses
 void const_global_define(int t, int type):
 	if (type_is_const(type) == 0): return
 	if (cast(int, const_global_addresses) == 0): const_global_addresses = new map[int, int]
-	const_global_addresses[t] = load_int(table + t + 2)
+	const_global_addresses[t] = sym_value_at(t)
 
 
 # sym_emit_value just materialized the address of global object t,
@@ -122,13 +122,13 @@ void const_global_note(int t, int start):
 	int t_real = type_unqualified(type)
 	char* p = 0
 	if (type_get_kind(type) == type_kind_enum):
-		p = code + load_int(table + t + 2) - code_offset
+		p = code + sym_value_at(t) - code_offset
 		t_real = type
 	else:
 		if (type_is_const(type) == 0): return
 		if (value_class(t_real) != VC_INT): return
 		if (cast(int, const_global_addresses) == 0): return
-		int addr = load_int(table + t + 2)
+		int addr = sym_value_at(t)
 		if (const_global_addresses.get(t, -1) != addr): return
 		p = code + addr - code_offset
 		if (data_split): p = data + (addr - data_offset)
@@ -591,7 +591,7 @@ int global_storage_size(int type):
 # Define a mutable global variable's symbol and reserve its storage. With
 # the W^X split active (data_split, set for every file target), storage
 # goes into the RW data segment so the executable image stays read-execute;
-# otherwise (the in-process REPL/wdbg path) it stays inline in the single
+# otherwise (the Linux in-process REPL/wdbg path) it stays inline in the single
 # executed buffer, as before. Read-only globals (enum constants,
 # string/JSON blobs) keep using the code segment.
 void define_global_variable(int current_symbol, int decl_type):
@@ -643,7 +643,7 @@ void emit_data_global_storage(int type, int vaddr):
 # split, the code image otherwise (the same two cases
 # parse_constant_literal reads an enum constant back from).
 void write_global_initial_value(int current_symbol, int type, int value):
-	int addr = load_int(table + current_symbol + 2)
+	int addr = sym_value_at(current_symbol)
 	int bytes = word_size
 	int declared_size = type_get_size(type)
 	if ((type_get_pointer_level(type) == 0) & (declared_size > 0) & (declared_size < word_size)):
@@ -692,7 +692,7 @@ void global_address_finish():
 		int t = global_address_symbols[i]
 		if (table[t + 1] != 'D'):
 			error3(c"function '", sym_record_name(t), c"' used in a global initializer is never defined")
-		global_address_store(global_address_cells[i], load_int(table + t + 2))
+		global_address_store(global_address_cells[i], sym_value_at(t))
 	global_address_cells = 0
 	global_address_symbols = 0
 
@@ -728,13 +728,13 @@ int global_address_initializer(char* name, int cell, int type):
 			global_address_cells.push(cell)
 			global_address_symbols.push(t)
 			return 1
-		value = load_int(table + t + 2)
+		value = sym_value_at(t)
 	else if (accept(c"&")):
 		t = sym_lookup(token)
 		if ((t < 0) || (table[t + 1] != 'D') || (load_int(table + t + 10) != 1) || (sym_is_thread_local(t))):
 			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
 		retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
-		value = load_int(table + t + 2)
+		value = sym_value_at(t)
 		get_token()
 	else:
 		int length = process_prefixed_string_literal()
@@ -758,7 +758,7 @@ int global_address_initializer(char* name, int cell, int type):
 # the '=' used to produce.
 void global_initializer(char* name, int current_symbol, int decl_type):
 	global_initializer_check_type(name, decl_type)
-	if (global_address_initializer(name, load_int(table + current_symbol + 2), decl_type)): return;
+	if (global_address_initializer(name, sym_value_at(current_symbol), decl_type)): return;
 	int value = parse_constant_literal(c"initializer for global", name)
 	retained_initializer_note(name, retained_initializer_constant, value, -1, 0, 0)
 	write_global_initial_value(current_symbol, decl_type, value)
