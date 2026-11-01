@@ -41,7 +41,8 @@ int json_codec_emit_map_desc(int t);
 lazy_runtime* json_codec_rt
 
 # Emitted struct descriptor address per canonical type index, so every
-# use of the same struct shares one blob.
+# use of the same struct shares one blob. Addresses use native words:
+# the in-process Darwin engine's code mapping is above 4 GB.
 char* json_codec_types
 char* json_codec_addresses
 int json_codec_count
@@ -51,7 +52,7 @@ int json_codec_cache_lookup(int type_index):
 	int i = 0
 	while (i < json_codec_count):
 		if (load_int(json_codec_types + i * 4) == type_index):
-			return load_int(json_codec_addresses + i * 4)
+			return load_ptr(json_codec_addresses + i * __word_size__)
 		i = i + 1
 	return 0
 
@@ -60,10 +61,10 @@ void json_codec_cache_store(int type_index, int address):
 	int max_types = 200
 	if (json_codec_types == 0):
 		json_codec_types = cast(char*, malloc(max_types * 4))
-		json_codec_addresses = cast(char*, malloc(max_types * 4))
+		json_codec_addresses = cast(char*, malloc(max_types * __word_size__))
 	assert1(json_codec_count < max_types)
 	save_int(json_codec_types + json_codec_count * 4, type_index)
-	save_int(json_codec_addresses + json_codec_count * 4, address)
+	save_ptr(json_codec_addresses + json_codec_count * __word_size__, address)
 	json_codec_count = json_codec_count + 1
 
 
@@ -218,21 +219,21 @@ int json_codec_descriptor(int struct_type):
 	int p = be_blob_begin()
 
 	# Field name strings
-	char* name_addresses = cast(char*, malloc(n * 4))
+	char* name_addresses = cast(char*, malloc(n * __word_size__))
 	i = 0
 	while (i < n):
 		char* name = type_get_field_name_at(struct_type, i)
-		save_int(name_addresses + i * 4, code_offset + codepos)
+		save_ptr(name_addresses + i * __word_size__, code_offset + codepos)
 		emit(strlen(name) + 1, name)
 		i = i + 1
 
 	# Value descriptors for list fields, map descriptors for map fields
-	char* aux_addresses = cast(char*, malloc(n * 4))
+	char* aux_addresses = cast(char*, malloc(n * __word_size__))
 	i = 0
 	while (i < n):
 		int field_type = type_unqualified(type_get_field_type_at(struct_type, i))
 		int kind = json_codec_kind(field_type)
-		save_int(aux_addresses + i * 4, json_codec_emit_aux(field_type, kind))
+		save_ptr(aux_addresses + i * __word_size__, json_codec_emit_aux(field_type, kind))
 		i = i + 1
 
 	# The struct descriptor itself
@@ -243,11 +244,11 @@ int json_codec_descriptor(int struct_type):
 	while (i < n):
 		int field_type = type_unqualified(type_get_field_type_at(struct_type, i))
 		int kind = json_codec_kind(field_type)
-		be_blob_pointer(load_int(name_addresses + i * 4))
+		be_blob_pointer(load_ptr(name_addresses + i * __word_size__))
 		emit_target_word(type_get_field_offset_at(struct_type, i))
 		emit_target_word(kind)
 		emit_target_word(json_codec_size(field_type, kind))
-		be_blob_pointer(load_int(aux_addresses + i * 4))
+		be_blob_pointer(load_ptr(aux_addresses + i * __word_size__))
 		i = i + 1
 
 	be_blob_end(p)

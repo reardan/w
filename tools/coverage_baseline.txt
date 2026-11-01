@@ -77,16 +77,20 @@
 # 89.7/87.4/86.3/75.0/70.3% for code_generator/compiler/grammar/repl/debugger.
 # Preserve the measured gains and existing margins; compiler branches
 # retain their existing floor, and code-generator lines are unchanged.
+# Checked iteration, shared budgets and foreign session regressions measured
+# debugger lines/branches at 84.8/70.4%, grammar branches at 86.4%, and
+# REPL branches at 75.6%, versus the merged #879 report's 84.3/70.0%,
+# 86.3% and 75.5%. Retain these gains conservatively; other floors stay.
 code_generator/ 96.8
 compiler/ 96.3
 grammar/ 97.0
 repl/ 92.0
-debugger/ 81.6
+debugger/ 82.1
 repl.w 80.5
 w.w 99.0
 diagnostics 50.8
 branches:code_generator/ 89.1
 branches:compiler/ 87.0
-branches:grammar/ 85.7
-branches:repl/ 74.1
-branches:debugger/ 67.6
+branches:grammar/ 85.8
+branches:repl/ 74.2
+branches:debugger/ 67.9

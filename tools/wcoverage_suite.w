@@ -108,6 +108,12 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	sources.push(c"tests/dynamic_registry_test.w")
 	sources.push(c"compiler/bignum_test.w")
 	sources.push(c"tests/wasm_i32_encoding_test.w")
+	# High native symbol values and A64 prototype chains need runtime
+	# calls from both host word sizes, beyond ordinary file compiles.
+	sources.push(c"tests/symbol_address_test.w")
+	# Session rollback/redefinition must prune both descriptor caches;
+	# ordinary subprocess compiles do not exercise the runtime API.
+	sources.push(c"tests/repl_codec_cache_test.w")
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
@@ -124,11 +130,15 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	tags.push(c"dynamic_registry_test")
 	tags.push(c"bignum_test")
 	tags.push(c"wasm_encoding_test")
+	tags.push(c"symbol_address_test")
+	tags.push(c"repl_codec_cache_test")
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
 	variables.push(c"W_COVERAGE_WSH")
 	variables.push(c"W_COVERAGE_WDBG")
+	variables.push(0)
+	variables.push(0)
 	variables.push(0)
 	variables.push(0)
 	variables.push(0)

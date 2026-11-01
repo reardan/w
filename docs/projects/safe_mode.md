@@ -1102,11 +1102,11 @@ The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
 `switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
 scalar conditional expressions. Range bounds and step evaluate once in source
 order; `continue` reaches the implicit index update. Switch labels retain
-their evaluation order and W's no-fallthrough behavior. Shared checked slices
-support scalar iteration as described below. Other container iteration,
-generators, arbitrary `goto`, GPU operations and legacy container operations
-remain unsupported. The audited concrete storage APIs
-below are the supported growable-container interface.
+their evaluation order and W's no-fallthrough behavior. Checked slices,
+audited owned buffers and maps/sets, and checked user cursor protocols
+support iteration as described below. Generators, arbitrary `goto`, GPU
+operations and legacy container operations remain unsupported. The audited
+storage APIs below provide the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
 
@@ -1141,10 +1141,40 @@ loop. Nested loops, subranges, generic calls and lexical defer preserve these
 same rules. A reference to a previous element remains valid when the cursor
 advances because it points into the nonmutated backing storage.
 
-A checked mutable slice must first be reborrowed as a shared slice. Direct
-iteration of mutable slices, exclusive element iteration and user cursor
-protocols remain rejected. Legacy raw iteration retains its existing behavior
-outside checked functions.
+Mutable checked slices also support direct iteration. Scalar inferred variables
+still receive copies; `for ref T* item in view` borrows an element shared, and
+`for refmut T* item in view` lends it exclusively. Record elements of a
+`refmut T[]` infer `refmut T*`; an explicit `ref T*` requests shared iteration.
+The exclusive form requires a mutable slice, and both forms require the exact
+element type. The descriptor snapshot and traversal allocate no heap storage.
+
+Exclusive iteration is a lending contract: an element or reborrow must reach
+its last use before the next implicit iterator read. Saving an element and
+immediately breaking, or returning it under the source lifetime, is allowed;
+keeping it live across cursor advancement is rejected conservatively. The
+checker does not prove that distinct cursor values designate disjoint elements.
+The iterator excludes accesses through other aliases while it is live, and
+ordinary shared reborrows temporarily exclude writes through its element.
+Nested iteration over independent storage, scoped defer, `continue`, `break`
+and `return` preserve these rules. Checked user cursor protocols are described below.
+Legacy raw iteration retains its existing behavior outside checked functions.
+
+The mutable iteration contract suite checks and compiles 33 positive/negative
+cases on x86/x64 with and without `--safe`, executes accepted programs and
+verifies rejected programs leave no binary. Its runtime fixture covers nested
+exclusive owned-buffer loops, recursive owned elements, scoped cleanup and
+saved references across `break`. Linux optimization variants, required-AST
+lowering, ARM64/qemu and Wine execute the fixture; native guards and Memcheck
+report balanced cleanup (2,360 allocations/frees, zero errors/leaks per Linux
+word size). The fixture also participates in the optimization differential
+sweep.
+
+A development-host x64 smoke measurement of 50,000 passes over 1,024 integers
+(51.2 million increments) took 0.055 s with exclusive iteration versus 0.070 s
+with a checked indexed loop, using five-run medians and default optimization.
+The loop's descriptor is captured once per pass; it adds no allocation,
+reference counting or per-element ownership transfer. These timings are a
+local cost check, not a performance guarantee.
 
 ### Owned-storage iteration
 
@@ -1169,17 +1199,73 @@ nested owned buffers, `continue`, `break`, `return`, scoped `defer`, imports
 and aliases follow the ordinary rules; the loop variable is uninitialized
 after a possibly empty loop.
 
-Rejected explicitly: owning loop variables (`own T*`), exclusive or raw
-element variables, mismatched element types, optional containers (test and
+`for refmut T* item in values` lends owned-buffer elements exclusively when
+`values` is an owner or an exclusive borrow. Its iterator borrows the whole
+container exclusively and uses the lending rule above. A shared container
+cannot produce exclusive elements. Element ownership remains in the buffer;
+scalar fields and owned children may be mutated through ordinary reborrows,
+while moving or replacing owned fields retains the existing unique-owner-path
+requirements.
+
+Rejected explicitly: owning loop variables (`own T*`), raw element variables,
+mismatched element types, optional containers (test and
 bind them first) and owning temporaries such as `for x in make_buffer()`,
 which would leave the container without an owner to destroy it.
 
 The runtime fixture iterates owner-valued elements through nested loops with
 `break`, `continue`, an early `return` and scoped `defer`, then replaces and
 clears the container, and checks the W_DEBUG_ALLOC allocation balance across
-x86/x64 optimization variants, Wine and ARM64. The `--ast-required` variant is
-not run: `lib/safe_owned_vector.w` itself takes a generic function's address,
-an expression the AST-required front end does not yet support.
+x86/x64 optimization variants, Wine and ARM64. Both Linux word sizes also
+run the `--ast-required` variant, including the generic function-reference
+used for the owned buffer's element destructor.
+
+### Checked cursor protocols and hash iteration
+
+Checked user containers use the ordinary four-function cursor convention:
+
+```w
+int Bag_iter_begin(ref Bag* bag)
+int Bag_iter_done(ref Bag* bag, int cursor)
+int Bag_iter_next(ref Bag* bag, int cursor)
+ref[a] Item* Bag_iter_value(ref[a] Bag* bag, int cursor)
+```
+
+The value function may instead return a word-sized scalar. All four operations
+must take the same nonoptional shared container reference; begin, done and
+next return `int`. A reference result borrows from that container's declared
+lifetime. Generic containers specialize these functions with the container's
+actual type arguments, including multiple arguments and nested applications.
+The compiler checks the resolved implementations and signatures of these
+implicit calls, including forward declarations, imported aliases and generic
+bodies. Raw, owning or exclusive operation parameters, owning/exclusive/raw
+results, and a mismatched loop variable fail explicitly. These contracts apply
+with and without `--safe`.
+
+A loop evaluates its iterable once and holds a shared backing loan across
+begin, done, value and next. Each nested loop has its own cursor. `continue`
+advances it; `break` and `return` end its implicit reads. A saved or returned
+shared value extends the backing lifetime independently of the loop. The
+container must have an owner or be borrowed: an owning call result or bare
+allocation needs a named owner before iteration, so ordinary scope cleanup
+releases it exactly once on every exit. The cursor is an integer, not a
+separately allocated resource; the protocol performs no hidden allocation.
+User operations remain responsible for traversal order and termination, but
+their checked bodies cannot use an arbitrary cursor to bypass bounds checks.
+
+`for key in map` iterates an audited `WMap[K,V]` or `WSet[K]`, copying each
+integral key. `for key, value in map` additionally lends each map value as
+`ref V*`, including scalar values. `WKeyedMap[K,V]` uses the same forms and
+lends its owned keys as `ref K*`; ownership remains in the map. Explicit
+reference variables must be shared. Traversal skips empty and deleted slots;
+order is unspecified. Live iterators or saved references block insertion,
+replacement, removal, clear and destruction, even with spare capacity.
+Mutation resumes after the last possible read. Traversal allocates no
+snapshot and scans the table capacity once, with constant stack storage.
+
+`safe_cursor_iteration_test` checks accepted and rejected programs on x86 and
+x64, with/without `--safe`, through both check and compile; rejections leave
+no binary. Its runtime fixture covers nested loops, every ordinary loop exit,
+scoped cleanup and recursively owned keys with debug-allocator balance.
 
 ## Checked buffers and byte strings
 
@@ -1230,9 +1316,9 @@ invariant. Empty strings and empty views are supported.
 Negative or out-of-range indices, empty pop, size overflow and allocation
 failure trap. Growth checks arithmetic before allocation and reads only the
 initialized prefix. The exact library source is pinned by the compiler;
-changed implementations do not inherit its audited contract. Generic
-buffers, owned-element containers, maps, sets and concurrent access remain
-future extensions, except for the concrete owned-element buffer below.
+changed implementations do not inherit its audited contract. The following
+sections describe the generic buffers, owned-element containers, maps and
+sets; the concurrency section specifies their transfer/share rules.
 
 ### Buffers of owned integers
 
@@ -1251,8 +1337,8 @@ remaining elements in reverse order. Automatic buffer destruction clears the
 elements, frees slot storage, then frees metadata. Owned records may contain
 this buffer. Metadata and raw slot helpers remain inaccessible.
 
-This concrete API does not yet provide arbitrary element types, generic
-collection wrappers, maps, sets or escaping iterators.
+This concrete API stores owned integers. Use the generic owned-element
+buffers and checked collection APIs below for other element types.
 
 ### Checked byte arena
 
@@ -1299,7 +1385,8 @@ Moving the owner transfers the descriptor and allocation together; its
 scope-exit destructor releases both. Metadata is opaque and cannot be
 constructed, copied or modified from checked code. Get/set bounds, empty
 pop and allocation overflow are fatal checks. Allocation failure currently
-traps; fallible insertion with ownership recovery remains a separate gate.
+traps. Recoverable insertion of owned elements is provided by
+`WOwnedBuffer[T]` below.
 
 This is an audited runtime boundary: the compiler binds the accepted API
 and destructor to the exact resolved `lib/safe_vector.w` contents. The
@@ -1307,9 +1394,9 @@ runtime uses private raw storage and descriptor construction; checked
 callers cannot invoke its private helpers. Explicit contracts have the
 same semantics without `--safe`.
 
-This step covers pointer-free sequential storage in #697. Owned-element
-storage, maps/sets, checked iteration and fallible insertion remain required;
-it does not close #697 or #644.
+Pointer-free buffers are one part of the checked-container APIs in #697.
+Owned storage, maps/sets, iteration and recoverable owner insertion have
+separate contracts described in this document.
 
 ### Generic owned-element buffers
 
@@ -1351,9 +1438,8 @@ marker anywhere in the element graph is reported under the containing field
 path, for example `thread payload field 'items.affinity' is explicitly
 thread-affine`.
 
-This extends the sequential-container deliverable in #697. Maps/sets and
-checked iteration retain their independent implementation and merge gates;
-#697 and #644 remain open.
+This supplies the owned sequential-container API in #697. Maps/sets and
+checked iteration are described in their own sections.
 
 ### Checked generic maps and sets
 
@@ -1375,8 +1461,8 @@ Mutation resumes after its last use. All metadata stays private; ordinary
 
 `map_keys`, `map_values` and `set_values` return owned `WBuffer` snapshots.
 Their elements are copies, so they survive clearing or destroying the original.
-Range loops over their checked slices are available; direct checked container
-iteration remains a separate step. Snapshot order follows the table and has no
+Range loops over their checked slices and direct checked container iteration
+are available. Snapshot order follows the table and has no
 stability guarantee. Scope exits, owner replacement and recursive destruction
 free the wrapper and table exactly once, including maps nested in owned buffers.
 
@@ -1433,7 +1519,7 @@ are private. Trust binds to the pinned contents of `lib/safe_keyed_map.w` and
 its runtime closure: a changed or shadowed copy fails with `runtime
 implementation differs`, and private helpers are not checked contracts.
 Thread rules recurse into `K`, so a thread-affine key keeps the map on its
-thread. Iteration over keyed maps is not provided.
+thread. Iteration lends stored keys and values shared, as described above.
 
 ## Synchronous foreign byte I/O
 
@@ -1544,7 +1630,7 @@ iterable: destroyed positions are holes, so loops index with
 `own WArenaBudget*` is an opaque byte budget, created with
 `arena_budget_new(limit)`. `arena_budget_limit`, `arena_budget_used` and
 `arena_budget_remaining` read it. `budget_arena_new[T](budget, maximum)` borrows
-the budget exclusively and returns `own[b] WBudgetArena[T]*`, a typed arena that
+the budget shared and returns `own[b] WBudgetArena[T]*`, a typed arena that
 charges `sizeof(T)` bytes per live object to that budget.
 
 - It has the same operations under the `budget_arena_` prefix: `insert`,
@@ -1557,14 +1643,19 @@ charges `sizeof(T)` bytes per live object to that budget.
 - `try_insert` returns the owner when the budget is exhausted. `insert` and
   `alloc` trap.
 - Destroy, reset, release and drop refund exactly what was charged. The budget
-  therefore always equals `sizeof(T)` times the arena's live objects, and it
-  is whole again once the arena is gone.
+  therefore records the sum of `sizeof(T)` for every live object in every
+  attached arena; it is whole again once all arenas are gone.
 - Only the object itself is charged: slot storage and storage that its fields
   own are not.
 
 The budget arena is a labeled owner whose one group is its budget, so the mixed
-owner rules apply. The budget cannot move, be borrowed elsewhere, or back a
-second arena while the arena lives. An unlabeled `own WBudgetArena[T]*` is
+owner rules apply. Several live arenas may borrow the same budget, and direct
+shared budget reads observe their combined charges. Each arena may mutate or
+lend its own objects independently, including simultaneous exclusive object
+views in different arenas. The checker separates writable storage from shared
+external lifetime dependencies: a mutable arena view does not acquire exclusive
+access to its budget. The budget cannot move, be replaced or be borrowed
+exclusively until every dependent arena is gone. An unlabeled `own WBudgetArena[T]*` is
 rejected, and so is any attempt to return the arena past the function that
 owns the budget. Dropping the arena refunds the budget, so its drop counts as a
 use of the budget at every exit. A budget declared after the arena's home,
@@ -1573,7 +1664,11 @@ outlives the budget it borrows`. That is the same rule that keeps a lock guard
 from outliving its mutex.
 
 A spawned thread could outlive the budget, so the arena never crosses to one
-(`carries a borrowed lifetime`). Budget arenas are not iterable. The descriptor
+(`carries a borrowed lifetime`). Scoped threads also reject budget arenas
+(`has an unsynchronized shared budget`), and shared budget references cannot
+cross threads (`has unsynchronized interior mutation`). Charging is deliberately
+single-threaded; independent owners of separate budgets may transfer between
+threads. Budget arenas are not iterable. The descriptor
 is eight words. Charging and refunding are one compare and one add or subtract
 per object.
 
@@ -1629,7 +1724,9 @@ audited function returns or stores through a checked parameter:
   type, and owned fields are themselves valid owners.
 - *Provenance:* an `own T*` result comes from the W allocator (`new`), because
   its drop calls the W allocator's free and its fields' destructors. A foreign
-  allocation is wrapped in `WForeign[T]` instead.
+  allocation is wrapped in `WForeign[T]` or a nominal opaque type with its
+  own attested destructor instead. Runtime checks enforce the top-level
+  allocation provenance described below.
 - *Aliasing:* no other path writes through a `ref` result while it is live,
   and no other path reads or writes through a `refmut` result. A result keeps
   the lifetime its signature names, and the module retains no checked pointer
@@ -1666,10 +1763,11 @@ The owner is opaque. Checked code can move, lend, close or drop it, but cannot
 read its fields, construct one, take its raw pointer, adopt or disown. Those
 three calls have raw signatures, so only audited code makes them. A foreign
 transfer that can fail takes the owner and returns `optown WForeign[T]*`,
-which is present when the foreign side refused it. Foreign libraries state
-their own threading rules, and none is audited, so a foreign owner never
-crosses to another thread: `is a foreign object without a thread contract`,
-for spawned payloads and scoped arguments alike.
+which is present when the foreign side refused it. Foreign libraries state their own threading rules. A foreign owner remains
+thread-affine unless its attested payload module declares the explicit
+thread contracts described below. Unmarked owners retain the diagnostic
+`is a foreign object without a thread contract`, for spawned payloads and
+scoped arguments alike.
 
 Each adopted object costs one two-word descriptor allocation. Its drop is one
 indirect call to the release function and one free. On the x86-64 host, a
@@ -3578,3 +3676,90 @@ errors moved earlier; its updated rejection test and the subsequent complete
 ordinary/instrumented runs pass. Every tracked W source is identical before
 and after rebasing onto the prerequisite's final validation commit. This step
 supports #697/#698 under #644; their remaining deliverables stay open.
+
+### Nominal foreign types and thread contracts
+
+An attested module can expose its own opaque record `Resource` by defining
+`void __w_foreign_drop_Resource(Resource* value)` in the same file. The hook declaration
+must precede owning uses of the type; its matching definition may follow
+and is required by the final contract check. It releases the complete object,
+including its descriptor; generated cleanup does not also free that object.
+The compiler checks the exact nominal parameter, void result, defining file,
+and resolved function. A local or parameter with the same spelling cannot
+replace a compiler-inserted cleanup call. Ordinary records without this hook
+retain their existing structural semantics.
+
+Checked callers use `own Resource*`, `ref Resource*`, and `refmut Resource*`
+through the module's checked signatures. They cannot construct the record,
+copy it by value, or access any field, even pointer-free fields. Owners may
+be nested in checked owning records and containers; every supported cleanup
+exit calls the hook exactly once. The module's attestation covers the hook
+and its private representation. These names are ordinary W functions, so
+there is no new declaration syntax or legacy pointer ABI.
+
+Two additional same-file hooks declare audited thread obligations:
+
+```w
+void __w_foreign_send_Resource(Resource* value):
+	pass
+
+void __w_foreign_sync_Resource(Resource* value):
+	pass
+```
+
+These declaration bodies are never called by the thread checker. `send`
+asserts that exclusive ownership, access and destruction can move to another
+thread. `sync`, together with `send`, asserts that all operations exposed
+through shared references are safe concurrently. Exclusive mutation still
+requires `refmut`. Omitting either hook retains the corresponding rejection.
+For `WForeign[T]`, the hooks belong to `T`'s attested defining module and also
+cover the recorded release function. An unrelated module, a same-spelled
+record, a wrong signature, or an unattested helper grants no permission.
+
+### Runtime allocator provenance at foreign boundaries
+
+Programs with attested imports enable an exact live-allocation registry in
+their initial data image. Owner-valued call results, including checked
+function-pointer and generic calls, are checked before use: a nonoptional
+result cannot be null, and a normal `own T*` must identify the start of a
+live W allocation containing at least `sizeof(T)` bytes. Interior, freed,
+foreign-allocator, undersized and arbitrary unmapped addresses fail with a
+`foreign owner:` diagnostic without reading through the returned pointer.
+Optional null results remain valid. A nominal foreign type with its own
+destructor instead checks nullness and alignment; its custom allocator is
+part of the audited contract.
+
+The registry tracks malloc/free/realloc, including failed realloc recovery
+and allocations transferred between threads. Bookkeeping uses mmap storage
+and a separate lock when thread heaps are installed; it never recurses into
+the allocator. Lookup is expected constant time. The table holds two words
+per slot, grows with peak live allocations and compacts tombstones under
+churn. It is process-lifetime metadata, not an allocation owned by a program
+value. Standalone programs without attestations leave registration disabled.
+Persistent REPL/debugger sessions enable their session allocator registry
+before the first allocation, because a later entry may attest a foreign
+module. Reset and failed entries retract attestation declarations and stale
+allocator/registry callbacks; the compiler host allocator remains separate.
+
+These checks establish allocator provenance and extent, not initialization,
+uniqueness, type identity, or recursive validity of fields. Those remain
+explicit obligations of audited code; source attestation is not a proof of
+its implementation. Raw legacy calls retain their existing representation.
+
+On this Linux x64 host, seven-run medians for one million malloc/write/free
+cycles were 0.0291 s with registration disabled and 0.0499 s enabled, about
+21 ns per cycle for bookkeeping. This microbenchmark isolates registration;
+it does not include the additional owner-result lookup or a foreign call.
+Tombstone reuse keeps repeat-address churn constant-time. The contract and
+runtime tests exercise invalid results, indirect and inferred-generic calls,
+helper shadowing, failed realloc, hash collisions, growth, and concurrent
+allocation/transfer under both Linux word sizes.
+
+A separate ten-million-cycle owner-return benchmark (`x64 --no-inline`,
+eight post-warmup CPU-time medians with rotating run order) measured
+28.25 ns/cycle before these checks, 32.82 ns without attestation, and
+60.57 ns with attestation. Each cycle allocates an owner in a function,
+returns it, reads it and drops it. The disabled-path delta includes the
+allocator enablement branches and no-op result helper; the enabled delta
+includes registration and result lookup. Whole-program costs depend on
+allocation and owner-return frequency.

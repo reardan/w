@@ -587,6 +587,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			call_eax()
 		pop_to(s)
 		if (has_return_buffer): lea_eax_esp_plus(0)
+		safe_foreign_owner_result(tree.high[id])
 		last_call_return_type = tree.high[id]
 		last_call_end = codepos
 		return

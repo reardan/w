@@ -320,7 +320,7 @@ int protobuf_desc_lookup(int type_index):
 	int i = 0
 	while (i < protobuf_desc_count):
 		if (load_int(protobuf_desc_types + i * 4) == type_index):
-			return load_int(protobuf_desc_addresses + i * 4)
+			return load_ptr(protobuf_desc_addresses + i * __word_size__)
 		i = i + 1
 	return 0
 
@@ -329,10 +329,10 @@ void protobuf_desc_store(int type_index, int address):
 	int max_types = 400
 	if (protobuf_desc_types == 0):
 		protobuf_desc_types = cast(char*, malloc(max_types * 4))
-		protobuf_desc_addresses = cast(char*, malloc(max_types * 4))
+		protobuf_desc_addresses = cast(char*, malloc(max_types * __word_size__))
 	assert1(protobuf_desc_count < max_types)
 	save_int(protobuf_desc_types + protobuf_desc_count * 4, type_index)
-	save_int(protobuf_desc_addresses + protobuf_desc_count * 4, address)
+	save_ptr(protobuf_desc_addresses + protobuf_desc_count * __word_size__, address)
 	protobuf_desc_count = protobuf_desc_count + 1
 
 
@@ -406,7 +406,7 @@ void protobuf_emit_section(int message_type):
 	# descriptor for REPEATED (its aux is the nested descriptor for
 	# message elements, or the element width for bool, whose W storage
 	# is one byte).
-	char* aux_words = cast(char*, malloc(n * 4 + 4))
+	char* aux_words = cast(char*, malloc((n + 1) * __word_size__))
 	int i = 0
 	while (i < n):
 		int field_type = type_get_field_type_at(message_type, i)
@@ -424,7 +424,7 @@ void protobuf_emit_section(int message_type):
 			emit_target_word(elem_kind)
 			if (elem_kind == protobuf_kind_message): be_blob_pointer(elem_aux)
 			else: emit_target_word(elem_aux)
-		save_int(aux_words + i * 4, aux)
+		save_ptr(aux_words + i * __word_size__, aux)
 		i = i + 1
 
 	# Field array, ascending wire number (selection over the unsorted
@@ -446,7 +446,7 @@ void protobuf_emit_section(int message_type):
 		emit_target_word(best_number)
 		emit_target_word(load_int(info + 8 + best * 12))
 		emit_target_word(type_get_field_offset_at(message_type, best))
-		be_blob_pointer(load_int(aux_words + best * 4))
+		be_blob_pointer(load_ptr(aux_words + best * __word_size__))
 		last = best_number
 		emitted = emitted + 1
 

@@ -130,7 +130,7 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 		if (node.capture_slice == 2):
 			promote(node.element_type)
 			extracted_type = node.variable_type
-		else if (node.capture_slice && (type_num_args(node.element_type) > 0)): extracted_type = node.variable_type
+		else if (node.capture_slice && (type_safe_kind(node.variable_type) >= 2)): extracted_type = node.variable_type
 		else: extracted_type = promote(node.element_type)
 	if (extracted_type != -1): coerce(node.variable_type, extracted_type)
 	for_store_loop_var(node.variable_slot)

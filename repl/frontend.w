@@ -1075,7 +1075,9 @@ int repl_main(int argc, int argv, int initial_shell):
 	dbg_disas_symbols = 1
 	int trap_handler = cast(int, wdbg_trap_entry)
 	if (__word_size__ == 8): trap_handler = cast(int, wdbg_trap)
-	repl_fault_install(5, trap_handler, 1073741824) /* SIGTRAP, SA_NODEFER */
+	# wdbg decodes x86 contexts only; on arm64 repl_init routed SIGTRAP
+	# to the fault handler (repl_fault_install_handlers)
+	if (__target_isa__ == 0): repl_fault_install(5, trap_handler, 1073741824) /* SIGTRAP, SA_NODEFER */
 
 	# Optional target file: compile it into the same buffer and run its
 	# main(), then attach the prompt with all of its symbols live.

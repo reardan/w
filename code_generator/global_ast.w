@@ -38,8 +38,10 @@ void emit_global_declaration_ast(global_declaration_ast* node):
 		sym_define_global_at(node.binding, node.address)
 		emit_data_storage_tree_ast(node.storage, node.address)
 	else:
+		# arm64 in process (repl/jit_arm64.w): an atomic on a misaligned word faults
+		if (target_isa == 1): emit_zeros((8 - (codepos & 7)) & 7)
 		sym_define_global(node.binding)
-		node.address = load_int(table + node.binding + 2)
+		node.address = sym_value_at(node.binding)
 		int start = codepos
 		emit_global_storage_tree_ast(node.storage)
 		emit_zeros(node.size - (codepos - start))

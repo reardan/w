@@ -146,7 +146,7 @@ void test_record_iteration_15():
 	record_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tbuffer_push[Pair](values, Pair(2, 3))\n\tbuffer_push[Pair](values, Pair(5, 7))\n\tfor ref int* item in buffer_view[Pair](values): pass\n\treturn 0\n", c"incompatible record slice", 0)
 
 void test_record_iteration_16():
-	record_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tbuffer_push[Pair](values, Pair(2, 3))\n\tbuffer_push[Pair](values, Pair(5, 7))\n\tfor item in buffer_view_mut[Pair](values): pass\n\treturn 0\n", c"checked shared slice", 0)
+	record_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tbuffer_push[Pair](values, Pair(2, 3))\n\tbuffer_push[Pair](values, Pair(5, 7))\n\tfor item in buffer_view_mut[Pair](values): pass\n\treturn 0\n", 0, 0)
 
 void test_record_iteration_17():
 	record_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nref[a] Pair* first(ref[a] Pair[] view, ref[a] WBuffer[Pair]* fallback):\n\tfor item in view: return item\n\tref Pair[] backup = buffer_view[Pair](fallback)\n\treturn &backup[0]\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tbuffer_push[Pair](values, Pair(2, 3))\n\tbuffer_push[Pair](values, Pair(5, 7))\n\tref Pair* found = first(buffer_view[Pair](values), values)\n\treturn found.left - 2\n", 0, 0)

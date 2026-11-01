@@ -656,6 +656,14 @@ seeds — is `docs/release.md`.
   and `symbols`) searches explicit roots first. With roots,
   `deps --json` reports shadowed duplicates as `"shadows"`.
   `docs/projects/compilation_model.md` §7 has the details.
+- `--profile=script` (compile, `check`, `deps`, `symbols`) gates the input
+  files as in-process addon code: `asm` blocks, `raw_asm`, the raw
+  built-ins (`syscall*`, `thread_create`, ...), `extern`/`c_lib`/`c_import`,
+  `unsafe:` blocks and casts to pointer types are errors, and their imports
+  must resolve inside an import root. Imported modules stay unrestricted.
+  An embedding engine sets the global `script_profile_mode` instead.
+  `docs/projects/scripting.md` §5 has the curated root
+  (`tools/script_modules.txt`) and the rules.
 - On Apple Silicon macOS, `./wbuild tests` runs the qualified `tests_darwin`
   suite (including the compiler fixpoint) and prints how many targets from the
   cross-platform suite were excluded. This does not claim Linux/Windows/Wasm

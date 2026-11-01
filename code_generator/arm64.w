@@ -491,11 +491,12 @@ void be_addr_slot_emit():
 	else: emit(5, c"\xb8....")   # mov $imm32,%eax
 
 
-# Store value v (a vaddr, or a backpatch-chain link, both < 2^31) into
+# Store value v (a vaddr or a backpatch-chain link) into
 # the address slot whose add instruction sits at buffer offset pos. The
 # adrp page immediate is the page delta from the adrp's own vaddr
 # (immhi:immlo, signed 21 bits) and the add imm12 holds the low 12 bits,
-# so ANY 31-bit value round-trips exactly through write+read — required
+# so any address within +/-4 GB round-trips through write+read, including
+# native 64-bit JIT addresses above 4 GB — required
 # because unfinished slots store chain links, not final addresses.
 void arm64_addr_slot_write(int pos, int v):
 	int adrp_vaddr = code_offset + pos - 4

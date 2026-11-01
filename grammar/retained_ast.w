@@ -280,7 +280,7 @@ int retained_binding_note(int sym, int owner):
 	binding.callable_excluded = 0
 	binding.lifetime_order = 0
 	binding.scope = scope
-	binding.slot = load_int(table + sym + 2)
+	binding.slot = sym_value_at(sym)
 	binding.source = source
 	binding.owner = owner
 	binding.type = retained_type_note(load_int(table + sym + 6))

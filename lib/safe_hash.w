@@ -56,9 +56,9 @@ V map_get_or[K, V](ref WMap[K, V]* value, K key, V fallback):
 optref[a] V* map_find[K, V](ref[a] WMap[K, V]* value, K key):
 	WMap[K, V]* map = cast(WMap[K, V]*, value)
 	__w_hash_table* table = cast(__w_hash_table*, map.entries)
-	int slot = __w_hash_table_slot(table, cast(int, key))
-	if table.states[slot] != 1: return 0
-	return cast(optref[a] V*, __w_hash_value_addr(table, slot))
+	int entry = __w_hash_table_find(table, cast(int, key))
+	if entry < 0: return 0
+	return cast(optref[a] V*, __w_hash_value_addr(table, entry))
 
 
 int map_remove[K, V](refmut WMap[K, V]* value, K key):
@@ -123,3 +123,25 @@ own WBuffer[K]* set_values[K](ref WSet[K]* value):
 	own WBuffer[K]* values = buffer_new[K]()
 	for K key in set.entries: buffer_push[K](values, key)
 	return values
+
+
+# Private traversal used by checked for loops. The compiler retains a shared
+# borrow of the wrapper across every implicit read. Slots never escape raw.
+int __w_checked_hash_iter_begin(__WCheckedHashHeader* value):
+	return __w_map_iter_begin(value.entries)
+
+
+int __w_checked_hash_iter_done(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_done(value.entries, cursor)
+
+
+int __w_checked_hash_iter_next(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_next(value.entries, cursor)
+
+
+int __w_checked_hash_iter_key(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_key(value.entries, cursor)
+
+
+void* __w_checked_hash_iter_value(__WCheckedHashHeader* value, int cursor):
+	return __w_map_iter_value_addr(value.entries, cursor)

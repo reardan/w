@@ -683,7 +683,9 @@ int import_statement():
 		if (attestation != 0): import_attest(resolved, attestation, retained_id)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
+		script_profile_gate_import()
 		if (import_module(token)): nextc = get_character()
+		script_profile_import_gate = 0
 		if (retained_id >= 0):
 			for i in range(retained_sources.length):
 				char* key = retained_sources[i].import_key

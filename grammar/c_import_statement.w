@@ -3,6 +3,7 @@ import libs.extras.c_import.importer
 
 
 int c_import_statement():
+	if (peek(c"c_import")): script_profile_reject(c"script profile: c_import is not allowed")
 	if (accept(c"c_import")):
 		# c_import binds whole shared-library headers through the native
 		# ABI shims; wasm has neither (extern against a host module is

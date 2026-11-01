@@ -600,7 +600,7 @@ void regalloc_slot_assert(int slot):
 	for i in range(regalloc_promoted_syms.length):
 		int t = regalloc_promoted_syms[i]
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
-			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
+			if ((load_int(table + t + 146) != 0) && (sym_value_at(t) == slot)):
 				char* name = regalloc_promoted_names[i]
 				if (sym_record_live(name, t)):
 					error3(c"internal error: stack slot of register-resident local '", name, c"' addressed (compile with --no-regs and report this)")
@@ -620,7 +620,7 @@ int regalloc_slot_register(int slot):
 	for i in range(regalloc_promoted_syms.length):
 		int t = regalloc_promoted_syms[i]
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
-			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
+			if ((load_int(table + t + 146) != 0) && (sym_value_at(t) == slot)):
 				if (sym_record_live(regalloc_promoted_names[i], t)): return load_int(table + t + 146)
 	return 0
 
@@ -2028,7 +2028,7 @@ void regalloc_fn_region_enter():
 		int reg = rl_take_register()
 		if (reg == 0): continue
 		save_int(table + t + 146, reg)
-		int slot = load_int(table + t + 2)
+		int slot = sym_value_at(t)
 		# a register-shaped body with homes (O5): the parameter's home
 		# is its frame word below the saved registers ('P'), not the
 		# word above the return address
@@ -2226,7 +2226,7 @@ void regalloc_prologue_args():
 		save_int(table + t + 146, reg)
 		# a narrow argument (A8) loads its word's low half, extended
 		regalloc_reg_bind(reg, regalloc_reg_kind_of_type(load_int(table + t + 6)))
-		mov_reg_ebp_disp(reg, (number_of_args - load_int(table + t + 2) + 2) << word_size_log2)
+		mov_reg_ebp_disp(reg, (number_of_args - sym_value_at(t) + 2) << word_size_log2)
 		char* name = sym_record_name(t)
 		regalloc_promoted_syms.push(t)
 		regalloc_promoted_live.push(1)
@@ -2470,7 +2470,7 @@ void regalloc_loop_enter(int offset):
 		if (reg == 0): return;
 		taken = taken + 1
 		save_int(table + t + 146, reg)
-		rl_add(t, reg, load_int(table + t + 2), scope, name, 1)
+		rl_add(t, reg, sym_value_at(t), scope, name, 1)
 		mov_reg_ebp_disp(reg, rl_home_disp(rl_sym.length - 1))
 
 
@@ -2553,7 +2553,7 @@ int rl_declare_pending(int t, char* name, int type):
 		if (regalloc_type_ok(type) == 0): return 0
 		int reg = rl_take_register()
 		if (reg == 0): return 0
-		rl_add(t, reg, load_int(table + t + 2), 'B', name, 0)
+		rl_add(t, reg, sym_value_at(t), 'B', name, 0)
 		save_int(table + t + 146, reg)
 		if (k < rl_fn_pending_end): regalloc_fn_regs = regalloc_fn_regs + 1
 		return reg

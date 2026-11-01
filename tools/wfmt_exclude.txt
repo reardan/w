@@ -80,3 +80,5 @@ tests/diagnostic_sites/untermchar_error_fixture.w
 tests/prefixed_string_unterminated_fixture.w
 tests/template_string_unterminated_expr_fixture.w
 tests/template_string_unterminated_fixture.w
+lib/memory_provenance.w
+tests/safe_foreign_contract_module.w

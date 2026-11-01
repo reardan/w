@@ -216,3 +216,30 @@ int keyed_map_remove[K, V](refmut WKeyedMap[K, V]* value, ref K* key):
 
 void keyed_map_clear[K, V](refmut WKeyedMap[K, V]* value):
 	__w_keyed_map_drop_keys(cast(__WKeyedMapHeader*, value))
+
+
+# Private traversal: the compiler lends stored keys and values shared and
+# retains the map's backing loan until the last cursor read.
+int __w_keyed_map_iter_next(__WKeyedMapHeader* value, int cursor):
+	cursor = cursor + 1
+	while cursor < value.capacity:
+		if value.states[cursor] == 1: return cursor
+		cursor = cursor + 1
+	return value.capacity
+
+
+int __w_keyed_map_iter_begin(__WKeyedMapHeader* value):
+	return __w_keyed_map_iter_next(value, -1)
+
+
+int __w_keyed_map_iter_done(__WKeyedMapHeader* value, int cursor):
+	return cursor >= value.capacity
+
+
+void* __w_keyed_map_iter_key(__WKeyedMapHeader* value, int cursor):
+	return value.keys[cursor]
+
+
+ref[a] V* WKeyedMap_iter_value[K, V](ref[a] WKeyedMap[K, V]* value, int cursor):
+	WKeyedMap[K, V]* map = cast(WKeyedMap[K, V]*, value)
+	return cast(ref[a] V*, &map.values[cursor])

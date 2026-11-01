@@ -21,7 +21,7 @@ char* dbg_sym_name(int name_offset):
 
 
 int dbg_sym_address(int name_offset):
-	return load_int(table + dbg_sym_data(name_offset) + 2)
+	return sym_value_at(dbg_sym_data(name_offset))
 
 
 int dbg_sym_size(int name_offset):
@@ -50,7 +50,7 @@ int dbg_function_at(int addr):
 		while (table[t] != 0): t = t + 1
 		if (table[t + 1] == 'D'):
 			if (load_int(table + t + 10) == 2):
-				int start = load_int(table + t + 2)
+				int start = sym_value_at(t)
 				int size = load_int(table + t + 14)
 				if (size > 0):
 					if ((addr >= start) && (addr < start + size)):
@@ -116,7 +116,7 @@ void dbg_print_functions():
 		while (table[t] != 0): t = t + 1
 		if (table[t + 1] == 'D'):
 			if (load_int(table + t + 10) == 2):
-				char* h = hex(load_int(table + t + 2))
+				char* h = hex(sym_value_at(t))
 				print(h)
 				free(h)
 				print(c"  ")

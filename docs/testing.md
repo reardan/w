@@ -395,6 +395,9 @@ code the compiler emits rather than the compiler itself
 (docs/projects/register_allocation_pgo.md §5): `sum` (the two-local
 summation loop), `sieve`, `sha256_1m` (`lib/sha256.w`), `siphash_keys`
 (map inserts and lookups, the container runtime's hash table),
+`map_ops` (the script-shaped map workloads of
+docs/projects/scripting.md: sequential int keys, `m.add` counting,
+add/remove churn, insertion-order iteration, string keys),
 `inflate_corpus` (`libs/extras/compress/inflate.w` over the DEFLATE
 corpus), `regex_backtrack` (`lib/regex.w`), `matmul_256` and
 `strcmp_sort` (`list.sort` on strings), plus `self` (the compiler
@@ -533,6 +536,28 @@ or operation. These are bounded property checks, not exhaustive proofs;
 add a focused regression case for a discovered bug before extending the
 seed set. Run just one family with `--filter map`, `--filter list` or
 `--filter json` on `bin/stdlib_property_test`.
+
+## macOS scripting engine
+
+On Apple Silicon, `./wbuild tests` includes `repl_test_darwin`,
+`addon_host_darwin_test` and `addon_profile_darwin_test`. The REPL gate
+runs the arm64 engine transcripts natively: persistent scalar, array and
+struct storage, imports, generics, function replacement, compile-error
+rollback, repeated fault and stack-overflow recovery, JSON output and
+session reset. The addon gate also checks host bindings, generation
+rollback, reload and saved variables, high code/data addresses, writable
+globals outside the JIT mapping, and recovery from writes to executable
+pages and unaligned atomic accesses. The checked-provenance run and
+script-profile rejection tests run separately. `symbol_address_darwin_test`
+checks packed symbol addresses, forward-reference chains across a 4 GB
+boundary, and the full-width `:symbols` display.
+
+Run these three targets directly for focused validation. Linux `tests`
+keeps the Darwin compile gates; native execution is required to validate
+Apple Silicon W^X permissions and instruction-cache maintenance.
+`tools/mac/run_darwin_tests.sh` includes an expression-mode REPL smoke
+check and both addon binaries in its default set; use the native build
+targets for the complete stdin and expectation checks.
 
 ## Not done yet
 

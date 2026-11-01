@@ -540,7 +540,7 @@ void ast_test_stack_binding_snapshot(int scope, int expected_words):
 	char* original_name = strclone(table + tree.value[root])
 	for i in range(strlen(original_name)): table[tree.value[root] + i] = 'x'
 	table[sym + 1] = 'D'
-	save_int(table + sym + 2, 1000)
+	sym_set_value_at(sym, 1000)
 	save_int(table + sym + 6, 0)
 	number_of_args = 99
 	stack_pos = 9
@@ -563,7 +563,7 @@ void ast_test_stack_binding_snapshot(int scope, int expected_words):
 	strcpy(table + tree.value[root], original_name)
 	free(original_name)
 	table[sym + 1] = scope
-	save_int(table + sym + 2, 2)
+	sym_set_value_at(sym, 2)
 	save_int(table + sym + 6, type)
 	table_pos = saved_table
 	sym_index_sync()

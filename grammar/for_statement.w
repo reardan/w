@@ -33,6 +33,8 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 
 
 void ivopt_range_step();   /* compiler/ivopt.w (unit O7) */
+int safe_global_function(char* name, char* source);
+int safe_runtime_call_begin(char* name, char* source);
 
 
 # Load the iterator function's address into eax: directly for an
@@ -49,11 +51,42 @@ void for_iter_callee(char* fn_name, int t):
 	generic_inst_emit_callee(inst)
 
 
+# Only compiler-inserted audited hash helpers use this resolution path.
+# User cursor functions retain their ordinary resolved contract checks.
+char* for_iter_runtime_source(char* name):
+	if ((strcmp(name, c"__w_checked_hash_iter_begin") == 0) || (strcmp(name, c"__w_checked_hash_iter_done") == 0) || (strcmp(name, c"__w_checked_hash_iter_next") == 0) || (strcmp(name, c"__w_checked_hash_iter_key") == 0) || (strcmp(name, c"__w_checked_hash_iter_value") == 0)):
+		return c"/lib/safe_hash.w"
+	if ((strcmp(name, c"__w_keyed_map_iter_begin") == 0) || (strcmp(name, c"__w_keyed_map_iter_done") == 0) || (strcmp(name, c"__w_keyed_map_iter_next") == 0) || (strcmp(name, c"__w_keyed_map_iter_key") == 0) || starts_with(name, c"WKeyedMap_iter_value$")):
+		return c"/lib/safe_keyed_map.w"
+	return 0
+
+
 # Emit a call to fn_name(container) or, when cursor_slot is nonzero,
 # fn_name(container, cursor). The operands live in hidden stack slots
 # identified by their stack_pos anchors; the result is left in eax.
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 	int s = stack_pos
+	# A local, parameter or same-spelled function in another file must
+	# never redirect an implicit audited operation.
+	char* source = for_iter_runtime_source(fn_name)
+	if (source != 0):
+		if (safe_global_function(fn_name, source) >= 0):
+			s = safe_runtime_call_begin(fn_name, source)
+		else:
+			# A keyed-value accessor can still be waiting for its generic
+			# body. Bind its backpatch identity to the audited definition.
+			int inst = generic_inst_lookup(fn_name)
+			if ((inst < 0) || (ends_with(generic_def_file(generic_inst_def(inst)), source) == 0)):
+				error(c"safe: audited iterator implementation is missing")
+			if (direct_generic_ok()): direct_call_record(s, 2, inst)
+			else:
+				generic_inst_emit_callee(inst)
+				push_slot()
+				direct_call_record(s, 0, 0)
+		push_slot_copy(container_slot)
+		if (cursor_slot != 0): push_slot_copy(cursor_slot)
+		rt_call_end(s)
+		return
 	# A direct call (unit A4) records the callee instead of parking it
 	int t = sym_lookup(fn_name)
 	if (direct_callee_ok(t)): direct_call_record(s, 1, t)
@@ -95,7 +128,7 @@ void for_iter_require(char* container_name, char* fn_name, int expected_args, in
 		error(c" must return a word-sized value")
 
 	int param_type = sym_param_type(symbol, 0)
-	if (type_unqualified(param_type) != type_unqualified(container_type)):
+	if (type_unqualified(type_safe_target(param_type)) != type_unqualified(type_safe_target(container_type))):
 		for_iter_error_prefix(container_name, fn_name)
 		error(c" first parameter must match the iterable type")
 
@@ -116,8 +149,8 @@ each one to the instantiation with the container's own type argument
 ('heap$int' iterates through 'heap_iter_begin$int'). The bodies are
 compiled by the end-of-compilation drain like any other instantiation;
 call sites emitted before that go through the backpatch chain
-(for_iter_callee). One type parameter only: a multi-parameter mangled
-suffix cannot be split back into its type arguments unambiguously.
+(for_iter_callee). The instance metadata retains every type argument, avoiding ambiguous
+splitting of nested or multi-parameter mangled suffixes.
 */
 
 
@@ -173,25 +206,26 @@ char* for_iter_generic_require(char* container_name, char* what, int expected_ar
 	if (def < 0):
 		for_iter_error_prefix(container_name, fn_base)
 		error(c" not found")
-	if (generic_def_param_count(def) != 1):
+	int args = cast(int, malloc(generic_max_params * __word_size__))
+	int record = type_unqualified(type_lookup_previous_pointer(type_safe_target(container_type)))
+	# The specialization's base name precedes its first '$'.
+	char* struct_name = strclone(container_name)
+	struct_name[dollar] = 0
+	int struct_def = generic_def_lookup(struct_name, 1)
+	free(struct_name)
+	int count = -1
+	if (struct_def >= 0): count = generic_struct_instance_lookup(record, struct_def, cast(int*, args))
+	if ((count < 1) || (generic_def_param_count(def) != count)):
 		for_iter_error_prefix(container_name, fn_base)
-		error(c" must take exactly one type parameter")
-	int arg_type = for_iter_generic_arg(container_name, dollar)
-	if (arg_type < 0):
-		for_iter_error_prefix(container_name, fn_base)
-		error(c" has an unknown type argument")
-	char* with_sep = strjoin(fn_base, c"$")
-	char* mangled = strjoin(with_sep, container_name + dollar + 1)
-	free(with_sep)
+		if (count == 1): error(c" must take exactly one type parameter")
+		error(c" must take the container's type parameters")
+	char* mangled = generic_mangle(fn_base, args, count)
 	free(fn_base)
 	if (sym_lookup(mangled) >= 0):
-		# already compiled (a later loop after the drain, e.g. the REPL):
-		# the ordinary symbol checks apply
+		free(cast(char*, args))
 		for_iter_require(container_name, mangled, expected_args, container_type)
 		return mangled
-	char* args = cast(char*, malloc(generic_max_params * __word_size__))
-	save_ptr(args, arg_type)
-	int inst = generic_inst_intern(def, cast(int, args), 1, strclone(mangled))
+	int inst = generic_inst_intern(def, args, count, strclone(mangled))
 	int sig = generic_inst_signature(inst)
 	if (type_function_param_count(sig) != expected_args):
 		for_iter_error_prefix(container_name, mangled)
@@ -200,7 +234,7 @@ char* for_iter_generic_require(char* container_name, char* what, int expected_ar
 	if ((type_get_size(return_type) == 0) | (type_stack_words(return_type) != 1)):
 		for_iter_error_prefix(container_name, mangled)
 		error(c" must return a word-sized value")
-	if (type_unqualified(type_function_param_type(sig, 0)) != type_unqualified(container_type)):
+	if (type_unqualified(type_safe_target(type_function_param_type(sig, 0))) != type_unqualified(type_safe_target(container_type))):
 		for_iter_error_prefix(container_name, mangled)
 		error(c" first parameter must match the iterable type")
 	if (expected_args == 2):
@@ -215,33 +249,20 @@ char* for_iter_generic_require(char* container_name, char* what, int expected_ar
 # instantiation when one resolves; int otherwise (for_iter_require
 # reports the real error for a non-iterable type).
 int for_iter_generic_value_type(int container_type):
-	char* container_name = type_get_name(container_type)
-	int dollar = for_iter_generic_split(container_name)
-	char* base = strclone(container_name)
-	base[dollar] = 0
-	char* fn_base = strjoin(base, c"_iter_value")
+	char* base = strclone(type_get_name(type_safe_target(container_type)))
+	base[for_iter_generic_split(base)] = 0
+	char* value_name = strjoin(base, c"_iter_value")
 	free(base)
-	int def = generic_def_lookup(fn_base, 0)
-	if ((def < 0) || (generic_def_param_count(def) != 1)):
-		free(fn_base)
-		return type_lookup(c"int")
-	int arg_type = for_iter_generic_arg(container_name, dollar)
-	if (arg_type < 0):
-		free(fn_base)
-		return type_lookup(c"int")
-	char* with_sep = strjoin(fn_base, c"$")
-	char* mangled = strjoin(with_sep, container_name + dollar + 1)
-	free(with_sep)
-	free(fn_base)
-	int symbol = sym_lookup(mangled)
-	if (symbol >= 0):
-		free(mangled)
-		if (load_int(table + symbol + 10) == 2): return load_int(table + symbol + 6)
-		return type_lookup(c"int")
-	char* args = cast(char*, malloc(generic_max_params * __word_size__))
-	save_ptr(args, arg_type)
-	int inst = generic_inst_intern(def, cast(int, args), 1, mangled)
-	return type_unqualified(type_function_return(generic_inst_signature(inst)))
+	int definition = generic_def_lookup(value_name, 0)
+	free(value_name)
+	if (definition < 0): return type_lookup(c"int")
+	char* name = for_iter_generic_require(type_get_name(type_safe_target(container_type)), c"value", 2, container_type)
+	int symbol = sym_lookup(name)
+	int result
+	if (symbol >= 0): result = load_int(table + symbol + 6)
+	else: result = type_function_return(generic_inst_signature(generic_inst_lookup(name)))
+	free(name)
+	return result
 
 
 void for_iter_require_struct_pointer(int container_type):
@@ -577,10 +598,10 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		pop_ebx_slot()
 		alu_add()
 		if (capture_slice == 2):
-			# Load the stored element pointer; it becomes a shared reference.
+			# Load the stored element pointer; its checked borrow never moves it.
 			promote(element_type)
 			extracted_type = loop_var_type
-		else if (capture_slice && (type_num_args(element_type) > 0)): extracted_type = loop_var_type
+		else if (capture_slice && (type_safe_kind(loop_var_type) >= 2)): extracted_type = loop_var_type
 		else: extracted_type = promote(element_type)
 	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
 	for_store_loop_var(for_var)
@@ -700,13 +721,16 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
 	int element_type = type_unqualified(type_get_element_type(container_type))
 	int yielded_type = element_type
-	if (type_num_args(element_type) > 0):
+	int reference = type_safe_kind(loop_var_type)
+	if ((type_num_args(element_type) > 0) || (type_is_safe_slice(container_type) && (reference >= 2))):
 		if (type_is_safe_slice(container_type) == 0): error(c"slice iteration requires scalar or pointer elements")
-		yielded_type = type_get_safe(type_get_next_pointer(element_type), 2)
-		if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
-			error(c"safe: record slice iteration requires a shared reference variable")
+		if ((reference < 2) || (reference > 3) || (type_get_pointer_level(loop_var_type) != 1)):
+			error(c"safe: record slice iteration requires a shared reference variable or an exclusive reference to a mutable slice")
+		if ((reference == 3) && (type_safe_kind(container_type) != 3)):
+			error(c"safe: shared slice iteration requires a shared reference variable")
+		yielded_type = type_get_safe(type_get_next_pointer(element_type), reference)
 	if (types_compatible_with_expression(loop_var_type, yielded_type) == 0):
-		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)): error(c"safe: incompatible record slice iteration variable type")
+		if (type_is_safe_slice(container_type) && ((type_num_args(element_type) > 0) || (reference >= 2))): error(c"safe: incompatible record slice iteration variable type")
 		warn_type_mismatch(c"for loop variable", loop_var_type, yielded_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
@@ -736,13 +760,16 @@ int for_owned_storage_element(int container_type):
 	return type_lookup_previous_pointer(type_lookup_previous_pointer(items))
 
 
-# Iterate owned storage: each stored element is lent as a shared reference
-# for one iteration, without transferring ownership. The element array and
+# Iterate owned storage: each element is lent shared or exclusively without
+# transferring ownership. The receiver must admit that borrow. Its array and
 # length are captured once, like a slice descriptor.
-void for_owned_storage_loop(int for_var, int for_tab_level, int loop_var_type, int element):
-	int yielded = type_get_safe(type_get_next_pointer(element), 2)
-	if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
+void for_owned_storage_loop(int for_var, int for_tab_level, int loop_var_type, int element, int container_type):
+	int reference = type_safe_kind(loop_var_type)
+	if ((reference < 2) || (reference > 3) || (type_get_pointer_level(loop_var_type) != 1)):
 		error(c"safe: owned-storage iteration requires a shared reference variable")
+	if ((reference == 3) && (type_safe_kind(container_type) == 2)):
+		error(c"safe: owned-storage iteration requires a shared reference variable through a shared container")
+	int yielded = type_get_safe(type_get_next_pointer(element), reference)
 	if (types_compatible_with_expression(loop_var_type, yielded) == 0):
 		error(c"safe: incompatible owned-storage iteration variable type")
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
@@ -802,7 +829,97 @@ void for_infer_declare(char* name, int slot, int type):
 # element type, strings int code points. A custom cursor-protocol
 # container yields its value accessor's declared return type when one
 # is in scope; otherwise int (for_iter_require reports the real error).
+# Checked hash wrappers retain opaque identity, with their key/value shape
+# recovered from audited fields rather than splitting generic mangled names.
+int for_checked_hash_kind(int container_type):
+	if (type_safe_kind(container_type) == 0): return 0
+	int pointer = type_safe_target(container_type)
+	if (type_get_pointer_level(pointer) != 1): return 0
+	int record = type_unqualified(type_lookup_previous_pointer(pointer))
+	char* name = type_get_name(record)
+	char* path = debug_file_name(type_decl_file_index(record))
+	int result = 0
+	if (ends_with(path, c"/lib/safe_hash.w")):
+		if (starts_with(name, c"WMap$")): result = 1
+		if (starts_with(name, c"WSet$")): result = 2
+	if (ends_with(path, c"/lib/safe_keyed_map.w") && starts_with(name, c"WKeyedMap$")): result = 3
+	int kind = type_get_kind(type_unqualified(container_type))
+	if (result && ((kind == type_kind_optown) || (kind == type_kind_optref) || (kind == type_kind_optrefmut))):
+		error(c"safe: hash iteration requires a present container")
+	return result
+
+
+int for_checked_hash_type(int container_type, int value):
+	int kind = for_checked_hash_kind(container_type)
+	int record = type_unqualified(type_lookup_previous_pointer(type_safe_target(container_type)))
+	type_rec* layout = type_record(record)
+	int result
+	if (kind == 3):
+		result = type_lookup_previous_pointer(layout.field_types[4])
+		if (value == 0): result = type_lookup_previous_pointer(type_lookup_previous_pointer(layout.field_types[3]))
+	else:
+		int table = layout.field_types[0]
+		if (kind == 2): return type_set_key_type(table)
+		result = type_map_key_type(table)
+		if (value): result = type_map_value_type(table)
+	if (value || (kind == 3)): result = type_get_safe(type_get_next_pointer(result), 2)
+	return result
+
+
+void for_checked_hash_loop(int for_var, int for_tab_level, int loop_type, int container_type, int value_var, int value_type):
+	int kind = for_checked_hash_kind(container_type)
+	int key = for_checked_hash_type(container_type, 0)
+	if ((type_safe_kind(loop_type) != type_safe_kind(key)) || (types_compatible_with_expression(loop_type, key) == 0)): error(c"safe: incompatible hash iteration key type")
+	int value = -1
+	if (value_var):
+		if (kind == 2): error(c"sets have no values: use one loop variable")
+		value = for_checked_hash_type(container_type, 1)
+		if ((type_get_kind(type_unqualified(value_type)) != type_kind_ref) || (types_compatible_with_expression(value_type, value) == 0)): error(c"safe: hash iteration values require a matching shared reference")
+	char* begin = c"__w_checked_hash_iter_begin"
+	char* done = c"__w_checked_hash_iter_done"
+	char* next = c"__w_checked_hash_iter_next"
+	char* key_fn = c"__w_checked_hash_iter_key"
+	char* value_fn = c"__w_checked_hash_iter_value"
+	if (kind == 3):
+		begin = c"__w_keyed_map_iter_begin"
+		done = c"__w_keyed_map_iter_done"
+		next = c"__w_keyed_map_iter_next"
+		key_fn = c"__w_keyed_map_iter_key"
+		if (value_var): value_fn = for_iter_generic_require(type_get_name(type_safe_target(container_type)), c"value", 2, container_type)
+	for_cursor_loop(for_var, for_tab_level, loop_type, begin, done, key_fn, next, 0,
+		-1, key, value_var, value_type, value_fn, value, 0)
+	if ((kind == 3) && value_var): free(value_fn)
+
+
+# Implicit calls keep the exact resolved binding, or the pending generic's
+# mangled identity, so checked validation cannot be bypassed by a raw helper.
+void for_checked_protocol_note(char* begin, char* done, char* next, char* value, int container_type):
+	if (retained_parent < 0): return
+	retained_iteration* contract = cast(retained_iteration*, retained_arena_alloc(sizeof(retained_iteration)))
+	contract.bindings = cast(int*, retained_arena_alloc(4 * __word_size__))
+	contract.names = cast(char**, retained_arena_alloc(4 * __word_size__))
+	char*[4] names
+	names[0] = begin
+	names[1] = done
+	names[2] = next
+	names[3] = value
+	for i in range(4):
+		contract.names[i] = retained_intern(names[i])
+		int symbol = sym_lookup(names[i])
+		contract.bindings[i] = -1
+		int parameter
+		if (symbol >= 0):
+			contract.bindings[i] = retained_binding_note(symbol, retained_parent)
+			parameter = sym_param_type(symbol, 0)
+		else: parameter = type_function_param_type(generic_inst_signature(generic_inst_lookup(names[i])), 0)
+		if (type_safe_kind(parameter)):
+			if (type_safe_kind(container_type) == 0): error(c"safe: iterator requires a checked container; bind allocations to a named owner first")
+			retained_record_at(retained_parent).semantic_type = retained_type_note(parameter)
+	retained_record_at(retained_parent).iteration = contract
+
+
 int for_infer_var_type(int container_type):
+	if (for_checked_hash_kind(container_type)): return for_checked_hash_type(container_type, 0)
 	int stored = for_owned_storage_element(container_type)
 	if (stored >= 0): return type_get_safe(type_get_next_pointer(stored), 2)
 	if (type_is_map(container_type)): return type_map_key_type(container_type)
@@ -814,13 +931,13 @@ int for_infer_var_type(int container_type):
 	if (type_is_slice(container_type)):
 		int element_type = type_unqualified(type_get_element_type(container_type))
 		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)):
-			return type_get_safe(type_get_next_pointer(element_type), 2)
+			return type_get_safe(type_get_next_pointer(element_type), type_safe_kind(container_type))
 		return element_type
 	if (type_is_string(container_type)): return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
-		if (for_iter_generic_split(type_get_name(container_type)) >= 0):
+		if (for_iter_generic_split(type_get_name(type_safe_target(container_type))) >= 0):
 			return for_iter_generic_value_type(container_type)
-		char* value_name = strjoin(type_get_name(container_type), c"_iter_value")
+		char* value_name = strjoin(type_get_name(type_safe_target(container_type)), c"_iter_value")
 		int symbol = sym_lookup(value_name)
 		free(value_name)
 		if (symbol >= 0):
@@ -855,6 +972,11 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	if (ast_expressions_mode >= 2): container_type = ast_iteration_value(0)
 	else: container_type = promote(expression())
 	container_type = type_unqualified(container_type)
+	# A checked iterable also makes a loop with only scalar variables checked.
+	# This matters when its generic call was lowered before a retained root
+	# became available: the safety pass must reject missing analysis.
+	if ((retained_parent >= 0) && type_safe_kind(container_type)):
+		retained_record_at(retained_parent).semantic_type = retained_type_note(container_type)
 	if (is_enumerate):
 		expect(c")")
 		if (type_is_list(container_type) == 0):
@@ -880,8 +1002,12 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 			# for_list_loop's __w_list_addr path
 			if (type_num_args(inferred_value_type) > 0):
 				inferred_value_type = type_get_next_pointer(inferred_value_type)
+		if (for_checked_hash_kind(container_type)): inferred_value_type = for_checked_hash_type(container_type, 1)
 		value_var_type = inferred_value_type
 		for_infer_declare(infer_name2, value_var, inferred_value_type)
+	if (for_checked_hash_kind(container_type)):
+		for_checked_hash_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
+		return
 	if (type_is_map(container_type) | type_is_set(container_type)):
 		for_hash_container_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
@@ -897,11 +1023,11 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 		return;
 	int stored = for_owned_storage_element(container_type)
 	if (stored >= 0):
-		for_owned_storage_loop(for_var, for_tab_level, loop_var_type, stored)
+		for_owned_storage_loop(for_var, for_tab_level, loop_var_type, stored, container_type)
 		return;
 	for_iter_require_struct_pointer(container_type)
 
-	char* container_name = type_get_name(container_type)
+	char* container_name = type_get_name(type_safe_target(container_type))
 	# Generator iterables get gen_free on the loop's exit edges (normal
 	# exit and break) so a broken-out-of loop does not leak the
 	# suspended generator's stack. 'return' (and '?') bypass those edges;
@@ -931,6 +1057,8 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 		for_iter_require(container_name, done_name, 2, container_type)
 		for_iter_require(container_name, next_name, 2, container_type)
 		for_iter_require(container_name, value_name, 2, container_type)
+
+	for_checked_protocol_note(begin_name, done_name, next_name, value_name, container_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_name, done_name, value_name, next_name, free_name,

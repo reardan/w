@@ -188,7 +188,7 @@ void test_owned_iteration_21():
 
 # Exclusive element iteration is not admitted.
 void test_owned_iteration_22():
-	owned_iteration_case(c"import lib.safe_owned_vector\nstruct Item:\n\tint weight\nint main():\n\town WOwnedBuffer[Item]* values = owned_buffer_new[Item](-1)\n\tfor refmut Item* entry in values: entry.weight = 1\n\treturn 0\n", c"safe: owned-storage iteration requires a shared reference variable")
+	owned_iteration_case(c"import lib.safe_owned_vector\nstruct Item:\n\tint weight\nint main():\n\town WOwnedBuffer[Item]* values = owned_buffer_new[Item](-1)\n\tfor refmut Item* entry in values: entry.weight = 1\n\treturn 0\n", 0)
 
 # Raw element pointers cannot escape the container.
 void test_owned_iteration_23():

@@ -34,7 +34,7 @@ void ast_declaration_bind(statement_ast* node, int depth):
 		sym_note_inferred_location(node.binding, node.line, node.column)
 		lint_track_local(node.binding)
 	else:
-		save_int(table + node.binding + 2, depth)
+		sym_set_value_at(node.binding, depth)
 	pointer_indirection = 0
 	node.stack_depth = depth
 
