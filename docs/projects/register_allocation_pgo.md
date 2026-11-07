@@ -1106,20 +1106,36 @@ counts (`__w_strcmp`, `__w_hash_key_equal`) depend on addresses, so two
 consecutive `profile_refresh` runs differed in 4 of 1,155 lines of
 `self.wprof` (and the Ir of a compile varies ±1.5%, see above); a PR
 commits the refreshed files only when hot code changed, as §3.3 says.
-**Known issue (Oct 2026): a fresh `self.wprof` breaks `verify_pgo`.**
-Regenerating `profiles/self.wprof` against the current tree makes
-`bin/wv3_pgo` and `bin/wv3_pgo_streaming` differ (the
-`cmp bin/wv3_pgo bin/wv3_pgo_streaming` step), already on main 7e0a8c0.
-A delta-debugged two-line profile reproduces it: the `promote` function
-(grammar/promote.w) hot plus the loop in `type_name_index_sync`
-(compiler/type_table.w) hot. Only `promote` comes out different: the AST
-front end records 5 more inline bodies and inlines 63 more call sites
-into it (`promote_eax` 6 sites against 5, `type_lookup` 192 against
-191), so the hot-budget inline path (`inline_site_budget` when the caller
-is profile-hot) is not front-end neutral. Until that is fixed the
-committed x86 `self.wprof` stays at its older refresh (76% of its
-functions still match); `self_x64.wprof` and `bench.wprof` were
-refreshed with the scripting Phase R1 map runtime.
+**Fixed (Nov 2026, reardan/w#886): a fresh `self.wprof` broke `verify_pgo`.**
+Regenerating `profiles/self.wprof` made `bin/wv3_pgo` and
+`bin/wv3_pgo_streaming` differ: under a profile-hot caller (the hot
+budget, the only one open to bodies that call) the two front ends
+inlined different bodies, because facts recorded while a callee's own
+definition compiled depended on the front end. A two-line profile
+(`promote` hot plus the loop in `type_name_index_sync`) showed the
+AST front end recording 5 more inline bodies than `--streaming`. Two
+causes, both fixed in compiler/inline_table.w and grammar/:
+
+- the body's token count was `token_serial`'s delta over the body, which
+  the streaming grammar inflates (an inferred generic call instantiates
+  the generic while the body compiles and re-lexes its signature) and the
+  AST front end rewinds to its recorded tokens. The count every budget
+  reads now comes from the body's own bytes (`inline_text_tokens`, a
+  byte-level lexer over the record's text copy), and the capture's
+  early abandon no longer reads the serial (code bytes only);
+- an f-string is an inline hazard, but only the streaming grammar
+  (`template_string_literal`) counted it; `ast_expression_template`
+  counts it too.
+
+`tests/inline_front_end_fixture.w` (target `inline_front_end_test`, in
+`tests`) takes a profile of a small program whose hot loop calls one body
+of each kind and asserts the AST and `--streaming` `--profile-use` images
+are byte-identical on x86 and x64. `verify_pgo` now also compares the
+x64 streaming image, and `profile_refresh` merges into
+`bin/refresh_*.wprof` and copies them over `profiles/` only after the new
+self profiles pass the same checks (wv3 == wv4 and AST == streaming, x86
+and x64), so a refresh can no longer commit a profile that breaks
+`verify_pgo`. All three profiles were refreshed with the fix.
 `bench.wprof` is header-only until B1 lands `tests/bench/`; `wprof
 corpus` runs each program with no arguments, which B1 may need to
 extend. Functions the defhash scan does not record (a script's implicit
