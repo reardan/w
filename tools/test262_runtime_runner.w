@@ -6,6 +6,7 @@ import lib.args
 import lib.file
 import structures.json
 import libs.extras.javascript.runtime
+import libs.extras.javascript.module_graph
 
 
 # Native harness overrides permitted by upstream INTERPRETING.md. These
@@ -126,6 +127,23 @@ json_value* test262_value(js_value* value):
 	return result
 
 
+# Static module-graph linking (reardan/w#840): load "./" fixtures beside the
+# test and resolve every import and indirect export. Null when it links.
+json_value* test262_resolve_module(char* source, char* filename):
+	char* directory = path_dirname(filename)
+	js_module_file_loader* loader = js_module_file_loader_new(directory)
+	js_module_graph* graph = js_module_graph_new(js_module_file_load, loader)
+	json_value* result = 0
+	if (js_module_graph_link(graph, filename, source, strlen(source)) == 0):
+		result = test262_result(c"resolution", c"error")
+		json_object_set(result, c"error_type", json_string(graph.error_type))
+		json_object_set(result, c"message", json_string(graph.error_message))
+	js_module_graph_free(graph)
+	js_module_file_loader_free(loader)
+	free(directory)
+	return result
+
+
 json_value* test262_run(char* source, char* filename, int module, int budget, int raw):
 	# Use the same generated grammar and validator sequence as js_parse, with
 	# an observation boundary before early-error validation. No syntax is
@@ -144,13 +162,14 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 		js_validate_bindings(parsed, module)
 		js_validate_restrictions(parsed, module)
 	json_value* result = 0
-	if (parsed.success == 0):
+	if (parsed.success && module): result = test262_resolve_module(source, filename)
+	if (result == 0 && parsed.success == 0):
 		if (stream.resource_failed): result = test262_result(phase, c"limit")
 		else:
 			result = test262_result(phase, c"error")
 			json_object_set(result, c"error_type", json_string(c"SyntaxError"))
 		test262_diagnostics(result, parsed)
-	else:
+	else if (result == 0):
 		js_node* tree = js_lower(parsed)
 		if (tree == 0):
 			result = test262_result(c"lower", c"unsupported")

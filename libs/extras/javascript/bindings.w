@@ -14,6 +14,7 @@ struct js_binding_scope:
 	js_binding_scope* parent
 	int function_scope
 	int program_scope
+	int strict
 	char* catch_parameter
 	list[js_binding_name*] lexical
 	list[js_binding_name*] variables
@@ -24,6 +25,7 @@ js_binding_scope* js_binding_scope_new(js_binding_scope* parent, int function_sc
 	scope.parent = parent
 	scope.function_scope = function_scope
 	scope.program_scope = program_scope
+	scope.strict = 0
 	scope.catch_parameter = 0
 	scope.lexical = new list[js_binding_name*]
 	scope.variables = new list[js_binding_name*]
@@ -69,9 +71,25 @@ void js_binding_collect(pg_ast_node* node, list[js_binding_name*] names):
 	for pg_ast_node* child in node.children: js_binding_collect(child, names)
 
 
+# A plain (not async/generator) FunctionDeclaration's binding identifier.
+int js_binding_plain_function(pg_ast_node* node):
+	pg_ast_node* parent = node.parent
+	if (js_cst_is(parent, c"binding_identifier")): parent = parent.parent
+	return js_cst_is(parent, c"function_decl") && js_cst_child(parent, c"async_modifier") == 0 && js_cst_child(parent, c"STAR") == 0
+
+
+# Annex B.3.3.4/B.3.3.5: sloppy blocks and switch clauses may repeat a plain
+# function declaration name.
+int js_binding_sloppy_duplicate(js_binding_scope* scope, js_binding_name* binding):
+	if (scope.strict || scope.function_scope || scope.program_scope || js_binding_plain_function(binding.node) == 0 || js_binding_name_exists(scope.variables, binding.name)): return 0
+	for js_binding_name* existing in scope.lexical:
+		if (strcmp(existing.name, binding.name) == 0 && js_binding_plain_function(existing.node) == 0): return 0
+	return 1
+
+
 void js_binding_declare(js_binding_scope* scope, js_binding_name* binding, int lexical, pg_diagnostics* diagnostics):
 	if (lexical):
-		if (js_binding_name_exists(scope.lexical, binding.name) || js_binding_name_exists(scope.variables, binding.name)):
+		if ((js_binding_name_exists(scope.lexical, binding.name) || js_binding_name_exists(scope.variables, binding.name)) && js_binding_sloppy_duplicate(scope, binding) == 0):
 			js_validation_error(diagnostics, binding.node, c"duplicate lexical binding")
 		js_binding_name_add(scope.lexical, binding.name, binding.node)
 		return
@@ -125,6 +143,8 @@ void js_binding_rest_last(pg_ast_node* node, pg_ast_node* list_node, char* rest_
 	if (js_cst_is(node, rest_kind)):
 		if (node.last_token != list_node.last_token): js_validation_error(diagnostics, node, c"rest binding must be last without trailing comma")
 		return
+	# Nested patterns, defaults and functions check their own rest elements.
+	if (node != list_node && (js_cst_is(node, c"array_binding") || js_cst_is(node, c"object_binding") || js_cst_is(node, c"initializer") || js_is_function(node))): return
 	for pg_ast_node* child in node.children: js_binding_rest_last(child, list_node, rest_kind, diagnostics)
 
 
@@ -177,7 +197,12 @@ void js_binding_validate_class(pg_ast_node* node, pg_diagnostics* diagnostics):
 void js_binding_walk(pg_ast_node* node, js_binding_scope* scope, int strict, int module, pg_ast_node* function_body, pg_diagnostics* diagnostics):
 	if (node == 0): return
 	if (js_is_function(node)):
-		if (js_cst_is(node, c"function_decl") || (js_cst_is(node, c"function_expr") && js_cst_is(node.parent, c"export_default"))):
+		# B.3.4: an if-clause function declaration sits alone in an implicit
+		# block, so it cannot conflict with the enclosing scope.
+		pg_ast_node* clause = 0
+		if (js_cst_is(node.parent, c"statement")): clause = node.parent.parent
+		int alone = js_cst_is(clause, c"if_statement") || js_cst_is(clause, c"else_clause")
+		if (alone == 0 && (js_cst_is(node, c"function_decl") || (js_cst_is(node, c"function_expr") && js_cst_is(node.parent, c"export_default")))):
 			int lexical = (scope.function_scope == 0 && scope.program_scope == 0) || (scope.program_scope && module)
 			js_binding_declare_tree(scope, js_cst_child(node, c"binding_identifier"), lexical, diagnostics)
 		pg_ast_node* body = js_binding_function_body(node)
@@ -190,6 +215,7 @@ void js_binding_walk(pg_ast_node* node, js_binding_scope* scope, int strict, int
 	int own_scope = 0
 	if ((js_cst_is(node, c"block") && node != function_body) || js_cst_is(node, c"for_statement") || js_cst_is(node, c"switch_statement") || js_cst_is(node, c"catch_clause")):
 		scope = js_binding_scope_new(scope, 0, 0)
+		scope.strict = strict
 		own_scope = 1
 	if (js_cst_is(node, c"program") && js_directive_strict(node)): strict = 1
 	if (js_cst_is(node, c"class_decl") || js_cst_is(node, c"class_expr")):

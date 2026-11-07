@@ -188,9 +188,18 @@ float64 js_runtime_numeric_literal(char* text, int* consumed):
 		if (text[1] == 'x' || text[1] == 'X'): radix = 16
 		else if (text[1] == 'b' || text[1] == 'B'): radix = 2
 		else if (text[1] == 'o' || text[1] == 'O'): radix = 8
+	int at = 2
+	# Annex B.1.1 LegacyOctalIntegerLiteral (sloppy code only; strict code
+	# rejects it early): 0 followed only by octal digits. Other leading-zero
+	# literals are NonOctalDecimalIntegerLiterals and stay decimal.
+	if (text[0] == '0' && text[1] >= '0' && text[1] <= '7'):
+		int legacy = 1
+		while (text[legacy] >= '0' && text[legacy] <= '7'): legacy = legacy + 1
+		if (text[legacy] == 0):
+			radix = 8
+			at = 1
 	if (radix == 10): return parse_float64(text, consumed)
 	float64 result = 0.0
-	int at = 2
 	while (text[at] != 0):
 		int digit = text[at] - '0'
 		if (text[at] >= 'a' && text[at] <= 'f'): digit = text[at] - 'a' + 10

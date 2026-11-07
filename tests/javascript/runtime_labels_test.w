@@ -72,8 +72,9 @@ int main(int argc, int argv):
 	char* source = c"a: while (true) { continue a; }"
 	assert_equal(5, js_runtime_eval(rt, source, strlen(source), 30).status)
 	assert1(rt.label == 0)
+	# Annex B.3.2 labelled function declarations are supported.
 	source = c"a: function f() {}"
-	assert_equal(6, js_runtime_eval(rt, source, strlen(source), 100).status)
+	assert_equal(0, js_runtime_eval(rt, source, strlen(source), 100).status)
 	source = c"try { missing; } catch (e) { e.name = 'TypeError'; throw e; }"
 	js_completion* result = js_runtime_eval(rt, source, strlen(source), 1000)
 	assert_equal(2, result.status)

@@ -112,7 +112,9 @@ char* t262_unsupported(json_value* meta):
 	list[char*] blocked = new list[char*]
 	for json_value* flag in jc_get(meta, c"flags").array_values:
 		if (!jc_choice(flag, c"onlyStrict noStrict raw module async generated CanBlockIsFalse CanBlockIsTrue non-deterministic")): unknown.push(flag.string_value)
-		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic")): blocked.push(flag.string_value)
+		# Negative module tests stop before evaluation: parse and static
+		# module-graph resolution (reardan/w#840) cover them.
+		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic") && !(jc_is(flag, c"module") && jc_choice(jc_get(jc_get(meta, c"negative"), c"phase"), c"parse resolution"))): blocked.push(flag.string_value)
 	ht_sort(unknown)
 	ht_sort(blocked)
 	if (unknown.length): return strjoin(c"unknown flags: ", join(unknown, c", "))
@@ -122,10 +124,10 @@ char* t262_unsupported(json_value* meta):
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
-		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes")): features.push(item.string_value)
+		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
-	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution")): return c"module resolution is unsupported"
+	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution") && !t262_has(jc_get(meta, c"flags"), c"module")): return c"module resolution is unsupported"
 	return 0
 
 json_value* t262_load(char* path):
@@ -202,12 +204,12 @@ json_value* t262_execute(char* binary, char* path, char* mode, int timeout, int 
 	jc_error = 0
 	json_value* actual = json_parse(proc.stdout_text)
 	int valid = jc_require(jc_equal(jc_get(actual, c"protocol"), json_int(1)), c"invalid runner protocol")
-	if (valid): valid = jc_require(jc_choice(jc_get(actual, c"phase"), c"parse early lower execute") && jc_choice(jc_get(actual, c"outcome"), c"normal error throw unsupported limit"), c"invalid result")
+	if (valid): valid = jc_require(jc_choice(jc_get(actual, c"phase"), c"parse early resolution lower execute") && jc_choice(jc_get(actual, c"outcome"), c"normal error throw unsupported limit"), c"invalid result")
 	if (valid && jc_choice(jc_get(actual, c"outcome"), c"normal throw")):
 		json_value* steps = jc_get(actual, c"steps")
 		json_value* assertions = jc_get(actual, c"assertions")
 		valid = jc_require(jc_is(jc_get(actual, c"phase"), c"execute") && jc_type(steps, json_type_int()) && steps.int_value > 0 && jc_type(assertions, json_type_int()) && assertions.int_value >= 0, c"missing execution evidence")
-	if (valid && jc_is(jc_get(actual, c"outcome"), c"error")): valid = jc_require(jc_choice(jc_get(actual, c"phase"), c"parse early") && jc_is(jc_get(actual, c"error_type"), c"SyntaxError"), c"invalid parser error")
+	if (valid && jc_is(jc_get(actual, c"outcome"), c"error")): valid = jc_require((jc_choice(jc_get(actual, c"phase"), c"parse early") && jc_is(jc_get(actual, c"error_type"), c"SyntaxError")) || (jc_is(jc_get(actual, c"phase"), c"resolution") && jc_choice(jc_get(actual, c"error_type"), c"SyntaxError ReferenceError")), c"invalid parser error")
 	if (valid && jc_get(actual, c"error_type") != 0): valid = jc_require(jc_type(jc_get(actual, c"error_type"), json_type_string()), c"invalid error identity")
 	if (valid): return actual
 	json_value* failed = jc_process_error(c"harness_error")
@@ -228,6 +230,17 @@ char* t262_classify(json_value* meta, json_value* actual):
 		if (jc_choice(outcome, c"error throw") && jc_is(jc_get(negative, c"phase"), normalized) && jc_equal(jc_get(actual, c"error_type"), jc_get(negative, c"type"))): return c"PASS"
 	else if (jc_is(phase, c"execute") && jc_is(outcome, c"normal")): return c"PASS"
 	return c"FAIL"
+
+# A module case keeps its upstream file name and gets its pinned sibling
+# _FIXTURE.js modules beside it, so "./x_FIXTURE.js" requests resolve.
+char* t262_module_case(char* directory, char* name):
+	char* folder = path_join(directory, path_dirname(name))
+	ht_mkdir(folder)
+	for char* other in t262_sources.keys():
+		if (contains(other, c"_FIXTURE") && strcmp(path_dirname(other), path_dirname(name)) == 0):
+			char* text = t262_sources[other]
+			ht_write(path_join(directory, other), text, strlen(text))
+	return path_join(directory, name)
 
 json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget, int* status, t262_executor* execute):
 	json_value* manifest = t262_load(manifest_path)
@@ -270,6 +283,7 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 				char* content = source
 				if (strcmp(mode, c"strict") == 0): content = strjoin(c"\"use strict\";\n", source)
 				char* path = path_join(directory, c"case.js")
+				if (strcmp(mode, c"module") == 0): path = t262_module_case(directory, name)
 				ht_write(path, content, strlen(content))
 				actual = execute(binary, path, mode, timeout, budget)
 			char* id = strjoin(strjoin(name, c"#"), mode)
