@@ -1075,6 +1075,116 @@
       "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
       "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
       "sha256": "7277e14847d7317fb1a106adbd2a1abd83dd9473d04ea62fd13e3927cc2c7d87"
+    },
+    {
+      "path": "upstream/harness/tcoHelper.js",
+      "upstream_path": "harness/tcoHelper.js",
+      "sha256": "a533b07378e41044c98199e250e1c78a28610a783ad0814cb467e9ea2f5de8fa"
+    },
+    {
+      "path": "upstream/harness/compareArray.js",
+      "upstream_path": "harness/compareArray.js",
+      "sha256": "3330423fe116cd96db70077d194471319ae9767ba1c8e2f73d7c133c5204509d"
+    },
+    {
+      "path": "upstream/test/language/module-code/export-star-as-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/export-star-as-dflt_FIXTURE.js",
+      "sha256": "630349bb17477e095abdc188b14a85a02bc228caa11f3a257f7f052148dff40c"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+      "sha256": "82f2c9993a54e9146b81d59b46a1c9e44fe0d783477229546815e63c6e3e06cd"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+      "sha256": "8ccc6f24d7dc34ff10fc2b1faab3615fb8b1942ccdda29671b4968223a7d09d4"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+      "sha256": "6a03aa54b062423aa34603115850dca21fa74544eaebe90c7f0c8bb4709551b2"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+      "sha256": "0dedef607742bf6eab5f5f24a487a8f0f23a972114194862340c41ff5f7e4192"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A3.js",
+      "sha256": "7933b62fe63ce21bf7375d20f863ce245ff71d551d28738aa11c9a3fb86642b4"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+      "sha256": "f22f2eefb11117a96baa43cc72b5b975ed891b487bbcd6d51180d158a05a6c88"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+      "sha256": "be45fdba1ab1364e5d9bc86dac1fb64170f7ab7c069e7bff1ffe27557a2ceff9"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+      "sha256": "23a4b3a7bebcf7cfa89ae09c95d20edd4e3b76bea1e7e92ddceee2ac3bb982e1"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+      "sha256": "4cd485a2a37a4c1cf20fd0ff69d9da647c9ef0cab9d5e29fe1a5786571ad05b9"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T1.js",
+      "sha256": "f2e41a32eb72b90d8c45b848ea9a97e0a4942b039d9f19d1e82ee006af309eb7"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T3.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T3.js",
+      "sha256": "83be074016845171f7b6b168657fbd2928b9cf41992df5f3f842d42211ffb963"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A4_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A4_T1.js",
+      "sha256": "0bd5c02dec302cc551ede955b52293d3aa78871cc6c32c407c5defcb5346abc5"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A2_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A2_T1.js",
+      "sha256": "587d6e776266d8f51f77c747ea81951b29417c24495dbf8125af01787b79f5de"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A3_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A3_T1.js",
+      "sha256": "c34de5c81e7f758720f8cc9553d2c2c9067243c3830482c6f7582712ab4f191a"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A3_T2.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A3_T2.js",
+      "sha256": "b3c13d4d1e6f3a52aa2d71574639e07977ce270068404b4e34b0ecd05a400c43"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T2.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T2.js",
+      "sha256": "d53b52dddfd8e4cc91e75f08e3c4be5c94ddf16ebab6b8773b1688053d35a29a"
+    },
+    {
+      "path": "upstream/test/language/module-code/eval-this.js",
+      "upstream_path": "test/language/module-code/eval-this.js",
+      "sha256": "044874d01e501861c9c1d451ddd67e1c224a768045be75c5c49e0eb182d998c2"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-bndng-const.js",
+      "upstream_path": "test/language/module-code/instn-iee-bndng-const.js",
+      "sha256": "161efc81e1d3344fc905d4c813c1166877897fd9bc80ee47da16f6d42be4749e"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
+      "sha256": "dfb36bd8ef0a744c256685d61645fd3686999c414791ddb74b860e591bea5987"
     }
   ],
   "cases": [
@@ -1287,7 +1397,25 @@
     "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js",
     "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js",
     "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js",
-    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js"
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js",
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js",
+    "upstream/test/language/module-code/eval-this.js",
+    "upstream/test/language/module-code/instn-iee-bndng-const.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -1399,12 +1527,10 @@
       "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
       "status": "UNSUPPORTED",
@@ -2552,6 +2678,114 @@
     },
     "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js#strict": {
       "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Global this evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Global this evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Primitive wrapper constructors (new Number/new String) are outside the implemented runtime subset."
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Primitive wrapper constructors (new Number/new String) are outside the implemented runtime subset."
+    },
+    "upstream/test/language/module-code/eval-this.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-iee-bndng-const.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
     }
   },
   "builtins_required": {
