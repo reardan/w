@@ -52,8 +52,10 @@ long w_add(long a, long b);
   are `LOCAL`, so two W objects (each with its own runtime) do not clash.
   An exported function's W-convention body has no symbol of its own.
 - **Globals.** A global's symbol covers its W storage. Scalars and
-  pointers match C directly; a fixed array `int[4] a` is a W array
-  (a two-word header, then the elements), not a C array.
+  pointers match C directly. A fixed array `int[4] a` is stored as a W
+  array (a two-word header, then the elements); its symbol names the
+  elements, so C sees `long a[4]` and W code keeps indexing through the
+  header just before them.
 - **Static pointer data.** File-scope address initializers
   (`grammar/program.w`, `global_address_initializer`) make static pointer
   tables expressible: `int* p = &g`, `int* q = &g + 8` (a byte offset),
@@ -76,11 +78,7 @@ long w_add(long a, long b);
   	int* ref
   	char* name
 
-  struct entry_table:  # C: struct entry table[2] (a struct of raw bytes, no array header)
-  	entry e0
-  	entry e1
-
-  entry_table table = {int16 1, int8 -1, pad 1, int32 100, &counter, c"first",
+  entry[2] table = {int16 1, int8 -1, pad 1, int32 100, &counter, c"first",
   	int16 2, pad 2, int32 -5, &later_global + 16, c"second"}
   ```
 
@@ -91,9 +89,9 @@ long w_add(long a, long b);
   compile -- or `c"..."`, optionally after a word-sized type such as
   `char*`), and `pad N` (N zero bytes). Bytes after the last item are
   zero, `{}` is all zeros, and items may continue on following lines.
-  The type must have no fixed-array headers (structs, unions, scalars
-  and pointers; a C array becomes a struct of the right size, indexed
-  through a cast pointer), and the items must fit its size. Address
+  The items fill a fixed array's elements (not its header) or a
+  struct's, union's or scalar's bytes; types with nested fixed-array
+  headers and runtime-backed types are rejected, and the items must fit. Address
   words are relocated like any address initializer
   (`tests/object_file/static_data.w` links such data with C;
   `tests/static_data_test.w` covers executables).
@@ -158,8 +156,9 @@ stubs (`syscall`, `setjmp`, ...) remain as unreferenced local code.
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64
 Linux target`), `thread_local` storage, profiling and coverage
 instrumentation, and combining with `--static`/`--shared`. Not
-diagnosed but unsupported: calling a W function pointer from C, C
-consumers of W fixed arrays as plain arrays, and (untested) the
+diagnosed but unsupported: calling a W function pointer from C, W
+`extern` arrays (W code would index a C array through a header it
+does not have), and (untested) the
 runtime's panic and stack-trace reporting inside a runtime-retaining
 object, which expects a W-built ELF image around its code.
 
@@ -180,8 +179,7 @@ Next steps, roughly in order:
    code. The adapter already preserves every System V callee-saved
    register; interrupt-context use needs that audit.
 4. **Exported data and C-shaped aggregates.** An explicit marker for
-   exported globals (today: any root global), a native C-layout array
-   type (today: brace-initialized raw structs), floating-point items in
+   exported globals (today: any root global), floating-point items in
    brace initializers, and struct arguments by value in the adapters.
 5. **Several W objects in one link.** Each object today carries its own
    copy of whatever runtime it uses; a shared freestanding support

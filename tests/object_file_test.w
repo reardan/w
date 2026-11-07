@@ -134,6 +134,11 @@ void test_object_static_data():
 	assert_contains(relocs, c"R_X86_64_64")
 	assert_contains(relocs, c"c_data + 0")
 	free(relocs)
+	# The array symbols cover the elements only
+	char* symbols = object_shell(strjoin(c"readelf -s ", object))
+	assert_contains(symbols, c"    20 OBJECT  GLOBAL DEFAULT    2 w_primes")
+	assert_contains(symbols, c"    72 OBJECT  GLOBAL DEFAULT    2 w_entries")
+	free(symbols)
 	free(object)
 
 
@@ -312,8 +317,10 @@ void test_global_address_initializer_rejections():
 # raw bytes into storage without array headers and must fit it.
 void test_brace_initializer_rejections():
 	char* out = object_path(c"brace_init")
-	object_write(c"array.w", c"int[4] a = {int 1}\nint main():\n\treturn 0\n")
-	object_reject(c"brace initializer for global 'a' needs a type without array headers or runtime storage", object_path(c"array.w"), c"-o", out)
+	object_write(c"array.w", c"struct s:\n\tint[2] inner\ns[2] a = {int 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'a' needs a type without nested array headers or runtime storage", object_path(c"array.w"), c"-o", out)
+	object_write(c"string.w", c"string a = {int 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'a' needs a type without nested array headers", object_path(c"string.w"), c"-o", out)
 	object_write(c"big.w", c"int32 x = {int32 1, int32 2}\nint main():\n\treturn 0\n")
 	object_reject(c"brace initializer for global 'x' does not fit in its type 'int32'", object_path(c"big.w"), c"-o", out)
 	object_write(c"pad.w", c"int x = {pad 2, pad 7}\nint main():\n\treturn 0\n")

@@ -16,16 +16,11 @@ struct entry:
 	int* ref
 	char* name
 
-# A C 'struct entry[3]' (24 bytes each): C-layout arrays are structs of
-# raw bytes, addressed through a cast.
-struct entry_table:
-	entry e0
-	entry e1
-	entry e2
-
 int w_scalar = 11
 
-entry_table w_entries = {
+# A fixed array's symbol names its elements, so C sees 'struct entry[3]';
+# W code indexes it through the header just before them.
+entry[3] w_entries = {
 	int16 1, int8 -1, pad 1, int32 100, &w_scalar, c"first",
 	int16 2, int8 0, pad 1, int32 -5, &c_data, c"second",
 	int16 3, int8 0, pad 1, int32 0, &w_late}
@@ -78,5 +73,11 @@ int w_handler(int x):
 
 
 export int w_entry_count(int i):
-	entry* e = cast(entry*, &w_entries)
-	return e[i].count
+	return w_entries[i].count
+
+
+int32[5] w_primes = {int32 2, int32 3, int32 5, int32 7}
+
+
+export int w_prime(int i):
+	return w_primes[i]

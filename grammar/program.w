@@ -696,6 +696,13 @@ int global_is_address_target(int t):
 	return (t >= 0) && (table[t + 1] == 'D') && (load_int(table + t + 10) == 1) && (sym_is_thread_local(t) == 0)
 
 
+# The address '&g' stores: a fixed array's elements (past its {data,
+# length} header), as in C, where the array's name is its first element.
+int global_address_of(int t):
+	if (type_is_array(type_canonical(load_int(table + t + 6)))): return sym_value_at(t) + 2 * word_size
+	return sym_value_at(t)
+
+
 void global_address_finish():
 	if (cast(int, global_address_cells) == 0): return;
 	for i in range(global_address_cells.length):
@@ -708,7 +715,7 @@ void global_address_finish():
 				# '&name': a global variable declared after the initializer
 				if (global_is_address_target(t) == 0):
 					error3(c"'&' in a global initializer needs a global variable, got '", name, c"'")
-				global_address_store(global_address_cells[i], sym_value_at(t) + global_address_offsets[i] - 1)
+				global_address_store(global_address_cells[i], global_address_of(t) + global_address_offsets[i] - 1)
 				continue
 			if ((t < 0) || (load_int(table + t + 10) != 2)):
 				error3(c"function '", name, c"' used in a global initializer is never defined")
@@ -771,7 +778,7 @@ void global_address_form(char* name, int cell):
 		char* target = strclone(token)
 		if (t >= 0):
 			retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
-			value = sym_value_at(t)
+			value = global_address_of(t)
 		get_token()
 		int offset = 0
 		if (accept(c"+")): offset = parse_constant_literal(c"address offset in initializer for global", name)
@@ -839,8 +846,8 @@ void global_data_overflow(char* name, int type):
 
 
 # 'T name = {item, ...}' at file scope: static data laid out byte for byte
-# in the global's storage, so a struct (or any type without fixed-array
-# headers) can hold C-layout data that is in the image at link time,
+# in the global's storage, so a struct, a fixed array (its elements) or a
+# scalar can hold C-layout data that is in the image at link time,
 # with no code run before main -- what C translators and kernels need for
 # ops tables, page tables and string tables. Items are placed one after
 # another with no implicit alignment:
@@ -857,12 +864,18 @@ void global_data_overflow(char* name, int type):
 int global_brace_initializer(char* name, int addr, int type):
 	if (peek(c"{") == 0): return 0
 	int t = type_canonical(type)
+	int size = type_get_size(t)
+	if (type_is_array(t)):
+		# A fixed array's items fill its elements, after the header
+		if (type_has_array_field(type_get_element_type(t)) == 0):
+			addr = addr + 2 * word_size
+			size = size - 2 * word_size
+			t = type_get_element_type(t)
 	if (type_is_array(t) || type_is_slice(t) || type_has_array_field(t) || type_is_map(t) || type_is_set(t) || type_is_list(t) || type_is_string(t)):
 		diag_part(c"brace initializer for global '")
 		diag_part(name)
-		error_type(c"' needs a type without array headers or runtime storage, not '", type, c"'")
-	int size = type_get_size(t)
-	if ((type_get_pointer_level(t) > 0) || (size < 1)): size = word_size
+		error_type(c"' needs a type without nested array headers or runtime storage, not '", type, c"'")
+	if ((type_get_pointer_level(type) > 0) || (size < 1)): size = word_size
 	get_token()
 	int pos = 0
 	while (peek(c"}") == 0):

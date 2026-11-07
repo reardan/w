@@ -46,6 +46,9 @@ rec cyc_a = {pad 8, c"a", &cyc_b}
 rec cyc_b = {pad 8, c"b", &cyc_a}
 words forward = {int32 5, int32 6, defined_after, &cyc_b - 8}
 int* self = {&self}
+# A fixed array's items fill its elements; '&array' is its first element
+int32[6] primes = {int32 2, int32 3, int32 5, int32 7}
+int32* fifth = &primes + 8
 
 
 int later(int x):
@@ -83,5 +86,10 @@ int main():
 	unary* tripled = cast(unary*, forward.op)
 	assert_equal(21, tripled(7))
 	assert_equal(cast(int, &cyc_b) - 8, forward.ref)
+	assert_equal(7, primes[3])
+	assert_equal(0, primes[5])
+	assert_equal(6, primes.length)
+	assert_equal(5, *fifth)
+	assert_equal(cast(int, &primes[2]), cast(int, fifth))
 	println(c"static data OK")
 	return 0

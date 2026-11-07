@@ -199,7 +199,15 @@ void object_table_symbols(int want_global):
 			else if ((symtype == 1) && object_in_data(value) && (value < data_offset + datapos) && (object_extern_data_at(value) < 0) && (type_get_kind(type) != type_kind_enum)):
 				int is_root = object_file_is_root(sym_decl_file_index(t))
 				if (is_root == want_global):
-					object_symbol(name, is_root, 1, object_sec_data, value - data_offset, global_storage_size(type))
+					# A fixed array's symbol names its elements, as a C
+					# array's does; the {data, length} header W code
+					# indexes through sits just before them.
+					int symbol_offset = 0
+					int symbol_size = global_storage_size(type)
+					if (type_is_array(type_canonical(type))):
+						symbol_offset = 2 * word_size
+						symbol_size = type_get_size(type) - symbol_offset
+					object_symbol(name, is_root, 1, object_sec_data, value - data_offset + symbol_offset, symbol_size)
 					if (is_root): object_global_names.push(name)
 		t = next_token(t)
 

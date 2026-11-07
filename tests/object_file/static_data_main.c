@@ -37,6 +37,8 @@ extern struct misc w_misc;
 extern char w_zero[64];
 extern long w_scalar;
 long w_entry_count(long i);
+extern int w_primes[5];
+long w_prime(long i);
 
 long c_data = 33;
 
@@ -77,6 +79,10 @@ int main(void) {
 	check("misc.b", w_misc.b, 17);
 	check("misc.big", w_misc.big == 0x1ffffffffULL, 1);
 	check("misc.text", memcmp(w_misc.text, "abc", 4), 0);
+	check("w_primes[3]", w_primes[3], 7);
+	check("w_primes[4]", w_primes[4], 0);
+	w_primes[4] = 11;
+	check("w_prime(4)", w_prime(4), 11);
 	for (int i = 0; i < 64; i++)
 		check("zero", w_zero[i], 0);
 	if (failures == 0)
