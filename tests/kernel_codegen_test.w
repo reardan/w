@@ -522,6 +522,105 @@ void test_kernel_codegen_frame_pointers():
 	assert_contains(out, c"frames 09")
 
 
+# The address nm reports for symbol name in exe.
+int kc_symbol_address(char* exe, char* name):
+	char* listing = kc_shell(strjoin(c"nm ", exe))
+	list[char*] lines = kc_lines(listing)
+	int found = -1
+	for char* line in lines:
+		if ((strlen(line) > 19) && (strcmp(line + 19, name) == 0)):
+			int n = 0
+			found = kc_hex(line, &n)
+	assert1(found != -1)
+	free(listing)
+	return found
+
+
+# The load address of section name (" .data ") in exe.
+int kc_section_address(char* exe, char* name):
+	char* listing = kc_shell(strjoin(c"readelf -SW ", exe))
+	list[char*] lines = kc_lines(listing)
+	int found = -1
+	for char* line in lines:
+		int at = index_of(line, name)
+		int kind = index_of(line, c"PROGBITS")
+		if ((at < 0) || (kind < 0)): continue
+		int k = kind + 8
+		while (line[k] == ' '): k = k + 1
+		int n = 0
+		found = kc_hex(line + k, &n)
+	assert1(found != -1)
+	free(listing)
+	return found
+
+
+# The 64-bit word stored at address addr of exe's .data.
+int kc_data_word(char* exe, int addr):
+	char* raw = strjoin(exe, c".data")
+	free(kc_shell(strjoin(strjoin(strjoin(c"objcopy -O binary --only-section=.data ", exe), c" "), raw)))
+	int size = 0
+	char* bytes = kc_read(raw, &size)
+	int at = addr - kc_section_address(exe, c" .data ")
+	assert1((at >= 0) && (at + 8 <= size))
+	int v = load_word(bytes + at)
+	free(bytes)
+	return v
+
+
+# Code model: x64 W code reaches data and functions only PC-relatively
+# and stores pointers as 64-bit words, so the object carries nothing
+# but R_X86_64_PC32 and R_X86_64_64 relocations -- no R_X86_64_32/32S
+# that the kernel's top-2GB placement (or any address above 4GB) would
+# overflow. Linked at the kernel's own base the pointer words hold the
+# kernel addresses; linked high in user space the corpus runs and
+# prints what the plain build prints.
+void test_kernel_codegen_code_model():
+	char* object = kc_object(c"tests/kernel_codegen/corpus.w", c"model")
+	char* relocs = kc_shell(strjoin(c"readelf -rW ", object))
+	list[char*] lines = kc_lines(relocs)
+	int seen = 0
+	for char* line in lines:
+		int at = index_of(line, c"R_X86_64_")
+		if (at < 0): continue
+		char* kind = line + at
+		if ((starts_with(kind, c"R_X86_64_PC32 ") == 0) && (starts_with(kind, c"R_X86_64_64 ") == 0)):
+			println2(line)
+			assert1(0)
+		seen = seen + 1
+	assert1(seen > 10)
+	char* flags = c" -O1 -mno-red-zone -fno-omit-frame-pointer -fno-stack-protector -fno-asynchronous-unwind-tables -c -o "
+	char* kernel_start = kc_path(c"start_kernel.o")
+	free(kc_shell(strjoin(strjoin(strjoin(c"cc -mcmodel=kernel -fno-pie", flags), kernel_start), c" tests/kernel_codegen/start.c")))
+	char* kernel = kc_path(c"kernel.elf")
+	string_builder* cmd = string_new()
+	string_append(cmd, c"ld -nostdlib -static -e _start -Ttext-segment=0xffffffff80000000 -o ")
+	string_append(cmd, kernel)
+	string_append(cmd, c" ")
+	string_append(cmd, kernel_start)
+	string_append(cmd, c" ")
+	string_append(cmd, object)
+	free(kc_shell(cmd.data))
+	int counter = kc_symbol_address(kernel, c"kc_counter")
+	assert1(counter < 0)   # 0xffffffff8xxxxxxx
+	assert_equal(counter, kc_data_word(kernel, kc_symbol_address(kernel, c"kc_counter_cell")))
+	assert_equal(kc_symbol_address(kernel, c"kc_add"), kc_data_word(kernel, kc_symbol_address(kernel, c"kc_ops_add")))
+	# the same object above 4GB in user space runs unchanged
+	char* high_start = kc_path(c"start_high.o")
+	free(kc_shell(strjoin(strjoin(strjoin(c"cc -fpie", flags), high_start), c" tests/kernel_codegen/start.c")))
+	char* high = kc_path(c"high.elf")
+	cmd = string_new()
+	string_append(cmd, c"ld -nostdlib -static -e _start -Ttext-segment=0x7f0000000000 -o ")
+	string_append(cmd, high)
+	string_append(cmd, c" ")
+	string_append(cmd, high_start)
+	string_append(cmd, c" ")
+	string_append(cmd, object)
+	free(kc_shell(cmd.data))
+	assert1(kc_symbol_address(high, c"kc_main") > (0x7f00 << 32))
+	char* expected = kc_shell(kc_link(c"model_low", object))
+	assert_strings_equal(expected, kc_shell(high))
+
+
 void kc_float_reject(char* name, char* body):
 	char* source = kc_path(name)
 	assert_equal(1, file_write_text(source, body))

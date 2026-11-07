@@ -194,6 +194,23 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   stop it today, so such objects must be marked
   `OBJECT_FILES_NON_STANDARD` until read-only data moves out of `.text`.
 
+- **Code model.** Kernel code is linked in the top 2GB
+  (`0xffffffff80000000` and up; gcc's `-mcmodel=kernel` uses
+  sign-extended 32-bit absolute addresses there). W needs no code model
+  of its own: x64 code reaches data, `extern` objects, FFI slots and
+  functions only RIP-relatively, and every stored pointer is a 64-bit
+  word, so an object carries only `R_X86_64_PC32` and `R_X86_64_64`
+  relocations, never the `R_X86_64_32`/`32S` forms that overflow above
+  4GB. The only constraint is the usual one: `.text`, `.data` and the C
+  symbols W references must lie within ±2GB of each other, which a
+  kernel image (and any ordinary program) satisfies. The test checks the
+  relocation kinds with `readelf -r`, links the corpus with a
+  `-mcmodel=kernel` startup by `ld -Ttext-segment=0xffffffff80000000`
+  (no truncated relocation; the pointer words to `kc_counter` and
+  `kc_add` hold their kernel addresses), and links it at
+  `0x7f0000000000` in user space, where it runs and prints exactly what
+  the ordinary link prints. This holds with or without the flag.
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64
