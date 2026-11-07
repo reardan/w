@@ -28,6 +28,7 @@ extern int DispatchMessageW(char* msg)
 
 c_lib "oleacc.dll"
 extern int ObjectFromLresult(int result, char* riid, int wparam, int* out)
+extern int AccessibleChildren(int container, int start, int count, char* children, int32* obtained)
 
 c_lib "oleaut32.dll"
 extern int SafeArrayGetElement(int array, int32* index, char* value)
@@ -877,6 +878,417 @@ void text_pattern_checks(ui_uia_bridge* bridge, ui_access_tree* app, int root, i
 	text_range_left = doc
 
 
+/* #863 depth: glyph geometry, text attributes, multiple selections,
+ITextProvider2 / ITextEditProvider, a multi-selection list, a table
+with a row header and spans, LegacyIAccessible, IAccessible2 through
+IServiceProvider, spatial accNavigate and IEnumVARIANT (read by
+oleacc's AccessibleChildren). */
+
+char[128] depth_payload
+int depth_length
+int depth_action
+int depth_id
+
+
+int record_depth(void* context, int id, int action, char* data, int length):
+	depth_id = id
+	depth_action = action
+	depth_length = length
+	for i in range(length):
+		if (i < 127): depth_payload[i] = data[i]
+	return 1
+
+
+# Dispatches the one queued request and checks it.
+void expect_request(ui_uia_bridge* bridge, ui_access_tree* tree, int id, int action, char* payload):
+	depth_action = 0
+	assert_equal(1, ui_access_uia_dispatch(bridge, tree))
+	assert_equal(id, depth_id)
+	assert_equal(action, depth_action)
+	assert_equal(strlen(payload), depth_length)
+	assert_bytes_equal(payload, &depth_payload[0], depth_length)
+
+
+ui_access_tree* depth_build():
+	ui_access_tree* tree = ui_access_tree_new(32, 512)
+	tree.action = record_depth
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 300.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	add_text(tree, 1, UI_ACCESS_NAME, c"Depth")
+	ui_access_node* editor = ui_access_add(tree, 2, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 10.0, 200.0, 40.0))
+	editor.states = UI_ACCESS_FOCUSABLE
+	editor.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION | UI_ACCESS_SET_SELECTIONS
+	add_text(tree, 2, UI_ACCESS_NAME, c"Notes")
+	add_text(tree, 2, UI_ACCESS_VALUE, c"ab\ncd")
+	ui_rect[5] boxes
+	boxes[0] = ui_rect_new(14.0, 12.0, 10.0, 16.0)
+	boxes[1] = ui_rect_new(24.0, 12.0, 10.0, 16.0)
+	boxes[2] = ui_rect_new(34.0, 12.0, 0.0, 16.0)
+	boxes[3] = ui_rect_new(14.0, 30.0, 10.0, 16.0)
+	boxes[4] = ui_rect_new(24.0, 30.0, 12.0, 16.0)
+	assert_equal(1, ui_access_set_char_boxes(tree, 2, &boxes[0], 5))
+	ui_access_text_attrs* base = ui_access_default_attrs(tree, 2)
+	ui_access_attrs_set_family(base, c"Liberation Sans", 15)
+	base.size = 12
+	base.weight = 400
+	base.fg = 0x102030
+	base.bg = 0xffffff
+	ui_access_text_attrs* bold = ui_access_add_attr_run(tree, 2, 3, 5)
+	bold.weight = 700
+	assert_equal(1, ui_access_set_selection(tree, 2, 0, 1))
+	assert_equal(1, ui_access_add_selection(tree, 2, 3, 5))
+	ui_access_node* list = ui_access_add(tree, 3, 1, UI_ACCESS_LIST, ui_rect_new(10.0, 60.0, 100.0, 60.0))
+	list.states = UI_ACCESS_MULTISELECTABLE
+	add_text(tree, 3, UI_ACCESS_NAME, c"Fruit")
+	for k in range(3):
+		ui_access_node* item = ui_access_add(tree, 4 + k, 3, UI_ACCESS_LIST_ITEM, ui_rect_new(10.0, 60.0 + cast(float32, k) * 20.0, 100.0, 20.0))
+		item.actions = UI_ACCESS_SELECT | UI_ACCESS_ACTIVATE
+		if (k < 2): item.states = UI_ACCESS_SELECTED
+	add_text(tree, 4, UI_ACCESS_NAME, c"Apple")
+	add_text(tree, 5, UI_ACCESS_NAME, c"Cherry")
+	add_text(tree, 6, UI_ACCESS_NAME, c"Kiwi")
+	ui_access_add(tree, 10, 1, UI_ACCESS_TABLE, ui_rect_new(10.0, 130.0, 200.0, 80.0))
+	ui_access_node* head = ui_access_add(tree, 11, 10, UI_ACCESS_ROW, r)
+	head.states = UI_ACCESS_HEADER
+	ui_access_add(tree, 12, 11, UI_ACCESS_CELL, r)
+	add_text(tree, 12, UI_ACCESS_NAME, c"Kind")
+	ui_access_node* item_head = ui_access_add(tree, 13, 11, UI_ACCESS_CELL, r)
+	item_head.col_span = 2
+	add_text(tree, 13, UI_ACCESS_NAME, c"Item")
+	ui_access_add(tree, 20, 10, UI_ACCESS_ROW, r)
+	ui_access_node* fruit = ui_access_add(tree, 21, 20, UI_ACCESS_CELL, r)
+	fruit.states = UI_ACCESS_HEADER
+	fruit.row_span = 2
+	add_text(tree, 21, UI_ACCESS_NAME, c"Fruit")
+	ui_access_add(tree, 22, 20, UI_ACCESS_CELL, r)
+	add_text(tree, 22, UI_ACCESS_NAME, c"Apple")
+	ui_access_add(tree, 23, 20, UI_ACCESS_CELL, r)
+	add_text(tree, 23, UI_ACCESS_NAME, c"Red")
+	ui_access_add(tree, 30, 10, UI_ACCESS_ROW, r)
+	ui_access_node* cherry = ui_access_add(tree, 31, 30, UI_ACCESS_CELL, r)
+	cherry.col_span = 2
+	add_text(tree, 31, UI_ACCESS_NAME, c"Cherry")
+	tree.focused_id = 2
+	return tree
+
+
+# The 4 * lines doubles of a GetBoundingRectangles array (destroyed)
+# against expect.
+void assert_rects(int range, int lines, int* expect):
+	int rects = 0
+	assert_equal(0, call2(range, RANGE_RECTANGLES, cast(int, &rects)))
+	assert_equal(lines * 4 - 1, array_upper(rects))
+	int32[1] at
+	float64[1] number
+	for i in range(lines * 4):
+		at[0] = i
+		assert_equal(0, hr(SafeArrayGetElement(rects, &at[0], cast(char*, &number[0]))))
+		assert_equal(expect[i], cast(int, number[0]))
+	SafeArrayDestroy(rects)
+
+
+void check_depth_text(ui_uia_bridge* bridge, ui_access_tree* app, int root):
+	int editor = find_child(root, 2)
+	int text = pattern(editor, UIA_TextPatternId)
+	asserts(c"text pattern", text != 0)
+	# Both selections, and the multiple-selection support.
+	assert_equal(2, get32(text, 8))
+	int array = 0
+	assert_equal(0, call2(text, 3, cast(int, &array)))
+	assert_equal(1, array_upper(array))
+	int first = array_unknown(array, 0)
+	int second = array_unknown(array, 1)
+	SafeArrayDestroy(array)
+	assert_range_text(first, c"a")
+	assert_range_text(second, c"cd")
+
+	# Glyph geometry in screen pixels (origin 100, 200): one rectangle
+	# per line, a degenerate range is its character's box.
+	int doc = 0
+	assert_equal(0, call2(text, 7, cast(int, &doc)))
+	int[8] want
+	want[0] = 114
+	want[1] = 212
+	want[2] = 20
+	want[3] = 16
+	want[4] = 114
+	want[5] = 230
+	want[6] = 22
+	want[7] = 16
+	assert_rects(doc, 2, &want[0])
+	float64[2] point
+	point[0] = 120.0
+	point[1] = 235.0
+	int at = 0
+	assert_equal(0, call3(text, 6, cast(int, &point[0]), cast(int, &at)))
+	want[0] = 124
+	want[1] = 230
+	want[2] = 12
+	want[3] = 16
+	assert_rects(at, 1, &want[0])
+	release(at)
+
+	# Attributes: the default set, a run, mixed across runs.
+	char[24] v
+	ui_uia_variant_clear(&v[0])
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_FontNameAttributeId, cast(int, &v[0])))
+	assert_equal(VT_BSTR, load_int16(&v[0]) & 65535)
+	assert_bstr(c"Liberation Sans", load_int64(&v[8]))
+	VariantClear(&v[0])
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_FontSizeAttributeId, cast(int, &v[0])))
+	assert_equal(VT_R8, load_int16(&v[0]) & 65535)
+	float64* size = cast(float64*, &v[8])
+	assert_equal(12, cast(int, size[0]))
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_ForegroundColorAttributeId, cast(int, &v[0])))
+	assert_equal(VT_I4, load_int16(&v[0]) & 65535)
+	assert_equal(0x302010, load_int32(&v[8]))
+	assert_equal(0, call3(doc, RANGE_ATTRIBUTE, UIA_FontWeightAttributeId, cast(int, &v[0])))
+	assert_equal(VT_UNKNOWN, load_int16(&v[0]) & 65535)
+	int mixed = 0
+	UiaGetReservedMixedAttributeValue(&mixed)
+	asserts(c"mixed value", mixed != 0)
+	assert_equal(mixed, load_int64(&v[8]))
+	assert_equal(0, call3(second, RANGE_ATTRIBUTE, UIA_FontWeightAttributeId, cast(int, &v[0])))
+	assert_equal(VT_I4, load_int16(&v[0]) & 65535)
+	assert_equal(700, load_int32(&v[8]))
+	assert_equal(0, call3(first, RANGE_ATTRIBUTE, UIA_IsItalicAttributeId, cast(int, &v[0])))
+	assert_equal(VT_BOOL, load_int16(&v[0]) & 65535)
+	assert_equal(0, load_int16(&v[8]))
+	# FindAttribute finds the bold run.
+	ui_uia_variant_clear(&v[0])
+	ui_uia_variant_i4(&v[0], 700)
+	int found = 0
+	assert_equal(0, call5(doc, RANGE_FIND_ATTRIBUTE, UIA_FontWeightAttributeId, cast(int, &v[0]), 0, cast(int, &found)))
+	asserts(c"bold run found", found != 0)
+	assert_range_text(found, c"cd")
+	release(found)
+
+	# Adding and removing selections queue SET_SELECTIONS.
+	int b = find_text(doc, c"b", 0)
+	assert_equal(0, call1(b, RANGE_ADD_SELECTION))
+	expect_request(bridge, app, 2, UI_ACCESS_SET_SELECTIONS, c"0 1 3 5 1 2")
+	assert_equal(0, call1(second, RANGE_REMOVE_SELECTION))
+	expect_request(bridge, app, 2, UI_ACCESS_SET_SELECTIONS, c"0 1")
+	assert_equal(cast(int, UIA_E_INVALIDARG), call1(b, RANGE_REMOVE_SELECTION))
+	release(b)
+
+	# ITextProvider2: QueryInterface and the TextPattern2 id; the caret
+	# range is the caret's box.
+	int text2 = query(text, UI_UIA_TEXT2_IID)
+	asserts(c"ITextProvider2", text2 != 0)
+	int also = pattern(editor, UIA_TextPattern2Id)
+	asserts(c"TextPattern2", also != 0)
+	int32[1] active
+	int caret = 0
+	assert_equal(0, call3(text2, 10, cast(int, &active[0]), cast(int, &caret)))
+	assert_equal(1, active[0])
+	want[0] = 124
+	want[1] = 212
+	want[2] = 10
+	want[3] = 16
+	assert_rects(caret, 1, &want[0])
+	release(caret)
+	# ITextEditProvider: no composition.
+	int edit = pattern(editor, UIA_TextEditPatternId)
+	asserts(c"TextEdit", edit != 0)
+	int composition = 7
+	assert_equal(0, call2(edit, 9, cast(int, &composition)))
+	assert_equal(0, composition)
+
+	# LegacyIAccessible and IAccessible2.
+	int legacy = pattern(editor, UIA_LegacyIAccessiblePatternId)
+	asserts(c"LegacyIAccessible", legacy != 0)
+	int name = 0
+	assert_equal(0, call2(legacy, 8, cast(int, &name)))
+	assert_bstr(c"Notes", name)
+	SysFreeString(name)
+	assert_equal(ROLE_SYSTEM_TEXT, get32(legacy, 11))
+	assert_equal(CHILDID_SELF, get32(legacy, 7))
+	int acc = acc_of(editor)
+	int via = 0
+	assert_equal(0, call2(legacy, 6, cast(int, &via)))
+	assert_equal(acc, via)
+	release(via)
+	int service = query(acc, ui_uia_kind_slot(UI_UIA_SERVICE))
+	asserts(c"IServiceProvider", service != 0)
+	int ia2 = 0
+	char* iid_acc = ui_uia_iids_at(ui_uia_kind_slot(UI_UIA_ACCESSIBLE))
+	char* iid_ia2 = ui_uia_iids_at(ui_uia_kind_slot(UI_UIA_IA2))
+	assert_equal(0, call4(service, 3, cast(int, iid_acc), cast(int, iid_ia2), cast(int, &ia2)))
+	asserts(c"IAccessible2", ia2 != 0)
+	assert_equal(ROLE_SYSTEM_TEXT, get32(ia2, 31))
+	int states = get32(ia2, 35)
+	assert_equal(IA2_STATE_EDITABLE | IA2_STATE_SELECTABLE_TEXT | IA2_STATE_MULTI_LINE, states)
+	assert_equal(0 - 2, get32(ia2, 41))
+	assert_equal(0, get32(ia2, 43))
+	# IAccessible's own methods through the IAccessible2 vtable.
+	assert_equal(0, acc_text(ia2, 10, CHILDID_SELF, c"Notes"))
+	release(ia2)
+	release(service)
+	release(acc)
+	release(legacy)
+	release(edit)
+	release(also)
+	release(text2)
+	release(first)
+	release(second)
+	release(doc)
+	release(text)
+	release(editor)
+
+
+void check_depth_list(ui_uia_bridge* bridge, ui_access_tree* app, int root):
+	int list = find_child(root, 3)
+	int selection = pattern(list, UIA_SelectionPatternId)
+	assert_equal(1, get32(selection, 4))
+	assert_array(selection, 3, 2, 4, 5)
+	int list_fragment = fragment_of(list)
+	int apple = simple_of(navigate(list_fragment, NavigateDirection_FirstChild))
+	int cherry = simple_of(navigate(fragment_of(apple), NavigateDirection_NextSibling))
+	int kiwi = simple_of(navigate(fragment_of(cherry), NavigateDirection_NextSibling))
+	assert_equal(6, automation_id(kiwi))
+	int kiwi_item = pattern(kiwi, UIA_SelectionItemPatternId)
+	assert_equal(0, call1(kiwi_item, 4))
+	expect_request(bridge, app, 6, UI_ACCESS_SELECT, c"add")
+	int cherry_item = pattern(cherry, UIA_SelectionItemPatternId)
+	assert_equal(0, call1(cherry_item, 5))
+	expect_request(bridge, app, 5, UI_ACCESS_SELECT, c"remove")
+	assert_equal(0, call1(kiwi_item, 3))
+	expect_request(bridge, app, 6, UI_ACCESS_SELECT, c"only")
+
+	# MSAA: multiselectable states, accSelect, the selection as an
+	# enumerator, spatial navigation and AccessibleChildren.
+	int acc = acc_of(list)
+	int st = acc_state(acc, CHILDID_SELF)
+	assert_equal(STATE_SYSTEM_MULTISELECTABLE | STATE_SYSTEM_EXTSELECTABLE, st & (STATE_SYSTEM_MULTISELECTABLE | STATE_SYSTEM_EXTSELECTABLE))
+	char[24] child
+	assert_equal(0, call3(acc, 21, SELFLAG_ADDSELECTION, cast(int, child_id(&child[0], 3))))
+	expect_request(bridge, app, 6, UI_ACCESS_SELECT, c"add")
+	assert_equal(0, call3(acc, 21, SELFLAG_REMOVESELECTION, cast(int, child_id(&child[0], 1))))
+	expect_request(bridge, app, 4, UI_ACCESS_SELECT, c"remove")
+	char[24] answer
+	ui_uia_variant_clear(&answer[0])
+	assert_equal(0, call2(acc, 19, cast(int, &answer[0])))
+	assert_equal(VT_UNKNOWN, load_int16(&answer[0]) & 65535)
+	int selected = load_int64(&answer[8])
+	char[72] items
+	for i in range(72): items[i] = 0
+	int32[1] fetched
+	assert_equal(UIA_S_FALSE, call4(selected, 3, 3, cast(int, &items[0]), cast(int, &fetched[0])))
+	assert_equal(2, fetched[0])
+	int apple_acc = acc_of(apple)
+	int cherry_acc = acc_of(cherry)
+	int kiwi_acc = acc_of(kiwi)
+	assert_acc_variant(&items[0], VT_DISPATCH, apple_acc)
+	assert_acc_variant(&items[24], VT_DISPATCH, cherry_acc)
+	release(selected)
+	assert_equal(0, call4(apple_acc, 23, NAVDIR_DOWN, cast(int, child_id(&child[0], CHILDID_SELF)), cast(int, &answer[0])))
+	assert_acc_variant(&answer[0], VT_DISPATCH, cherry_acc)
+	assert_equal(0, call4(kiwi_acc, 23, NAVDIR_UP, cast(int, child_id(&child[0], CHILDID_SELF)), cast(int, &answer[0])))
+	assert_acc_variant(&answer[0], VT_DISPATCH, cherry_acc)
+	assert_equal(UIA_S_FALSE, call4(apple_acc, 23, NAVDIR_UP, cast(int, child_id(&child[0], CHILDID_SELF)), cast(int, &answer[0])))
+	assert_equal(UIA_S_FALSE, call4(apple_acc, 23, NAVDIR_RIGHT, cast(int, child_id(&child[0], CHILDID_SELF)), cast(int, &answer[0])))
+	assert_equal(0, call4(acc, 23, NAVDIR_DOWN, cast(int, child_id(&child[0], 2)), cast(int, &answer[0])))
+	assert_acc_variant(&answer[0], VT_DISPATCH, kiwi_acc)
+	for i in range(72): items[i] = 0
+	int32[1] obtained
+	assert_equal(0, hr(AccessibleChildren(acc, 0, 3, &items[0], &obtained[0])))
+	assert_equal(3, obtained[0])
+	assert_acc_variant(&items[0], VT_DISPATCH, apple_acc)
+	assert_acc_variant(&items[24], VT_DISPATCH, cherry_acc)
+	assert_acc_variant(&items[48], VT_DISPATCH, kiwi_acc)
+	int en = query(acc, ui_uia_kind_slot(UI_UIA_ENUM))
+	asserts(c"IEnumVARIANT", en != 0)
+	assert_equal(0, call1(en, 5))
+	assert_equal(0, call2(en, 4, 2))
+	int copy = 0
+	assert_equal(0, call2(en, 6, cast(int, &copy)))
+	assert_equal(0, call4(copy, 3, 1, cast(int, &items[0]), cast(int, &fetched[0])))
+	assert_equal(1, fetched[0])
+	assert_acc_variant(&items[0], VT_DISPATCH, kiwi_acc)
+	assert_equal(UIA_S_FALSE, call4(copy, 3, 1, cast(int, &items[0]), cast(int, &fetched[0])))
+	release(copy)
+	release(en)
+	# LegacyIAccessible's selection and IAccessible2's group position.
+	int legacy = pattern(list, UIA_LegacyIAccessiblePatternId)
+	assert_array(legacy, 15, 2, 4, 5)
+	assert_equal(ROLE_SYSTEM_LIST, get32(legacy, 11))
+	int ia2 = query(cherry_acc, ui_uia_kind_slot(UI_UIA_IA2))
+	asserts(c"IAccessible2 by QueryInterface", ia2 != 0)
+	int32[3] group
+	assert_equal(0, call4(ia2, 34, cast(int, &group[0]), cast(int, &group[1]), cast(int, &group[2])))
+	assert_equal(0, group[0])
+	assert_equal(3, group[1])
+	assert_equal(2, group[2])
+	assert_equal(1, get32(ia2, 43))
+	release(ia2)
+	release(legacy)
+	release(apple_acc)
+	release(cherry_acc)
+	release(kiwi_acc)
+	release(acc)
+	release(kiwi_item)
+	release(cherry_item)
+	release(apple)
+	release(cherry)
+	release(kiwi)
+	release(list_fragment)
+	release(selection)
+	release(list)
+
+
+void check_depth_table(int root):
+	int table = find_child(root, 10)
+	int grid = pattern(table, UIA_GridPatternId)
+	assert_equal(2, get32(grid, 4))
+	assert_equal(3, get32(grid, 5))
+	int cherry = 0
+	assert_equal(0, call4(grid, 3, 1, 2, cast(int, &cherry)))
+	assert_equal(31, automation_id(cherry))
+	int item = pattern(cherry, UIA_GridItemPatternId)
+	assert_equal(1, get32(item, 3))
+	assert_equal(1, get32(item, 4))
+	assert_equal(1, get32(item, 5))
+	assert_equal(2, get32(item, 6))
+	assert_equal(2, provider_i4(cherry, UIA_GridItemColumnSpanPropertyId))
+	int table_item = pattern(cherry, UIA_TableItemPatternId)
+	assert_array(table_item, 3, 1, 21, 0)
+	assert_array(table_item, 4, 1, 13, 0)
+	int table_pattern = pattern(table, UIA_TablePatternId)
+	assert_array(table_pattern, 3, 1, 21, 0)
+	int fruit = 0
+	assert_equal(0, call4(grid, 3, 0, 0, cast(int, &fruit)))
+	assert_equal(21, automation_id(fruit))
+	assert_equal(UIA_HeaderItemControlTypeId, provider_i4(fruit, UIA_ControlTypePropertyId))
+	int fruit_item = pattern(fruit, UIA_GridItemPatternId)
+	assert_equal(2, get32(fruit_item, 5))
+	int acc = acc_of(fruit)
+	assert_equal(ROLE_SYSTEM_ROWHEADER, acc_role(acc, CHILDID_SELF))
+	release(acc)
+	release(fruit_item)
+	release(fruit)
+	release(table_pattern)
+	release(table_item)
+	release(item)
+	release(cherry)
+	release(grid)
+	release(table)
+
+
+void check_depth():
+	ui_uia_bridge* bridge = ui_access_uia_open(0)
+	ui_access_uia_set_origin(bridge, 100, 200)
+	ui_access_tree* app = depth_build()
+	assert_equal(1, ui_access_uia_publish(bridge, app))
+	int root = ui_access_uia_root(bridge)
+	check_depth_text(bridge, app, root)
+	check_depth_list(bridge, app, root)
+	check_depth_table(root)
+	release(root)
+	ui_access_uia_close(bridge)
+	ui_access_tree_free(app)
+
+
 int main():
 	ui_uia_bridge* bridge = ui_access_uia_open(0)
 	asserts(c"bridge", bridge != 0)
@@ -1241,7 +1653,7 @@ int main():
 	assert_acc_variant(&answer[0], VT_DISPATCH, box_acc)
 	assert_equal(UIA_S_FALSE, call4(acc, 23, NAVDIR_PREVIOUS, cast(int, child_id(&child[0], 1)), cast(int, &answer[0])))
 	assert_equal(cast(int, UIA_E_INVALIDARG), call4(acc, 23, NAVDIR_FIRSTCHILD, cast(int, child_id(&child[0], 1)), cast(int, &answer[0])))
-	assert_equal(cast(int, DISP_E_MEMBERNOTFOUND), call4(acc, 23, NAVDIR_UP, cast(int, child_id(&child[0], 1)), cast(int, &answer[0])))
+	assert_equal(UIA_S_FALSE, call4(acc, 23, NAVDIR_UP, cast(int, child_id(&child[0], 1)), cast(int, &answer[0])))
 	assert_equal(0, call2(acc, 18, cast(int, &answer[0])))
 	assert_acc_variant(&answer[0], VT_DISPATCH, button_acc)
 	assert_equal(0, call2(button_acc, 18, cast(int, &answer[0])))
@@ -1428,5 +1840,6 @@ int main():
 	ui_access_tree_free(app)
 	ui_access_tree_free(next)
 	check_live()
+	check_depth()
 	println(c"UI Automation bridge OK")
 	return 0

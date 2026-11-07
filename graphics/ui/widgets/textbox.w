@@ -16,6 +16,7 @@ import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import lib.mem
 import graphics.ui.grapheme
+import graphics.ui.widgets.access_text
 
 
 # Caller-owned single-line text buffer for ui_textbox. text stays
@@ -83,6 +84,22 @@ void ui_textbox_backspace(ui_textbox_state* st):
 
 void ui_textbox_mark_edited(ui_textbox_state* st):
 	if (st.edited == 0): st.edited = 1
+
+
+# The field's glyph boxes and text attributes for the accessibility
+# snapshot (#863), from the layout ui_textbox draws: characters from the
+# padded left edge, vertically centred, clipped to the drawn width.
+void ui_textbox_access_layout(ui_context* ctx, ui_access_node* node, ui_textbox_state* st, ui_rect r):
+	if ((node == 0) || (ctx.access == 0)): return
+	int scale = ctx.theme.text_scale
+	float32 pad = cast(float32, ctx.theme.pad)
+	float32 h = cast(float32, ui_text_height(scale))
+	ui_rect* boxes = cast(ui_rect*, malloc((st.length + 1) * sizeof(ui_rect)))
+	int count = ui_access_line_boxes(&st.text[0], st.length, scale, r.x + pad, r.y + (r.h - h) * 0.5, h, r.x + r.w - pad, boxes)
+	ui_access_publish_boxes(ctx, node, boxes, count)
+	ui_color fill = ctx.theme.widget
+	if (ctx.disabled): fill = ctx.theme.disabled_widget
+	ui_access_field_attrs(ctx, node, scale, ui_text_color(ctx), fill)
 
 
 # Single-line text input over caller-owned state. Clicking focuses it
@@ -181,4 +198,5 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	ui_text_input_declare(ctx, id, r, 0)
 	ui_access_set_value(ctx, node, &st.text[0], st.length)
 	ui_access_set_caret(ctx, node, st.caret, st.caret)
+	ui_textbox_access_layout(ctx, node, st, r)
 	return submitted

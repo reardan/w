@@ -34,6 +34,14 @@ const int UI_ACCESS_EXPANDED = 8
 const int UI_ACCESS_READONLY = 16
 const int UI_ACCESS_HIDDEN = 32
 const int UI_ACCESS_FOCUSABLE = 64
+# A list, tab list or table whose items can be selected together
+# (#863): bridges then offer adding and removing items, select all and
+# clear, through UI_ACCESS_SELECT.
+const int UI_ACCESS_MULTISELECTABLE = 128
+# A header cell (#863): in a table's data row it is that row's header;
+# on a ROW it marks the column-header row explicitly (see
+# graphics.ui.accessibility_table).
+const int UI_ACCESS_HEADER = 256
 const int UI_ACCESS_ACTIVATE = 1
 const int UI_ACCESS_FOCUS = 2
 const int UI_ACCESS_SET_VALUE = 4
@@ -42,6 +50,17 @@ const int UI_ACCESS_TOGGLE = 8
 # "anchor active" pair of character offsets built by
 # ui_access_dispatch_selection (see there).
 const int UI_ACCESS_SET_SELECTION = 16
+# Select or deselect an item of a selection container (#863). The
+# payload is ASCII "add", "remove" or "only" (ui_access_select_mode);
+# a container without UI_ACCESS_MULTISELECTABLE only ever gets "only".
+const int UI_ACCESS_SELECT = 32
+# Replace a text node's selections (#863): the payload is the primary
+# "anchor active" pair followed by "start end" pairs of the further
+# selections, all space separated (ui_access_selections_format).
+const int UI_ACCESS_SET_SELECTIONS = 64
+const int UI_ACCESS_SELECT_ADD = 1
+const int UI_ACCESS_SELECT_REMOVE = 2
+const int UI_ACCESS_SELECT_ONLY = 3
 const int UI_ACCESS_NAME = 1
 const int UI_ACCESS_VALUE = 2
 const int UI_ACCESS_DESCRIPTION = 3
@@ -57,6 +76,27 @@ type ui_access_action = fn(void*, int, int, char*, int) -> int
 struct ui_access_text:
 	char* data
 	int length
+
+
+# Text attributes (#863) of a run of a text node's value: what screen
+# readers report as font, size, weight and colours. Unknown values are
+# 0 (size, weight), -1 (colours) or an empty family.
+struct ui_access_text_attrs:
+	ui_access_text family
+	int size                    # points
+	int weight                  # CSS weight, 100..900 (400 normal, 700 bold)
+	int italic
+	int underline
+	int fg                      # 0xRRGGBB
+	int bg
+
+
+# Characters [start, end) of the value with attrs instead of the
+# node's default attributes.
+struct ui_access_text_run:
+	int start
+	int end
+	ui_access_text_attrs attrs
 
 struct ui_access_node:
 	int id
@@ -75,6 +115,25 @@ struct ui_access_node:
 	int caret
 	int selection_start
 	int selection_end
+	# Further selections (#863), pairs of [start, end) character
+	# offsets after the primary one above (ui_access_add_selection).
+	int* selections
+	int selection_count
+	# Glyph geometry (#863): one box per character of value, in the
+	# snapshot's coordinates (ui_access_set_char_boxes); 0 when the
+	# node publishes none and bridges fall back to its bounds.
+	ui_rect* char_boxes
+	int char_box_count
+	# Text attributes (#863): the default for the whole value and runs
+	# that differ from it, in order (ui_access_default_attrs,
+	# ui_access_add_attr_run).
+	ui_access_text_attrs* attrs
+	ui_access_text_run* runs
+	int run_count
+	# Table cell spans (#863): rows and columns the cell covers; 0
+	# counts as 1.
+	int row_span
+	int col_span
 	ui_rect bounds
 	ui_access_text name
 	ui_access_text value
@@ -262,6 +321,59 @@ int ui_access_selection_format(char* out, int anchor, int active):
 	return n
 
 
+# The mode of a UI_ACCESS_SELECT payload: UI_ACCESS_SELECT_ADD,
+# _REMOVE or _ONLY, 0 when it is none of "add", "remove", "only".
+int ui_access_select_mode(char* data, int length):
+	if ((length == 3) && (data[0] == 'a') && (data[1] == 'd') && (data[2] == 'd')): return UI_ACCESS_SELECT_ADD
+	if ((length == 4) && (data[0] == 'o') && (data[1] == 'n') && (data[2] == 'l') && (data[3] == 'y')): return UI_ACCESS_SELECT_ONLY
+	if (length == 6):
+		char* word = c"remove"
+		for i in range(6):
+			if (data[i] != word[i]): return 0
+		return UI_ACCESS_SELECT_REMOVE
+	return 0
+
+
+char* ui_access_select_word(int mode):
+	if (mode == UI_ACCESS_SELECT_ADD): return c"add"
+	if (mode == UI_ACCESS_SELECT_REMOVE): return c"remove"
+	return c"only"
+
+
+# Parse a SET_SELECTIONS payload: an even number (2 or more) of decimal
+# numbers separated by single spaces. Returns the number of pairs (0
+# when malformed) and stores up to cap pairs' numbers into out.
+int ui_access_selections_parse(char* data, int length, int* out, int cap):
+	int values = 0
+	int current = 0
+	int digits = 0
+	for i in range(length + 1):
+		if ((i == length) || (data[i] == ' ')):
+			if (digits == 0): return 0
+			if ((out != 0) && (values < cap * 2)): out[values] = current
+			values = values + 1
+			current = 0
+			digits = 0
+		else:
+			if ((data[i] < '0') || (data[i] > '9') || (digits >= 9)): return 0
+			current = current * 10 + (data[i] - '0')
+			digits = digits + 1
+	if ((values < 2) || ((values % 2) != 0)): return 0
+	return values / 2
+
+
+# Encode count pairs of numbers into a SET_SELECTIONS payload (out has
+# room for 24 bytes per pair); returns its length.
+int ui_access_selections_format(char* out, int* pairs, int count):
+	int n = 0
+	for k in range(count):
+		if (k > 0):
+			out[n] = ' '
+			n = n + 1
+		n = n + ui_access_selection_format(&out[n], pairs[k * 2], pairs[k * 2 + 1])
+	return n
+
+
 int ui_access_inert(ui_access_node* node):
 	while (node != 0):
 		if ((node.states & (UI_ACCESS_DISABLED | UI_ACCESS_HIDDEN)) != 0): return 1
@@ -273,7 +385,7 @@ int ui_access_inert(ui_access_node* node):
 int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int length):
 	ui_access_node* node = ui_access_find(tree, id)
 	if ((node == 0) || (cast(int, tree.action) == 0)): return 0
-	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE) && (action != UI_ACCESS_SET_SELECTION)): return 0
+	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE) && (action != UI_ACCESS_SET_SELECTION) && (action != UI_ACCESS_SELECT) && (action != UI_ACCESS_SET_SELECTIONS)): return 0
 	if ((node.actions & action) == 0): return 0
 	if (ui_access_inert(node)): return 0
 	if ((action == UI_ACCESS_SET_VALUE) && ((node.states & UI_ACCESS_READONLY) != 0)): return 0
@@ -287,6 +399,14 @@ int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int
 		int anchor = 0
 		int active = 0
 		if (!ui_access_selection_parse(data, length, &anchor, &active)): return 0
+	if (action == UI_ACCESS_SET_SELECTIONS):
+		if (ui_access_selections_parse(data, length, 0, 0) == 0): return 0
+	if (action == UI_ACCESS_SELECT):
+		int mode = ui_access_select_mode(data, length)
+		if (mode == 0): return 0
+		# Only a multi-selection container's items add or remove.
+		int multiple = (node.parent != 0) && ((node.parent.states & UI_ACCESS_MULTISELECTABLE) != 0)
+		if ((mode != UI_ACCESS_SELECT_ONLY) && !multiple): return 0
 	return tree.action(tree.context, id, action, data, length)
 
 
@@ -298,6 +418,13 @@ int ui_access_dispatch_selection(ui_access_tree* tree, int id, int anchor, int a
 	char[32] payload
 	int n = ui_access_selection_format(&payload[0], anchor, active)
 	return ui_access_dispatch(tree, id, UI_ACCESS_SET_SELECTION, &payload[0], n)
+
+# Ask the host to select (add), deselect (remove) or exclusively select
+# (only) item id through ui_access_dispatch.
+int ui_access_dispatch_select(ui_access_tree* tree, int id, int mode):
+	char* word = ui_access_select_word(mode)
+	return ui_access_dispatch(tree, id, UI_ACCESS_SELECT, word, strlen(word))
+
 
 # next is forward when reverse=0; otherwise previous. Insertion order
 # is caller supplied focus order, with wraparound, skipping inert nodes.
@@ -444,6 +571,172 @@ ui_access_text* ui_access_live_change(ui_access_node* n, ui_access_node* was):
 	return 0
 
 
+# Add a further selected range [start, end) of characters to a text
+# node that already has its primary selection (ui_access_set_selection).
+# Empty or out-of-range ranges leave the node unchanged and return 0.
+int ui_access_add_selection(ui_access_tree* tree, int id, int start, int end):
+	ui_access_node* node = ui_access_find(tree, id)
+	if (node == 0): return 0
+	int count = ui_access_char_count(node.value.data, node.value.length)
+	if ((start < 0) || (end <= start) || (end > count) || (node.selection_count >= 64)): return 0
+	int* grown = cast(int*, malloc((node.selection_count + 1) * 2 * __word_size__))
+	for i in range(node.selection_count * 2): grown[i] = node.selections[i]
+	grown[node.selection_count * 2] = start
+	grown[node.selection_count * 2 + 1] = end
+	free(cast(char*, node.selections))
+	node.selections = grown
+	node.selection_count = node.selection_count + 1
+	return 1
+
+
+# Selected ranges of a text node: the primary one when it is not empty,
+# then the further ones.
+int ui_access_selection_total(ui_access_node* node):
+	if (node == 0): return 0
+	return ui_access_has_selection(node) + node.selection_count
+
+
+# Selected range k (ui_access_selection_total) into start and end; 0
+# when there is none.
+int ui_access_selection_range(ui_access_node* node, int k, int* start, int* end):
+	if ((node == 0) || (k < 0) || (k >= ui_access_selection_total(node))): return 0
+	if (ui_access_has_selection(node)):
+		if (k == 0):
+			start[0] = node.selection_start
+			end[0] = node.selection_end
+			return 1
+		k = k - 1
+	start[0] = node.selections[k * 2]
+	end[0] = node.selections[k * 2 + 1]
+	return 1
+
+
+# Glyph geometry: boxes[0..count) are the boxes of the value's count
+# characters, in the snapshot's coordinates (set the value first; count
+# must match it). A newline's box is where the caret sits at the end of
+# its line. Returns 0 and leaves the node unchanged otherwise.
+int ui_access_set_char_boxes(ui_access_tree* tree, int id, ui_rect* boxes, int count):
+	ui_access_node* node = ui_access_find(tree, id)
+	if ((node == 0) || (count < 0) || ((boxes == 0) && (count > 0))): return 0
+	if (count != ui_access_char_count(node.value.data, node.value.length)): return 0
+	ui_rect* owned = cast(ui_rect*, malloc((count + 1) * sizeof(ui_rect)))
+	for i in range(count): owned[i] = boxes[i]
+	free(cast(char*, node.char_boxes))
+	node.char_boxes = owned
+	node.char_box_count = count
+	return 1
+
+
+void ui_access_attrs_init(ui_access_text_attrs* a):
+	a.family.data = 0
+	a.family.length = 0
+	a.size = 0
+	a.weight = 0
+	a.italic = 0
+	a.underline = 0
+	a.fg = 0 - 1
+	a.bg = 0 - 1
+
+
+# Set the font family name (UTF-8, at most 256 bytes); 0 when invalid.
+int ui_access_attrs_set_family(ui_access_text_attrs* a, char* data, int length):
+	if ((a == 0) || (length < 0) || (length > 256) || ((data == 0) && (length > 0))): return 0
+	if (!utf8_validate_bytes(data, length)): return 0
+	char* owned = cast(char*, malloc(length + 1))
+	for i in range(length): owned[i] = data[i]
+	owned[length] = 0
+	free(a.family.data)
+	a.family.data = owned
+	a.family.length = length
+	return 1
+
+
+void ui_access_attrs_copy(ui_access_text_attrs* to, ui_access_text_attrs* from):
+	free(to.family.data)
+	to[0] = from[0]
+	to.family.data = 0
+	to.family.length = 0
+	ui_access_attrs_set_family(to, from.family.data, from.family.length)
+
+
+int ui_access_attrs_same(ui_access_text_attrs* a, ui_access_text_attrs* b):
+	if ((a.size != b.size) || (a.weight != b.weight) || (a.italic != b.italic) || (a.underline != b.underline) || (a.fg != b.fg) || (a.bg != b.bg)): return 0
+	return ui_access_text_same(&a.family, &b.family)
+
+
+# The default text attributes of node id, created (all unknown) on
+# first use for the caller to fill; 0 when there is no such node.
+ui_access_text_attrs* ui_access_default_attrs(ui_access_tree* tree, int id):
+	ui_access_node* node = ui_access_find(tree, id)
+	if (node == 0): return 0
+	if (node.attrs == 0):
+		node.attrs = new ui_access_text_attrs()
+		ui_access_attrs_init(node.attrs)
+	return node.attrs
+
+
+# Add a run of characters [start, end) with their own attributes,
+# starting as a copy of the defaults, for the caller to change. Runs are
+# added in order and do not overlap; anything else returns 0.
+ui_access_text_attrs* ui_access_add_attr_run(ui_access_tree* tree, int id, int start, int end):
+	ui_access_node* node = ui_access_find(tree, id)
+	if ((node == 0) || (start < 0) || (end <= start)): return 0
+	if (end > ui_access_char_count(node.value.data, node.value.length)): return 0
+	if ((node.run_count > 0) && (node.runs[node.run_count - 1].end > start)): return 0
+	ui_access_text_run* grown = cast(ui_access_text_run*, malloc((node.run_count + 1) * sizeof(ui_access_text_run)))
+	for i in range(node.run_count): grown[i] = node.runs[i]
+	free(cast(char*, node.runs))
+	node.runs = grown
+	ui_access_text_run* run = &node.runs[node.run_count]
+	node.run_count = node.run_count + 1
+	run.start = start
+	run.end = end
+	ui_access_attrs_init(&run.attrs)
+	if (node.attrs != 0): ui_access_attrs_copy(&run.attrs, node.attrs)
+	return &run.attrs
+
+
+# Copy src's #863 text data (boxes, attributes, further selections) and
+# table spans onto dst in tree.
+void ui_access_copy_depth(ui_access_tree* tree, ui_access_node* dst, ui_access_node* src):
+	dst.row_span = src.row_span
+	dst.col_span = src.col_span
+	for k in range(src.selection_count): ui_access_add_selection(tree, dst.id, src.selections[k * 2], src.selections[k * 2 + 1])
+	if (src.char_boxes != 0): ui_access_set_char_boxes(tree, dst.id, src.char_boxes, src.char_box_count)
+	if (src.attrs != 0): ui_access_attrs_copy(ui_access_default_attrs(tree, dst.id), src.attrs)
+	for k in range(src.run_count):
+		ui_access_text_run* run = &src.runs[k]
+		ui_access_text_attrs* a = ui_access_add_attr_run(tree, dst.id, run.start, run.end)
+		if (a != 0): ui_access_attrs_copy(a, &run.attrs)
+
+
+# 1 when two nodes carry the same #863 text data and spans.
+int ui_access_depth_same(ui_access_node* x, ui_access_node* y):
+	if ((x.row_span != y.row_span) || (x.col_span != y.col_span)): return 0
+	if ((x.selection_count != y.selection_count) || (x.char_box_count != y.char_box_count) || (x.run_count != y.run_count)): return 0
+	if ((x.char_boxes == 0) != (y.char_boxes == 0)): return 0
+	if ((x.attrs == 0) != (y.attrs == 0)): return 0
+	for i in range(x.selection_count * 2):
+		if (x.selections[i] != y.selections[i]): return 0
+	for i in range(x.char_box_count):
+		ui_rect a = x.char_boxes[i]
+		ui_rect b = y.char_boxes[i]
+		if ((a.x != b.x) || (a.y != b.y) || (a.w != b.w) || (a.h != b.h)): return 0
+	if ((x.attrs != 0) && !ui_access_attrs_same(x.attrs, y.attrs)): return 0
+	for i in range(x.run_count):
+		if ((x.runs[i].start != y.runs[i].start) || (x.runs[i].end != y.runs[i].end) || !ui_access_attrs_same(&x.runs[i].attrs, &y.runs[i].attrs)): return 0
+	return 1
+
+
+void ui_access_free_depth(ui_access_node* n):
+	free(cast(char*, n.selections))
+	free(cast(char*, n.char_boxes))
+	if (n.attrs != 0): free(n.attrs.family.data)
+	free(cast(char*, n.attrs))
+	for i in range(n.run_count): free(n.runs[i].attrs.family.data)
+	free(cast(char*, n.runs))
+
+
 # 1 when two snapshots would publish identically: same nodes in the same
 # order with equal fields, text, bounds and focus. Lets a per-frame
 # capture republish only on semantic changes.
@@ -463,6 +756,7 @@ int ui_access_tree_same(ui_access_tree* a, ui_access_tree* b):
 		if (xp != yp): return 0
 		if ((x.bounds.x != y.bounds.x) || (x.bounds.y != y.bounds.y) || (x.bounds.w != y.bounds.w) || (x.bounds.h != y.bounds.h)): return 0
 		if (!ui_access_text_same(&x.name, &y.name) || !ui_access_text_same(&x.value, &y.value) || !ui_access_text_same(&x.description, &y.description)): return 0
+		if (!ui_access_depth_same(x, y)): return 0
 		x = x.allocation_next
 		y = y.allocation_next
 	return (x == 0) && (y == 0)
@@ -488,6 +782,7 @@ ui_access_tree* ui_access_tree_clone(ui_access_tree* tree):
 			ui_access_set_text(copy, id, UI_ACCESS_NAME, n.name.data, n.name.length)
 			ui_access_set_text(copy, id, UI_ACCESS_VALUE, n.value.data, n.value.length)
 			ui_access_set_text(copy, id, UI_ACCESS_DESCRIPTION, n.description.data, n.description.length)
+			ui_access_copy_depth(copy, c, n)
 	copy.focused_id = tree.focused_id
 	ui_access_announce(copy, tree.announcement.data, tree.announcement.length, tree.announcement_live)
 	return copy
@@ -500,6 +795,7 @@ void ui_access_tree_free(ui_access_tree* tree):
 		free(n.name.data)
 		free(n.value.data)
 		free(n.description.data)
+		ui_access_free_depth(n)
 		free(n)
 		n = next
 	map_free[int, ui_access_node*](tree.nodes)
