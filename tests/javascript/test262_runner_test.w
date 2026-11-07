@@ -35,19 +35,19 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":41,\"FAIL\":0,\"UNSUPPORTED\":12,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 32 && ht_number(report, c"assertions") == 194 && ht_number(report, c"variants") == 53 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":405,\"FAIL\":0,\"UNSUPPORTED\":12,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 60 && ht_number(report, c"assertions") == 268 && ht_number(report, c"variants") == 417 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 40
+		int passes = 404
 		int unsupported = 13
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 42
+			passes = 406
 			unsupported = 11
 			before = c"UNSUPPORTED"
 			after = c"PASS"
