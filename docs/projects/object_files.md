@@ -46,7 +46,7 @@ long w_add(long a, long b);
   A W `int` is 64 bits on x64 (C `long`/`int64_t`). Variadic exports
   and struct arguments or returns by value are rejected.
 - **Symbols.** Exported adapters and globals declared in the
-  command-line root files are `GLOBAL`. `extern` functions and data
+  command-line root files (unless marked `static`) are `GLOBAL`. `extern` functions and data
   objects are undefined `GLOBAL` symbols. All other W functions and
   globals — including everything from imported modules and the runtime —
   are `LOCAL`, so two W objects (each with its own runtime) do not clash.
@@ -60,7 +60,77 @@ long w_add(long a, long b);
   before or after) and `char* s = c"text"`. They work in every native
   executable too (`tests/global_address_init_test.w`). A function
   pointer stored this way holds the W-convention entry, so it is for W
-  callers; C should call exported functions by name.
+  callers; C should call exported functions by name. `--c-abi` (below)
+  makes every function pointer a System V one.
+- **File-local symbols.** `static` before a function or global
+  definition (`static int helper(int a):`, `static int count = 0`)
+  keeps it a `LOCAL` symbol even in a root file, like C's `static`.
+  It is contextual like `export` (a type or symbol named `static`
+  keeps the identifier meaning), and other outputs accept and ignore
+  it, so one source compiles everywhere.
+
+## The C ABI mode
+
+`--c-abi` (with `--emit=obj --freestanding`, x64 only) makes the
+object usable as C code is: assembly and C call any of its functions
+by name, store their addresses in tables, and hand W their own
+function pointers.
+
+```sh
+./bin/wv2 x64 --emit=obj --freestanding --c-abi lib.w -o lib.o
+```
+
+`tests/object_c_abi_test.w` links `tests/object_file/c_abi_library.w`
+with `tests/object_file/c_abi_main.c` (PIE, `-no-pie`, `-static`, and
+under the AST, streaming and `-O0` front-end modes), and checks the
+symbol bindings and the diagnostics.
+
+- **Entries.** Every function compiled through `be_function_define`
+  gets a 5-byte System V entry right before its W entry: a `jmp` to an
+  adapter emitted after the last function (`code_generator/c_abi.w`).
+  The adapter is the export adapter's shape — System V arguments
+  (`rdi rsi rdx rcx r8 r9`, `xmm0-7`, then the stack) pushed as W stack
+  words, `rbx`, `rbp`, `r12-r15` preserved, float results moved to
+  `xmm0` — plus the sign or zero extension of each narrow integer
+  argument (`int8/16/32`, `uint8/16/32`, `char`, `bool`) to the word W
+  expects. Direct W-to-W calls keep W's stack convention and never touch
+  the stub.
+- **Symbols.** Every function defined in a root file and not marked
+  `static`, and every `export`ed function, is a `GLOBAL FUNC` symbol at
+  its entry stub. `static` functions and everything imported stay
+  `LOCAL` (at the W entry). Globals follow the rules above.
+- **Function values.** A function's name used as a value (`fp = f`,
+  `&f`, an argument, a `return`) and a file-scope address initializer
+  (`binop* table = f`) yield the entry stub, so a pointer W hands out
+  compares equal to C's `&f`. An `extern` C function's value is the C
+  symbol itself: loaded from its relocated import slot in code, an
+  `R_X86_64_64` against the symbol in a static cell.
+- **Calls through pointers.** A call through a function-pointer value
+  (`f(a, b)` with `f` a variable, field result or parameter) is a
+  System V call: the W argument words are moved into registers and a
+  16-byte-aligned stack exactly as an `extern` call's shim does
+  (`emit_c_abi_call_x64`, here through `r11`), and a narrow integer
+  result is extended per the pointer's declared return type. Pointers
+  without a signature (`int`, `void*` callees) pass every argument as an
+  integer word.
+- **Signatures.** Word-sized integers and pointers, the narrow integer
+  types, `float32`, `float64` and `void` results. Rejected with a
+  diagnostic naming the function: struct (or union) arguments or results
+  by value, W variadic functions (`int... xs`), more than 10
+  parameters, generators, and taking the address of a generic function
+  or of a function with no entry (an asm runtime stub). A function with
+  an unsupported signature that is neither global nor address-taken is
+  fine: its stub jumps to a `ud2` trap nothing reaches.
+- **Restrictions.** `--c-abi` requires `--freestanding` (the W runtime's
+  own callbacks keep W's convention) and rejects `--no-direct-calls`
+  (a function name's value use must stay distinguishable from a callee).
+
+Next steps for the mode: struct arguments and results by value (the
+System V classification of small aggregates into registers, and the
+hidden result pointer for large ones), C-variadic W functions (`va_list`
+over the register save area), binding global symbols straight to the
+adapters (one `jmp` fewer; today the stub keeps pointer identity), and
+the same mode for arm64 (AAPCS64 adapters reuse `elf_emit_arm64_export`).
 
 ## Relocations
 
@@ -122,8 +192,8 @@ stubs (`syscall`, `setjmp`, ...) remain as unreferenced local code.
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64
 Linux target`), `thread_local` storage, profiling and coverage
 instrumentation, and combining with `--static`/`--shared`. Not
-diagnosed but unsupported: calling a W function pointer from C, C
-consumers of W fixed arrays as plain arrays, and (untested) the
+diagnosed but unsupported: calling a W function pointer from C without
+`--c-abi`, C consumers of W fixed arrays as plain arrays, and (untested) the
 runtime's panic and stack-trace reporting inside a runtime-retaining
 object, which expects a W-built ELF image around its code.
 

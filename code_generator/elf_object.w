@@ -12,8 +12,10 @@
 #
 # Text-to-text references are PC-relative and need nothing. Exported
 # functions are global symbols at their System V adapters
-# (elf_exports.w); globals declared in the command-line roots are
-# global data symbols; every other W function and global stays local.
+# (elf_exports.w), or under --c-abi every root function not marked
+# 'static' at its System V entry (c_abi.w); globals declared in the
+# command-line roots (and not 'static') are global data symbols; every
+# other W function and global stays local.
 # docs/projects/object_files.md describes the mode and its limits.
 #
 # This file is compiled by the committed seed: only seed-understood
@@ -21,6 +23,7 @@
 import code_generator.code_emitter
 import code_generator.static_link
 import code_generator.elf_exports
+import code_generator.c_abi
 import code_generator.dynamic_registry
 
 int sym_address(char* s);
@@ -197,7 +200,7 @@ void object_table_symbols(int want_global):
 			if ((symtype == 2) && (want_global == 0) && object_in_text(value) && (object_name_is_global(name) == 0)):
 				object_symbol(name, 0, 2, object_sec_text, value - object_text_vaddr(), 0)
 			else if ((symtype == 1) && object_in_data(value) && (value < data_offset + datapos) && (object_extern_data_at(value) < 0) && (type_get_kind(type) != type_kind_enum)):
-				int is_root = object_file_is_root(sym_decl_file_index(t))
+				int is_root = object_file_is_root(sym_decl_file_index(t)) && (object_symbol_is_static(t) == 0)
 				if (is_root == want_global):
 					object_symbol(name, is_root, 1, object_sec_data, value - data_offset, global_storage_size(type))
 					if (is_root): object_global_names.push(name)
@@ -253,12 +256,20 @@ void elf_object_write():
 	for i in range(object_import_names.length): object_global_names.push(object_import_names[i])
 	for i in range(dyn_import_count):
 		if (dyn_import_get_symtype(i) == 1): object_global_names.push(dyn_import_name(i))
+	if (c_abi_mode):
+		for i in range(c_abi_global_names.length): object_global_names.push(c_abi_global_names[i])
 	object_table_symbols(0)
 	int first_global = object_symbol_count
 	for e in range(wasm_export_count):
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
 		int adapter = load_i(elf_export_addresses + e * __word_size__, __word_size__)
 		object_symbol(name, 1, 2, object_sec_text, adapter - object_text_vaddr(), 0)
+	# --c-abi: global functions at their System V entry stubs (c_abi.w),
+	# the same address W's function-pointer values hold
+	if (c_abi_mode):
+		for i in range(c_abi_global_syms.length):
+			int c_entry = c_abi_entry_of(c_abi_global_syms[i])
+			object_symbol(c_abi_global_names[i], 1, 2, object_sec_text, c_entry - object_text_vaddr(), 0)
 	object_table_symbols(1)
 	int first_import = object_symbol_count
 	for i in range(object_import_names.length): object_symbol(object_import_names[i], 1, 0, 0, 0, 0)
@@ -314,6 +325,12 @@ void elf_object_write():
 	free(cell_seen)
 	for i in range(object_import_slots.length):
 		object_rela(rela_data, object_import_slots[i] - data_offset, first_import + i, 1, 0)
+	# --c-abi static cells holding an extern C function's address
+	if (c_abi_mode):
+		for i in range(c_abi_extern_cells.length):
+			for j in range(object_import_slots.length):
+				if (object_import_slots[j] == c_abi_extern_slots[i]):
+					object_rela(rela_data, c_abi_extern_cells[i] - data_offset, first_import + j, 1, 0)
 	free(data_symbols)
 
 	object_buffer* names = object_buffer_new()
