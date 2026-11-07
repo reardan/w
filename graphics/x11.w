@@ -29,6 +29,10 @@ enum x_event_type:
 	UnmapNotify = 18
 	MapNotify = 19
 	ConfigureNotify = 22
+	PropertyNotify = 28
+	SelectionClear = 29
+	SelectionRequest = 30
+	SelectionNotify = 31
 	ClientMessage = 33
 
 
@@ -42,6 +46,7 @@ enum x_event_mask:
 	ExposureMask = 0x8000
 	StructureNotifyMask = 0x20000
 	FocusChangeMask = 0x200000
+	PropertyChangeMask = 0x400000
 
 
 # XCreateWindow valuemask bits (X.h CW*)
@@ -159,6 +164,69 @@ struct x_client_message_event:
 	int data4
 
 
+# XSelectionRequestEvent, x86_64 layout: another client asks the
+# selection owner to convert `selection` to `target` into `property` on
+# `requestor` (property 0 = an obsolete client; use target instead).
+struct x_selection_request_event:
+	int32 event_type
+	int32 pad0
+	int serial
+	int32 send_event
+	int32 pad1
+	int display
+	int owner
+	int requestor
+	int selection
+	int target
+	int property
+	int time
+
+
+# XSelectionEvent (SelectionNotify), x86_64 layout: the owner's answer;
+# property 0 means the conversion was refused.
+struct x_selection_event:
+	int32 event_type
+	int32 pad0
+	int serial
+	int32 send_event
+	int32 pad1
+	int display
+	int requestor
+	int selection
+	int target
+	int property
+	int time
+
+
+# XPropertyEvent, x86_64 layout; state 0 = PropertyNewValue,
+# 1 = PropertyDelete. Drives INCR transfers in both directions.
+struct x_property_event:
+	int32 event_type
+	int32 pad0
+	int serial
+	int32 send_event
+	int32 pad1
+	int display
+	int window
+	int atom
+	int time
+	int32 state
+	int32 pad2
+
+
+# XSelectionClearEvent, x86_64 layout: another client took the selection.
+struct x_selection_clear_event:
+	int32 event_type
+	int32 pad0
+	int serial
+	int32 send_event
+	int32 pad1
+	int display
+	int window
+	int selection
+	int time
+
+
 # Padding member sized like C's XEvent (24 longs / 192 bytes on x86_64)
 # so an x_event local reserves enough stack for any event XNextEvent
 # writes.
@@ -195,6 +263,10 @@ union x_event:
 	x_input_event input
 	x_configure_event configure
 	x_client_message_event client
+	x_selection_request_event selection_request
+	x_selection_event selection
+	x_property_event property
+	x_selection_clear_event selection_clear
 	x_event_padding pad
 
 
@@ -217,6 +289,19 @@ extern int XSetWMProtocols(int display, int window, int* protocols, int count)
 extern int XFree(int data)
 extern int XFlush(int display)
 extern int XSync(int display, int discard)
+
+# Selections (the clipboard is the CLIPBOARD selection; ICCCM §2).
+# Atom/Window/Time arguments are word-sized; format-32 property data is
+# an array of C longs (8 bytes each on x86_64), not of int32s.
+extern int XSetSelectionOwner(int display, int selection, int owner, int time)
+extern int XGetSelectionOwner(int display, int selection)
+extern int XConvertSelection(int display, int selection, int target, int property, int requestor, int time)
+extern int XChangeProperty(int display, int window, int property, int property_type, int format, int mode, char* data, int nelements)
+extern int XDeleteProperty(int display, int window, int property)
+extern int XGetWindowProperty(int display, int window, int property, int long_offset, int long_length, int delete, int req_type, int* actual_type, int32* actual_format, int* nitems, int* bytes_after, char** prop)
+extern int XSendEvent(int display, int window, int propagate, int event_mask, x_event* event)
+# Largest request the server takes, in 4-byte units.
+extern int XMaxRequestSize(int display)
 # Translate a KeyPress through the server's keymap (shift/caps/layout
 # handled by the server, unlike a hardcoded keycode table). The first
 # parameter is an XKeyEvent*, which is the same address as the x_event

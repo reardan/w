@@ -471,7 +471,8 @@ extension, then Calendar, Calendar Picker, Date Range, Time Range).
 - **Clipboard (ctrl-C/V).** No platform clipboard binding exists on any
   backend, and X11 selections, `NSPasteboard` and the asynchronous
   browser Clipboard API are three genuinely different designs. Its own
-  note, before the editor.
+  note, before the editor. (Landed 2026-11 with #850; see
+  `docs/projects/ui_clipboard.md` §6.)
 - **Cocoa mouse and CHAR.** Landed 2026-09-25 (#462); the widgets are
   interactively usable on macOS, and their `*_darwin` test binaries
   pass natively.
@@ -678,10 +679,11 @@ line (accessibility.md, "Live regions and announcements").
   editor project, as its first commit.
 - **Clipboard.** Still the §7 non-goal, but now with a design note of
   its own (`docs/projects/ui_clipboard.md`) since the editor cannot
-  ship without it.
+  ship without it. (Landed with #850, together with textbox selection.)
 - **Textarea mouse drag-selection and double-click word-select.** A
   click sets the caret (`textarea.w:245-264`) and that is all. Round 3,
-  with the gutter, line numbers and a find bar.
+  with the gutter, line numbers and a find bar. (Drag and Shift+click
+  selection landed with #850; double-click word-select is still open.)
 - **`ui_dropdown` rewritten onto `ui_popover_begin`.** It predates the
   popover and hand-rolls the same bracket (`dropdown.w:59-75`). It
   works; rewriting it would churn its tests for no behavior change.

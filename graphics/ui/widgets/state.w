@@ -147,3 +147,20 @@ struct ui_context:
 	int32 access_selection_id
 	int32 access_selection_anchor
 	int32 access_selection_active
+	# Clipboard (docs/projects/ui_clipboard.md). A text widget's copy or
+	# cut leaves its text in clip_out until the next ui_begin_window hands
+	# it to the platform; a paste names the widget waiting for text in
+	# clip_paste_id, and the pump drops what arrives into clip_in for
+	# that widget to take. Headless callers read clip_out and feed
+	# clip_in through ui_clipboard_copied / ui_clipboard_deliver.
+	char* clip_out
+	int32 clip_out_ready
+	int32 clip_paste_id
+	int32 clip_paste_sent
+	int32 clip_paste_frames
+	char* clip_in
+	# The window ui_begin_window started this frame with (a gfx_window*,
+	# kept untyped because this module does not import graphics.window),
+	# so ui_end can publish a copy in the frame it happened: the browser
+	# accepts clipboard text only inside the copy event that ran it.
+	char* clip_window

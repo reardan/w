@@ -29,6 +29,10 @@ struct ui_textbox_state:
 	# has then lost focus. Set only by ui_textbox's own editing, so a
 	# ui_textbox_set prefill does not count as the user's edit.
 	int32 edited
+	# Selection anchor: the byte offset the selection extends from to
+	# the caret, -1 when nothing is selected. Out-of-range values (a
+	# state that skipped ui_textbox_init) read as no selection.
+	int32 anchor
 
 
 const int ui_textbox_capacity = 127
@@ -39,6 +43,7 @@ void ui_textbox_init(ui_textbox_state* st):
 	st.length = 0
 	st.caret = 0
 	st.edited = 0
+	st.anchor = 0 - 1
 
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
@@ -48,11 +53,62 @@ void ui_textbox_set(ui_textbox_state* st, char* s):
 	st.text[len] = 0
 	st.length = len
 	st.caret = len
+	st.anchor = 0 - 1
 
 
-# Insert codepoint ch at the caret as UTF-8. A character that does not
-# fit whole is dropped rather than split.
+# 1 when a non-empty range is selected.
+int ui_textbox_has_selection(ui_textbox_state* st):
+	if ((st.anchor < 0) || (st.anchor > st.length)): return 0
+	return st.anchor != st.caret
+
+
+int ui_textbox_sel_start(ui_textbox_state* st):
+	if (ui_textbox_has_selection(st) && (st.anchor < st.caret)): return st.anchor
+	return st.caret
+
+
+int ui_textbox_sel_end(ui_textbox_state* st):
+	if (ui_textbox_has_selection(st) && (st.anchor > st.caret)): return st.anchor
+	return st.caret
+
+
+# Select the whole text, caret at the end (Ctrl+A).
+void ui_textbox_select_all(ui_textbox_state* st):
+	st.anchor = 0
+	st.caret = st.length
+
+
+# Remove the selected bytes, leaving the caret where they started.
+# Returns 1 when there was a selection.
+int ui_textbox_delete_selection(ui_textbox_state* st):
+	if (ui_textbox_has_selection(st) == 0):
+		st.anchor = 0 - 1
+		return 0
+	int start = ui_textbox_sel_start(st)
+	int n = ui_textbox_sel_end(st) - start
+	int i = start
+	while (i + n <= st.length):
+		st.text[i] = st.text[i + n]
+		i = i + 1
+	st.length = st.length - n
+	st.caret = start
+	st.anchor = 0 - 1
+	return 1
+
+
+# Start, extend or drop the selection before a caret motion: shift
+# anchors at the pre-move caret (unless a selection already holds one),
+# no shift drops it.
+void ui_textbox_anchor(ui_textbox_state* st, int shift):
+	if (shift):
+		if (ui_textbox_has_selection(st) == 0): st.anchor = st.caret
+	else: st.anchor = 0 - 1
+
+
+# Insert codepoint ch at the caret as UTF-8, replacing the selection. A
+# character that does not fit whole is dropped rather than split.
 void ui_textbox_insert(ui_textbox_state* st, int ch):
+	ui_textbox_delete_selection(st)
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
 	if (st.length + n > ui_textbox_capacity): return
@@ -67,8 +123,31 @@ void ui_textbox_insert(ui_textbox_state* st, int ch):
 	st.caret = ui_grapheme_ceil(&st.text[0], st.caret)
 
 
-# Delete the whole grapheme before the caret.
+# Insert pasted text at the caret, replacing the selection. A single
+# line keeps no line breaks: newlines and tabs become spaces and other
+# control characters are dropped. Text past the capacity is cut at the
+# last whole character that fits.
+void ui_textbox_insert_text(ui_textbox_state* st, char* s):
+	ui_textbox_delete_selection(st)
+	int at = 0
+	int length = strlen(s)
+	while (at < length):
+		int cp = 0
+		int n = utf8_scan(s + at, length - at, &cp)
+		if (n == 0):
+			cp = 65533
+			n = 1
+		if ((cp == 10) || (cp == 9)): cp = ' '
+		if (ui_utf8_is_text(cp)):
+			int before = st.length
+			ui_textbox_insert(st, cp)
+			if (st.length == before): return
+		at = at + n
+
+
+# Delete the selection, or else the whole grapheme before the caret.
 void ui_textbox_backspace(ui_textbox_state* st):
+	if (ui_textbox_delete_selection(st)): return
 	if (st.caret == 0): return
 	int from = ui_grapheme_prev(&st.text[0], st.caret)
 	int n = st.caret - from
@@ -81,15 +160,31 @@ void ui_textbox_backspace(ui_textbox_state* st):
 	st.caret = ui_grapheme_floor(&st.text[0], from)
 
 
+# Delete the selection, or else the whole grapheme after the caret.
+void ui_textbox_delete_forward(ui_textbox_state* st):
+	if (ui_textbox_delete_selection(st)): return
+	if (st.caret >= st.length): return
+	int to = ui_grapheme_next(&st.text[0], st.caret)
+	int n = to - st.caret
+	int i = st.caret
+	while (i + n <= st.length):
+		st.text[i] = st.text[i + n]
+		i = i + 1
+	st.length = st.length - n
+
+
 void ui_textbox_mark_edited(ui_textbox_state* st):
 	if (st.edited == 0): st.edited = 1
 
 
 # Single-line text input over caller-owned state. Clicking focuses it
-# (the caret lands at the nearest glyph boundary to the click); the
-# focused textbox consumes the frame's CHAR/NAV queues — printable
-# characters insert at the caret as UTF-8, backspace deletes and
-# left/right step over whole characters, home/end move, escape drops
+# (the caret lands at the nearest glyph boundary to the click), dragging
+# selects, and Shift+click extends; the focused textbox consumes the
+# frame's CHAR/NAV queues — printable characters replace the selection
+# or insert at the caret as UTF-8, backspace/delete remove the selection
+# or a whole character, left/right step over whole characters, home/end
+# move, Shift with any of them extends the selection, Ctrl/Cmd+A selects
+# all, Ctrl/Cmd+C/X/V copy, cut and paste (ui_clipboard_*), escape drops
 # focus. Tab reaches it in focus order, and an accessibility bridge can
 # replace its text and move its caret. Returns 1 on the frame return is typed
 # (the submit edge). No horizontal scroll in stage 2: glyphs past the
@@ -107,12 +202,13 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	if (requested != 0):
 		ui_textbox_set(st, requested)
 		ui_textbox_mark_edited(st)
-	# A single-line field has a caret but no selection: a request for
-	# a range moves the caret to its active end.
+	# An assistive selection request selects anchor..active (character
+	# offsets), or just places the caret when they are equal.
 	int sel_anchor = 0
 	int sel_active = 0
 	if (ui_access_selection_request(ctx, id, &sel_anchor, &sel_active)):
 		st.caret = ui_grapheme_floor(&st.text[0], ui_access_char_byte(&st.text[0], st.length, sel_active))
+		st.anchor = ui_grapheme_floor(&st.text[0], ui_access_char_byte(&st.text[0], st.length, sel_anchor))
 
 	float32 text_x = r.x + cast(float32, ctx.theme.pad)
 	# Focus follows the press: inside claims it, any other press drops
@@ -120,11 +216,25 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	# disabled scope.
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		if (ui_pointer_inside(ctx, r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+			# Shift+click in the focused field extends the selection;
+			# any other press anchors a new one at the caret, which a
+			# drag then stretches.
+			int extend = (ctx.focus == id) && ((ctx.input.mods & GFX_MOD_SHIFT) != 0)
 			ctx.focus = id
+			if (extend): ui_textbox_anchor(st, 1)
 			# Proportional caret: the nearest glyph boundary to the
 			# click.
 			st.caret = ui_text_caret_from_x(&st.text[0], scale, ctx.input.press_x - cast(int, text_x))
+			if (extend == 0): st.anchor = st.caret
 		else if (ctx.focus == id): ctx.focus = 0
+	else if (ctx.input.mouse_down && (ctx.active == id) && (ctx.focus == id) && (ctx.disabled == 0)):
+		# Drag selection: the caret follows the pointer, the anchor stays.
+		ctx.pointer_mode = 1
+		int dragged = ui_text_caret_from_x(&st.text[0], scale, ctx.input.mouse_x - cast(int, text_x))
+		if (dragged < 0): dragged = 0
+		st.caret = dragged
+	# A click that selected nothing leaves no anchor behind once released.
+	if ((ctx.input.mouse_down == 0) && (ui_textbox_has_selection(st) == 0)): st.anchor = 0 - 1
 
 	int submitted = 0
 	# A focused field behind an open popup keeps its focus but not the
@@ -133,7 +243,20 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if (ui_utf8_is_text(ch) && ui_char_is_typing(ctx.char_mods[i])):
+			int command = ui_clipboard_command(ch, ctx.char_mods[i])
+			if (command == 'a'): ui_textbox_select_all(st)
+			else if (command == 'c'):
+				if (ui_textbox_has_selection(st)):
+					int from = ui_textbox_sel_start(st)
+					ui_clipboard_copy(ctx, &st.text[from], ui_textbox_sel_end(st) - from)
+			else if (command == 'x'):
+				if (ui_textbox_has_selection(st)):
+					int from = ui_textbox_sel_start(st)
+					ui_clipboard_copy(ctx, &st.text[from], ui_textbox_sel_end(st) - from)
+					ui_textbox_delete_selection(st)
+					ui_textbox_mark_edited(st)
+			else if (command == 'v'): ui_clipboard_paste_request(ctx, id)
+			else if (ui_utf8_is_text(ch) && ui_char_is_typing(ctx.char_mods[i])):
 				ui_textbox_insert(st, ch)
 				ui_textbox_mark_edited(st)
 			else if (ch == 8):
@@ -145,6 +268,14 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		i = 0
 		while (i < ctx.nav_count):
 			int nav = ctx.navs[i]
+			if (nav == GFX_NAV_DELETE):
+				int before = st.length
+				ui_textbox_delete_forward(st)
+				if (st.length != before): ui_textbox_mark_edited(st)
+				i = i + 1
+				continue
+			if ((nav == GFX_NAV_LEFT) || (nav == GFX_NAV_RIGHT) || (nav == GFX_NAV_HOME) || (nav == GFX_NAV_END)):
+				ui_textbox_anchor(st, ctx.nav_mods[i] & GFX_MOD_SHIFT)
 			if ((nav == GFX_NAV_LEFT) && (st.caret > 0)):
 				st.caret = ui_grapheme_prev(&st.text[0], st.caret)
 			else if ((nav == GFX_NAV_RIGHT) && (st.caret < st.length)):
@@ -152,6 +283,11 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			else if (nav == GFX_NAV_HOME): st.caret = 0
 			else if (nav == GFX_NAV_END): st.caret = st.length
 			i = i + 1
+		char* pasted = ui_clipboard_paste_take(ctx, id)
+		if (pasted != 0):
+			ui_textbox_insert_text(st, pasted)
+			ui_textbox_mark_edited(st)
+			free(pasted)
 	# Edited and no longer focused, however focus left (a press
 	# elsewhere, escape, another widget claiming it): the field is
 	# touched from here on.
@@ -172,6 +308,12 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	int fit_w = cast(int, r.w) - ctx.theme.pad * 2
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	int shown = ui_text_fit_strike(&st.text[0], ui_font_strike_from_scale(scale), fit_w)
+	# Selection highlight behind the glyphs, clipped to the drawn width.
+	if ((ctx.focus == id) && ui_textbox_has_selection(st)):
+		int x0 = ui_text_prefix_width(&st.text[0], ui_textbox_sel_start(st), scale)
+		int x1 = ui_text_prefix_width(&st.text[0], ui_textbox_sel_end(st), scale)
+		if (x1 > fit_w): x1 = fit_w
+		if (x1 > x0): ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, x0), r.y + 6.0, cast(float32, x1 - x0), r.h - 12.0), ctx.theme.accent_hot)
 	ui_draw_text_n(ctx.rndr, text_x, ty, &st.text[0], shown, scale, ui_text_color(ctx))
 	if ((ctx.focus == id) && (ui_text_preedit_showing(ctx, id) == 0)):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
@@ -180,5 +322,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	ui_text_preedit(ctx, id, r, text_x + cast(float32, ui_text_prefix_width(&st.text[0], st.caret, scale)), ty)
 	ui_text_input_declare(ctx, id, r, 0)
 	ui_access_set_value(ctx, node, &st.text[0], st.length)
-	ui_access_set_caret(ctx, node, st.caret, st.caret)
+	int access_anchor = st.caret
+	if (ui_textbox_has_selection(st)): access_anchor = st.anchor
+	ui_access_set_caret(ctx, node, access_anchor, st.caret)
 	return submitted
