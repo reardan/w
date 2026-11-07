@@ -1082,6 +1082,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			int declared_return = load_int(table + sym + 6)
 			if (declared_return == 4): declared_return = -1
 			int c_variadic = sym_variadic_fixed_args(sym)
+			if (c_variadic < 0): c_variadic = c_abi_weak_call_fixed_args(sym)
 			if (c_variadic >= 0):
 				int s = stack_pos
 				char* classes = cast(char*, malloc(extern_max_params))

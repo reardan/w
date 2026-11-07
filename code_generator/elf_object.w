@@ -547,7 +547,8 @@ list[int] object_weak_text_vaddrs
 list[int] object_weak_text_symbols
 # --c-abi weak functions: W entry vaddr -> symbol. A function value
 # materializes the W entry and subtracts 5 (c_abi_function_value), so its
-# address slot binds to the symbol plus 5; direct W calls stay local.
+# address slot binds to the symbol plus 5; direct W calls take the same
+# path (c_abi_weak_call_fixed_args).
 list[int] object_weak_entry_vaddrs
 list[int] object_weak_entry_symbols
 
@@ -980,15 +981,19 @@ void elf_object_write():
 			object_piece* site = object_data_piece(data_offset + cell)
 			object_section* site_section = object_sections[site.section]
 			int offset = site.out + cell - site.start
-			int extern_cell = object_extern_data_at(value)
+			# The global the cell names, when an initializer said so:
+			# what the cell binds to, whatever the offset.
+			int base = object_address_base_at(data_offset + cell)
+			if (base == 0): base = value
+			int extern_cell = object_extern_data_at(base)
 			# R_X86_64_64 (1): S + A, the cell's linked value. A null
 			# cell stays null.
 			if (value != 0):
 				if (site_section.type != 1): error(c"internal error: --emit=obj pointer cell in a NOBITS section")
 				if (extern_cell >= 0):
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_cell * 4), 1, value - dyn_import_got_vaddr(extern_cell))
-				else if (object_in_data(value)):
-					object_piece* dest = object_data_piece(value)
+				else if (object_in_data(base)):
+					object_piece* dest = object_data_piece(base)
 					object_rela(site_section.rela, offset, object_sections[dest.section].symbol, 1, dest.out + value - data_offset - dest.start)
 				else if (object_in_text(value)):
 					int weak = object_weak_text_symbol(value)

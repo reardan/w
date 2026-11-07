@@ -43,7 +43,8 @@ int weak_hook(int x):
 	return x + 5
 
 
-# W's own calls bind to the W body; the pointer goes through the symbol.
+# The pointer and W's own direct call both go through the symbol, so a
+# strong C definition replaces the weak body for them too (C semantics).
 int call_hook(int x):
 	unary* f = weak_hook
 	return f(x) * 1000 + weak_hook(x)

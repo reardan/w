@@ -48,7 +48,7 @@ int main(void) {
 	check("table", __w_table_end - __w_table_start, 2);
 	check("table sum", __w_table_start[0] + __w_table_start[1], 42);
 	check("weak from C", weak_hook(1), 1 + HOOK);
-	check("weak through a W pointer", call_hook(1), (1 + HOOK) * 1000 + 6);
+	check("weak through a W pointer and a W call", call_hook(1), (1 + HOOK) * 1000 + 1 + HOOK);
 	check("alias from C", real_alias(4), 12);
 	check("alias address", real_alias == real, 1);
 	check("alias from W", call_alias(4), 24);

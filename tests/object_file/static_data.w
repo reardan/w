@@ -7,6 +7,14 @@ extern int c_data
 # A C array ('int c_numbers[3]'): W indexes it through a header of its
 # own, and a pointer to it is the C symbol.
 extern int32[3] c_numbers
+# A C array of unknown length ('extern int c_squares[];'): its name is a
+# pointer cell, but '&c_squares' in an initializer is the C symbol.
+extern int32[] c_squares
+# A record W only knows by name (C: 'extern struct opaque c_opaque;' in a
+# unit that never completes it): zero size here, but still the C object.
+struct opaque_record:
+
+extern opaque_record c_opaque
 
 int w_handler(int x);
 
@@ -87,6 +95,22 @@ export int w_prime(int i):
 
 
 int* w_number_ref = &c_numbers + 8
+# One past the end of a sized extern array (C: 'c_numbers + 3'), as a
+# plain and as a brace initializer, still relocates against c_numbers.
+int* w_numbers_end = &c_numbers + 12
+int*[2] w_numbers_bounds = {&c_numbers, &c_numbers + 12}
+int32* w_squares_ref = &c_squares
+int32*[2] w_squares_refs = {&c_squares, &c_squares + 8}
+opaque_record* w_opaque_ref = {&c_opaque}
+# One past the end of W's own all-zero array (its elements are in .bss,
+# apart from its .data header): still relative to that array.
+int32[4] w_scratch
+int32* w_scratch_end = {&w_scratch + 16}
+int32[2] w_after_scratch
+
+
+export opaque_record* w_opaque_address():
+	return &c_opaque
 
 
 export int w_numbers_sum():

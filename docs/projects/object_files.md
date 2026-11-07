@@ -112,7 +112,11 @@ long w_add(long a, long b);
   of unknown length (`extern int c_table[];`): the name is an `int32*`
   holding the C symbol's address (a relocated pointer cell, no symbol
   of its own), so `c_table[i]` indexes without a length check and its
-  value is the array's address, as in C (objects only)
+  value is the array's address, as in C (objects only); in an
+  address initializer `&c_table` and `&c_table + N` are the C symbol
+  (plus N), as are `&c_numbers + N` past the end of a sized one. An
+  `extern` of a zero-size type (an empty record, one W only knows by
+  name) is accepted in an object and references the C symbol too
   (`tests/object_file/static_data.w` links such data with C;
   `tests/static_data_test.w` covers executables).
 
@@ -333,7 +337,11 @@ which sits at the start of the function's range and so lands in its
 section; its adapter (or the shared trap) follows it there. `@weak`
 makes that symbol weak, and W function values of it (`fp = f`, static
 tables) bind through the symbol, so a strong C definition wins for them
-too, while direct W calls keep calling the W body. `@alias` gives the
+too. So do direct W calls made after the `@weak` definition (or a
+`@weak` prototype): they take the System V call path through the
+symbol (`c_abi_weak_call_fixed_args`), as C calls a `__weak` default,
+and the body is never inlined. A weak function with a record parameter
+or result keeps the direct W call to its own body. `@alias` gives the
 alias the target's entry, both as a symbol and as a W function value.
 `static` combines with the attributes: `@section(".init.text") static
 int f()` is a local symbol in `.init.text`.

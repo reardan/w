@@ -784,9 +784,18 @@ int global_is_address_target(int t):
 
 # The address '&g' stores: a fixed array's elements (past its {data,
 # length} header), as in C, where the array's name is its first element.
+# An 'extern T[] g' name is a pointer cell: '&g' is the C array itself,
+# the placeholder space the cell points at.
 int global_address_of(int t):
+	if (data_split && object_symbol_is_extern_pointer(t)): return load_i(data + (sym_value_at(t) - data_offset), word_size)
 	if (type_is_array(type_canonical(load_int(table + t + 6)))): return sym_value_at(t) + 2 * word_size
 	return sym_value_at(t)
+
+
+# Under --emit=obj, the cell holding '&t' or '&t + n' relocates against
+# t (its piece, or an extern's symbol), whatever the offset.
+void global_address_note_extern(int cell, int t):
+	if (elf_object): object_note_address_base(cell, global_address_of(t))
 
 
 void global_address_finish():
@@ -801,6 +810,7 @@ void global_address_finish():
 				# '&name': a global variable declared after the initializer
 				if (global_is_address_target(t) == 0):
 					error3(c"'&' in a global initializer needs a global variable, got '", name, c"'")
+				global_address_note_extern(global_address_cells[i], t)
 				global_address_store(global_address_cells[i], global_address_of(t) + global_address_offsets[i] - 1)
 				continue
 			if ((t < 0) || (load_int(table + t + 10) != 2)):
@@ -876,6 +886,7 @@ void global_address_form(char* name, int cell):
 			free(target)
 			return
 		free(target)
+		global_address_note_extern(cell, t)
 		value = value + offset
 	else if ((token[0] == 'c') && (token[1] == '"')):
 		int length = process_prefixed_string_literal()

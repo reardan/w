@@ -89,7 +89,11 @@ int extern_statement():
 			if (target_isa == 2): error(c"extern data objects are not supported on the wasm target")
 			save_int(table + sym + 10, 1)   /* symtype: object */
 			int size = type_get_size(ret_type)
-			if (size < 1): error(c"extern data object needs a sized type")
+			# In an object a zero-size type (an empty record, one the unit
+			# never completes) is fine: only its address is used, and the
+			# import gets a byte of placeholder (extern_object_import).
+			if ((size < 1) && ((elf_object == 0) || (data_split == 0))): error(c"extern data object needs a sized type")
+			if (size < 0): size = 0
 			# W^X split (data_split): the loader's COPY relocation writes
 			# the library's initial value into this space, so it must live
 			# in the RW data segment — in the code stream it would target

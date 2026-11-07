@@ -672,6 +672,7 @@ int postfix_expr():
 							callee_sym = callee
 							callee_name = strclone(last_identifier)
 							variadic_fixed = sym_variadic_fixed_args(callee)
+							if (variadic_fixed < 0): variadic_fixed = c_abi_weak_call_fixed_args(callee)
 							w_variadic_fixed = sym_w_variadic_fixed_args(callee)
 			else if (type_get_pointer_level(type) > 0):
 				int base_type = type_lookup_previous_pointer(type)

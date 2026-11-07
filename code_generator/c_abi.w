@@ -61,6 +61,12 @@ map[int, int] object_static_symbols
 # 'extern T[] name' pointer cells (linkage_ast.w): W globals that are
 # no symbols of the object.
 map[int, int] object_extern_pointer_symbols
+# Static address cells naming a global ('&x', '&x + n' in a global
+# initializer): cell vaddr -> the vaddr of x itself. The relocation binds
+# to x (its piece, or for extern data its symbol) even when the offset
+# leaves x (one past the end of an array, C's 'a + N'), and an
+# 'extern T[]' name means the C array, not W's pointer cell.
+map[int, int] object_address_bases
 
 
 # 1 under 'w check' (no code is kept): C-variadic definitions need no
@@ -73,6 +79,7 @@ void c_abi_reset():
 	sym_wide_param_types = 0
 	object_static_symbols = 0
 	object_extern_pointer_symbols = 0
+	object_address_bases = 0
 
 
 void c_abi_init():
@@ -99,6 +106,17 @@ void object_note_static(int t):
 void object_note_extern_pointer(int t):
 	if (cast(int, object_extern_pointer_symbols) == 0): object_extern_pointer_symbols = new map[int, int]
 	object_extern_pointer_symbols[t] = 1
+
+
+void object_note_address_base(int cell, int base):
+	if (cast(int, object_address_bases) == 0): object_address_bases = new map[int, int]
+	object_address_bases[cell] = base
+
+
+# The global a static address cell names (its vaddr), or 0.
+int object_address_base_at(int cell):
+	if (cast(int, object_address_bases) == 0): return 0
+	return object_address_bases.get(cell, 0)
 
 
 int object_symbol_is_extern_pointer(int t):
@@ -153,6 +171,28 @@ int c_abi_type_unsupported(int type):
 int c_abi_arg_words(int type):
 	if (c_abi_type_is_record(type)): return type_stack_words(type)
 	return 1
+
+
+# --c-abi object: a direct call of a '@weak' function binds through its
+# symbol, which a strong definition elsewhere in the link replaces (C's
+# '__weak' defaults, a kernel's arch hooks), so it takes the System V
+# call path of a C-variadic definition's calls with every parameter
+# fixed: the parameter count, or -1 for any other callee (and for a weak
+# function with record parameters or result, which keeps the direct W
+# call to its own body).
+int object_name_is_weak(char* name);   /* elf_object.w */
+
+
+int c_abi_weak_call_fixed_args(int t):
+	if ((c_abi_mode == 0) || (elf_object == 0) || (t < 0)): return -1
+	if ((load_int(table + t + 10) != 2) || (sym_variadic_fixed_args(t) >= 0) || (sym_w_variadic_fixed_args(t) >= 0)): return -1
+	if (object_name_is_weak(sym_record_name(t)) == 0): return -1
+	int n = sym_num_args(t)
+	if (n < 0): return -1
+	if (c_abi_type_is_record(load_int(table + t + 6))): return -1
+	for i in range(n):
+		if (c_abi_type_is_record(sym_param_type_wide(t, i))): return -1
+	return n
 
 
 # 1 for a C-variadic definition ('int f(int n, ... va)'): its last

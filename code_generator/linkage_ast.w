@@ -11,7 +11,18 @@ void extern_object_import(int sym, int address, int size, char* name):
 			error3(c"extern array '", name, c"' needs elements without nested array headers")
 		header = 2 * word_size
 		emit_data_global_storage(type, address)
-	dyn_add_import_data(name, address + header, size - header, 0)
+	# A zero-size object (an empty record such as a lock type that a
+	# configuration compiles away, an extern of a record completed
+	# nowhere, a zero-length array) still needs one byte of placeholder
+	# space, or no reference would find the import and its uses would
+	# bind to the reservation itself, a local object of the unit. The
+	# reservation was just emitted, so the byte follows it (in a word of
+	# its own, which keeps the next global aligned).
+	int space = size - header
+	if (space < 1):
+		emit_data_zeros(word_size - space)
+		space = 1
+	dyn_add_import_data(name, address + header, space, 0)
 
 
 # 'extern T[] name' in an object: a C array of unknown length (C's
