@@ -31,6 +31,34 @@ void test_symbol_value_preserves_host_word():
 	table = saved_table
 
 
+# Enum metadata and the address high word occupy independent slots.
+void test_enum_metadata_preserves_symbol_address():
+	char* saved_table = table
+	table = cast(char*, malloc(symbol_data_size + 8))
+	for i in range(symbol_data_size + 8): table[i] = 0
+	int t = 8
+	int value = 0x12345678
+	if (__word_size__ == 8): value = value | ((0x12345 << 16) << 16)
+	sym_set_value_at(t, value)
+	assert_equal(0, sym_is_enum_constant(t))
+	assert_equal(0, sym_is_enum_name(t))
+	sym_set_enum_constant(t)
+	assert_equal(1, sym_is_enum_constant(t))
+	assert_equal(value, sym_value_at(t))
+	sym_set_value_at(t, value + 4)
+	assert_equal(1, sym_is_enum_constant(t))
+	sym_set_enum_name(t)
+	assert_equal(0, sym_is_enum_constant(t))
+	assert_equal(1, sym_is_enum_name(t))
+	assert_equal(value + 4, sym_value_at(t))
+	sym_claim_enum_name(t, 300)
+	assert_equal(0, sym_is_enum_name(t))
+	assert_equal(300, load_int(table + t + 6))
+	assert_equal(value + 4, sym_value_at(t))
+	free(table)
+	table = saved_table
+
+
 # Exercise the actual A64 prototype chain, including its code_offset
 # sentinel, at high native addresses and across a 4 GB boundary. No code
 # is executed: this runs under the x86/x64 compiler-coverage jobs too.

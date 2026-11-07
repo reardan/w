@@ -38,6 +38,25 @@ int conditional_arm_is_value(int t):
 	return 0
 
 
+# A struct-returning call leaves its return buffer on the stack (the
+# arm's value is its address), so the two arms can end at different
+# stack depths: 'c ? a : f(b)' pushes words on the else path only. The
+# arm that left fewer words pushes filler words (eax, which holds its
+# value, is untouched) so both paths reach the join at the same depth.
+void conditional_pad(int words):
+	while (words > 0):
+		push_eax()
+		words = words - 1
+
+
+# Ends the then arm's stub region, padding the then path by words first
+# (the else path jumps over the padding to the join).
+void conditional_then_stub(int h_join, int h_stub, int words):
+	if (words > 0): be_br(h_join)
+	be_ctrl_end(h_stub)
+	conditional_pad(words)
+
+
 int conditional_expr():
 	# In condition context (grammar/cond_branch.w) the condition's chain
 	# leaves its regions open above ours, so the three regions below are
@@ -77,13 +96,22 @@ int conditional_expr():
 		h_stub = be_ctrl_block()
 		h_else = be_ctrl_block()
 	cond_branch_consume(h_else, 0)
+	int arm_base = stack_pos
 	int then_type = expression()
 	then_type = promote(then_type)
+	int then_words = stack_pos - arm_base
 	expect(c":")
 	be_br(h_stub)
 	be_ctrl_end(h_else)
+	# the else path starts without the then arm's words
+	stack_pos = arm_base
 	int else_type = conditional_expr()
 	else_type = promote(else_type)
+	int arm_words = stack_pos - arm_base
+	int then_pad = 0
+	if (then_words > arm_words): conditional_pad(then_words - arm_words)
+	else: then_pad = arm_words - then_words
+	if (then_words > arm_words): arm_words = then_words
 	# An untyped constant then-arm takes the else arm's type ('c ? 1 : x')
 	int result = then_type
 	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value
@@ -98,7 +126,7 @@ int conditional_expr():
 			promote_eax()
 			result = type_get_next_pointer(type_unqualified(type_get_element_type(type_unqualified(else_type))))
 		# The then arm resumes directly at the join (an empty stub region)
-		be_ctrl_end(h_stub)
+		conditional_then_stub(h_join, h_stub, then_pad)
 	else if (type_decays_to_pointer(else_type, then_type) | (then_is_slice_value & (else_type == 3))):
 		# 'c ? arr : ptr' joins at the else arm's pointer type,
 		# 'c ? arr : 0' at the element pointer. The then arm's code is
@@ -111,18 +139,20 @@ int conditional_expr():
 		be_br(h_join)
 		be_ctrl_end(h_stub)
 		promote_eax()
+		conditional_pad(then_pad)
 	else:
 		# Convert the else value to the then arm's representation while
 		# still on the else path, ahead of the join point; the then arm
 		# resumes directly at the join (an empty stub region)
 		coerce(then_type, else_type)
-		be_ctrl_end(h_stub)
+		conditional_then_stub(h_join, h_stub, then_pad)
 	int arms_compatible = types_compatible(type_real(result), type_real(else_type))
 	if (arms_compatible == 0):
 		# 'c ? ptr : arr': coerce just decayed the else arm in-branch
 		arms_compatible = type_decays_to_pointer(type_real(result), type_real(else_type))
 	if (arms_compatible == 0): warn_type_mismatch(c"conditional arms", then_type, else_type)
 	be_ctrl_end(h_join)
+	stack_pos = arm_base + arm_words
 	expr_nesting_depth = expr_nesting_depth - 1
 	# Only a join of two literals keeps the literal's char* decay
 	if ((result == string_literal_type) && (else_type != string_literal_type)):
