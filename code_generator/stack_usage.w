@@ -59,9 +59,13 @@ void stack_usage_define(int symbol):
 
 # be_function_prologue: start measuring. The words a call's return
 # address and the prologue push are counted in stack_pos from here on.
+void stack_usage_sample();
+
+
 void stack_usage_begin():
 	stack_usage_base = stack_pos
 	stack_usage_max = stack_pos
+	stack_usage_sample_hook = cast(int, stack_usage_sample)
 	stack_usage_active = 1
 
 

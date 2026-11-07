@@ -71,7 +71,10 @@ int freestanding_mode /* --freestanding: no auto-imported W runtime */
 int kernel_codegen /* --kernel-codegen: kernel-context code (no SSE/x87; docs/projects/object_files.md) */
 int stack_usage_mode /* --stack-usage: write <output>.su (code_generator/stack_usage.w) */
 int stack_usage_active /* 1 while a function body is emitted under --stack-usage */
-void stack_usage_sample(); /* code_generator/stack_usage.w */
+# stack_usage_sample (code_generator/stack_usage.w), installed when a body
+# starts, so modules that import only this emitter need not link it.
+type stack_usage_sample_callback = fn() -> void
+int stack_usage_sample_hook
 int object_alias_pending /* '@alias' declarations whose target is not defined yet (elf_object.w) */
 int c_abi_mode /* --c-abi: System V entries and function pointers (code_generator/c_abi.w) */
 int elf_shared /* ELF shared object with explicit native exports */
@@ -279,7 +282,7 @@ void regalloc_guard():
 
 void emit(int n, char* s):
 	if (reg_lvalue_end != 0): regalloc_guard()
-	if (stack_usage_active): stack_usage_sample()
+	if (stack_usage_active): (cast(stack_usage_sample_callback*, stack_usage_sample_hook))()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
@@ -294,7 +297,7 @@ void emit_string(char* s):
 
 void emit_i(int v, int n):
 	if (reg_lvalue_end != 0): regalloc_guard()
-	if (stack_usage_active): stack_usage_sample()
+	if (stack_usage_active): (cast(stack_usage_sample_callback*, stack_usage_sample_hook))()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
