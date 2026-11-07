@@ -312,6 +312,10 @@ minimizer must reduce a crashing input to `if (while (`. Two more steps
 run a one-seed differential against `bin/wv2`: the seed's divergence
 must surface as `seed diffs: 1`, and the same run with
 `--diff-expect compiling` must move it to `expected diffs: 1` instead.
+The last steps cover the library-target flags: a `--bytes --dict` run
+from a single seed file must find the same four crashing inputs every
+time, and a `--bytes --minimize` must shrink the crash input to the
+same 11 bytes (printed as hex).
 
 `./wbuild wfuzz_compiler` (in no umbrella) builds
 `bin/wfuzz_compiler/compiler_cov` from `w.w`, seeds the corpus with
@@ -332,3 +336,52 @@ with `bin/wv2 <file> -o /tmp/out` and shrink it with `--minimize`, then
 check the crashing input in as a regression fixture — the first
 campaign's null-`retained_bindings` SIGSEGV became
 `tests/safe_checked_struct_only_crash_fixture.w`.
+
+### Library targets
+
+Issue #842 added library- and API-level targets next to the compiler.
+Each is a small harness under `tools/fuzz/` (`harness_<name>.w`, with
+`tools/fuzz/harness.w`'s shared input reading) that reads one input
+from the file named by its argument (or stdin), feeds it to one
+library, and exits 0 (accepted), 1 (rejected) or 3 (an invariant the
+harness checks failed, which wfuzz counts as a crash):
+
+| Harness | Library | Input | Invariants |
+| --- | --- | --- | --- |
+| `harness_json.w` | `structures/json.w` | text `.json` | stringify is a fixpoint of parse; a clone stringifies the same |
+| `harness_http.w` | `http_server.w` request reading, `http_client.w` response head, framing and `Content-Encoding` decoding, `urlparse.w`, over a socketpair | text `.http` | — |
+| `harness_der.w` | `asn1.w` (whole-tree walk), `x509.w` parse + self-chain verification, PKCS#8/SEC1 EC keys | `--bytes` `.der` | elements stay inside their window |
+| `harness_inflate.w` | `libs/extras/compress` inflate, `inflate_window`, zlib, gzip; deflate/zlib/gzip encoders | `--bytes` `.z` | every encoder round-trips the input |
+| `harness_font.w` | `lib/ttf.w` (cmap, kerning, glyf, CFF, rasterizer, subsetting), `lib/ttf_hint.w`, `lib/ttf_shape.w` + `lib/ttf_layout.w`, `graphics/ui/font_color.w` | `--bytes` `.ttf` | — |
+| `harness_c.w` | `libs/extras/c_preprocessor` + the generated C parser | text `.h` | — |
+| `harness_js.w` | `libs/extras/javascript` parser and validators, script and module | text `.js` | parse → lower → print → parse lowers to an equal tree |
+
+Each harness owns two targets. `wfuzz_<name>_smoke` (in `tests`) builds
+the `--coverage` harness and runs wfuzz with `--cases 0
+--fail-on-findings`: every seed and every checked-in reproducer runs
+once, and any crash or hang fails it. `wfuzz_<name>` (in no umbrella)
+fuzzes for `$WFUZZ_SECONDS` into `bin/wfuzz_<name>/`. `wfuzz_c_import`
+covers the other half of `c_import`, the lowering into the compiler's
+type and symbol tables: it runs the `--coverage` compiler's `check` on
+`tools/fuzz/c_import_driver.wfuzz` (copied to
+`bin/wfuzz_c_import/driver.w`), which c_imports the case file.
+
+Seeds come from existing fixtures wherever there are some
+(`tests/wexec/*.json`, the subset fonts under `tests/data/fonts`, the
+`tests/*.h` c_import fixtures, `tests/javascript/conformance`); the
+formats with none (HTTP messages, DER converted from
+`libs/standard/net/x509_fixtures`, zlib/gzip/raw DEFLATE streams) have
+a few small ones under `tools/fuzz/seeds/`. `tools/fuzz/dicts/` holds
+the `--dict` token lists. Binary formats use `--bytes`. Every crash or
+hang a campaign finds is fixed in the library and its input checked in
+under `tools/fuzz/regressions/<name>/`, which the smoke target runs as
+a seed. The first local campaign (a few minutes per target) found the
+JSON, HTTP, DER, inflate, C and JavaScript targets clean and fixed five
+font bugs, now `tools/fuzz/regressions/font/`: `ttf_subset` indexing
+past its glyph-id table with a composite's out-of-range component id
+(SIGSEGV), `ttf_subset` copying a glyph whose `loca` span ran gigabytes
+past the blob (hang), `ttf_color_line` keeping a negative stop count for
+a ColorLine offset past the blob (SIGSEGV), `otl_collect` following a
+LangSys that repeats a feature with tens of thousands of lookups (now
+bounded at 65536 lookup references per stage, hang), and a format-12
+cmap whose 32-bit group count was scanned on every lookup (hang).

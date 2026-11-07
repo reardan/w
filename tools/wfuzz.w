@@ -1,5 +1,5 @@
 # wbuild: binary=wfuzz
-# wbuild: target=wfuzz_test tag=tests dep=wfuzz data=tests/wcoverage/fuzz_target_fixture.w data=tests/wcoverage/fuzz_seeds/seed.w data=tests/wcoverage/fuzz_seeds_diff/ data=tests/wcoverage/fuzz_crash_input.w
+# wbuild: target=wfuzz_test tag=tests dep=wfuzz data=tests/wcoverage/fuzz_target_fixture.w data=tests/wcoverage/fuzz_seeds/seed.w data=tests/wcoverage/fuzz_seeds_diff/ data=tests/wcoverage/fuzz_crash_input.w data=tests/wcoverage/fuzz_fixture.dict
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/fuzz_target_fixture.w -o bin/wfuzz_fixture"
 # wbuild: step="rm -rf bin/wfuzz_test bin/wfuzz_test_again bin/wfuzz_test_min"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds --out bin/wfuzz_test --seed 3 --cases 400" expect_stdout="cases: 400 (" expect_stdout="coverage grew: yes" expect_stdout="crashes: 1" expect_stdout="crash status 139 SIGSEGV: 1 inputs" expect_stdout="hangs: 0" timeout=120000
@@ -8,6 +8,10 @@
 # wbuild: step="diff -r bin/wfuzz_test/crashes bin/wfuzz_test_again/crashes"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --out bin/wfuzz_test_min --minimize tests/wcoverage/fuzz_crash_input.w" expect_stdout="minimized: 11 bytes, status 139" expect_stdout="if (while ("
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --cases 1" expect_fail expect_stderr="wfuzz: --out is required"
+# wbuild: step="rm -rf bin/wfuzz_test_bytes bin/wfuzz_test_bytes_min"
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --bytes --ext .txt --dict tests/wcoverage/fuzz_fixture.dict --corpus tests/wcoverage/fuzz_seeds/seed.w --out bin/wfuzz_test_bytes --seed 3 --cases 400" expect_stdout="cases: 400 (" expect_stdout="crash status 139 SIGSEGV: 4 inputs" expect_stdout="crashes/a79c4fe10c57f5ec8fc56a24583147a4684e94d0cfb011240f00b6168ebb11e7.txt" timeout=120000
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --bytes --ext .txt --out bin/wfuzz_test_bytes_min --minimize tests/wcoverage/fuzz_crash_input.w" expect_stdout="minimized: 11 bytes, status 139" expect_stdout="fuzz_crash_input.w.min.txt" expect_stdout="696620287768696c652028"
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --dict tests/wcoverage/missing.dict --out bin/wfuzz_test_bytes --cases 1" expect_fail expect_stderr="wfuzz: cannot read tests/wcoverage/missing.dict"
 # wbuild: step="rm -rf bin/wfuzz_test_diff bin/wfuzz_test_expect"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds_diff --out bin/wfuzz_test_diff --seed 3 --cases 0 --diff bin/wv2 --diff-arg {} --diff-arg -o --diff-arg {out}" expect_stdout="seed diffs: 1" timeout=120000
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds_diff --out bin/wfuzz_test_expect --seed 3 --cases 0 --diff bin/wv2 --diff-arg {} --diff-arg -o --diff-arg {out} --diff-expect compiling" expect_stdout="expected diffs: 1" reject_stdout="seed diffs" timeout=120000
@@ -23,7 +27,7 @@ Usage:
   wfuzz --binary <exe> --out <dir> [--arg <a>]... [--seed N]
         [--cases N] [--seconds N] [--corpus <dir>] [--timeout-ms N]
         [--max-len N] [--diff <exe> [--diff-arg <a>]... [--diff-expect <text>]]
-        [--fail-on-findings]
+        [--ext <suffix>] [--bytes] [--dict <file>] [--fail-on-findings]
   wfuzz --binary <exe> --out <dir> [--arg <a>]... --minimize <file>
 
 <exe> is built with 'bin/wv2 --coverage', so <exe>.wprofmap exists.
@@ -59,18 +63,33 @@ real findings behind the expected rejection still land.
 
 The initial corpus is every .w file under --corpus (at most --max-len
 bytes, default 16384; a seed that adds no coverage is dropped), or
-tools/fuzz/core.w's compiler seed texts. The run stops after --cases
-cases or --seconds seconds, whichever comes first; with neither,
-$WFUZZ_SECONDS seconds (default 300). Case i draws from its own
+tools/fuzz/core.w's compiler seed texts. --corpus repeats, and a
+--corpus that names a file rather than a directory is a seed whatever
+its suffix.
+
+Library targets (issue #842; tools/fuzz/harness_*.w) take three more
+flags. --ext <suffix> (default .w) replaces .w everywhere above: the
+suffix seeds under a --corpus directory must carry, and the one the
+case file and saved findings get (case.json, crashes/<sha256>.json).
+--bytes switches to binary-safe mutations for binary formats (bit
+flips, interesting 8/16/32-bit values in either byte order, small
+arithmetic, chunk insert/delete/duplicate, splices) and drops the W
+tokens and core.w's generator. --dict <file> supplies the tokens
+inserted by the token edits in either mode, one per line, with \n,
+\t, \r, \\ and \xHH escapes (blank lines and lines starting with
+'#' are skipped).
+
+The run stops after --cases cases or --seconds seconds, whichever
+comes first; with neither, $WFUZZ_SECONDS seconds (default 300). Case i draws from its own
 wf_rng(seed, i) stream, so a --cases run is deterministic for a
 deterministic target. The summary goes to stdout and to
 <out>/summary.txt; exit status is 0, or 1 with --fail-on-findings when
 something was found, or 2 on a usage error.
 
---minimize <file> runs <file> once and then deletes lines, then byte
-runs, keeping every deletion after which the run still ends with the
-same status; it writes <file's name>.min.w under <out> and prints the
-result.
+--minimize <file> runs <file> once and then deletes lines (with --bytes,
+halving chunks), then single bytes, keeping every deletion after which
+the run still ends with the same status; it writes <file's name>.min<ext>
+under <out> and prints the result (hex with --bytes).
 */
 import lib.lib
 import lib.args
@@ -110,6 +129,7 @@ struct wfz_state:
 	int total           # counters in the map
 	int covered
 	list[char*] corpus
+	list[int] corpus_lengths   # inputs are byte strings: --bytes ones hold NULs
 	list[int] corpus_differs   # the entry itself fails the --diff oracle
 	int base_differs   # the current case mutates such an entry: no oracle
 	int last_differs   # the last wfz_case failed the oracle
@@ -122,6 +142,10 @@ struct wfz_state:
 	list[int] crash_statuses
 	list[int] crash_counts
 	list[char*] crash_first
+	char* ext            # --ext: seed filter and artifact suffix
+	int bytes_mode       # --bytes
+	list[char*] dict     # --dict tokens (empty: the W token set)
+	list[int] dict_lengths
 
 
 void wfz_fail(char* detail):
@@ -225,10 +249,34 @@ char* wfz_signal_name(int status):
 	return c""
 
 
-# Saves text under <out>/<kind>/<hash>.w (once per input) with a .log.
-void wfz_save(wfz_state* st, char* kind, char* text, char* hash, char* log):
+# Writes length bytes (NULs included) to path.
+void wfz_write(char* path, char* data, int length):
+	io_result r
+	if (file_write_text_checked(path, data, length, &r) != IO_OK): wfz_fail(f"cannot write {path}")
+
+
+# The whole file as a NUL-terminated buffer with its byte length in
+# *length (NULs inside included), or 0 when it cannot be read.
+char* wfz_read(char* path, int* length):
+	wstream* in = stream_open_read(path)
+	if (in == 0): return 0
+	string_builder* b = string_new()
+	io_result r
+	int status = stream_read_all_checked(in, b, &r)
+	stream_close(in)
+	if (status != IO_OK):
+		string_free(b)
+		return 0
+	char* data = b.data
+	*length = b.length
+	free(b)
+	return data
+
+
+# Saves an input under <out>/<kind>/<hash><ext> (once per input) with a .log.
+void wfz_save(wfz_state* st, char* kind, char* text, int length, char* hash, char* log):
 	char* base = f"{st.out}/{kind}/{hash}"
-	wf_write(f"{base}.w", text)
+	wfz_write(f"{base}{st.ext}", text, length)
 	if (log != 0): wf_write(f"{base}.log", log)
 
 
@@ -277,29 +325,30 @@ int wfz_differs(wfz_state* st, wfz_run* a, wfz_run* b):
 	return differ
 
 
-# Runs one input; returns the number of new counters it reached
-# (0 for a crash, hang or difference, which are recorded instead).
-int wfz_case(wfz_state* st, int case_id, char* text):
-	wf_write(st.case_path, text)
+# Runs one input of length bytes; returns the number of new counters it
+# reached (0 for a crash, hang or difference, which are recorded instead).
+int wfz_case(wfz_state* st, int case_id, char* text, int length):
+	wfz_write(st.case_path, text, length)
 	unlink(st.dump_path)
 	unlink(st.out_path)
 	wfz_run* run = wfz_exec(st, st.binary, st.args, st.out_path, st.env)
 	int fresh = 0
 	st.last_differs = 0
-	char* hash = wf_hash(text, strlen(text))
+	char* hash = wf_hash(text, length)
+	char* ext = st.ext
 	if (run.status == process_status_timeout):
 		if (wfz_known(st, hash) == 0):
 			st.found.push(hash)
 			st.hangs = st.hangs + 1
-			wfz_save(st, c"hangs", text, hash, f"case {case_id}\ntimeout after {st.timeout_ms} ms\n")
-			println2(f"wfuzz: case {case_id}: hang, saved {st.out}/hangs/{hash}.w")
+			wfz_save(st, c"hangs", text, length, hash, f"case {case_id}\ntimeout after {st.timeout_ms} ms\n")
+			println2(f"wfuzz: case {case_id}: hang, saved {st.out}/hangs/{hash}{ext}")
 	elif ((run.status != 0) && (run.status != 1)):
 		if (wfz_known(st, hash) == 0):
 			st.found.push(hash)
 			st.crashes = st.crashes + 1
-			wfz_save(st, c"crashes", text, hash, wfz_log(case_id, run))
-			wfz_note_crash(st, run.status, f"{st.out}/crashes/{hash}.w")
-			println2(f"wfuzz: case {case_id}: crash, status {run.status}, saved {st.out}/crashes/{hash}.w")
+			wfz_save(st, c"crashes", text, length, hash, wfz_log(case_id, run))
+			wfz_note_crash(st, run.status, f"{st.out}/crashes/{hash}{ext}")
+			println2(f"wfuzz: case {case_id}: crash, status {run.status}, saved {st.out}/crashes/{hash}{ext}")
 	else:
 		fresh = wfz_absorb(st)
 		if ((run.status == 0) && (st.diff_binary != 0) && (st.base_differs == 0)):
@@ -327,11 +376,11 @@ int wfz_case(wfz_state* st, int case_id, char* text):
 					else: st.diffs = st.diffs + 1
 					char* outputs = f"{wfz_describe(st.out_path)} vs {wfz_describe(st.diff_out_path)}"
 					char* log = f"case {case_id}\nstatus {run.status} vs {ref.status}\nstdout {run.stdout_length} vs {ref.stdout_length} bytes\noutput {outputs}\n--- stderr\n{run.stderr_text}--- reference stderr\n{ref.stderr_text}"
-					wfz_save(st, c"diffs", text, hash, log)
+					wfz_save(st, c"diffs", text, length, hash, log)
 					# Keep both outputs for inspection (absent ones stay absent).
 					rename(st.out_path, f"{st.out}/diffs/{hash}.out")
 					rename(st.diff_out_path, f"{st.out}/diffs/{hash}.out_ref")
-					println2(f"wfuzz: case {case_id}: difference, saved {st.out}/diffs/{hash}.w")
+					println2(f"wfuzz: case {case_id}: difference, saved {st.out}/diffs/{hash}{ext}")
 			wfz_run_free(ref)
 	wfz_run_free(run)
 	return fresh
@@ -396,9 +445,21 @@ char* wfz_token(prng* r):
 	return c"[0]"
 
 
-# text[0:pos] + insert[0:insert_length] + text[pos + remove:], capped.
-char* wfz_edit(char* text, int pos, int remove, char* insert, int insert_length, int max_len):
-	int length = strlen(text)
+# A token for the token edits: a --dict entry (its length in *length),
+# or one of the W tokens above.
+char* wfz_pick_token(wfz_state* st, prng* r, int* length):
+	if (st.dict.length == 0):
+		char* token = wfz_token(r)
+		*length = strlen(token)
+		return token
+	int k = prng_range(r, st.dict.length)
+	*length = st.dict_lengths[k]
+	return st.dict[k]
+
+
+# text[0:pos] + insert[0:insert_length] + text[pos + remove:], capped at
+# max_len bytes; the result's length goes to *out_length.
+char* wfz_edit(char* text, int length, int pos, int remove, char* insert, int insert_length, int max_len, int* out_length):
 	if (pos > length): pos = length
 	if (pos + remove > length): remove = length - pos
 	string_builder* b = string_new()
@@ -408,8 +469,9 @@ char* wfz_edit(char* text, int pos, int remove, char* insert, int insert_length,
 	if (b.length > max_len):
 		b.length = max_len
 		b.data[max_len] = 0
-	char* out = strclone(b.data)
-	string_free(b)
+	char* out = b.data
+	*out_length = b.length
+	free(b)
 	return out
 
 
@@ -418,76 +480,162 @@ int wfz_line_start(char* text, int pos):
 	return pos
 
 
-int wfz_line_end(char* text, int pos):
-	while ((text[pos] != 0) && (text[pos] != '\n')): pos = pos + 1
-	if (text[pos] == '\n'): pos = pos + 1
+int wfz_line_end(char* text, int length, int pos):
+	while ((pos < length) && (text[pos] != '\n')): pos = pos + 1
+	if (pos < length): pos = pos + 1
 	return pos
 
 
-char* wfz_mutate_once(wfz_state* st, prng* r, char* text):
-	int length = strlen(text)
+char* wfz_mutate_once(wfz_state* st, prng* r, char* text, int length, int* out_length):
 	int pos = prng_range(r, length + 1)
 	int action = prng_range(r, 10)
 	char* one = cast(char*, malloc(2))
 	one[1] = 0
+	int token_length = 0
 	if ((action == 0) && (pos < length)):
 		one[0] = wfz_char(r)
-		return wfz_edit(text, pos, 1, one, 1, st.max_len)
+		return wfz_edit(text, length, pos, 1, one, 1, st.max_len, out_length)
 	if (action == 1):
 		one[0] = wfz_char(r)
-		return wfz_edit(text, pos, 0, one, 1, st.max_len)
+		return wfz_edit(text, length, pos, 0, one, 1, st.max_len, out_length)
 	if (action == 2):
-		return wfz_edit(text, pos, 1 + prng_range(r, 8), c"", 0, st.max_len)
+		return wfz_edit(text, length, pos, 1 + prng_range(r, 8), c"", 0, st.max_len, out_length)
 	if ((action == 3) || (action == 8)):
-		char* token = wfz_token(r)
-		return wfz_edit(text, pos, 0, token, strlen(token), st.max_len)
+		char* token = wfz_pick_token(st, r, &token_length)
+		return wfz_edit(text, length, pos, 0, token, token_length, st.max_len, out_length)
 	if (action == 9):
-		char* replacement = wfz_token(r)
-		return wfz_edit(text, pos, strlen(replacement), replacement, strlen(replacement), st.max_len)
+		char* replacement = wfz_pick_token(st, r, &token_length)
+		return wfz_edit(text, length, pos, token_length, replacement, token_length, st.max_len, out_length)
 	int start = wfz_line_start(text, pos)
-	int end = wfz_line_end(text, pos)
+	int end = wfz_line_end(text, length, pos)
 	if (action == 4):
 		# Duplicate the line under pos.
-		return wfz_edit(text, end, 0, text + start, end - start, st.max_len)
+		return wfz_edit(text, length, end, 0, text + start, end - start, st.max_len, out_length)
 	if (action == 5):
-		return wfz_edit(text, start, end - start, c"", 0, st.max_len)
+		return wfz_edit(text, length, start, end - start, c"", 0, st.max_len, out_length)
 	if (action == 6):
 		# Splice in a span of another corpus entry.
-		char* other = st.corpus[prng_range(r, st.corpus.length)]
-		int other_length = strlen(other)
+		int other_index = prng_range(r, st.corpus.length)
+		char* other = st.corpus[other_index]
+		int other_length = st.corpus_lengths[other_index]
 		int from = prng_range(r, other_length + 1)
 		int span = 1 + prng_range(r, 64)
 		if (from + span > other_length): span = other_length - from
-		return wfz_edit(text, pos, 0, other + from, span, st.max_len)
+		return wfz_edit(text, length, pos, 0, other + from, span, st.max_len, out_length)
 	# Move a line to another spot.
 	int to = wfz_line_start(text, prng_range(r, length + 1))
 	char* line = path_clone_range(text + start, end - start)
-	char* without = wfz_edit(text, start, end - start, c"", 0, st.max_len)
-	if (to > strlen(without)): to = strlen(without)
-	char* moved = wfz_edit(without, to, 0, line, end - start, st.max_len)
+	int without_length = 0
+	char* without = wfz_edit(text, length, start, end - start, c"", 0, st.max_len, &without_length)
+	if (to > without_length): to = without_length
+	char* moved = wfz_edit(without, without_length, to, 0, line, end - start, st.max_len, out_length)
 	free(line)
 	free(without)
 	return moved
 
 
-char* wfz_mutate(wfz_state* st, int seed, int case_id):
+# One of a few boundary values, as a byte pattern of width 1, 2 or 4
+# in either byte order, written into out; returns the width.
+int wfz_interesting(prng* r, char* out):
+	int width = 1
+	int pick = prng_range(r, 3)
+	if (pick == 1): width = 2
+	if (pick == 2): width = 4
+	# Each value as its four big-endian bytes; narrower widths take
+	# the low-order end.
+	char* table = c"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x7f\x00\x00\x00\x80\x00\x00\x00\xff\x00\x00\x7f\xff\x00\x00\x80\x00\x00\x00\xff\xff\x00\x01\x00\x00\x7f\xff\xff\xff\x80\x00\x00\x00\xff\xff\xff\xff\x00\x00\x01\x00\x00\x00\x00\x40\x00\x00\x10\x00\xff\xff\xff\xfe"
+	char* v = table + prng_range(r, 16) * 4 + 4 - width
+	int little = prng_range(r, 2)
+	for i in range(width):
+		if (little): out[i] = v[width - 1 - i]
+		else: out[i] = v[i]
+	return width
+
+
+# --bytes edits: byte-level and chunk-level, no line or W structure.
+char* wfz_mutate_bytes_once(wfz_state* st, prng* r, char* text, int length, int* out_length):
+	int pos = prng_range(r, length + 1)
+	int action = prng_range(r, 12)
+	char[4] buf
+	int token_length = 0
+	if (pos == length):
+		# Nothing to overwrite at the end: insert there instead.
+		if (action < 5): action = 5
+	if (action == 0):
+		# Flip one bit.
+		buf[0] = text[pos] ^ (1 << prng_range(r, 8))
+		return wfz_edit(text, length, pos, 1, &buf[0], 1, st.max_len, out_length)
+	if (action == 1):
+		buf[0] = prng_range(r, 256)
+		return wfz_edit(text, length, pos, 1, &buf[0], 1, st.max_len, out_length)
+	if (action == 2):
+		# Nudge a byte by -16..16 (lengths, counts, offsets).
+		buf[0] = ((text[pos] & 255) + prng_range(r, 33) - 16) & 255
+		return wfz_edit(text, length, pos, 1, &buf[0], 1, st.max_len, out_length)
+	if (action == 3):
+		int width = wfz_interesting(r, &buf[0])
+		return wfz_edit(text, length, pos, width, &buf[0], width, st.max_len, out_length)
+	if (action == 4):
+		return wfz_edit(text, length, pos, 1 + prng_range(r, 1 + length / 8), c"", 0, st.max_len, out_length)
+	if (action == 5):
+		buf[0] = prng_range(r, 256)
+		return wfz_edit(text, length, pos, 0, &buf[0], 1, st.max_len, out_length)
+	if (action == 6):
+		int width = wfz_interesting(r, &buf[0])
+		return wfz_edit(text, length, pos, 0, &buf[0], width, st.max_len, out_length)
+	if ((action == 7) && (length > 0)):
+		# Duplicate a chunk of this input at pos.
+		int from = prng_range(r, length)
+		int span = 1 + prng_range(r, 32)
+		if (from + span > length): span = length - from
+		return wfz_edit(text, length, pos, 0, text + from, span, st.max_len, out_length)
+	if ((action == 8) || (action == 9)):
+		# Splice (8: insert, 9: overwrite) a chunk of another entry.
+		int other_index = prng_range(r, st.corpus.length)
+		char* other = st.corpus[other_index]
+		int other_length = st.corpus_lengths[other_index]
+		int from = prng_range(r, other_length + 1)
+		int span = 1 + prng_range(r, 64)
+		if (from + span > other_length): span = other_length - from
+		int remove = 0
+		if (action == 9): remove = span
+		return wfz_edit(text, length, pos, remove, other + from, span, st.max_len, out_length)
+	if ((action == 10) && (st.dict.length > 0)):
+		char* token = wfz_pick_token(st, r, &token_length)
+		return wfz_edit(text, length, pos, 0, token, token_length, st.max_len, out_length)
+	if ((action == 11) && (st.dict.length > 0)):
+		char* replacement = wfz_pick_token(st, r, &token_length)
+		return wfz_edit(text, length, pos, token_length, replacement, token_length, st.max_len, out_length)
+	# Truncate (the commonest way real inputs break).
+	return wfz_edit(text, length, pos, length - pos, c"", 0, st.max_len, out_length)
+
+
+char* wfz_mutate(wfz_state* st, int seed, int case_id, int* out_length):
 	prng* r = wf_rng(seed, case_id)
 	# A third of the cases build on the newest entry: what was just
 	# reached is the likeliest step to the next new counter.
 	int which = st.corpus.length - 1
 	if (prng_range(r, 3) != 0): which = prng_range(r, st.corpus.length)
 	char* base = st.corpus[which]
+	int length = st.corpus_lengths[which]
 	st.base_differs = st.corpus_differs[which]
-	if (prng_range(r, 8) == 0):
+	if ((st.bytes_mode == 0) && (prng_range(r, 8) == 0)):
 		prng_free(r)
-		return wf_generate(c"compiler", seed, case_id, base)
-	char* text = strclone(base)
+		char* generated = wf_generate(c"compiler", seed, case_id, base)
+		*out_length = strlen(generated)
+		return generated
+	char* text = path_clone_range(base, length)
 	int count = 1 + prng_range(r, 4)
 	for i in range(count):
-		char* next = wfz_mutate_once(st, r, text)
+		int next_length = 0
+		char* next = 0
+		if (st.bytes_mode): next = wfz_mutate_bytes_once(st, r, text, length, &next_length)
+		else: next = wfz_mutate_once(st, r, text, length, &next_length)
 		free(text)
 		text = next
+		length = next_length
 	prng_free(r)
+	*out_length = length
 	return text
 
 
@@ -504,6 +652,7 @@ wfz_state* wfz_state_new(char* binary, char* out):
 	st.timeout_ms = 10000
 	st.max_len = 16384
 	st.corpus = new list[char*]
+	st.corpus_lengths = new list[int]
 	st.corpus_differs = new list[int]
 	st.base_differs = 0
 	st.last_differs = 0
@@ -513,6 +662,10 @@ wfz_state* wfz_state_new(char* binary, char* out):
 	st.crash_statuses = new list[int]
 	st.crash_counts = new list[int]
 	st.crash_first = new list[char*]
+	st.ext = c".w"
+	st.bytes_mode = 0
+	st.dict = new list[char*]
+	st.dict_lengths = new list[int]
 	return st
 
 
@@ -528,7 +681,7 @@ void wfz_prepare(wfz_state* st):
 	wfz_mkdir(f"{st.out}/crashes")
 	wfz_mkdir(f"{st.out}/hangs")
 	wfz_mkdir(f"{st.out}/diffs")
-	st.case_path = f"{st.work}/case.w"
+	st.case_path = f"{st.work}/case{st.ext}"
 	st.dump_path = f"{st.work}/case.raw"
 	st.out_path = f"{st.work}/out"
 	st.diff_out_path = f"{st.work}/out_ref"
@@ -540,63 +693,144 @@ void wfz_prepare(wfz_state* st):
 	st.env = env_copy_with(env_current(), c"W_PROFILE_OUT", dump)
 
 
-void wfz_load_seeds(wfz_state* st, char* corpus_dir):
+int wfz_hex_digit(int c):
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
+	return -1
+
+
+# Reads a --dict file: one token per line, \n \t \r \\ \xHH escapes,
+# blank and '#' lines skipped.
+void wfz_load_dict(wfz_state* st, char* path):
+	int length = 0
+	char* text = wfz_read(path, &length)
+	if (text == 0): wfz_fail(f"cannot read {path}")
+	int i = 0
+	while (i < length):
+		int end = wfz_line_end(text, length, i)
+		int stop = end
+		if ((stop > i) && (text[stop - 1] == '\n')): stop = stop - 1
+		if ((stop > i) && (text[i] != '#')):
+			string_builder* b = string_new()
+			int j = i
+			while (j < stop):
+				int c = text[j] & 255
+				if ((c == '\\') && (j + 1 < stop)):
+					int e = text[j + 1] & 255
+					j = j + 2
+					if (e == 'n'): string_append_char(b, '\n')
+					elif (e == 't'): string_append_char(b, '\t')
+					elif (e == 'r'): string_append_char(b, 13)
+					elif ((e == 'x') && (j + 1 < stop) && (wfz_hex_digit(text[j] & 255) >= 0) && (wfz_hex_digit(text[j + 1] & 255) >= 0)):
+						string_append_char(b, wfz_hex_digit(text[j] & 255) * 16 + wfz_hex_digit(text[j + 1] & 255))
+						j = j + 2
+					else: string_append_char(b, e)
+				else:
+					string_append_char(b, c)
+					j = j + 1
+			st.dict.push(b.data)
+			st.dict_lengths.push(b.length)
+			free(b)
+		i = end
+	free(text)
+	if (st.dict.length == 0): wfz_fail(f"no tokens in {path}")
+
+
+void wfz_add_seed(wfz_state* st, char* path, list[char*] texts, list[int] lengths):
+	int length = 0
+	char* text = wfz_read(path, &length)
+	if ((text != 0) && (length <= st.max_len)):
+		texts.push(text)
+		lengths.push(length)
+
+
+void wfz_load_seeds(wfz_state* st, list[char*] corpus_paths):
 	list[char*] texts = new list[char*]
-	if (corpus_dir != 0):
-		list[char*] files = new list[char*]
-		dir_walk_files(corpus_dir, files)
-		for char* path in files:
-			if (ends_with(path, c".w")):
-				char* text = file_read_text(path)
-				if ((text != 0) && (strlen(text) <= st.max_len)): texts.push(text)
-		if (texts.length == 0): wfz_fail(f"no .w seeds under {corpus_dir}")
-	else:
-		for i in range(3): texts.push(wf_seed_text(c"compiler", i))
+	list[int] lengths = new list[int]
+	for char* corpus in corpus_paths:
+		list[dir_entry*] entries = dir_read(corpus)
+		if (entries != 0):
+			dir_entries_free(entries)
+			list[char*] files = new list[char*]
+			dir_walk_files(corpus, files)
+			for char* path in files:
+				if (ends_with(path, st.ext)): wfz_add_seed(st, path, texts, lengths)
+		elif (path_exists(corpus)): wfz_add_seed(st, corpus, texts, lengths)
+		else: wfz_fail(f"no such corpus {corpus}")
+	if (corpus_paths.length == 0):
+		for i in range(3):
+			char* seed_text = wf_seed_text(c"compiler", i)
+			texts.push(seed_text)
+			lengths.push(strlen(seed_text))
+	if (texts.length == 0): wfz_fail(f"no {st.ext} seeds under {corpus_paths[0]}")
 	int done = 0
-	for char* text in texts:
+	for i in range(texts.length):
 		done = done + 1
 		if (done % 100 == 0): println2(f"wfuzz: {done}/{texts.length} seeds run, {st.covered}/{st.total} counters")
-		if (wfz_case(st, -1, text) > 0):
-			st.corpus.push(text)
+		if (wfz_case(st, -1, texts[i], lengths[i]) > 0):
+			st.corpus.push(texts[i])
+			st.corpus_lengths.push(lengths[i])
 			st.corpus_differs.push(st.last_differs)
 	if (st.corpus.length == 0):
 		st.corpus.push(texts[0])
+		st.corpus_lengths.push(lengths[0])
 		st.corpus_differs.push(0)
 
 
+# Runs text and returns 1 when the exit status is still status.
+int wfz_same_status(wfz_state* st, char* text, int length, int status):
+	wfz_write(st.case_path, text, length)
+	wfz_run* run = wfz_exec(st, st.binary, st.args, st.out_path, st.env)
+	int same = run.status == status
+	wfz_run_free(run)
+	return same
+
+
 int wfz_minimize(wfz_state* st, char* path):
-	char* text = file_read_text(path)
+	int length = 0
+	char* text = wfz_read(path, &length)
 	if (text == 0): wfz_fail(f"cannot read {path}")
-	wf_write(st.case_path, text)
+	wfz_write(st.case_path, text, length)
 	wfz_run* first = wfz_exec(st, st.binary, st.args, st.out_path, st.env)
 	int status = first.status
 	wfz_run_free(first)
-	# Whole lines first, then single bytes.
+	# Text: whole lines first, then single bytes. --bytes: chunks of
+	# halving size (ddmin-style), ending with single bytes.
+	int chunk = 0
+	if (st.bytes_mode):
+		chunk = 1
+		while (chunk * 2 <= length / 2): chunk = chunk * 2
 	int phase = 0
 	while (phase < 2):
 		int pos = 0
-		while (text[pos] != 0):
-			int end = wfz_line_end(text, pos)
-			if (phase == 1): end = pos + 1
-			char* shorter = wfz_edit(text, pos, end - pos, c"", 0, st.max_len)
-			wf_write(st.case_path, shorter)
-			wfz_run* run = wfz_exec(st, st.binary, st.args, st.out_path, st.env)
-			if (run.status == status):
+		while (pos < length):
+			int end = pos + 1
+			if (phase == 0):
+				if (st.bytes_mode): end = pos + chunk
+				else: end = wfz_line_end(text, length, pos)
+			int shorter_length = 0
+			char* shorter = wfz_edit(text, length, pos, end - pos, c"", 0, st.max_len, &shorter_length)
+			if (wfz_same_status(st, shorter, shorter_length, status)):
 				free(text)
 				text = shorter
+				length = shorter_length
 			else:
 				free(shorter)
-				if (phase == 0): pos = wfz_line_end(text, pos)
+				if (phase == 0): pos = end
 				else: pos = pos + 1
-			wfz_run_free(run)
-		phase = phase + 1
+		if (st.bytes_mode && (phase == 0) && (chunk > 1)): chunk = chunk / 2
+		else: phase = phase + 1
 	char* name = path_basename(path)
-	char* out = f"{st.out}/{name}.min.w"
-	wf_write(out, text)
-	println(f"minimized: {strlen(text)} bytes, status {status}, written to {out}")
+	char* out = f"{st.out}/{name}.min{st.ext}"
+	wfz_write(out, text, length)
+	println(f"minimized: {length} bytes, status {status}, written to {out}")
 	println(c"--- input")
+	if (st.bytes_mode):
+		println(asm_hex_encode(text, length))
+		return 0
 	print(text)
-	if ((strlen(text) > 0) && (text[strlen(text) - 1] != '\n')): println(c"")
+	if ((length > 0) && (text[length - 1] != '\n')): println(c"")
 	return 0
 
 
@@ -629,8 +863,11 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	char* binary = 0
 	char* out = 0
-	char* corpus_dir = 0
+	list[char*] corpus_paths = new list[char*]
 	char* minimize = 0
+	char* dict_path = 0
+	char* ext = c".w"
+	int bytes_mode = 0
 	int seed = 1
 	int cases = -1
 	int seconds = -1
@@ -651,6 +888,9 @@ int main(int argc, int argv):
 		if (strcmp(a, c"--fail-on-findings") == 0):
 			fail_on_findings = 1
 			takes = 0
+		elif (strcmp(a, c"--bytes") == 0):
+			bytes_mode = 1
+			takes = 0
 		elif (has_next == 0): wfz_fail(f"{a} needs a value (or is unknown)")
 		elif (strcmp(a, c"--binary") == 0): binary = v
 		elif (strcmp(a, c"--out") == 0): out = v
@@ -658,13 +898,15 @@ int main(int argc, int argv):
 		elif (strcmp(a, c"--seed") == 0): seed = atoi(v)
 		elif (strcmp(a, c"--cases") == 0): cases = atoi(v)
 		elif (strcmp(a, c"--seconds") == 0): seconds = atoi(v)
-		elif (strcmp(a, c"--corpus") == 0): corpus_dir = v
+		elif (strcmp(a, c"--corpus") == 0): corpus_paths.push(v)
 		elif (strcmp(a, c"--timeout-ms") == 0): timeout_ms = atoi(v)
 		elif (strcmp(a, c"--max-len") == 0): max_len = atoi(v)
 		elif (strcmp(a, c"--diff") == 0): diff_binary = v
 		elif (strcmp(a, c"--diff-arg") == 0): diff_args.push(v)
 		elif (strcmp(a, c"--diff-expect") == 0): diff_expects.push(v)
 		elif (strcmp(a, c"--minimize") == 0): minimize = v
+		elif (strcmp(a, c"--ext") == 0): ext = v
+		elif (strcmp(a, c"--dict") == 0): dict_path = v
 		else: wfz_fail(f"unknown option {a}")
 		i = i + 1 + takes
 	if (binary == 0): wfz_fail(c"--binary is required")
@@ -677,6 +919,9 @@ int main(int argc, int argv):
 	st.diff_args = diff_args
 	if ((diff_binary != 0) && (diff_args.length == 0)): st.diff_args = args
 	st.diff_expects = diff_expects
+	st.ext = ext
+	st.bytes_mode = bytes_mode
+	if (dict_path != 0): wfz_load_dict(st, dict_path)
 	wfz_prepare(st)
 	if (minimize != 0): return wfz_minimize(st, minimize)
 	if ((cases < 0) && (seconds < 0)):
@@ -684,20 +929,22 @@ int main(int argc, int argv):
 		char* env_seconds = env_get(c"WFUZZ_SECONDS")
 		if (env_seconds != 0): seconds = atoi(env_seconds)
 	int started = process_monotonic_ms()
-	wfz_load_seeds(st, corpus_dir)
+	wfz_load_seeds(st, corpus_paths)
 	int seeds_covered = st.covered
 	println2(f"wfuzz: {st.corpus.length} seeds, {seeds_covered}/{st.total} counters")
 	int done = 0
 	while ((cases < 0) || (done < cases)):
 		if ((seconds >= 0) && (process_monotonic_ms() - started >= seconds * 1000)): break
-		char* text = wfz_mutate(st, seed, done)
-		if (wfz_case(st, done, text) > 0):
-			char* hash = wf_hash(text, strlen(text))
+		int length = 0
+		char* text = wfz_mutate(st, seed, done, &length)
+		if (wfz_case(st, done, text, length) > 0):
+			char* hash = wf_hash(text, length)
 			if (wfz_known(st, hash) == 0):
 				st.found.push(hash)
 				st.corpus.push(text)
+				st.corpus_lengths.push(length)
 				st.corpus_differs.push(st.last_differs)
-				wf_write(f"{st.out}/corpus/{hash}.w", text)
+				wfz_write(f"{st.out}/corpus/{hash}{st.ext}", text, length)
 				println2(f"wfuzz: case {done}: new coverage, {st.covered}/{st.total} counters, corpus {st.corpus.length}")
 			else: free(text)
 		else: free(text)

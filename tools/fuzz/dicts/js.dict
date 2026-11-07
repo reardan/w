@@ -1,0 +1,79 @@
+# JavaScript tokens for wfuzz --dict (tools/fuzz/harness_js.w)
+function 
+function* 
+async 
+await 
+yield 
+=> 
+class 
+extends 
+super
+new.target
+import 
+export 
+default 
+from 
+let 
+const 
+var 
+if (
+else 
+for (
+of 
+in 
+while (
+do 
+switch (
+case 
+break 
+continue 
+return 
+throw 
+try {
+catch (
+finally {
+label: 
+this
+null
+undefined
+typeof 
+delete 
+void 
+instanceof 
+?.
+??
+**=
+>>>=
+...
+`
+${
+}
+/re/gimsuy
+/[/]/
+0x1F
+0b101
+1n
+1e-7
+.5
+'\\u{10FFFF}'
+"\\x41"
+\\u0061
+{
+}
+(
+)
+[
+]
+;
+,
+:
+?
+=
+==
+===
+!
+++
+--
+// c\n
+/* c */
+\n
