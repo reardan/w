@@ -552,6 +552,16 @@ int ast_expression_data_value(int type):
 	return ast_expression_scalar_value(type) || ast_expression_record_value(type) || ((type_is_array(type) || type_is_slice(type)) && (type_is_gpu_object(type) == 0))
 
 
+# A record with no fields yet (declared ahead of its body, or empty):
+# its storage still has an address, which '&' takes.
+int ast_expression_empty_record(int type):
+	if (type_is_value(type) || (type_get_pointer_level(type) != 0)): return 0
+	int base = type_unqualified(type)
+	int kind = type_get_kind(base)
+	if ((kind != 0) && (kind != type_kind_union)): return 0
+	return (type_num_args(base) == 0) && (type_get_size(base) == 0) && (strcmp(type_get_name(base), c"void") != 0)
+
+
 int ast_expression_storage_type(int type):
 	# Building an lvalue computes its address. Host reads are still
 	# rejected by the value predicates when that lvalue is consumed.
@@ -2047,7 +2057,7 @@ int ast_expression_symbol(expression_ast* tree, int depth, int qualified):
 	if (sym < 0): return -1
 	int is_call = load_int(table + sym + 10) == 2
 	int type = load_int(table + sym + 6)
-	if ((is_call == 0) && (ast_expression_storage_type(type) == 0)): return -1
+	if ((is_call == 0) && (ast_expression_storage_type(type) == 0) && (ast_expression_empty_record(type) == 0)): return -1
 	int visibility = sym_decl_visibility(sym)
 	if ((visibility != 'D') && (visibility != 'U') && (visibility != 'L') && (visibility != 'A')): return -1
 	if (target_isa == 3):
