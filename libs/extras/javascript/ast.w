@@ -33,6 +33,10 @@ js_node* js_node_new(char* kind, char* text):
 	return node
 
 
+int js_kind(js_node* node, char* kind):
+	return strcmp(node.kind, kind) == 0
+
+
 void js_node_add(js_node* parent, js_node* child):
 	if (child != 0): parent.children.push(child)
 

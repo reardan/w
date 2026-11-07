@@ -14,11 +14,24 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The initial corpus contains 28 upstream files expanded into 53 variants:
-**41 PASS, 0 FAIL, 12 UNSUPPORTED, 0 ERROR**. Of those passes, 32 reach runtime
-execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. The positive cases execute 194 assertions across strict/sloppy
-variants. These numbers describe this small selected corpus, **not full Test262
+The corpus contains 228 upstream test files expanded into 451 variants. The
+native profile reports **435 PASS, 0 FAIL, 16 UNSUPPORTED, 0 ERROR**; 84 passes
+reach runtime execution (including eight genuine ReferenceError negatives) and
+the rest verify syntax errors. The upstream-harness profile (below) reports
+**436 PASS, 0 FAIL, 15 UNSUPPORTED, 0 ERROR (96.67%)**: it also executes the
+`eval-this.js` module test. The positive cases execute 268 assertions across strict/sloppy
+variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+errors under `test/language/literals/regexp/` (escape values, class ranges,
+quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
+incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
+grammar negatives (unknown, loose or unsupported property names and values,
+class ranges with property escapes), and literal matching tests for `u`-mode
+escapes, astral characters, case mapping, surrogate pairs, sticky `^` and
+forward named references. reardan/w#841 added `instanceof` and `switch` tests
+(`test/language/expressions/instanceof/`, `test/language/statements/switch/`),
+two module tests with their fixtures, and the `tcoHelper.js`/`compareArray.js`
+includes. Tests that need `eval` or other harness includes
+(`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
 
@@ -32,7 +45,25 @@ paths and SHA-256 hashes. It includes the BSD `LICENSE`, upstream
 checks all pins, source containment, duplicate entries, and required provenance
 before execution. Test files retain their original copyright notices.
 
-## Explicit harness profile
+## Upstream-harness profile
+
+The default target runs a second pass, `upstream-harness-v1`, recorded under
+`full_harness` in the report with its own counts, `execution_passes`,
+`pass_rate` and per-variant results. The runner (`upstream` mode) evaluates the
+pinned `harness/sta.js`, `harness/assert.js` and each declared include from
+`upstream/harness/` unmodified in the test's realm before the test; a harness
+script that fails is an ERROR (or UNSUPPORTED when it needs syntax outside the
+runtime subset). Includes that are not pinned remain UNSUPPORTED. Module tests
+are staged beside their pinned `*_FIXTURE.js` siblings and evaluated through
+`libs/extras/javascript/modules.w` with a relative-path file resolver, so
+loader limits (cycles, default/namespace imports) report UNSUPPORTED. A
+runtime-negative `Test262Error` is identified by inheritance from the harness's
+`Test262Error.prototype`, never by forgeable properties. This pass is not gated
+by the native per-variant baseline; an ERROR in it fails the target, and the
+contract test pins its counts. Its assertion count is 0 because assertions are
+ordinary JavaScript calls. Pass `--native-only` to skip it.
+
+## Explicit native harness profile
 
 The profile is `native-boolean-samevalue-v1`. Upstream
 [INTERPRETING.md](upstream/INTERPRETING.md) permits consumers to override harness
@@ -58,8 +89,7 @@ reason before execution. This is a declared capability boundary, not an exceptio
 filter: unknown identifiers and direct uses of missing built-ins still throw
 ReferenceError and classify as FAIL. A regression test advertises all three
 capabilities and verifies that execution exposes all six failures. Source bytes
-and hashes are unchanged. The separate `instanceof` case remains unsupported
-by runtime preflight.
+and hashes are unchanged. The `instanceof` addition case now executes.
 
 The native callbacks count real assertion invocations. Contract tests verify
 both passing and failing assertion paths, signed zero, NaN, boolean strictness,
@@ -74,7 +104,8 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Async tests, modules/resolution, includes, blocking/non-deterministic flags,
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
-  `coalesce-expression` feature tag is currently enabled; untagged cases still
+  `coalesce-expression`, `regexp-named-groups` and
+  `regexp-unicode-property-escapes` feature tags are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.
