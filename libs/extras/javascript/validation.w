@@ -231,7 +231,9 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 			if (strcmp(name, c"eval") == 0 || strcmp(name, c"arguments") == 0): bad = 1
 		if (bad): js_validation_error(diagnostics, node, c"reserved identifier in this context")
 		free(name)
-	if (js_cst_is(node, c"REGEX") && js_regexp_syntax(node.text) == 0): js_validation_error(diagnostics, node, c"invalid regular expression structure")
+	if (js_cst_is(node, c"REGEX")):
+		char* regexp_error = js_regexp_literal_error(node.text)
+		if (regexp_error != 0): js_validation_error(diagnostics, node, regexp_error)
 	if (node.token != 0 && here.strict):
 		if (js_cst_is(node, c"NUMBER") && node.text[0] == '0' && js_digit(node.text[1])): js_validation_error(diagnostics, node, c"legacy leading-zero number in strict code")
 		if (js_cst_is(node, c"STRING")):

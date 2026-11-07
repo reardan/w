@@ -64,6 +64,8 @@ struct js_value:
 	int text_codec
 	int bigint_bits
 	int bigint_unsigned
+	# Owned compiled RegExp (regexp_runtime.w js_regexp_program), or 0.
+	void* regexp
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -118,6 +120,7 @@ struct js_runtime:
 	js_value* promise_constructor
 	int max_binary_bytes
 	int binary_bytes_used
+	js_value* regexp_prototype
 
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
@@ -146,6 +149,10 @@ void js_runtime_install_binary(js_runtime* rt);
 js_value* js_runtime_binary_construct(js_runtime* rt, int kind, list[js_value*] args);
 void js_runtime_install_promises(js_runtime* rt);
 js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args);
+void js_runtime_install_regexp(js_runtime* rt);
+void js_regexp_program_free(void* program);
+js_value* js_regexp_literal_value(js_runtime* rt, char* text);
+int js_regexp_runtime_supported(char* text);
 
 
 js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key);
@@ -215,6 +222,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.text_codec = 0
 	value.bigint_bits = 0
 	value.bigint_unsigned = 0
+	value.regexp = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -303,6 +311,14 @@ js_value* js_runtime_get(js_runtime* rt, js_value* object, char* key):
 	return value
 
 
+int js_runtime_prefix(char* text, char* prefix):
+	int i = 0
+	while (prefix[i] != 0):
+		if (text[i] != prefix[i]): return 0
+		i = i + 1
+	return 1
+
+
 # Minimal typed runtime errors. Full Error intrinsics/prototypes are separate;
 # allocation failure while reporting an error remains bounded.
 js_value* js_runtime_error_value(js_runtime* rt, char* message):
@@ -310,6 +326,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 	char* name = c"TypeError"
 	if (strcmp(message, c"uninitialized or missing binding") == 0): name = c"ReferenceError"
 	if (strcmp(message, c"duplicate lexical binding") == 0 || strcmp(message, c"duplicate callable binding") == 0): name = c"SyntaxError"
+	if (js_runtime_prefix(message, c"invalid regular expression")): name = c"SyntaxError"
 	js_value* error = js_runtime_alloc(rt, 5)
 	error.intrinsic_error_name = name
 	js_text* key = js_runtime_key(name)
@@ -337,6 +354,7 @@ js_runtime* js_runtime_new():
 	rt.promise_constructor = 0
 	rt.max_binary_bytes = 67108864
 	rt.binary_bytes_used = 0
+	rt.regexp_prototype = 0
 	rt.heap = new list[js_value*]
 	rt.roots = new list[js_value*]
 	rt.scripts = new list[js_node*]
@@ -373,6 +391,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_collections(rt)
 	js_runtime_install_builtins(rt)
 	js_runtime_install_bigint(rt)
+	js_runtime_install_regexp(rt)
 	return rt
 
 
@@ -398,6 +417,7 @@ void js_runtime_value_free(js_value* value):
 		rt.binary_bytes_used = rt.binary_bytes_used - value.binary_length
 		free(value.binary_bytes)
 	if (value.reactions != 0): __w_list_free(cast(__w_list*, value.reactions))
+	if (value.regexp != 0): js_regexp_program_free(value.regexp)
 	js_text_free(value.text)
 	for i in range(value.properties.length):
 		js_value* property = value.properties[i]
@@ -423,6 +443,7 @@ int js_runtime_collect(js_runtime* rt):
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)
 	js_runtime_mark(pending, rt.string_prototype)
+	js_runtime_mark(pending, rt.regexp_prototype)
 	js_runtime_mark(pending, rt.global)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
@@ -1286,6 +1307,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_text_free(text)
 		return value
 	if (js_kind(node, c"string_utf16")): return js_runtime_string(rt, node.string_units)
+	if (js_kind(node, c"regex")): return js_regexp_literal_value(rt, node.text)
 	if (js_kind(node, c"literal")):
 		if (strcmp(node.text, c"this") == 0):
 			js_value* scope = env
@@ -1516,6 +1538,7 @@ int js_runtime_supported(js_node* node):
 	char* kind = node.kind
 	int supported = js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
+	if (supported == 0 && js_kind(node, c"regex")): supported = js_regexp_runtime_supported(node.text)
 	if (supported == 0): return 0
 	# Labelled function declarations require the unsupported Annex B rules.
 	if (js_kind(node, c"label") && js_kind(node.children[0], c"function")): return 0
@@ -1633,3 +1656,5 @@ import libs.extras.javascript.runtime_builtins
 import libs.extras.javascript.runtime_collections
 
 import libs.extras.javascript.bigint
+
+import libs.extras.javascript.regexp_runtime

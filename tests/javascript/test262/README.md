@@ -14,11 +14,19 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The initial corpus contains 28 upstream files expanded into 53 variants:
-**41 PASS, 0 FAIL, 12 UNSUPPORTED, 0 ERROR**. Of those passes, 32 reach runtime
-execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. The positive cases execute 194 assertions across strict/sloppy
-variants. These numbers describe this small selected corpus, **not full Test262
+The corpus contains 210 upstream files expanded into 417 variants:
+**405 PASS, 0 FAIL, 12 UNSUPPORTED, 0 ERROR**. Of those passes, 60 reach runtime
+execution (including eight genuine ReferenceError negatives) and 345 verify
+syntax errors. The positive cases execute 268 assertions across strict/sloppy
+variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+errors under `test/language/literals/regexp/` (escape values, class ranges,
+quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
+incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
+grammar negatives (unknown, loose or unsupported property names and values,
+class ranges with property escapes), and literal matching tests for `u`-mode
+escapes, astral characters, case mapping, surrogate pairs, sticky `^` and
+forward named references. Tests that need `eval`, `instanceof` or harness
+includes (`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
 
@@ -74,7 +82,8 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Async tests, modules/resolution, includes, blocking/non-deterministic flags,
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
-  `coalesce-expression` feature tag is currently enabled; untagged cases still
+  `coalesce-expression`, `regexp-named-groups` and
+  `regexp-unicode-property-escapes` feature tags are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.

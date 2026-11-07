@@ -95,6 +95,126 @@
       "path": "test262/language/expressions/assignment/dstr/array-elem-target-simple-no-strict.js",
       "upstream_path": "test/language/expressions/assignment/dstr/array-elem-target-simple-no-strict.js",
       "sha256": "9cc902fe3638dd99b35e62345beac213cc4435dd45bafeaa25851b0cc996c854"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-unicode-esc-bounds.js",
+      "upstream_path": "test/language/literals/regexp/u-unicode-esc-bounds.js",
+      "sha256": "66a2419b30d855c4fccfc19ab984dfed6311848808860c0345b0168dafd087a2"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-class-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-class-escape.js",
+      "sha256": "bf90f6b2af67f2ea4fcc9118d50ee0d577007be9985255c229895d351a030818"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-legacy-octal-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-legacy-octal-escape.js",
+      "sha256": "0b0c6d6b35f6d28fef51da46681d7f62a1d9206f2b9a4dd246e2650da1e3f61b"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-identity-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-identity-escape.js",
+      "sha256": "e71e2f6427457ff783f88f0edd362891dffb2700042b76cb95b12e1f4656a4f4"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-oob-decimal-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-oob-decimal-escape.js",
+      "sha256": "6bd47816181efebd06d840eba5f5371a49b6640872de637d819c28e6abd395b5"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js",
+      "sha256": "2e5dcf8884883d47a63661bf4d14c31426a3d71871f0ed30dc531ea460ee4504"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-invalid-non-empty-class-ranges.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges.js",
+      "sha256": "279ab973429737924c192d98c7bfe8cb3b7c126c6be7233bc0493341701fbae9"
+    },
+    {
+      "path": "test262/language/literals/regexp/invalid-braced-quantifier-exact.js",
+      "upstream_path": "test/language/literals/regexp/invalid-braced-quantifier-exact.js",
+      "sha256": "72d1b32866e362734c90cc57b1bce90f55ecb8eb2045950ec9b4f99e23047ba3"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-unicode-esc.js",
+      "upstream_path": "test/language/literals/regexp/u-unicode-esc.js",
+      "sha256": "0854b86cb7dda47ed9ad2102c62304d1b62a7da9c30da9c5d04420f70ab868fb"
+    },
+    {
+      "path": "test262/language/literals/regexp/u-case-mapping.js",
+      "upstream_path": "test/language/literals/regexp/u-case-mapping.js",
+      "sha256": "bd69976a69600c0c4af390db7673534e2becbbe9f264e9d63e8822148edcc59f"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js",
+      "sha256": "78d33a5a7a70b7ade2d25a3968279e36fb7292e79877aed56cea16ae1ec0ce4a"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-dangling-groupname.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname.js",
+      "sha256": "81db46f07549161fad37f335df904697bdd9edcfdf07e45ea06621c547569c4f"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js",
+      "sha256": "3311462fff8a2570ad60ff19d1865ff07ba075bb59d8c731fa6820b0121b0e62"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js",
+      "sha256": "3ade2b599cb603dd6dab6d1fa3fd95336ab7e5b9e10d4a642f94c6c6cf3096cc"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js",
+      "sha256": "37f4b5e30f3daf7d546ceb62b0ffbf3b90a1ec63d963261a3209a81382e97877"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js",
+      "sha256": "7933a79f9e4e3147731e9cd4d59ae947085d4988c7ff8dc6125621d700cbb5af"
+    },
+    {
+      "path": "test262/language/literals/regexp/named-groups/forward-reference.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/forward-reference.js",
+      "sha256": "c360c48d481892158f920b1afc6032549d123b3bbfe0a711e1c9ad389fcc4bd2"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js",
+      "sha256": "b11b14c7867bb6438040d3c1423327bd225388821b8e0192789a5378bd7d3e49"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js",
+      "sha256": "a356fa585a30e284c8618e2429a5d3d443fffa49055d04f572b4ea63855ae0a9"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/loose-matching-12.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-12.js",
+      "sha256": "62940707dbb184fc881622a00955d8b67cdc259c6e28aecf9870d61f106af73e"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js",
+      "sha256": "3b7835d9be130811811c3e5269b47f91601ca8ce8295ef923693e4835742dd0d"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js",
+      "sha256": "8afe3f2069489b50e5d533e7a098ae438a846640ea2e9a13005dd75a751eaebc"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js",
+      "sha256": "2c69a3a262a34c1dbab89fd26aa8e1108a46702adc0e96048c918ccb731e7c28"
+    },
+    {
+      "path": "test262/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js",
+      "sha256": "bc7aded897988a7362b316b708480cece750c59a8759828c688aaed19434f92d"
     }
   ],
   "real_sources": [
@@ -132,7 +252,7 @@
     },
     {
       "scope": "Remaining Test262 tests and complete ES2020 conformance",
-      "reason": "Only the pinned declared subset is claimed. Full early errors, Annex B and RegExp pattern grammar need further coverage."
+      "reason": "Only the pinned declared subset is claimed. Full early errors and Annex B outside RegExp patterns need further coverage."
     }
   ],
   "runtime_execution": [
@@ -180,6 +300,46 @@
       "name": "template-abrupt-order",
       "source": "let n = 0; try { `${(() => { throw 7; })()}${n++}`; } catch (e) {} n;",
       "stdout": "0\n"
+    },
+    {
+      "name": "regexp-exec-named-groups",
+      "source": "const m = /(?<y>\\d{4})-(?<m>\\d{2})/u.exec('on 2020-12!'); `${m[0]}|${m.groups.y}|${m.groups.m}|${m.index}|${m.length}`;",
+      "stdout": "2020-12|2020|12|3|3\n"
+    },
+    {
+      "name": "regexp-backtracking-captures",
+      "source": "const z = /(z)((a+)?(b+)?(c))*/.exec('zaacbbbcac'); `${z[0]}|${z[2]}|${z[3]}|${z[4]}|${z[5]}|${/(a*)*/.exec('b')[1]}`;",
+      "stdout": "zaacbbbcac|ac|a|undefined|c|undefined\n"
+    },
+    {
+      "name": "regexp-lookaround",
+      "source": "const b = /(?<=(\\d+)(\\d+))$/.exec('1053'); `${b[1]}|${b[2]}|${/(?<=\\$)\\d+(\\.\\d*)?/.exec('cost $10.53')[0]}|${/(.*?)a(?!(a+)b\\2c)\\2(.*)/.exec('baaabaac')[2]}`;",
+      "stdout": "1|053|10.53|undefined\n"
+    },
+    {
+      "name": "regexp-annex-b-escapes",
+      "source": "`${/\\8/.test('8')}|${/\\101/.test('A')}|${/\\c/.test('\\\\c')}|${/[\\c_]/.test('\\x1f')}|${/\\u{2}/.test('uu')}|${/[\\d-a]/.test('-')}|${/\\k<a>/.test('k<a>')}`;",
+      "stdout": "true|true|true|true|true|true|true\n"
+    },
+    {
+      "name": "regexp-case-folding",
+      "source": "`${/\\u212a/i.test('k')}|${/\\u212a/iu.test('k')}|${/[\\w]/iu.test('\\u017f')}|${/\\u01c5/i.test('\\u01c6')}|${/\\u1e9e/iu.test('\\u00df')}|${/(a)\\1/i.test('aA')}`;",
+      "stdout": "false|true|true|true|true|true\n"
+    },
+    {
+      "name": "regexp-unicode-mode",
+      "source": "`${/^.$/u.test('\\u{1F600}')}|${/^.$/.test('\\u{1F600}')}|${/\\ud83d/u.test('\\ud83d\\udca9')}|${/[\\u{1F600}-\\u{1F64F}]/u.test('\\u{1F610}')}|${/\\p{ASCII}+/u.exec('abc\\u00e9')[0]}`;",
+      "stdout": "true|false|false|true|abc\n"
+    },
+    {
+      "name": "regexp-last-index",
+      "source": "const g = /a/g; const y = /a/y; y.lastIndex = 1; const u = /./gu; u.lastIndex = 1; `${g.test('aa')},${g.lastIndex},${g.test('aa')},${g.test('aa')},${g.lastIndex}|${y.test('ba')},${y.lastIndex}|${u.exec('\\u{1F600}a')[0].length}`;",
+      "stdout": "true,1,true,false,0|true,2|2\n"
+    },
+    {
+      "name": "regexp-constructor-source",
+      "source": "let n = ''; try { new RegExp('[z-a]'); } catch (e) { n = e.name; } `${n}|${new RegExp('a/b\\n').source}|${/a/gimsuy.flags}|${/x/g.toString()}|${RegExp('b').test('abc')}`;",
+      "stdout": "SyntaxError|a\\/b\\n|gimsuy|/x/g|true\n"
     }
   ]
 }
