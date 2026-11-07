@@ -136,10 +136,17 @@ char* object_section_name(char* image, int i):
 	return image + load_int32(names + 24) + load_int32(object_section(image, i))
 
 
+# Index of the section named name, -1 when absent.
+int object_section_index(char* image, char* name):
+	for i in range(object_u16(image + 60)):
+		if (strcmp(object_section_name(image, i), name) == 0): return i
+	return -1
+
+
 # Binding/type/section of the named symbol: binding * 256 + type, and
 # the section index through shndx_out; -1 when absent.
 int object_symbol(char* image, char* name, int* shndx_out):
-	char* symtab = object_section(image, 4)
+	char* symtab = object_section(image, object_section_index(image, c".symtab"))
 	char* strtab = object_section(image, load_int32(symtab + 40))
 	int count = load_int32(symtab + 32) / 24
 	for i in range(count):
@@ -175,12 +182,16 @@ void test_object_elf_structure():
 	assert_equal(2, image[4])               # ELFCLASS64
 	assert_equal(1, object_u16(image + 16)) # ET_REL
 	assert_equal(62, object_u16(image + 18))
-	assert_equal(9, object_u16(image + 60))
+	# .text, .data, .rodata (the literals), then the fixed sections
 	assert_strings_equal(c".text", object_section_name(image, 1))
 	assert_strings_equal(c".data", object_section_name(image, 2))
-	assert_strings_equal(c".note.GNU-stack", object_section_name(image, 3))
-	assert_strings_equal(c".rela.text", object_section_name(image, 6))
-	assert_strings_equal(c".rela.data", object_section_name(image, 7))
+	assert_strings_equal(c".rodata", object_section_name(image, 3))
+	assert_strings_equal(c".note.GNU-stack", object_section_name(image, 4))
+	int rela_text = object_section_index(image, c".rela.text")
+	int rela_data = object_section_index(image, c".rela.data")
+	assert1(rela_text > 4)
+	assert1(rela_data > 4)
+	assert_equal(-1, object_section_index(image, c".bss"))
 	int shndx = 0
 	# exported functions: GLOBAL FUNC in .text
 	assert_equal(256 + 2, object_symbol(image, c"w_add", &shndx))
@@ -199,10 +210,10 @@ void test_object_elf_structure():
 	# no entry stub and no runtime: nothing like main or malloc
 	assert_equal(-1, object_symbol(image, c"main", &shndx))
 	assert_equal(-1, object_symbol(image, c"malloc", &shndx))
-	int text_kinds = object_relocation_kinds(image, 6)
+	int text_kinds = object_relocation_kinds(image, rela_text)
 	assert1(text_kinds >= 1000)
 	assert_equal(0, text_kinds % 1000)
-	int data_kinds = object_relocation_kinds(image, 7)
+	int data_kinds = object_relocation_kinds(image, rela_data)
 	assert_equal(0, data_kinds / 1000)
 	assert1(data_kinds >= 8)
 	free(image)

@@ -98,6 +98,7 @@ void elf_emit_export_wrappers():
 				push_reg(reg)
 		emit_int8(0xe8)
 		emit_int32(address - code_offset - codepos - 4)
+		if (elf_object): object_note_rel32(codepos - 4)
 		if (n > 0):
 			emit(3, c"\x48\x83\xc4")
 			emit_int8(n * 8)

@@ -152,6 +152,10 @@ literal RBRACK "]"
 literal LBRACE "{"
 literal RBRACE "}"
 literal QUESTION "?"
+# Declaration attributes ('@section(".init.text")', '@weak', ...;
+# grammar/object_attributes.w) prefix a function, global or extern
+# declaration, on its line or on lines of their own.
+literal AT "@"
 
 start program
 
@@ -163,7 +167,10 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | thread_local_decl | message_decl | operator_def | function_decl | global_decl
+rule declaration = attribute_decl | import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | thread_local_decl | message_decl | operator_def | function_decl | global_decl
+rule attribute_decl = AT name_token attribute_args
+rule attribute_args = LPAREN attribute_arg RPAREN |
+rule attribute_arg = STRING | expression
 rule import_decl = KW_IMPORT dotted_name import_alias_opt import_attestation_opt
 rule import_alias_opt = KW_AS name_token |
 # An audited foreign boundary: 'unsafe "<sha256>"' (docs/projects/safe_mode.md).

@@ -52,6 +52,11 @@ void test_brackets_calls_and_members():
 	assert_formats(c"return(x)\x0a", c"return (x)\x0a")
 
 
+void test_declaration_attributes():
+	assert_formats(c"@ section ( \".init.text\" ) @ weak\x0aint f():\x0a\x09return 1\x0a", c"@section(\".init.text\") @weak\x0aint f():\x0a\x09return 1\x0a")
+	assert_unchanged(c"@align(64)\x0aint cell\x0a")
+
+
 void test_pointer_types():
 	assert_formats(c"char *s = cast(char *, p)\x0a", c"char* s = cast(char*, p)\x0a")
 	assert_formats(c"int strlen(char *s);\x0a", c"int strlen(char* s);\x0a")

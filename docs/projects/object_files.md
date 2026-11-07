@@ -72,21 +72,94 @@ and every absolute pointer stored in data is a PIE rebase cell
 
 | Site | Relocation |
 |---|---|
-| Text address slot (`lea`, FFI `call [rip+...]`) reaching data | `R_X86_64_PC32` against `.data` plus offset |
+| Text address slot (`lea`, FFI `call [rip+...]`) reaching data | `R_X86_64_PC32` against the data's section plus offset |
 | The same reaching an `extern` data object | `R_X86_64_PC32` against the undefined symbol |
-| Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against `.text` or `.data` |
+| Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against the target's section |
 | The same pointing at an `extern` data object | `R_X86_64_64` against the undefined symbol |
 | FFI slot of an `extern` function | `R_X86_64_64` against the undefined symbol |
+| Call cell or address slot reaching code in another section | `R_X86_64_PC32` against that section plus offset |
+| Call to a weak definition (or its address taken) | `R_X86_64_PLT32` / `R_X86_64_PC32` against the weak symbol |
+| Address of weak `extern` data | `lea` becomes `mov` from the GOT, `R_X86_64_REX_GOTPCRELX` |
 
-Text-to-text references (calls, jumps, function addresses) are
-PC-relative inside `.text` and need nothing. A slot whose target lies
-outside the object is an internal error rather than a silent bad link.
-The object contains `.text` (code and read-only literals), `.data` (all
-mutable storage; there is no separate `.bss`), `.symtab`, `.strtab`,
-`.rela.text`, `.rela.data` and an empty `.note.GNU-stack`, so linked
+Text-to-text references (calls, jumps, function addresses) inside one
+section are PC-relative and need no relocation; the writer rewrites the
+displacement when its two ends land in different pieces of the same
+section. Every `call rel32` is recorded while compiling
+(`call_relative32`, the export adapters) for this. A slot whose target
+lies outside the object is an internal error rather than a silent bad
+link.
+
+The object contains `.text` (code), `.data` (initialized mutable
+storage), `.rodata` (string literal bytes) and `.bss` (zero-initialized
+globals, `NOBITS`) when they are non-empty, the sections named by
+attributes (below), `.symtab`, `.strtab`, one `.rela<section>` per
+section with relocations, and an empty `.note.GNU-stack`, so linked
 programs keep a non-executable stack. `extern` data gets an unused
 placeholder in `.data`; every reference to it is relocated to the C
-symbol instead.
+symbol instead. A global goes to `.bss` when its bytes are all zero
+and it holds no pointer cell (a W fixed array's header is one, so such
+an array stays in `.data`).
+
+## Sections and symbol attributes
+
+Attributes before a function, global or `extern` declaration control
+its section, binding and alignment, as a kernel's linker script needs
+(`grammar/object_attributes.w`). They go on the declaration's line or
+on lines of their own:
+
+```w
+@section(".init.text")
+export int driver_init():          # code in .init.text (AX)
+	return setup(1)
+
+@section(".initcall6.init")
+unary* driver_initcall = driver_init_entry   # a table entry
+
+@section(".data..percpu") @align(64)
+int per_cpu_counter
+
+@align(4096)
+int[512] page_table
+
+@weak
+export int arch_hook():            # a strong C definition wins the link
+	return 0
+
+@weak
+extern int optional_symbol         # undefined weak: address 0 if absent
+
+@alias("driver_init")
+int driver_init_alias();           # a second global name, also usable from W
+```
+
+| Attribute | Meaning |
+|---|---|
+| `@section("name")` | Place the function (and its export adapter) or global in section `name`. |
+| `@align(n)` | Align the function or global to `n` (a power of two up to 1 MiB); the section's alignment rises to match. |
+| `@weak` | `STB_WEAK` binding: on a definition (a function or global symbol that would otherwise be local becomes weak too; for a function that is not exported, that symbol is its W-convention entry) or on an `extern` (an undefined weak reference). |
+| `@alias("target")` | On a function prototype or a global without initializer: a second name for `target`'s definition. W code may use either name; the object gets a global symbol at the target's (an exported target's adapter). The target may be defined before or after the alias. |
+| `@used` | Accepted for C translators. W never drops an unreferenced function or global, so it changes nothing. |
+
+Section flags follow gcc's rules for what a section holds: functions
+give `AX`; data gives `WA`, `A` when the name contains `.rodata`, and
+`NOBITS` when it starts with `.bss` (such a global must be
+zero-initialized). One section cannot hold both functions and data.
+Globals moved out of `.data` are word aligned and packed in declaration
+order, so the entries of a table section are contiguous like C's.
+
+Outside `--emit=obj` the attributes are accepted and `@section`,
+`@align` and `@weak` change nothing (like `export` on a native
+executable); `@alias` works everywhere. Calls from W to a weak
+definition in the same object bind to it through its symbol only when
+the symbol is the function's W entry: an exported function's weak
+symbol is its C adapter, so W callers keep calling the W body.
+
+`tests/object_sections_test.w` checks the sections and symbols with
+`readelf` and links `tests/object_sections/library.w` into
+`tests/object_sections/main.c` with a small linker script
+(`sections.ld`, `INSERT AFTER .data`) that collects `.w_initcall.*`
+levels in sorted order and a `.w_table` section into tables, which C
+and W both iterate, and checks the diagnostics.
 
 ## Two runtime modes
 
@@ -137,12 +210,12 @@ Next steps, roughly in order:
    pairs map to `R_AARCH64_ADR_PREL_PG_HI21` / `ADD_ABS_LO12_NC`; the
    static-library slot notes already exist for arm64
    (`arm64_addr_slot_write`).
-3. **Kernel-oriented controls.** Section placement and attributes
-   (`.text.*`, read-only data split out of `.text`, a real `.bss`,
-   alignment), symbol visibility, and a no-red-zone/no-SSE audit of the
-   generated code and adapters, so a kernel's linker script can place W
-   code. The adapter already preserves every System V callee-saved
-   register; interrupt-context use needs that audit.
+3. **Kernel-oriented controls.** Section placement, weak symbols,
+   aliases, alignment, `.rodata` and `.bss` are done (above). Left:
+   symbol visibility (`STV_HIDDEN`), `SHF_MERGE` string sections, and a
+   no-red-zone/no-SSE audit of the generated code and adapters. The
+   adapter already preserves every System V callee-saved register;
+   interrupt-context use needs that audit.
 4. **Exported data and C-shaped aggregates.** An explicit marker for
    exported globals (today: any root global), C-layout arrays, and
    struct arguments by value in the adapters.

@@ -739,10 +739,14 @@ int global_address_initializer(char* name, int cell, int type):
 	else:
 		int length = process_prefixed_string_literal()
 		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
-		value = code_offset + codepos
-		emit(length, token)
-		emit_int8(0)
-		be_align_code()
+		if (elf_object):
+			token[length] = 0
+			value = object_rodata_bytes(token, length + 1)
+		else:
+			value = code_offset + codepos
+			emit(length, token)
+			emit_int8(0)
+			be_align_code()
 		get_token()
 	global_address_store(cell, value)
 	return 1
@@ -1014,7 +1018,27 @@ void global_variable_declaration(int binding, int type, char* init_name):
 	const_global_define(binding, type)
 
 
+# Attributes ('@section(...)', '@weak', ...; grammar/object_attributes.w)
+# prefix the declaration that follows; one the item did not consume is an
+# error.
+void program_declaration();
+
+
+# A global declared without an initializer; '@alias' reserves no storage.
+void program_global(int current_symbol, int decl_type, char* init_name, char* name):
+	if (object_attributes_global_alias(current_symbol, name, 0)): return
+	global_variable_declaration(current_symbol, decl_type, init_name)
+	object_attributes_global(current_symbol, name)
+
+
 void program_item():
+	attribute_count = 0
+	if (peek(c"@")): object_attributes_parse()
+	program_declaration()
+	object_attributes_unconsumed()
+
+
+void program_declaration():
 	int current_symbol
 	if (analysis_mode && peek(c"}")): error(c"unmatched '}' at module scope")
 	if (import_statement()): return
@@ -1024,7 +1048,9 @@ void program_item():
 	if (union_declaration()): return
 	if (enum_declaration()): return
 	if (message_declaration()): return
-	if (extern_statement()): return
+	if (extern_statement()):
+		object_attributes_extern(extern_last_name)
+		return
 
 	# Imports/structs may have consumed the rest of the file
 	if (token[0] == 0): return;
@@ -1133,14 +1159,16 @@ void program_item():
 		get_token()
 	if (accept(c";")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"(")):
 		flow_definition_type = decl_type
 		flow_definition_type_set = 1
+		int code_start = codepos
 		function_definition(current_symbol)
+		object_attributes_function(current_symbol, defhash_name, code_start, codepos)
 		if (export_pending):
 			export_function_note(current_symbol, defhash_name, decl_type)
 		if (defhash_name != 0):
@@ -1148,14 +1176,16 @@ void program_item():
 
 	else if (accept(c"=")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, defhash_name)
+		if (object_attributes_global_alias(current_symbol, defhash_name, 1) == 0):
+			global_variable_declaration(current_symbol, decl_type, defhash_name)
+			object_attributes_global(current_symbol, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else:
 		/*error(8)*/
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
