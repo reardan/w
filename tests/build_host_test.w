@@ -85,7 +85,7 @@ void test_unavailable_dependency_and_explicit_atomic_output():
 
 
 void test_other_hosts_keep_the_manifest():
-	if (build_host_darwin() || build_host_android()): return
+	if (build_host_darwin() || build_host_android() || build_host_linux_x64()): return
 	manifest* m = bh_manifest()
 	char* before = json_stringify(m.root)
 	manifest_host_prepare(m, 1)
@@ -196,3 +196,33 @@ void test_android_native_targets_require_device():
 	assert1(jfield_string(m.by_name[c"tests_android"], c"host_unavailable") != 0)
 	assert1(jfield_string(m.by_name[c"cross"], c"host_unavailable") == 0)
 	json_free(m.root)
+
+
+void test_linux_x64_host_profile():
+	manifest* m = bh_manifest()
+	manifest_host_prepare_linux_x64(m, 1)
+	json_value* cmd = bh_command(m, c"wtest")
+	assert_strings_equal(c"bin/wv2_native", json_array_get(cmd, 0).string_value)
+	assert_strings_equal(c"x64", json_array_get(cmd, 1).string_value)
+	assert_strings_equal(c"win64", json_array_get(bh_command(m, c"cross"), 1).string_value)
+	assert_strings_equal(c"tests/hello.w", json_array_get(bh_command(m, c"linux_test"), 1).string_value)
+	assert_strings_equal(c"bin/wv2_native", json_array_get(jfield_array(m.by_name[c"wv2"], c"inputs"), 0).string_value)
+	assert_equal(0, json_object_has(m.by_name[c"linux_test"], c"host_unavailable"))
+	json_free(m.root)
+
+
+void test_linux_native_generator_and_custom_manifest():
+	manifest* m = bh_manifest()
+	m.by_name[c"generated"] = m.by_name[c"tests"]
+	manifest_host_prepare_linux_x64(m, 1)
+	assert_strings_equal(c"x64", json_array_get(bh_command(m, c"linux_test"), 1).string_value)
+	assert_strings_equal(c"win64", json_array_get(bh_command(m, c"cross"), 1).string_value)
+	json_free(m.root)
+	m = bh_manifest()
+	manifest_host_prepare_linux_x64(m, 0)
+	assert_strings_equal(c"tools/test_map.w", json_array_get(bh_command(m, c"wtest"), 1).string_value)
+	json_free(m.root)
+
+
+# wbuild: target=linux_native_host_test dep=wv2
+# wbuild: step="sh tests/linux_native_host_test.sh" expect_stdout="native Linux host qualification OK"

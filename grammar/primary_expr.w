@@ -242,5 +242,5 @@ int primary_expr():
 	# A noted direct callee (grammar/identifier.w, grammar/generic.w)
 	# that no call suffix will consume is an ordinary function value
 	if (direct_callee_current()):
-		if (direct_callee_keep(start_serial) == 0): direct_callee_materialize()
+		if (direct_callee_keep(start_serial) == 0): direct_callee_materialize_value()
 	return type

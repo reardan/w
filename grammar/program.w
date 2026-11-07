@@ -440,11 +440,31 @@ void function_definition(int current_symbol):
 	# Inlining (unit A5, compiler/inline_table.w): a record of this
 	# definition, filled by the parameters and the body below
 	inline_definition_begin(current_symbol, last_global_declaration, declared_return_type)
+	int is_c_variadic = 0
 	while (accept(c")") == 0):
 		if (is_w_variadic): error(c"variadic parameter must be the last parameter")
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
+		# A trailing '...' (optionally named) declares a C-variadic
+		# definition for --c-abi: the name is a void* parameter holding
+		# the System V va_list its entry builds for the call
+		# (code_generator/c_abi.w, lib/c_va.w).
+		if (accept(c".")):
+			expect(c".")
+			expect(c".")
+			int va_type = type_lookup_pointer(c"void", 1)
+			sym_record_param_type(current_symbol, param_count, va_type)
+			if (peek(c")") == 0):
+				sym_declare(token, va_type, 'A', number_of_args, 1)
+				inline_note_parameter(token, va_type)
+				pointer_indirection = 0
+				get_token()
+			else: inline_note_parameter(0, va_type)
+			expect(c")")
+			is_c_variadic = 1
+			break
 		int type = type_name()
+		seg_storage_check(type, c"a parameter")
 		# "T... name" declares a W variadic function: the callee sees the
 		# trailing arguments as a T[] slice parameter.
 		if (accept(c".")):
@@ -465,8 +485,7 @@ void function_definition(int current_symbol):
 		if (type_is_array(type)):
 			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
-		if (param_count <= sym_max_param_slots):
-			save_int(table + current_symbol + 22 + (param_count << 2), type)
+		sym_record_param_type(current_symbol, param_count, type)
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
 			sym_declare(token, type, 'A', number_of_args, 1)
@@ -498,6 +517,7 @@ void function_definition(int current_symbol):
 	save_int(table + current_symbol + 22, param_count)
 	if (is_w_variadic): sym_set_w_variadic(current_symbol, param_count - 1)
 	else: sym_set_w_variadic(current_symbol, -1)
+	if (is_c_variadic): c_variadic_definition_note(current_symbol, param_count - 1)
 
 	int* lifetime_order = function_lifetime_order(current_symbol, declared_return_type, param_count)
 	if (accept(c";")):
@@ -581,11 +601,78 @@ void emit_global_storage(int type);
 void emit_data_global_storage(int type, int base_vaddr);
 
 
+# A record of size 0 (one nesting only empty records) still gets a word:
+# every global keeps an address of its own, so it never shares a vaddr
+# -- or, in an object, a section -- with the next declaration.
 int global_storage_size(int type):
 	int bytes = word_size
 	int declared_size = type_get_size(type)
 	if ((type_num_args(type) > 0) | (declared_size > word_size)): bytes = declared_size
+	if (bytes < 1): bytes = word_size
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
+
+
+# Globals declared while their record type had no fields yet: C's
+# 'static struct s x;' ahead of the struct body. Their word-sized
+# reservation (incomplete_global_addresses, code_generator/
+# code_emitter.w) is too small once the body adds fields, so when the
+# type completes the record moves to fresh storage of its full size;
+# the address slots and pointer cells that took its address meanwhile
+# are retargeted (the type had no fields, so they all hold its start).
+list[int] incomplete_global_symbols
+list[int] incomplete_global_types
+
+
+int incomplete_global_type(int type):
+	int t = type_canonical(type)
+	if (type_get_pointer_level(t) != 0): return 0
+	if ((type_get_kind(t) != 0) && (type_get_kind(t) != type_kind_union)): return 0
+	return (type_num_args(t) == 0) && (type_get_size(t) == 0)
+
+
+void incomplete_global_note(int t, int type):
+	if ((data_split == 0) || (incomplete_global_type(type) == 0)): return;
+	if (cast(int, incomplete_global_symbols) == 0):
+		incomplete_global_symbols = new list[int]
+		incomplete_global_types = new list[int]
+		incomplete_global_addresses = new list[int]
+		incomplete_global_slots = new list[int]
+	incomplete_global_symbols.push(t)
+	incomplete_global_types.push(type)
+	incomplete_global_addresses.push(sym_value_at(t))
+
+
+void incomplete_global_move(int t, int type, int old):
+	int bytes = global_storage_size(type)
+	if (bytes <= word_size): return;
+	int moved = emit_data_zeros(bytes)
+	emit_data_global_storage(type, moved)
+	sym_set_value_at(t, moved)
+	for i in range(incomplete_global_slots.length):
+		int pos = incomplete_global_slots[i]
+		if ((pos >= 0) && (pos <= codepos - 4) && (be_addr_slot_read(pos) == old)): be_addr_slot_write(pos, moved)
+	for r in range(rebase_count):
+		int cell = load_i(rebase_table + r * 8, 8) - data_offset
+		if ((cell >= 0) && (cell <= datapos - word_size) && (load_i(data + cell, word_size) == old)): save_i(data + cell, moved, word_size)
+	if ((cast(int, const_global_addresses) != 0) && (const_global_addresses.get(t, -1) == old)): const_global_addresses[t] = moved
+
+
+# The record type type_index just got its fields.
+void incomplete_global_complete(int type_index):
+	if (cast(int, incomplete_global_symbols) == 0): return;
+	int canonical = type_canonical(type_index)
+	int i = 0
+	while (i < incomplete_global_symbols.length):
+		if (type_canonical(incomplete_global_types[i]) == canonical):
+			incomplete_global_move(incomplete_global_symbols[i], incomplete_global_types[i], incomplete_global_addresses[i])
+			int last = incomplete_global_symbols.length - 1
+			incomplete_global_symbols[i] = incomplete_global_symbols[last]
+			incomplete_global_types[i] = incomplete_global_types[last]
+			incomplete_global_addresses[i] = incomplete_global_addresses[last]
+			incomplete_global_symbols.pop()
+			incomplete_global_types.pop()
+			incomplete_global_addresses.pop()
+		else: i = i + 1
 
 
 # Define a mutable global variable's symbol and reserve its storage. With
@@ -678,6 +765,12 @@ void global_initializer_check_type(char* name, int type):
 # once the whole program is compiled (global_address_finish).
 list[int] global_address_cells
 list[int] global_address_symbols
+# Forward references by name (symbol -1 above): a global or function not
+# yet declared where the initializer names it, so cyclic static data
+# ('a' holding &b while 'b' holds &a) needs no ordering. Names are
+# strclone'd char* kept as words; offsets add to a global's address.
+list[int] global_address_names
+list[int] global_address_offsets
 
 
 void global_address_store(int cell, int value):
@@ -686,32 +779,135 @@ void global_address_store(int cell, int value):
 	rebase_note(cell)
 
 
+int global_is_address_target(int t):
+	return (t >= 0) && (table[t + 1] == 'D') && (load_int(table + t + 10) == 1) && (sym_is_thread_local(t) == 0)
+
+
+# The address '&g' stores: a fixed array's elements (past its {data,
+# length} header), as in C, where the array's name is its first element.
+# An 'extern T[] g' name is a pointer cell: '&g' is the C array itself,
+# the placeholder space the cell points at.
+int global_address_of(int t):
+	if (data_split && object_symbol_is_extern_pointer(t)): return load_i(data + (sym_value_at(t) - data_offset), word_size)
+	if (type_is_array(type_canonical(load_int(table + t + 6)))): return sym_value_at(t) + 2 * word_size
+	return sym_value_at(t)
+
+
+# Under --emit=obj, the cell holding '&t' or '&t + n' relocates against
+# t (its piece, or an extern's symbol), whatever the offset.
+void global_address_note_extern(int cell, int t):
+	if (elf_object): object_note_address_base(cell, global_address_of(t))
+
+
 void global_address_finish():
 	if (cast(int, global_address_cells) == 0): return;
 	for i in range(global_address_cells.length):
 		int t = global_address_symbols[i]
+		int value = 0
+		char* name = cast(char*, global_address_names[i])
+		if (t < 0):
+			t = sym_lookup(name)
+			if (global_address_offsets[i] >= 0):
+				# '&name': a global variable declared after the initializer
+				if (global_is_address_target(t) == 0):
+					error3(c"'&' in a global initializer needs a global variable, got '", name, c"'")
+				global_address_note_extern(global_address_cells[i], t)
+				global_address_store(global_address_cells[i], global_address_of(t) + global_address_offsets[i] - 1)
+				continue
+			if ((t < 0) || (load_int(table + t + 10) != 2)):
+				error3(c"function '", name, c"' used in a global initializer is never defined")
 		if (table[t + 1] != 'D'):
 			error3(c"function '", sym_record_name(t), c"' used in a global initializer is never defined")
-		global_address_store(global_address_cells[i], sym_value_at(t))
+		value = sym_value_at(t)
+		if (c_abi_mode): value = c_abi_static_function_value(t, global_address_cells[i])
+		global_address_store(global_address_cells[i], value)
 	global_address_cells = 0
 	global_address_symbols = 0
+	global_address_names = 0
+	global_address_offsets = 0
 
 
-# 1 when the initializer at the current token is an address form, which
-# it then consumes and stores into the global at cell.
-int global_address_initializer(char* name, int cell, int type):
+# Defer the word at cell until the whole program is compiled: symbol t
+# (a prototyped function), or, with t = -1, the name -- a function, or
+# with offset >= 0 a global variable whose address plus offset - 1 the
+# word receives (offset -1 marks a function name).
+void global_address_defer(int cell, int t, char* name, int offset):
+	if (data_split == 0):
+		if (offset < 0): error3(c"function '", name, c"' must be defined before a global initializer takes its address")
+		error3(c"global '", name, c"' must be defined before a global initializer takes its address")
+	if (cast(int, global_address_cells) == 0):
+		global_address_cells = new list[int]
+		global_address_symbols = new list[int]
+		global_address_names = new list[int]
+		global_address_offsets = new list[int]
+	global_address_cells.push(cell)
+	global_address_symbols.push(t)
+	global_address_names.push(cast(int, strclone(name)))
+	global_address_offsets.push(offset)
+
+
+# 1 when the current token opens an address form: '&global', a c"..."
+# literal, or the name of a function. With forward set (brace
+# initializers), an identifier that names nothing yet is a function
+# defined later.
+int global_address_form_ahead(int forward):
+	if (peek(c"&") || ((token[0] == 'c') && (token[1] == '"'))): return 1
+	int t = sym_lookup(token)
+	if (t >= 0): return load_int(table + t + 10) == 2
+	if ((forward == 0) || (is_ident_start_byte(token[0]) == 0) || (nextc == '.')): return 0
+	if ((type_lookup(token) >= 0) || peek(c"const") || peek(c"fn") || generic_type_starts_here()): return 0
+	return 1
+
+
+# Parse the address form at the current token (global_address_form_ahead
+# said there is one) and store the address into the word at cell.
+# '&global' may carry a constant byte offset ('&table + 16', '&s - 8'),
+# the C '&a[i]' / '&s.field' forms with the offset folded in; the global
+# may be declared later in the program.
+void global_address_form(char* name, int cell):
+	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
 	int t = -1
 	int value = 0
-	if (peek(c"&") || ((token[0] == 'c') && (token[1] == '"'))): t = -1
+	if (accept(c"&")):
+		t = sym_lookup(token)
+		if ((t >= 0) && (global_is_address_target(t) == 0)):
+			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		if ((t < 0) && (is_ident_start_byte(token[0]) == 0)):
+			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		char* target = strclone(token)
+		if (t >= 0):
+			retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
+			value = global_address_of(t)
+		get_token()
+		int offset = 0
+		if (accept(c"+")): offset = parse_constant_literal(c"address offset in initializer for global", name)
+		else if (accept(c"-")): offset = 0 - parse_constant_literal(c"address offset in initializer for global", name)
+		if (t < 0):
+			global_address_defer(cell, -1, target, offset + 1)
+			free(target)
+			return
+		free(target)
+		global_address_note_extern(cell, t)
+		value = value + offset
+	else if ((token[0] == 'c') && (token[1] == '"')):
+		int length = process_prefixed_string_literal()
+		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
+		if (elf_object):
+			token[length] = 0
+			value = object_rodata_bytes(token, length + 1)
+		else:
+			value = code_offset + codepos
+			emit(length, token)
+			emit_int8(0)
+			be_align_code()
+		get_token()
 	else:
 		t = sym_lookup(token)
-		if ((t < 0) || (load_int(table + t + 10) != 2)): return 0
-	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)):
-		diag_part(c"global '")
-		diag_part(name)
-		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
-	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
-	if (t >= 0):
+		if (t < 0):
+			# A function defined later (brace initializers only)
+			global_address_defer(cell, -1, token, -1)
+			get_token()
+			return
 		retained_initializer_note(name, retained_initializer_function, 0, t, 0, 0)
 		get_token()
 		if (peek(c"(")):
@@ -722,29 +918,94 @@ int global_address_initializer(char* name, int cell, int type):
 			error3(c"' must be a compile-time constant, got '", sym_record_name(t), c"'")
 		if (table[t + 1] != 'D'):
 			if (data_split == 0): error3(c"function '", sym_record_name(t), c"' must be defined before a global initializer takes its address")
-			if (cast(int, global_address_cells) == 0):
-				global_address_cells = new list[int]
-				global_address_symbols = new list[int]
-			global_address_cells.push(cell)
-			global_address_symbols.push(t)
-			return 1
+			global_address_defer(cell, t, sym_record_name(t), -1)
+			return
 		value = sym_value_at(t)
-	else if (accept(c"&")):
-		t = sym_lookup(token)
-		if ((t < 0) || (table[t + 1] != 'D') || (load_int(table + t + 10) != 1) || (sym_is_thread_local(t))):
-			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
-		retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
-		value = sym_value_at(t)
-		get_token()
-	else:
-		int length = process_prefixed_string_literal()
-		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
-		value = code_offset + codepos
-		emit(length, token)
-		emit_int8(0)
-		be_align_code()
-		get_token()
+		if (c_abi_mode): value = c_abi_static_function_value(t, cell)
 	global_address_store(cell, value)
+
+
+# 1 when the initializer at the current token is an address form, which
+# it then consumes and stores into the global at cell.
+int global_address_initializer(char* name, int cell, int type):
+	if (global_address_form_ahead(0) == 0): return 0
+	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)):
+		diag_part(c"global '")
+		diag_part(name)
+		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
+	global_address_form(name, cell)
+	return 1
+
+
+# Store the low `width` bytes of value at a global's address, in whichever
+# segment holds it (see write_global_initial_value).
+void global_data_store(int addr, int value, int width):
+	if (data_split): save_i(data + (addr - data_offset), value, width)
+	else: save_i(code + (addr - code_offset), value, width)
+
+
+void global_data_overflow(char* name, int type):
+	diag_part(c"brace initializer for global '")
+	diag_part(name)
+	error_type(c"' does not fit in its type '", type, c"'")
+
+
+# 'T name = {item, ...}' at file scope: static data laid out byte for byte
+# in the global's storage, so a struct, a fixed array (its elements) or a
+# scalar can hold C-layout data that is in the image at link time,
+# with no code run before main -- what C translators and kernels need for
+# ops tables, page tables and string tables. Items are placed one after
+# another with no implicit alignment:
+#
+#	'int32 5', 'uint8 -1'      an integer of the named type's width
+#	'&g', '&g + 8', 'f', c"s"  an address word (also after a word-sized
+#	                           type: 'char* c"s"')
+#	'pad 8'                    that many zero bytes
+#
+# Bytes after the last item stay zero. Values are 32-bit constants
+# sign-extended to the item's width; wider values are spelled as two
+# 'uint32' halves (low first). Address words are rebase cells, so PIE
+# executables and --emit=obj relocations (R_X86_64_64) cover them.
+int global_brace_initializer(char* name, int addr, int type):
+	if (peek(c"{") == 0): return 0
+	int t = type_canonical(type)
+	int size = type_get_size(t)
+	if (type_is_array(t)):
+		# A fixed array's items fill its elements, after the header
+		if (type_has_array_field(type_get_element_type(t)) == 0):
+			addr = addr + 2 * word_size
+			size = size - 2 * word_size
+			t = type_get_element_type(t)
+	if (type_is_array(t) || type_is_slice(t) || type_has_array_field(t) || type_is_map(t) || type_is_set(t) || type_is_list(t) || type_is_string(t)):
+		diag_part(c"brace initializer for global '")
+		diag_part(name)
+		error_type(c"' needs a type without nested array headers or runtime storage, not '", type, c"'")
+	if ((type_get_pointer_level(type) > 0) || (size < 1)): size = word_size
+	get_token()
+	int pos = 0
+	while (peek(c"}") == 0):
+		if (peek(c"pad") && (type_lookup(c"pad") < 0)):
+			get_token()
+			int n = parse_constant_literal(c"padding in initializer for global", name)
+			if (n < 0): error(c"padding size must not be negative")
+			if (pos + n > size): global_data_overflow(name, type)
+			pos = pos + n
+		else:
+			int width = word_size
+			if (global_address_form_ahead(1) == 0):
+				int item_type = type_name()
+				if (type_get_pointer_level(item_type) == 0):
+					width = type_get_size(item_type)
+					if ((type_num_args(item_type) > 0) || type_float_kind(item_type) || ((width != 1) && (width != 2) && (width != 4) && (width != 8))):
+						error_type(c"brace initializer items must be integer or pointer types, not '", item_type, c"'")
+			if (pos + width > size): global_data_overflow(name, type)
+			if (global_address_form_ahead(1)):
+				if (width != word_size): error(c"an address item in a brace initializer needs a word-sized type")
+				global_address_form(name, addr + pos)
+			else: global_data_store(addr + pos, parse_constant_literal(c"initializer for global", name), width)
+			pos = pos + width
+		if (accept(c",") == 0): break
+	expect(c"}")
 	return 1
 
 
@@ -757,6 +1018,7 @@ int global_address_initializer(char* name, int cell, int type):
 # the global, instead of the bare "valid primary expression" parse error
 # the '=' used to produce.
 void global_initializer(char* name, int current_symbol, int decl_type):
+	if (global_brace_initializer(name, sym_value_at(current_symbol), decl_type)): return;
 	global_initializer_check_type(name, decl_type)
 	if (global_address_initializer(name, sym_value_at(current_symbol), decl_type)): return;
 	int value = parse_constant_literal(c"initializer for global", name)
@@ -1012,9 +1274,30 @@ void global_variable_declaration(int binding, int type, char* init_name):
 		define_global_variable(binding, type)
 		if (init_name): global_initializer(init_name, binding, type)
 	const_global_define(binding, type)
+	incomplete_global_note(binding, type)
+
+
+# Attributes ('@section(...)', '@weak', ...; grammar/object_attributes.w)
+# prefix the declaration that follows; one the item did not consume is an
+# error.
+void program_declaration();
+
+
+# A global declared without an initializer; '@alias' reserves no storage.
+void program_global(int current_symbol, int decl_type, char* init_name, char* name):
+	if (object_attributes_global_alias(current_symbol, name, 0)): return
+	global_variable_declaration(current_symbol, decl_type, init_name)
+	object_attributes_global(current_symbol, name)
 
 
 void program_item():
+	attribute_count = 0
+	if (peek(c"@")): object_attributes_parse()
+	program_declaration()
+	object_attributes_unconsumed()
+
+
+void program_declaration():
 	int current_symbol
 	if (analysis_mode && peek(c"}")): error(c"unmatched '}' at module scope")
 	if (import_statement()): return
@@ -1024,7 +1307,9 @@ void program_item():
 	if (union_declaration()): return
 	if (enum_declaration()): return
 	if (message_declaration()): return
-	if (extern_statement()): return
+	if (extern_statement()):
+		object_attributes_extern(extern_last_name)
+		return
 
 	# Imports/structs may have consumed the rest of the file
 	if (token[0] == 0): return;
@@ -1042,6 +1327,17 @@ void program_item():
 			export_pending = 1
 			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
 				error(c"'export' must be followed by a function definition")
+
+	# 'static' marks the next function or global file-local, like C's:
+	# a local symbol in an --emit=obj object (code_generator/c_abi.w);
+	# other outputs accept and ignore it. Contextual like 'export'.
+	int static_pending = 0
+	if (peek(c"static")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			get_token()
+			static_pending = 1
+			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
+				error(c"'static' must be followed by a function or global definition")
 
 	# Script mode: a token that cannot start a declaration begins
 	# the implicit main; it consumes the rest of the file
@@ -1093,6 +1389,7 @@ void program_item():
 	# declared name is the current token (see grammar/generic.w).
 	if (generic_declaration_scan()):
 		if (export_pending): error(c"'export' is not supported on generic functions")
+		if (static_pending): error(c"'static' is not supported on generic functions")
 		return;
 
 	# Now global variables + functions
@@ -1117,6 +1414,7 @@ void program_item():
 		get_token()
 		if (operator_definition_starts_here()):
 			if (export_pending): error(c"'export' is not supported on operator overloads")
+			if (static_pending): error(c"'static' is not supported on operator overloads")
 			char* defhash_op_name = operator_definition(decl_type)
 			defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 			return;
@@ -1133,29 +1431,38 @@ void program_item():
 		get_token()
 	if (accept(c";")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		if (static_pending): object_note_static(current_symbol)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"(")):
 		flow_definition_type = decl_type
 		flow_definition_type_set = 1
+		int code_start = codepos
 		function_definition(current_symbol)
-		if (export_pending):
+		object_attributes_function(current_symbol, defhash_name, code_start, codepos)
+		if (c_abi_mode): c_abi_definition_note(current_symbol, defhash_name, export_pending, static_pending)
+		else if (export_pending):
 			export_function_note(current_symbol, defhash_name, decl_type)
+		if (static_pending): object_note_static(current_symbol)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"=")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, defhash_name)
+		if (static_pending): object_note_static(current_symbol)
+		if (object_attributes_global_alias(current_symbol, defhash_name, 1) == 0):
+			global_variable_declaration(current_symbol, decl_type, defhash_name)
+			object_attributes_global(current_symbol, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else:
 		/*error(8)*/
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		if (static_pending): object_note_static(current_symbol)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 

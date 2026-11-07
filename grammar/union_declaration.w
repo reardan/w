@@ -1,6 +1,7 @@
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+void incomplete_global_complete(int type_index);   /* grammar/program.w */
 
 
 int union_declaration():
@@ -20,11 +21,13 @@ int union_declaration():
 		expect(c":")
 		while (tab_level > start_tab_level):
 			int field_type = type_name()
+			seg_storage_check(field_type, c"a union field")
 			if (type_has_array_field(field_type)):
 				error(c"fixed array fields are not implemented in unions")
 			type_add_arg(type_index, strclone(token), field_type)
 			get_token()
 			pointer_indirection = 0
+		incomplete_global_complete(type_index)
 		defhash_note(defhash_name, c"union", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 		return 1
 	return 0

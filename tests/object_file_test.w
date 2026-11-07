@@ -108,6 +108,42 @@ void test_object_links_with_c():
 	free(object)
 
 
+# Brace-initialized globals (grammar/program.w) are C-layout static
+# data: C reads structs, struct arrays, unions, bitfield words, pointer
+# tables and strings from the object with no startup code.
+void test_object_static_data():
+	char* object = object_path(c"static_data.o")
+	object_compile(c"x64", c"--emit=obj", c"--freestanding", c"tests/object_file/static_data.w", c"-o", object)
+	char*[2] modes
+	modes[0] = c""
+	modes[1] = c"-static"
+	for i in range(2):
+		char* exe = object_path(strjoin(c"static_data_host", itoa(i)))
+		string_builder* cmd = string_new()
+		string_append(cmd, c"cc ")
+		string_append(cmd, modes[i])
+		string_append(cmd, c" -o ")
+		string_append(cmd, exe)
+		string_append(cmd, c" tests/object_file/static_data_main.c ")
+		string_append(cmd, object)
+		free(object_shell(cmd.data))
+		char* out = object_shell(exe)
+		assert_contains(out, c"static data OK")
+		free(out)
+	char* relocs = object_shell(strjoin(c"readelf -r ", object))
+	assert_contains(relocs, c"R_X86_64_64")
+	assert_contains(relocs, c"c_data + 0")
+	free(relocs)
+	# The array symbols cover the elements only
+	char* symbols = object_shell(strjoin(c"readelf -s ", object))
+	assert_contains(symbols, c"    20 OBJECT  GLOBAL DEFAULT    2 w_primes")
+	assert_contains(symbols, c"    72 OBJECT  GLOBAL DEFAULT    2 w_entries")
+	# Other objects have their declared size, not the word-rounded storage
+	assert_contains(symbols, c"    20 OBJECT  GLOBAL DEFAULT    2 w_misc")
+	free(symbols)
+	free(object)
+
+
 # The runtime-retaining mode: sets, lists and maps inside the object,
 # with an allocator of its own beside libc's.
 void test_object_keeps_private_runtime():
@@ -136,10 +172,17 @@ char* object_section_name(char* image, int i):
 	return image + load_int32(names + 24) + load_int32(object_section(image, i))
 
 
+# Index of the section named name, -1 when absent.
+int object_section_index(char* image, char* name):
+	for i in range(object_u16(image + 60)):
+		if (strcmp(object_section_name(image, i), name) == 0): return i
+	return -1
+
+
 # Binding/type/section of the named symbol: binding * 256 + type, and
 # the section index through shndx_out; -1 when absent.
 int object_symbol(char* image, char* name, int* shndx_out):
-	char* symtab = object_section(image, 4)
+	char* symtab = object_section(image, object_section_index(image, c".symtab"))
 	char* strtab = object_section(image, load_int32(symtab + 40))
 	int count = load_int32(symtab + 32) / 24
 	for i in range(count):
@@ -175,13 +218,20 @@ void test_object_elf_structure():
 	assert_equal(2, image[4])               # ELFCLASS64
 	assert_equal(1, object_u16(image + 16)) # ET_REL
 	assert_equal(62, object_u16(image + 18))
-	assert_equal(9, object_u16(image + 60))
+	# .text, .data, .rodata (the literals), .bss (the zero array's
+	# elements; its W header stays in .data), then the fixed sections
 	assert_strings_equal(c".text", object_section_name(image, 1))
 	assert_strings_equal(c".data", object_section_name(image, 2))
-	assert_strings_equal(c".note.GNU-stack", object_section_name(image, 3))
-	assert_strings_equal(c".rela.text", object_section_name(image, 6))
-	assert_strings_equal(c".rela.data", object_section_name(image, 7))
+	assert_strings_equal(c".rodata", object_section_name(image, 3))
+	assert_strings_equal(c".bss", object_section_name(image, 4))
+	assert_strings_equal(c".note.GNU-stack", object_section_name(image, 5))
+	int rela_text = object_section_index(image, c".rela.text")
+	int rela_data = object_section_index(image, c".rela.data")
+	assert1(rela_text > 5)
+	assert1(rela_data > 5)
 	int shndx = 0
+	assert_equal(256 + 1, object_symbol(image, c"w_squares", &shndx))
+	assert_equal(4, shndx)
 	# exported functions: GLOBAL FUNC in .text
 	assert_equal(256 + 2, object_symbol(image, c"w_add", &shndx))
 	assert_equal(1, shndx)
@@ -199,10 +249,10 @@ void test_object_elf_structure():
 	# no entry stub and no runtime: nothing like main or malloc
 	assert_equal(-1, object_symbol(image, c"main", &shndx))
 	assert_equal(-1, object_symbol(image, c"malloc", &shndx))
-	int text_kinds = object_relocation_kinds(image, 6)
+	int text_kinds = object_relocation_kinds(image, rela_text)
 	assert1(text_kinds >= 1000)
 	assert_equal(0, text_kinds % 1000)
-	int data_kinds = object_relocation_kinds(image, 7)
+	int data_kinds = object_relocation_kinds(image, rela_data)
 	assert_equal(0, data_kinds / 1000)
 	assert1(data_kinds >= 8)
 	free(image)
@@ -272,8 +322,40 @@ void test_global_address_initializer_rejections():
 	object_reject(c"'&' in a global initializer needs a global variable, got 'missing'", object_path(c"local.w"), c"-o", out)
 	object_write(c"undefined.w", c"int f(int x);\nint g = f\nint main():\n\treturn 0\n")
 	object_reject(c"function 'f' used in a global initializer is never defined", object_path(c"undefined.w"), c"-o", out)
+	object_write(c"late.w", c"int* p = &later\nint main():\n\treturn 0\nint later(int x):\n\treturn x\n")
+	object_reject(c"'&' in a global initializer needs a global variable, got 'later'", object_path(c"late.w"), c"-o", out)
 	object_write(c"wasm.w", c"int base = 1\nint* p = &base\nint main():\n\treturn 0\n")
 	object_reject(c"address initializers for globals are not supported on the wasm target", c"wasm", object_path(c"wasm.w"), c"-o", out)
+	free(out)
+
+
+# Brace initializers (grammar/program.w, global_brace_initializer) lay
+# raw bytes into storage without array headers and must fit it.
+void test_brace_initializer_rejections():
+	char* out = object_path(c"brace_init")
+	object_write(c"array.w", c"struct s:\n\tint[2] inner\ns[2] a = {int 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'a' needs a type without nested array headers or runtime storage", object_path(c"array.w"), c"-o", out)
+	object_write(c"string.w", c"string a = {int 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'a' needs a type without nested array headers", object_path(c"string.w"), c"-o", out)
+	object_write(c"big.w", c"int32 x = {int32 1, int32 2}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'x' does not fit in its type 'int32'", object_path(c"big.w"), c"-o", out)
+	object_write(c"pad.w", c"int x = {pad 2, pad 7}\nint main():\n\treturn 0\n")
+	object_reject(c"does not fit in its type 'int'", c"x64", object_path(c"pad.w"), c"-o", out)
+	object_write(c"negative.w", c"int x = {pad 0 - 1}\nint main():\n\treturn 0\n")
+	object_reject(c"padding size must not be negative", object_path(c"negative.w"), c"-o", out)
+	object_write(c"float.w", c"int x = {float32 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer items must be integer or pointer types, not 'float32'", object_path(c"float.w"), c"-o", out)
+	object_write(c"narrow.w", c"int g = 1\nint x = {int16 &g}\nint main():\n\treturn 0\n")
+	object_reject(c"an address item in a brace initializer needs a word-sized type", object_path(c"narrow.w"), c"-o", out)
+	object_write(c"extern_nested.w", c"struct s:\n\tint[2] inner\nextern s[2] c_nested\n")
+	object_reject(c"extern array 'c_nested' needs elements without nested array headers", c"x64", c"--emit=obj", c"--freestanding", object_path(c"extern_nested.w"), c"-o", out)
+	object_reject(c"extern array 'c_nested' needs elements without nested array headers", c"x64", c"--streaming", c"--emit=obj", c"--freestanding", object_path(c"extern_nested.w"), c"-o", out)
+	object_write(c"function.w", c"int x = {never_defined}\nint main():\n\treturn 0\n")
+	object_reject(c"function 'never_defined' used in a global initializer is never defined", object_path(c"function.w"), c"-o", out)
+	object_write(c"notfunc.w", c"int x = {later}\nint main():\n\treturn 0\nint later = 1\n")
+	object_reject(c"function 'later' used in a global initializer is never defined", object_path(c"notfunc.w"), c"-o", out)
+	object_write(c"wasm_brace.w", c"int g = 1\nint x = {&g}\nint main():\n\treturn 0\n")
+	object_reject(c"address initializers for globals are not supported on the wasm target", c"wasm", object_path(c"wasm_brace.w"), c"-o", out)
 	free(out)
 
 

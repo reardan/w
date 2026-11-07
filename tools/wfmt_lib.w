@@ -109,6 +109,8 @@ int wfmt_token_role(pg_token* token, pg_ast_node* parent):
 			if (block): return wfmt_role_brace_close
 			return wfmt_role_close
 		if (block): return wfmt_role_brace_open
+		# 'rec r = {int32 1}': spaced after '=' like a grouping paren
+		if (wfmt_is_ast_kind(parent, wlang_ast_brace_data)): return wfmt_role_open_loose
 		return wfmt_role_open_tight
 	if ((k == wlang_token_RPAREN) || (k == wlang_token_RBRACK)): return wfmt_role_close
 	if (k == wlang_token_DOT): return wfmt_role_dot
@@ -130,6 +132,8 @@ int wfmt_token_role(pg_token* token, pg_ast_node* parent):
 		if (wfmt_is_ast_kind(parent, wlang_ast_unary_op)): return wfmt_role_unary
 		return wfmt_role_postfix
 	if ((k == wlang_token_BANG) || (k == wlang_token_TILDE)): return wfmt_role_unary
+	# an attribute's '@' binds to its name ('@section(...)', '@weak')
+	if (k == wlang_token_AT): return wfmt_role_unary
 	if (wfmt_is_ast_kind(parent, wlang_ast_unary_op)): return wfmt_role_unary
 	if (wfmt_is_ast_kind(parent, wlang_ast_pointer_part)): return wfmt_role_pointer
 	if (wfmt_is_ast_kind(parent, wlang_ast_arith_op) || wfmt_is_ast_kind(parent, wlang_ast_operator_token)): return wfmt_role_opname
@@ -439,7 +443,7 @@ char* wfmt_format(char* source, char* filename):
 			# A prefix operator straight after an operand ('range * n'
 			# with a variable named range) is the permissive grammar
 			# misreading a binary operator: keep its original spacing
-			if ((prev_role == wfmt_role_unary) && wfmt_ends_operand(prev_prev_role) && (space.length > 0)): gap = 1
+			if ((prev_role == wfmt_role_unary) && wfmt_ends_operand(prev_prev_role) && (space.length > 0) && (prev.kind != wlang_token_AT)): gap = 1
 			if ((role == wfmt_role_open_tight) && wfmt_is_control_keyword(prev.kind)): gap = 1
 			if ((gap == 0) && wfmt_would_merge(prev, t)): gap = 1
 			if (gap): string_append_char(line, ' ')
