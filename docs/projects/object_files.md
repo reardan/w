@@ -306,10 +306,15 @@ Next steps, roughly in order:
    (`arm64_addr_slot_write`).
 3. **Kernel-oriented controls.** Section placement and attributes
    (`.text.*`, read-only data split out of `.text`, a real `.bss`,
-   alignment), symbol visibility, and a no-red-zone/no-SSE audit of the
-   generated code and adapters, so a kernel's linker script can place W
-   code. The adapter already preserves every System V callee-saved
-   register; interrupt-context use needs that audit.
+   alignment) and symbol visibility, so a kernel's linker script can
+   place W code. The code-generation side is done: `--kernel-codegen`
+   (no red zone, no SSE/x87, frame pointers; see "Kernel code
+   generation"), the code-model check, `--stack-usage`, and the
+   volatile/ordering audit ("Memory accesses"). Still open there:
+   literal bytes in `.text` (which keep `objtool`/ORC from reading W
+   objects), retpoline/IBT forms for indirect calls (`call *%rax` is
+   emitted as is), and the built-in assembly stubs, which stay in every
+   object as unreferenced code.
 4. **Exported data and C-shaped aggregates.** An explicit marker for
    exported globals (today: any root global), C-layout arrays, and
    struct arguments by value in the adapters.
