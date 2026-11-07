@@ -9,6 +9,7 @@
 import lib.testing
 import tests.tool_e2e
 import lib.file
+import lib.str
 
 
 char* abi_dir
@@ -179,17 +180,61 @@ void test_c_abi_rejections():
 	free(plain)
 	free(out)
 	char* pair = c"struct pair:\n\tint a\n\tint b\n\n"
-	abi_reject_source(strjoin(pair, c"int first(pair p):\n\treturn p.a\n"), c"function 'first' takes a struct by value, which --c-abi does not support yet")
-	abi_reject_source(strjoin(pair, c"pair make(int a):\n\tpair p\n\tp.a = a\n\treturn p\n"), c"function 'make' returns a struct by value, which --c-abi does not support yet")
-	abi_reject_source(c"int total(int... xs):\n\treturn xs.length\n", c"function 'total' is variadic, which --c-abi does not support yet")
+	abi_reject_source(c"int total(int... xs):\n\treturn xs.length\n", c"function 'total' is W-variadic (T... name), which has no System V entry; declare a C-variadic '...' parameter instead")
 	# a static function is no symbol, but its address still needs an entry
-	abi_reject_source(strjoin(pair, c"static int first(pair p):\n\treturn p.a\n\nint* take():\n\treturn cast(int*, first)\n"), c"function 'first' takes a struct by value, which --c-abi does not support yet")
-	abi_reject_source(strjoin(pair, c"type maker = fn(int) -> pair\n\nint call(maker* f):\n\tpair p = f(1)\n\treturn p.a\n"), c"--c-abi does not support calls through function pointers that return a struct by value yet")
-	abi_reject_source(strjoin(pair, c"type taker = fn(pair) -> int\n\nint call(taker* f, pair* p):\n\treturn f(*p)\n"), c"--c-abi does not support passing a struct by value through a function pointer yet")
+	abi_reject_source(c"static int total(int... xs):\n\treturn xs.length\n\nint* take():\n\treturn cast(int*, total)\n", c"function 'total' is W-variadic (T... name)")
+	# records need a signature to cross a function pointer
+	abi_reject_source(strjoin(pair, c"int call(int* f, pair* p):\n\treturn f(*p)\n"), c"--c-abi cannot pass a struct by value through a function pointer without a signature")
+	# a C-variadic definition needs a System V entry; unsized extern arrays need an object
+	abi_write(c"variadic.w", c"int total(int n, ... va):\n\treturn n\n\nint use():\n\treturn total(2, 3, 4)\n")
+	abi_reject(c"a C-variadic definition ('...') requires --c-abi", c"x64", c"--emit=obj", c"--freestanding", abi_path(c"variadic.w"), c"-o", abi_path(c"rejected.o"))
+	# 'w check' has no --c-abi and accepts it
+	abi_compile(c"x64", c"check", abi_path(c"variadic.w"))
+	abi_write(c"unsized.w", c"extern int32[] numbers\n\nint main():\n\treturn numbers[0]\n")
+	abi_reject(c"extern array 'numbers' has no length: an unsized extern array needs --emit=obj", c"x64", abi_path(c"unsized.w"), c"-o", abi_path(c"rejected"))
 	# the compiler's asm runtime stubs have no System V entry
 	abi_reject_source(c"int* take():\n\treturn cast(int*, syscall)\n", c"--c-abi cannot take the address of 'syscall': it has no System V entry")
 	abi_reject_source(c"static export int f(int a):\n\treturn a\n", c"'static' must be followed by a function or global definition")
 	abi_reject_source(c"static T pick[T](T a):\n\treturn a\n", c"'static' must be followed by a function or global definition")
+
+
+# Records by value, C-variadic definitions, wide signatures and unsized
+# extern arrays (tests/object_file/c_abi_records.w) under each front end
+# and --kernel-codegen, linked with C.
+void test_c_abi_records_link_with_c():
+	char*[4] fronts
+	fronts[0] = c"--ast-required"
+	fronts[1] = c"--streaming"
+	fronts[2] = c"-O0"
+	fronts[3] = c"--kernel-codegen"
+	for f in range(4):
+		char* object = abi_path(strjoin(c"records", strjoin(itoa(f), c".o")))
+		abi_compile(c"x64", fronts[f], c"--emit=obj", c"--freestanding", c"--c-abi", c"tests/object_file/c_abi_records.w", c"-o", object)
+		char* exe = abi_path(strjoin(c"records", itoa(f)))
+		free(abi_shell(strjoin(strjoin(strjoin(c"cc -o ", exe), c" tests/object_file/c_abi_records_main.c "), object)))
+		char* out = abi_shell(exe)
+		assert_contains(out, c"c abi records OK")
+		free(out)
+		free(exe)
+		free(object)
+	# the unsized arrays are no symbols of the object, only references
+	char* listing = abi_shell(strjoin(c"readelf -s -W ", abi_path(c"records0.o")))
+	assert_contains(listing, c"NOTYPE  GLOBAL DEFAULT  UND c_numbers")
+	assert_equal(0, contains(listing, c"OBJECT  LOCAL  DEFAULT    2 c_numbers"))
+	assert_equal(0, contains(listing, c"OBJECT  GLOBAL DEFAULT    2 c_numbers"))
+	free(listing)
+
+
+# Executables: an extern C function taking or returning a record by
+# value gets a System V shim too.
+void test_extern_records_executable():
+	abi_write(c"ldiv.w", c"c_lib \"libc.so.6\"\n\nstruct ldiv_t:\n\tint quot\n\tint rem\n\nstruct div_t:\n\tint32 quot\n\tint32 rem\n\nextern ldiv_t ldiv(int a, int b)\nextern div_t div(int32 a, int32 b)\n\nint main():\n\tldiv_t r = ldiv(47, 5)\n\tdiv_t d = div(-7, 2)\n\tif ((r.quot != 9) || (r.rem != 2)): return 1\n\tif ((d.quot != -3) || (d.rem != -1)): return 2\n\treturn 0\n")
+	char* exe = abi_path(c"ldiv")
+	abi_compile(c"x64", abi_path(c"ldiv.w"), c"-o", exe)
+	char* status = abi_shell(strjoin(exe, c"; echo status=$?"))
+	assert_contains(status, c"status=0")
+	free(status)
+	free(exe)
 
 
 void test_c_abi_cleanup():

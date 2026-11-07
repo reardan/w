@@ -107,7 +107,11 @@ long w_add(long a, long b);
   array still lands in `.bss`, and C sees a plain array. The other
   way round, `extern int32[3] c_numbers` imports a C array: W keeps a
   header of its own pointing at the C symbol (elements holding nested
-  arrays are rejected)
+  arrays are rejected). `extern int32[] c_table` imports a C array
+  of unknown length (`extern int c_table[];`): the name is an `int32*`
+  holding the C symbol's address (a relocated pointer cell, no symbol
+  of its own), so `c_table[i]` indexes without a length check and its
+  value is the array's address, as in C (objects only)
   (`tests/object_file/static_data.w` links such data with C;
   `tests/static_data_test.w` covers executables).
 
@@ -156,23 +160,63 @@ symbol bindings and the diagnostics.
   without a signature (`int`, `void*` callees) pass every argument as an
   integer word.
 - **Signatures.** Word-sized integers and pointers, the narrow integer
-  types, `float32`, `float64` and `void` results. Rejected with a
-  diagnostic naming the function: struct (or union) arguments or results
-  by value, W variadic functions (`int... xs`), more than 10
-  parameters, generators, and taking the address of a generic function
-  or of a function with no entry (an asm runtime stub). A function with
-  an unsupported signature that is neither global nor address-taken is
-  fine: its stub jumps to a `ud2` trap nothing reaches.
+  types, `float32`, `float64`, `void` results, any number of
+  parameters, and structs and unions by value. Records follow the
+  x86-64 psABI classification (`c_abi_classify`): up to 16 bytes they
+  travel in one or two eightbytes, each INTEGER (a general register) or
+  SSE (an xmm register, rejected under `--kernel-codegen`); a larger
+  record, one with an unaligned field, or one whose eightbytes no longer
+  fit in the registers left is copied to the stack (MEMORY). A MEMORY
+  result is written through the hidden pointer the caller passes in
+  `rdi` and returned in `rax`; a register result comes back in
+  `rax`/`rdx`/`xmm0`/`xmm1`. W keeps its own convention inside (record
+  arguments as stack words, results through a hidden buffer): the
+  adapter, the extern shims and calls through function pointers
+  convert. Extern functions taking or returning records get the same
+  System V shim in x64 executables too. Rejected with a diagnostic
+  naming the function: other multi-word values, W variadic functions
+  (`int... xs`), generators, and taking the address of a generic
+  function or of a function with no entry (an asm runtime stub). A
+  function with an unsupported signature that is neither global nor
+  address-taken is fine: its stub jumps to a `ud2` trap nothing
+  reaches. A record crossing a function pointer needs the pointer's
+  signature.
+- **C-variadic definitions.** A trailing `...` parameter, optionally
+  named, makes a definition C-variadic:
+
+  ```
+  import lib.c_va
+
+  int sum(int n, ... va):
+  	c_va_list ap
+  	c_va_start(&ap, va)
+  	int total = 0
+  	for i in range(n): total = total + c_va_arg(&ap)
+  	c_va_end(&ap)
+  	return total
+  ```
+
+  Its adapter stores the six argument registers (and, when `al` is not
+  zero and not under `--kernel-codegen`, `xmm0-7`) in a register save
+  area in its frame and passes the W body a `void*` to an initialized
+  psABI `va_list` (`gp_offset`, `fp_offset`, `overflow_arg_area`,
+  `reg_save_area`). `lib/c_va.w` has the C-layout `c_va_list` and
+  `c_va_start`, `c_va_arg` (an INTEGER-class word), `c_va_arg_float64_bits`,
+  `c_va_arg_record` (the address of a record argument), `c_va_end` and
+  `c_va_copy`; a `c_va_list*` is C's `va_list` parameter, so W hands
+  its list to `vprintf`-style C functions and back. W calls a
+  C-variadic definition like a variadic `extern`: the C convention
+  inline (`al` = the vector registers used), through its System V
+  entry. The syntax needs `--c-abi` (`w check` accepts it anywhere).
 - **Restrictions.** `--c-abi` requires `--freestanding` (the W runtime's
   own callbacks keep W's convention) and rejects `--no-direct-calls`
   (a function name's value use must stay distinguishable from a callee).
 
-Next steps for the mode: struct arguments and results by value (the
-System V classification of small aggregates into registers, and the
-hidden result pointer for large ones), C-variadic W functions (`va_list`
-over the register save area), binding global symbols straight to the
-adapters (one `jmp` fewer; today the stub keeps pointer identity), and
-the same mode for arm64 (AAPCS64 adapters reuse `elf_emit_arm64_export`).
+Next steps for the mode: binding global symbols straight to the
+adapters (one `jmp` fewer; today the stub keeps pointer identity),
+records aligned beyond 8 bytes on the stack, records with float members
+through `c_va_arg_record`, and the same mode for arm64 (AAPCS64
+adapters reuse `elf_emit_arm64_export`).
 
 ## Relocations
 

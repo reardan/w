@@ -525,6 +525,7 @@ int object_symbol_size(int type):
 
 # 1 for a data symbol of the table that owns storage in the object.
 int object_table_data_symbol(int t, int value, int type):
+	if (object_symbol_is_extern_pointer(t)): return 0
 	return (load_int(table + t + 10) == 1) && object_in_data(value) && (value < data_offset + datapos) && (object_extern_data_at(value + object_array_header_size(type)) < 0) && (type_get_kind(type) != type_kind_enum)
 
 

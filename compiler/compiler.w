@@ -1456,6 +1456,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	stack_usage_active = 0
 	c_abi_mode = 0
 	c_abi_reset()
+	c_abi_check_only = check_mode
 	static_address_count = 0
 	wasm_export_count = 0
 	x64_syscall_abi = 0

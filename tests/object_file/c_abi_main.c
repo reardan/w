@@ -48,6 +48,18 @@ static int c_negate(long x) { return -(int)x; }
 static unsigned char c_low_byte(long x) { return (unsigned char)x; }
 static double c_mix(double x, float y, long k) { return x * y + k; }
 
+/* Records with float members: SSE eightbytes. */
+struct fpair { double x, y; };
+struct mixed { double f; long i; };
+struct imixed { long i; float f, g; };
+struct fpair w_make_fpair(double x, double y);
+struct mixed w_make_mixed(double f, long i);
+struct imixed w_make_imixed(long i, float f);
+double w_float_records(struct fpair p, struct mixed m, struct imixed q);
+double w_call_float_records(struct mixed (*make)(double, long));
+double c_float_records(struct fpair p, struct mixed m, struct imixed q) { return p.x + p.y * 10 + m.f * 100 + m.i * 1000 + q.i * 10000 + q.f * 100000 + q.g * 1000000; }
+static struct mixed c_make_mixed(double f, long i) { struct mixed m = {f, i}; return m; }
+
 static int failures;
 
 static void check(const char *what, long got, long want) {
@@ -107,6 +119,18 @@ int main(void) {
 	check("filled mul (c_sub)", filled.mul(9, 5), 4);
 	check("filled sum", filled.sum(1, 1, 1, 1, 1, 1, 1, 1), 11111111);
 	check("w_private_total", w_private_total_value(), 6 + 7 + 42);
+
+	struct fpair fp = w_make_fpair(1.5, 2.5);
+	check("w_make_fpair", (long)(fp.x * 10 + fp.y * 100), 265);
+	struct mixed mx = w_make_mixed(0.5, 7);
+	check("w_make_mixed", (long)(mx.f * 10) + mx.i * 100, 705);
+	struct imixed im = w_make_imixed(3, 0.25f);
+	check("w_make_imixed", im.i * 100 + (long)(im.f * 100) + (long)(im.g * 1000), 300 + 25 + 500);
+	struct fpair p1 = {1, 2};
+	struct mixed m1 = {3, 4};
+	struct imixed q1 = {5, 6, 7};
+	check("w_float_records", (long)w_float_records(p1, m1, q1), (long)c_float_records(p1, m1, q1));
+	check("w_call_float_records", (long)w_call_float_records(c_make_mixed), (long)(2.5 * 2 + 9));
 
 	if (failures == 0) printf("c abi object OK\n");
 	return failures != 0;

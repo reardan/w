@@ -440,10 +440,29 @@ void function_definition(int current_symbol):
 	# Inlining (unit A5, compiler/inline_table.w): a record of this
 	# definition, filled by the parameters and the body below
 	inline_definition_begin(current_symbol, last_global_declaration, declared_return_type)
+	int is_c_variadic = 0
 	while (accept(c")") == 0):
 		if (is_w_variadic): error(c"variadic parameter must be the last parameter")
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
+		# A trailing '...' (optionally named) declares a C-variadic
+		# definition for --c-abi: the name is a void* parameter holding
+		# the System V va_list its entry builds for the call
+		# (code_generator/c_abi.w, lib/c_va.w).
+		if (accept(c".")):
+			expect(c".")
+			expect(c".")
+			int va_type = type_lookup_pointer(c"void", 1)
+			sym_record_param_type(current_symbol, param_count, va_type)
+			if (peek(c")") == 0):
+				sym_declare(token, va_type, 'A', number_of_args, 1)
+				inline_note_parameter(token, va_type)
+				pointer_indirection = 0
+				get_token()
+			else: inline_note_parameter(0, va_type)
+			expect(c")")
+			is_c_variadic = 1
+			break
 		int type = type_name()
 		# "T... name" declares a W variadic function: the callee sees the
 		# trailing arguments as a T[] slice parameter.
@@ -465,8 +484,7 @@ void function_definition(int current_symbol):
 		if (type_is_array(type)):
 			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
-		if (param_count <= sym_max_param_slots):
-			save_int(table + current_symbol + 22 + (param_count << 2), type)
+		sym_record_param_type(current_symbol, param_count, type)
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
 			sym_declare(token, type, 'A', number_of_args, 1)
@@ -498,6 +516,7 @@ void function_definition(int current_symbol):
 	save_int(table + current_symbol + 22, param_count)
 	if (is_w_variadic): sym_set_w_variadic(current_symbol, param_count - 1)
 	else: sym_set_w_variadic(current_symbol, -1)
+	if (is_c_variadic): c_variadic_definition_note(current_symbol, param_count - 1)
 
 	int* lifetime_order = function_lifetime_order(current_symbol, declared_return_type, param_count)
 	if (accept(c";")):

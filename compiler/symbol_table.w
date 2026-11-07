@@ -833,6 +833,39 @@ int sym_param_type(int t, int i):
 	return load_int(table + t + 26 + (i << 2))
 
 
+# Parameter types past the sym_max_param_slots in the record, for the
+# signatures that need every one (the System V adapters and shims of
+# --c-abi, code_generator/c_abi.w): symbol -> an extern_max_params word
+# array. Reset with the C ABI state (c_abi_reset).
+map[int, int] sym_wide_param_types
+
+
+# Record the declared type of parameter `count` (1-based) of function t.
+void sym_record_param_type(int t, int count, int type):
+	if (count <= sym_max_param_slots):
+		save_int(table + t + 22 + (count << 2), type)
+		return
+	if (count > extern_max_params): return
+	if (cast(int, sym_wide_param_types) == 0): sym_wide_param_types = new map[int, int]
+	int* types = cast(int*, sym_wide_param_types.get(t, 0))
+	if (cast(int, types) == 0):
+		types = cast(int*, malloc(extern_max_params * __word_size__))
+		for i in range(extern_max_params): types[i] = -1
+		sym_wide_param_types[t] = cast(int, types)
+	types[count - 1] = type
+
+
+# sym_param_type without the record's slot limit.
+int sym_param_type_wide(int t, int i):
+	if (i < sym_max_param_slots): return sym_param_type(t, i)
+	int num_args = load_int(table + t + 22)
+	if ((i >= num_args) || (i >= extern_max_params)): return -1
+	if (cast(int, sym_wide_param_types) == 0): return -1
+	int* types = cast(int*, sym_wide_param_types.get(t, 0))
+	if (cast(int, types) == 0): return -1
+	return types[i]
+
+
 # REPL late binding (issue #114): when nonzero, sym_get_value reports every
 # global function address it materializes -- hook(name, slot, kind), slot
 # being the buffer offset of the address cell be_addr_slot_write patches

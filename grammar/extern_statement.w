@@ -39,6 +39,7 @@ import code_generator.ffi
 
 void ast_extern_object(int binding, int size, char* name);
 void extern_object_import(int sym, int address, int size, char* name);
+void extern_unsized_array(int sym, int element_type, char* name);
 # The linked symbol name of the latest extern declaration (its weak
 # binding is an attribute, grammar/object_attributes.w).
 char* extern_last_name
@@ -72,6 +73,12 @@ int extern_statement():
 		# value; the library's own references rebind to this copy (symbol
 		# interposition), so it behaves like a normal W global.
 		if (accept(c"(") == 0):
+			# 'extern T[] name': a C array of unknown length
+			# (code_generator/linkage_ast.w)
+			if (type_is_slice(type_unqualified(ret_type))):
+				extern_unsized_array(sym, type_get_element_type(type_unqualified(ret_type)), name)
+				extern_last_name = name
+				return 1
 			# The arm64 backends never emitted the copy space to a
 			# loader-writable home; the data-segment branch below could
 			# lift this, but stays unproven there (no arm64 loader in CI).
@@ -128,8 +135,7 @@ int extern_statement():
 			int ptype_class = ffi_type_class(ptype)
 			if ((ptype_class == 2) && (word_size != 8)): error(c"float64 requires the x64 target")
 			param_classes[param_count - 1] = ptype_class
-			if (param_count <= sym_max_param_slots):
-				save_int(table + sym + 22 + (param_count << 2), ptype)
+			sym_record_param_type(sym, param_count, ptype)
 			# Skip the optional parameter name
 			if (peek(c")") == 0): get_token()
 			accept(c",")
@@ -182,7 +188,7 @@ int extern_statement():
 			# argument classes (see parse_variadic_call_suffix).
 			be_align_code()
 			sym_define_global(sym)
-			emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
+			c_abi_emit_extern_shim(sym, param_count, param_classes, ret_class, got_vaddr)
 			# Every import records its slot: the variadic call path loads
 			# through it, and tools/wllvm_emit.w finds the import by it.
 			sym_set_got_vaddr(sym, got_vaddr)

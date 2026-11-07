@@ -474,7 +474,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		type_error3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
-	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
+	c_variadic_call_emit(callee_sym, passed_args, arg_classes, declared_return)
 	free(arg_classes)
 	pop_to(s)
 	int type = 3  # call results are plain values

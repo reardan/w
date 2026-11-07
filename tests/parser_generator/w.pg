@@ -258,7 +258,8 @@ rule tab_prefix = TAB tab_prefix | TAB
 
 rule param_list = param param_tail* | 
 rule param_tail = COMMA gap_many param
-rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
+# A C-variadic definition's '...' (optionally named), --c-abi.
+rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref | ELLIPSIS name_token | ELLIPSIS
 rule param_default = ASSIGN expression |
 
 # 'gpu T*' marks a device-memory pointer (grammar/type_name.w); gpu_for_stmt

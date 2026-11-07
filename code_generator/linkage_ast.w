@@ -14,6 +14,33 @@ void extern_object_import(int sym, int address, int size, char* name):
 	dyn_add_import_data(name, address + header, size - header, 0)
 
 
+# 'extern T[] name' in an object: a C array of unknown length (C's
+# 'extern T name[];'). The name is a T* holding the C symbol's address
+# (a pointer cell in .data relocated against the undefined symbol, not a
+# symbol of its own), so indexing it is unchecked pointer indexing and
+# its value is the array's address, as in C.
+void extern_unsized_array(int sym, int element_type, char* name):
+	if ((elf_object == 0) || (data_split == 0)):
+		error3(c"extern array '", name, c"' has no length: an unsized extern array needs --emit=obj")
+	if (type_has_array_field(element_type)):
+		error3(c"extern array '", name, c"' needs elements without nested array headers")
+	save_int(table + sym + 6, type_get_next_pointer(element_type))
+	save_int(table + sym + 10, 1)   /* symtype: object */
+	int pad = datapos & (word_size - 1)
+	if (pad != 0): emit_data_zeros(word_size - pad)
+	int cell = emit_data_zeros(word_size)
+	int size = type_get_size(element_type)
+	if (size < 1): size = 1
+	# placeholder space the import names; the cell points at it
+	int space = emit_data_zeros(((size + word_size - 1) >> word_size_log2) << word_size_log2)
+	save_i(data + (cell - data_offset), space, word_size)
+	rebase_note(cell)
+	sym_define_global_at(sym, cell)
+	save_int(table + sym + 14, word_size)
+	object_note_extern_pointer(sym)
+	dyn_add_import_data(name, space, size, 0)
+
+
 # Emit bytes and relocation/import metadata from resolved declarations.
 void emit_linkage_ast(linkage_ast* node):
 	if (node.kind == ast_linkage_enum):
@@ -48,7 +75,7 @@ void emit_linkage_ast(linkage_ast* node):
 		int address = static_link_import_slot(node.import_name)
 		be_align_code()
 		sym_define_global(node.binding)
-		emit_ffi_shim(node.parameter_count, node.parameter_classes, node.return_class, address)
+		c_abi_emit_extern_shim(node.binding, node.parameter_count, node.parameter_classes, node.return_class, address)
 		# Every import records its slot: the variadic call path loads
 		# through it, and tools/wllvm_emit.w finds the import by it.
 		sym_set_got_vaddr(node.binding, address)

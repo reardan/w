@@ -15,7 +15,24 @@ struct w_ops:
 	binop* mul
 	sum8* sum
 
+# Records with float members travel in SSE eightbytes.
+struct fpair:
+	float64 x
+	float64 y
+
+struct mixed:
+	float64 f
+	int i
+
+struct imixed:
+	int i
+	float32 f
+	float32 g
+
+type mixed_maker = fn(float64, int) -> mixed
+
 extern int c_sub(int a, int b)
+extern float64 c_float_records(fpair p, mixed m, imixed q)
 extern int c_weigh8(int a, int b, int c, int d, int e, int f, int g, int h)
 
 int w_calls = 0
@@ -133,3 +150,35 @@ void w_ops_fill(w_ops* ops):
 
 int w_private_total_value():
 	return w_private_total
+
+
+fpair w_make_fpair(float64 x, float64 y):
+	fpair p
+	p.x = x
+	p.y = y
+	return p
+
+
+mixed w_make_mixed(float64 f, int i):
+	mixed m
+	m.f = f
+	m.i = i
+	return m
+
+
+imixed w_make_imixed(int i, float32 f):
+	imixed q
+	q.i = i
+	q.f = f
+	q.g = f + f
+	return q
+
+
+# W hands C's float records back to C, and calls C's maker.
+float64 w_float_records(fpair p, mixed m, imixed q):
+	return c_float_records(p, m, q)
+
+
+float64 w_call_float_records(mixed_maker* make):
+	mixed m = make(2.5, 9)
+	return m.f * cast(float64, 2) + m.i

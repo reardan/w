@@ -1093,7 +1093,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 					classes[count] = push_c_variadic_argument(sym, table + tree.value[id], count, c_variadic, got)
 					count = count + 1
 					arg = tree.next_arg[arg]
-				emit_ffi_call_inline(count, classes, ffi_type_class(declared_return), sym_got_vaddr(sym))
+				c_variadic_call_emit(sym, count, classes, declared_return)
 				free(classes)
 				pop_to(s)
 				last_call_return_type = declared_return
