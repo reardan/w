@@ -68,6 +68,7 @@ int elf_static /* W x64 compiled static library */
 int elf_object /* --emit=obj: x64 ELF ET_REL object (implies elf_static) */
 int elf_object_text_start /* code offset where an object's .text begins */
 int freestanding_mode /* --freestanding: no auto-imported W runtime */
+int c_abi_mode /* --c-abi: System V entries and function pointers (code_generator/c_abi.w) */
 int elf_shared /* ELF shared object with explicit native exports */
 char* elf_soname /* Android shared object basename, set before finish */
 int elf_pie   /* ELF PIE; mandatory for Android */

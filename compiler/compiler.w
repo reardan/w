@@ -869,6 +869,7 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--static") == 0): return 1
 	if (strcmp(arg, c"--emit=obj") == 0): return 1
 	if (strcmp(arg, c"--freestanding") == 0): return 1
+	if (strcmp(arg, c"--c-abi") == 0): return 1
 	if (starts_with(arg, c"--link=")): return 1
 	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
@@ -1139,6 +1140,7 @@ void help_shared_options():
 	println(c"  --static              emit an x64 W compiled static library (.wa)")
 	println(c"  --emit=obj            emit an x64 ELF relocatable object (.o) for a system linker")
 	println(c"  --freestanding        with --emit=obj: no W runtime (containers, allocator, startup)")
+	println(c"  --c-abi               with --emit=obj --freestanding: System V entries for every function and function pointer")
 	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
 	println(c"  --link=<path>         link a shared library, repeatable")
 	println(c"  --pie                 emit an x64/arm64 ELF position-independent executable")
@@ -1441,6 +1443,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	global_address_cells = 0
 	global_address_symbols = 0
 	freestanding_mode = 0
+	c_abi_mode = 0
+	c_abi_reset()
 	static_address_count = 0
 	wasm_export_count = 0
 	x64_syscall_abi = 0
@@ -1620,6 +1624,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			elf_static = 1
 			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
+		else if (strcmp(*flag_arg, c"--c-abi") == 0): c_abi_mode = 1
 		else if (strcmp(*flag_arg, c"--shared") == 0):
 			elf_shared = 1
 			elf_pie = 1
@@ -1713,6 +1718,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			target_option_error(c"--emit=obj requires the x64 Linux target")
 		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
 	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
+	# --c-abi: the W runtime's own callbacks keep W's convention, so it
+	# is for freestanding objects only; a value use of a function name
+	# must stay distinguishable from a callee (direct calls).
+	if (c_abi_mode && (freestanding_mode == 0)): target_option_error(c"--c-abi requires --emit=obj --freestanding")
+	if (c_abi_mode && direct_calls_disabled): target_option_error(c"--c-abi cannot be combined with --no-direct-calls")
 	if (elf_shared && elf_static): target_option_error(c"--shared and --static are mutually exclusive")
 	if (elf_static && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
 		target_option_error(c"--static requires the x64 Linux target")
@@ -1968,6 +1978,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			for p in range(strlen(output_path)):
 				if ((output_path[p] == '/') || (output_path[p] == '\\')): elf_soname = output_path + p + 1
 	profile_finish(output_path, check_mode)
+	if (c_abi_mode): c_abi_emit_adapters()
 	if (elf_shared || elf_static): elf_emit_export_wrappers()
 	if (elf_static):
 		if (elf_object): elf_object_write()
