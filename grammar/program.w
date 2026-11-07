@@ -721,7 +721,9 @@ void global_address_finish():
 				error3(c"function '", name, c"' used in a global initializer is never defined")
 		if (table[t + 1] != 'D'):
 			error3(c"function '", sym_record_name(t), c"' used in a global initializer is never defined")
-		global_address_store(global_address_cells[i], sym_value_at(t))
+		value = sym_value_at(t)
+		if (c_abi_mode): value = c_abi_static_function_value(t, global_address_cells[i])
+		global_address_store(global_address_cells[i], value)
 	global_address_cells = 0
 	global_address_symbols = 0
 	global_address_names = 0
@@ -792,10 +794,14 @@ void global_address_form(char* name, int cell):
 	else if ((token[0] == 'c') && (token[1] == '"')):
 		int length = process_prefixed_string_literal()
 		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
-		value = code_offset + codepos
-		emit(length, token)
-		emit_int8(0)
-		be_align_code()
+		if (elf_object):
+			token[length] = 0
+			value = object_rodata_bytes(token, length + 1)
+		else:
+			value = code_offset + codepos
+			emit(length, token)
+			emit_int8(0)
+			be_align_code()
 		get_token()
 	else:
 		t = sym_lookup(token)
@@ -817,6 +823,7 @@ void global_address_form(char* name, int cell):
 			global_address_defer(cell, t, sym_record_name(t), -1)
 			return
 		value = sym_value_at(t)
+		if (c_abi_mode): value = c_abi_static_function_value(t, cell)
 	global_address_store(cell, value)
 
 
@@ -1171,7 +1178,27 @@ void global_variable_declaration(int binding, int type, char* init_name):
 	const_global_define(binding, type)
 
 
+# Attributes ('@section(...)', '@weak', ...; grammar/object_attributes.w)
+# prefix the declaration that follows; one the item did not consume is an
+# error.
+void program_declaration();
+
+
+# A global declared without an initializer; '@alias' reserves no storage.
+void program_global(int current_symbol, int decl_type, char* init_name, char* name):
+	if (object_attributes_global_alias(current_symbol, name, 0)): return
+	global_variable_declaration(current_symbol, decl_type, init_name)
+	object_attributes_global(current_symbol, name)
+
+
 void program_item():
+	attribute_count = 0
+	if (peek(c"@")): object_attributes_parse()
+	program_declaration()
+	object_attributes_unconsumed()
+
+
+void program_declaration():
 	int current_symbol
 	if (analysis_mode && peek(c"}")): error(c"unmatched '}' at module scope")
 	if (import_statement()): return
@@ -1181,7 +1208,9 @@ void program_item():
 	if (union_declaration()): return
 	if (enum_declaration()): return
 	if (message_declaration()): return
-	if (extern_statement()): return
+	if (extern_statement()):
+		object_attributes_extern(extern_last_name)
+		return
 
 	# Imports/structs may have consumed the rest of the file
 	if (token[0] == 0): return;
@@ -1199,6 +1228,17 @@ void program_item():
 			export_pending = 1
 			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
 				error(c"'export' must be followed by a function definition")
+
+	# 'static' marks the next function or global file-local, like C's:
+	# a local symbol in an --emit=obj object (code_generator/c_abi.w);
+	# other outputs accept and ignore it. Contextual like 'export'.
+	int static_pending = 0
+	if (peek(c"static")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			get_token()
+			static_pending = 1
+			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
+				error(c"'static' must be followed by a function or global definition")
 
 	# Script mode: a token that cannot start a declaration begins
 	# the implicit main; it consumes the rest of the file
@@ -1250,6 +1290,7 @@ void program_item():
 	# declared name is the current token (see grammar/generic.w).
 	if (generic_declaration_scan()):
 		if (export_pending): error(c"'export' is not supported on generic functions")
+		if (static_pending): error(c"'static' is not supported on generic functions")
 		return;
 
 	# Now global variables + functions
@@ -1274,6 +1315,7 @@ void program_item():
 		get_token()
 		if (operator_definition_starts_here()):
 			if (export_pending): error(c"'export' is not supported on operator overloads")
+			if (static_pending): error(c"'static' is not supported on operator overloads")
 			char* defhash_op_name = operator_definition(decl_type)
 			defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 			return;
@@ -1290,29 +1332,38 @@ void program_item():
 		get_token()
 	if (accept(c";")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		if (static_pending): object_note_static(current_symbol)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"(")):
 		flow_definition_type = decl_type
 		flow_definition_type_set = 1
+		int code_start = codepos
 		function_definition(current_symbol)
-		if (export_pending):
+		object_attributes_function(current_symbol, defhash_name, code_start, codepos)
+		if (c_abi_mode): c_abi_definition_note(current_symbol, defhash_name, export_pending, static_pending)
+		else if (export_pending):
 			export_function_note(current_symbol, defhash_name, decl_type)
+		if (static_pending): object_note_static(current_symbol)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"=")):
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, defhash_name)
+		if (static_pending): object_note_static(current_symbol)
+		if (object_attributes_global_alias(current_symbol, defhash_name, 1) == 0):
+			global_variable_declaration(current_symbol, decl_type, defhash_name)
+			object_attributes_global(current_symbol, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else:
 		/*error(8)*/
 		if (export_pending): error(c"only functions can be exported")
-		global_variable_declaration(current_symbol, decl_type, 0)
+		if (static_pending): object_note_static(current_symbol)
+		program_global(current_symbol, decl_type, 0, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 

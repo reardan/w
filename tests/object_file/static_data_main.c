@@ -41,6 +41,9 @@ extern int w_primes[5];
 long w_prime(long i);
 
 long c_data = 33;
+int c_numbers[3] = {5, 6, 7};
+extern int *w_number_ref;
+long w_numbers_sum(void);
 
 static int failures;
 
@@ -83,6 +86,9 @@ int main(void) {
 	check("w_primes[4]", w_primes[4], 0);
 	w_primes[4] = 11;
 	check("w_prime(4)", w_prime(4), 11);
+	check("extern array from W", w_numbers_sum(), 18);
+	check("extern array written by W", c_numbers[0], 40);
+	check("pointer into extern array", w_number_ref == &c_numbers[2], 1);
 	for (int i = 0; i < 64; i++)
 		check("zero", w_zero[i], 0);
 	if (failures == 0)

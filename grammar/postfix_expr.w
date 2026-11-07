@@ -314,7 +314,9 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	else:
 		load_slot(s + 1)
 		if (callee_type != 4): promote(callee_type)
-		call_eax()
+		# --c-abi: a function-pointer value is a System V entry
+		if (c_abi_mode && (callee_type != 4)): c_abi_indirect_call(callee_type, s, passed_args, has_return_buffer, declared_return)
+		else: call_eax()
 	pop_to(s)
 	safe_foreign_owner_result(declared_return)
 	int type = 3  # call results are plain values

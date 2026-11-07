@@ -648,6 +648,9 @@ void sym_set_rel_chain(int t, int head):
 	save_int(table + t + 150, head)
 
 
+void object_alias_defined(int t, int v);   /* code_generator/elf_object.w */
+
+
 void sym_define_global_at(int current_symbol, int v):
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
@@ -670,9 +673,13 @@ void sym_define_global_at(int current_symbol, int v):
 
 	table[t + 1] = 'D'
 	sym_set_value_at(t, v)
+	# '@alias' declarations waiting for this definition (elf_object.w)
+	if (object_alias_pending): object_alias_defined(t, v)
 
 
+int stack_usage_last_symbol   /* code_generator/stack_usage.w */
 void sym_define_global(int current_symbol):
+	stack_usage_last_symbol = current_symbol
 	# A symbol defined at codepos (a function entry) is a call target:
 	# what follows is reachable again (O1, the terminator note)
 	term_note_end = 0

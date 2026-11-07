@@ -4,6 +4,9 @@
 # arrays of structs, unions, bitfield words, pointer tables and strings
 # a C compiler would have emitted, with nothing run at startup.
 extern int c_data
+# A C array ('int c_numbers[3]'): W indexes it through a header of its
+# own, and a pointer to it is the C symbol.
+extern int32[3] c_numbers
 
 int w_handler(int x);
 
@@ -81,3 +84,13 @@ int32[5] w_primes = {int32 2, int32 3, int32 5, int32 7}
 
 export int w_prime(int i):
 	return w_primes[i]
+
+
+int* w_number_ref = &c_numbers + 8
+
+
+export int w_numbers_sum():
+	int sum = 0
+	for i in range(c_numbers.length): sum = sum + c_numbers[i]
+	c_numbers[0] = 40
+	return sum

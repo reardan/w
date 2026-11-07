@@ -241,7 +241,10 @@ int ers_slot_reg(int disp):
 	return ers_reg[ers_count - 1 - (disp >> word_size_log2)]
 
 # The real esp displacement of a logical one that names a stack word.
+# Nothing the emitter addresses lies below esp (no red zone), which
+# --kernel-codegen relies on: an interrupt overwrites that memory.
 int esp_disp(int disp):
+	if (kernel_codegen && (disp < 0)): ers_internal(c"stack word below rsp")
 	if (ers_count == 0): return disp
 	if (ers_slot_reg(disp) != 0): ers_internal(c"word used by an unhandled path")
 	return disp - ers_bias()
@@ -2891,12 +2894,19 @@ void call_eax():
 		regalloc_call_reload()
 
 
+void object_note_rel32(int pos);      /* code_generator/elf_object.w */
+void object_rel32_rollback(int pos);
+
+
 void call_relative32(int v):
 	# The call pushes a real word (the string-literal emitters pop it
 	# back): the parked words (A3) must be below it
 	if (ers_count != 0): ers_spill_all()
 	emit(1, c"\xe8")
 	emit_int32(v)
+	# --emit=obj splits code across sections: every call cell is a
+	# candidate relocation (elf_object.w)
+	if (elf_object): object_note_rel32(codepos - 4)
 
 
 # Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4): one
@@ -3553,6 +3563,7 @@ void be_cmp_note_reset():
 # codepos. Every fold's rollback goes through here.
 void peep_rollback(int pos):
 	codepos = pos
+	if (elf_object): object_rel32_rollback(pos)
 	# A park whose bytes are discarded is gone (A3): the accumulator holds
 	# its value again, exactly as after rolling back a real push
 	while ((ers_count != 0) && (ers_start[ers_count - 1] >= pos)): ers_pop_top()

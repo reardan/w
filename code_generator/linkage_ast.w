@@ -1,3 +1,19 @@
+# Register the extern data object sym whose size bytes of space start at
+# address. In an object (--emit=obj) an extern fixed array is a C array,
+# with no {data, length} header in front of its elements: W keeps the
+# header in its own data, pointing at the imported elements, so W code
+# indexes the array as usual.
+void extern_object_import(int sym, int address, int size, char* name):
+	int type = type_canonical(load_int(table + sym + 6))
+	int header = 0
+	if (elf_object && data_split && type_is_array(type)):
+		if (type_has_array_field(type_get_element_type(type))):
+			error3(c"extern array '", name, c"' needs elements without nested array headers")
+		header = 2 * word_size
+		emit_data_global_storage(type, address)
+	dyn_add_import_data(name, address + header, size - header, 0)
+
+
 # Emit bytes and relocation/import metadata from resolved declarations.
 void emit_linkage_ast(linkage_ast* node):
 	if (node.kind == ast_linkage_enum):
@@ -16,7 +32,7 @@ void emit_linkage_ast(linkage_ast* node):
 			int address = emit_data_zeros(node.size)
 			sym_define_global_at(node.binding, address)
 			save_int(table + node.binding + 14, node.size)
-			dyn_add_import_data(node.name, address, node.size, 0)
+			extern_object_import(node.binding, address, node.size, node.name)
 		else:
 			while ((codepos % word_size) != 0): emit_int8(0)
 			sym_define_global(node.binding)
