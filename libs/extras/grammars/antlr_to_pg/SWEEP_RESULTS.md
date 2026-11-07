@@ -2,15 +2,14 @@
 
 ## Current pinned measurement
 
-Measured W `08775258` plus the runtime examples stage and memoized prediction
-calls (#679) against corpus
-commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`. The same 291 roots and
-original grammar bytes are used in every configuration. Translation, generation
-and compilation are unchanged from the compile-only measurement of clean commit
-`b1887a858969ba341fb1449793dfd69ed4113677`; the examples column is new.
-Memoizing prediction calls moved the exact examples from 215/244 cases and
-1088/1190 files (permissive) and 187/200 and 886/913 (strict) to the totals
-below; no example verdict regressed.
+Measured W `12df0ca8` plus plan-driven left-recursion lowering (#679) against
+corpus commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`. The same 291 roots and
+original grammar bytes are used in every configuration. Lowering the remaining
+direct left recursion in exact mode moved exact translation from 267 to **287**
+(permissive) and 218 to **232** (strict), and the exact examples from 223/244
+cases and 1118/1190 files (permissive) and 194/200 and 905/913 (strict) to the
+totals below. Prediction metadata ops no longer count against the work budget,
+which also let two AGC files finish. No stage or example verdict regressed.
 
 | Configuration | Translation | Generation | W compile | W compile `--strict` | Examples: cases | Examples: files |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -18,8 +17,8 @@ below; no example verdict regressed.
 | Default translator `--strict` | 10 | 10 | 10 | 10 | 8/8 | 39/39 |
 | Stateful permissive | 218 | 214 | 214 | 214 | 95/194 | 523/913 |
 | Stateful translator `--strict` | 28 | 28 | 28 | 28 | 27/27 | 105/105 |
-| Exact permissive | 267 | 267 | **267** | **267** | **223/244** | **1118/1190** |
-| Exact translator `--strict` | 218 | 218 | **218** | **218** | **194/200** | **905/913** |
+| Exact permissive | 287 | 287 | **287** | **287** | **233/260** | **1216/1304** |
+| Exact translator `--strict` | 232 | 232 | **232** | **232** | **202/211** | **960/978** |
 
 Stage cells are out of 291. Exact means `--exact-lexer --prediction`; stateful
 means `--stateful`. Translator `--strict` refuses reported semantic gaps.
@@ -30,18 +29,29 @@ files per case (1,315 files across 262 cases; 29 cases have no usable examples)
 and checks the accept/reject verdict, not the parse tree. "Cases" counts compiled
 cases with examples whose every example got the expected verdict; "files" counts
 example files. No example hung, crashed or hit an infrastructure error; the
-slowest took 3.6 seconds of its 10-second limit.
+slowest took 5.7 seconds of its 10-second limit.
 
-Exact permissive example failures: **9 files in 7 cases** still exceed the
-one-million-step parser prediction budget (agc, arden, cpp, html, objc, php and
-tinyos_nesc; 43 files in 16 cases before calls were memoized). **51 files in 15
-cases** are syntax errors (bcpl, bencoding, bison, gdscript, haskell, javadoc,
-langium, lua, mumps, php, pike, properties, stringtemplate, tinyos_nesc, wren),
-two Lua files hit an invalid token, and SDL's ten examples are not UTF-8. Four
-files that used to exhaust the budget now finish and are rejected as syntax
-errors. These are not yet triaged; several of these grammars rely on host
-predicates, actions or a lexer superclass. Exact strict fails only 8 files: 5
-over budget (agc, arden, html) and 3 syntax errors (mumps, pike, properties).
+Exact permissive example failures: **10 files in 10 cases** exceed the
+one-million-step parser prediction budget (agc, arden, cpp, elixir, html,
+hypertalk, objc, php, rust and tinyos_nesc). **65 files in 18 cases** are syntax
+errors (bcpl, bencoding, bison, eiffel, gdscript, haskell, javadoc, langium, lua,
+mumps, php, pike, properties, rust, spl, stringtemplate, tinyos_nesc, wren), two
+Lua files hit an invalid token, and SDL's ten examples are not UTF-8. GVPR accepts
+`1594.gvpr`, which upstream expects to fail: its statement separator depends on
+host predicates that permissive mode ignores. Of the newly translated grammars,
+Eiffel's two failures are XML `.ecf` project files, and ANTLR itself rejects
+SPL's ten examples from the pinned entry rule (identical rejections in the live
+tree comparison below). These are not yet triaged further; several of these
+grammars rely on host predicates, actions or a lexer superclass. Exact strict
+fails 18 files: 5 over budget (agc, arden, elixir, html, hypertalk) and 13
+syntax errors (mumps, pike, properties, spl).
+
+The newly lowered grammars are also checked tree-for-tree against ANTLR: the
+[parse-tree differential](../../../../tests/grammars/antlr_trees/README.md)
+matches all 149 pinned inputs, and a live run over the sweep's examples for the
+15 newly lowered grammars whose Java compiles without host support produced
+identical trees or identical rejections for 73 of 75 files (the other two exceed
+the prediction budget).
 Default-mode failures are dominated by its approximate lexer lowering (93 files
 rejected with `invalid character`, e.g. JSON's negative numbers) and ordered-choice
 parsing without continuation (370 syntax errors).
@@ -50,14 +60,13 @@ The merged #689 → #690 → #692 baseline compiled 212 cases, of which only 49
 passed W compiler `--strict`. All original 212 now compile without warnings.
 Default compilation adds Informix and JPA through explicitly reported inferred
 token identities; their undefined token matchers still prevent strict acceptance.
-Exact mode adds **55 of the original 79 compile misses**, reaching 267/291
-(91.8%). Exact strict accepts all original 15 default strict cases and **203 of
-the original 276 strict misses**, reaching 218/291 (74.9%). No exact-mode case
+Exact mode adds **75 of the original 79 compile misses**, reaching 287/291
+(98.6%). Exact strict accepts all original 15 default strict cases and **217 of
+the original 276 strict misses**, reaching 232/291 (79.7%). No exact-mode case
 is lost between successful translation and strict W compilation.
 
-The compile-only measurement completed all six configurations with **zero
-infrastructure errors and zero regressions against the reviewed baseline**; its
-longest stage took 7.176 seconds. The historical 288-name subset now compiles 212 cases in default
+The measurement completed all six configurations with **zero infrastructure
+errors and zero regressions against the reviewed baseline**. The historical 288-name subset now compiles 212 cases in default
 mode; this is a separate denominator from the current 291-root matrix.
 
 Per-case stages and diagnostic counts are in
@@ -91,65 +100,45 @@ explicit grammar-size and work limits; exhausted proofs refuse acceptance.
 
 ## Remaining compile coverage
 
-All **24 exact compile misses** fail during translation. There are no remaining
+All **4 exact compile misses** fail during translation. There are no remaining
 exact generator failures or generated-W warning failures in this pinned corpus.
-Twenty-one grammars contain unsupported left-recursion shapes:
-
-| Grammar | Refused rules |
-| --- | --- |
-| alef | `setlist`, `zelist` |
-| alloy | `expr` |
-| awk | `non_unary_expr`, `non_unary_print_expr` |
-| cayenne | `expr` |
-| clu | `primary` |
-| eiffel | `expression` |
-| elixir | `expression` |
-| gql | `valueType` |
-| gvpr | `expr` |
-| hypertalk | `chunk` |
-| kirikiri-tjs | `expression` |
-| peoplecode | `expr` |
-| plucid | `expression` |
-| refal | `program` |
-| rust | `expression` |
-| sapf | `expression` |
-| semver | `build`, `preRelease` |
-| spl | `expression` |
-| tl | `proposition` |
-| vb6 | `valueStmt` |
-| z | `expression`, `predicate` |
-
-The other three are:
 
 | Grammar | Blocking condition |
 | --- | --- |
+| Z | `expression` and `predicate` left recursion carries host predicates (`AT_LEFT_RECURSION`) |
 | AspectJ | Unresolved Java lexer/parser imports in the selected input/dependency closure |
 | TrapC | Unresolved `OverridesLexer`, `CLexer`, `OverridesParser`, and `CParser` dependencies |
 | SHARC | `StringLiteral` and `CharLiteral` can emit visible tokens without consuming input |
 
-Some grammars have additional host-code or token findings; these are overlapping
-causes, not additional cases. Direct precedence, ternaries, labeled alternatives,
-compound operators, and postfix levels are supported within the implemented
-normalization. Arbitrary indirect or nullable-prefix left recursion remains
-outside that support. Lisp now compiles by retaining its nonproductive fragment
-as an actual failing call; no productive base is invented.
+The 20 grammars that reported unsupported left recursion before #679's lowering
+(alef, alloy, awk, cayenne, clu, eiffel, elixir, gql, gvpr, hypertalk,
+kirikiri-tjs, peoplecode, plucid, refal, rust, sapf, semver, spl, tl, vb6) now
+translate, generate and compile in exact permissive mode; 14 of them also pass
+exact strict (awk, eiffel, gvpr, kirikiri-tjs, peoplecode and rust have other
+reported gaps). Their direct left recursion is lowered by
+[`normalize_precedence.w`](normalize_precedence.w) from ANTLR's own
+precedence plan (see [LEFT_RECURSION_PLAN.md](LEFT_RECURSION_PLAN.md)); shapes
+the plan cannot prove (indirect or nullable-prefix cycles, semantic sites on
+operators, nullable operator tails) are still refused atomically. Lisp compiles
+by retaining its nonproductive fragment as an actual failing call; no productive
+base is invented.
 
 ## Remaining strict coverage
 
-**73 cases fail exact strict translation**, including the 24 compile misses.
-The 49 additional cases compile permissively but have reported semantic gaps.
+**59 cases fail exact strict translation**, including the 4 compile misses.
+The 55 additional cases compile permissively but have reported semantic gaps.
 The most frequent finding classes among refused cases are:
 
 | Finding | Grammars affected |
 | --- | ---: |
-| Host actions, predicates, or element options (`AT_HOST_SITE`) | 34 |
+| Host actions, predicates, or element options (`AT_HOST_SITE`) | 33 |
 | Unsupported declarations/dependencies (`AT_DECLARATION`) | 27 |
-| Unsupported left recursion | 21 |
 | Nongreedy constructs requiring adaptation | 13 |
 | Case-insensitive parser literals requiring explicit lexer rules | 5 |
 | Unsupported lexer commands | 5 |
 | Inferred token identities | 3 |
 | Declared tokens without lexer matchers | 3 |
+| Unsupported left recursion | 1 |
 
 Counts overlap. The remaining less frequent findings include missing dependencies,
 undefined symbols, command conflicts, unsupported exact lexer shapes, Unicode,

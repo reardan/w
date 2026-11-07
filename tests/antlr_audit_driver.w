@@ -58,8 +58,14 @@ int main():
 	exact.push(report)
 	exact.push(c"--matchers")
 	exact.push(matchers)
-	list[char*] grammars = ht_split(c"root: expr EOF; expr: expr expr | 'x';\nroot: expr EOF; expr: expr ','? expr | 'x';\nroot: expr EOF; expr: expr '+' expr | ;\nroot: item EOF; item: other 'a' | 'b'; other: item;", 10)
-	list[char*] reasons = split(c"operator_prefix_not_proven operator_prefix_not_proven empty_alternative primary_nullable_prefix_cycle")
+	# Adjacency, optional separators and a nullable primary are lowered by the
+	# precedence plan; these variants remain unproven and are refused.
+	for char* lowered in ht_split(c"root: expr EOF; expr: expr expr | 'x';\nroot: expr EOF; expr: expr ','? expr | 'x';\nroot: expr EOF; expr: expr '+' expr | ;", 10):
+		file_write_text(source, strjoin(c"grammar Proof; ", lowered))
+		aa_run(exact, audit, 1)
+	list[char*] grammars = ht_split(c"root: expr EOF; expr: expr expr | ;\nroot: expr EOF; expr: expr ','? expr | ;\nroot: expr EOF; expr: expr '+'*? expr | 'x';\nroot: item EOF; item: other 'a' | 'b'; other: item;", 10)
+	list[char*] reasons = split(c"operator_prefix_not_proven operator_prefix_not_proven element_semantics primary_nullable_prefix_cycle")
+	list[char*] plan_reasons = split(c"nullable_operator_tail nullable_operator_tail element_semantics")
 	for i in range(4):
 		file_write_text(source, strjoin(c"grammar Proof; ", grammars[i]))
 		for char* path in ht_argv(output, report, matchers): file_write_text(path, c"sentinel")
@@ -74,11 +80,15 @@ int main():
 		ht_require(finding != 0, c"missing recursion finding")
 		json_value* details = ht_field(finding, c"details")
 		int guard_found = 0
+		int plan_found = 0
 		for json_value* guard in ht_field(details, c"normalization_guards").array_values:
 			if (strcmp(ht_text(guard, c"normalizer"), c"prediction_expression") == 0):
 				ht_require(strcmp(ht_text(guard, c"reason_code"), reasons[i]) == 0, c"normalization guard reason changed")
 				guard_found = 1
-		ht_require(guard_found, c"missing normalization guard")
+			if ((i < 3) && (strcmp(ht_text(guard, c"normalizer"), c"prediction_plan") == 0)):
+				ht_require(strcmp(ht_text(guard, c"reason_code"), plan_reasons[i]) == 0, c"precedence plan guard reason changed")
+				plan_found = 1
+		ht_require(guard_found && (plan_found || (i == 3)), c"missing normalization guard")
 		json_value* graph = ht_field(details, c"remaining_graph")
 		ht_require(ht_field(graph, c"complete").int_value && ht_field(graph, c"cycles").array_values.length > 0, c"incomplete remaining cycle graph")
 		int found = 0

@@ -3,6 +3,7 @@
 # labels and host actions/predicates remain unsupported.
 import libs.extras.grammars.antlr_to_pg.audit
 import libs.extras.grammars.antlr_to_pg.matchers_analyze
+import libs.extras.grammars.antlr_to_pg.source_metadata
 
 
 # Any occurrence, not merely a nullable-prefix occurrence: expression
@@ -108,6 +109,8 @@ int at_normalize_parser_list(at_rule* rule):
 		if (recursive):
 			if ((first.suffix != 0) || (alt.elements.length < 2)): return 0
 			part = new at_alt()
+			at_source_copy(part, alt)
+			part.tree_role = 2
 			part.elements = new list[at_element*]
 			int i = 1
 			while (i < alt.elements.length):
@@ -131,6 +134,9 @@ int at_normalize_parser_list(at_rule* rule):
 	at_alt* normalized = new at_alt()
 	normalized.elements = new list[at_element*]
 	if (bases.length == 1):
+		# The base atoms are inlined: the owner node opens the base context.
+		at_source_copy(normalized, bases[0])
+		normalized.tree_role = 3
 		for at_element* e in bases[0].elements:
 			normalized.elements.push(at_clone_element(e))
 	else:

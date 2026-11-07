@@ -6,8 +6,11 @@ Implement an explicit precedence plan and validate its progress before publishin
 normalized rules. Measure grammar compilation and runtime compatibility separately.
 
 Status: Wave 0 diagnostics, analysis interfaces, and pinned reference evidence are
-implemented. Nonnullable and nullable lowering remain planned; acceptance and
-the six configuration baselines are unchanged. See the
+implemented, and so are the nonnullable and nullable lowerings (deliveries 2 and
+3, see [Implementation status](#implementation-status) below): **24 of the 25
+inventoried rules are lowered** and 20 of the 21 grammars now translate in exact
+mode. Z's `expression` remains refused because its precedence alternatives
+contain host predicates. See the
 [Wave 0 fixtures and commands](../../../../tests/grammars/antlr_left_recursion/README.md).
 This follows [PR #708](https://github.com/reardan/w/pull/708)
 and the [compatibility capability ledger](COMPATIBILITY_PLAN.md). The planning PR
@@ -31,6 +34,69 @@ analysis completes for every root with no mutual cycles; the largest work count
 is GQL's 71,769 of 1,000,000. Instrumented refusals and output preservation are
 replayed for all 25 original rules. Nonnullable and nullable acceptance work is
 still reserved for deliveries 2 and 3 below.
+
+## Implementation status
+
+`normalize_precedence.w` lowers a direct-recursive rule from its immutable
+`at_lr_plan` in prediction mode. It runs only after every older normalizer has
+refused the rule, so the AST layout of previously accepted rules is unchanged.
+The plan supplies the walker classification, the constrained occurrence and its
+binding; the lowering keeps the existing helper layout (`R_primary`, one
+`R_bp{i}` tier per operator, `R: R_bp{last}`):
+
+- Tier *i* admits operators 0..*i* in source order. A constrained operand with
+  binding *b* calls the tier admitting exactly the operators whose precedence
+  `N - alt + 1` is at least *b* (`R[b]`); ordinary references keep calling `R`
+  (`R[0]`), wherever they occur (groups, optional terms, ternary middles).
+- Within a loop, binary tails precede suffix tails, each in source order,
+  matching the analyzer's transformed decision order.
+- The outer `<assoc>` option of an operator is consumed; nested and misplaced
+  associativity options stay attached (ANTLR ignores them) and are still reported
+  as host sites. Actions, predicates, other options and nongreedy decisions refuse.
+
+Safety proofs replace the older shape restrictions instead of weakening them:
+every loop tail must consume a token (a constrained operand consumes only when
+every primary does, which allows nullable/absent operators such as adjacency and
+optional separators); primaries and prefix operands must not reach the owner
+through a nullable prefix; with a nullable primary each tail must consume before
+any operand and must not reach the owner first. Refusals are atomic and recorded
+under the `prediction_plan` normalizer in `normalization_guards`
+(`not_direct_recursive`, `element_semantics`, `alternative_options`,
+`primary_prefix_not_proven`, `primary_nullable_prefix_cycle`,
+`nullable_operator_tail`, `tail_nullable_prefix_cycle`,
+`missing_operator_or_primary`, `base_not_proven_productive`, `rule_options`, or
+an incomplete plan's reason). The final left-path audit and the generator's
+grammar safety check still run on the lowered grammar.
+
+Evidence:
+
+- `tests/antlr_to_pg_precedence_lowering_test.w` pins the lowered helper layout
+  for adjacent, optional-separator, mixed suffix/binary/prefix/right-associative
+  and nullable-primary rules, and every refusal reason above.
+- `bin/antlr_left_recursion_refusals` now records each inventoried rule as
+  lowered or refused; `current_refusals.json` holds 24 lowered rules and Z's
+  `expression` refusal (`element_semantics` at its predicated alternative 24).
+- The [parse-tree differential](../../../../tests/grammars/antlr_trees/README.md)
+  compares complete W parse trees with ANTLR 4.13.2 trees for the Wave 0
+  fixtures, two new fixtures and five pinned upstream grammars (149 inputs, 123
+  accepted by ANTLR, all identical). A live run over the sweep's pinned example
+  files of the 15 grammars whose Java compiles without host support produced
+  identical trees for 73 of 75 files; the other two exceed the
+  one-million-step prediction budget.
+- The full pinned sweep (291 roots, six configurations) has zero regressions
+  and zero infrastructure errors: exact translation is 287/291 permissive and
+  232/291 strict (from 267 and 218), and the recorded progressions are in
+  `sweep_baseline.json` ([SWEEP_RESULTS.md](SWEEP_RESULTS.md)). Prediction
+  metadata ops (including the new `antlr_tree:*` keys) are not charged to the
+  work budget, so tree metadata cannot change a verdict; this kept RuleWorks'
+  `advent.rul` within budget and let two AGC files finish.
+- The negative Wave 0 fixtures (direct, mutual and nullable-adjacent cycles,
+  attached options) are still refused.
+
+Not done: host predicates inside precedence alternatives (Z), a DFA or other
+prediction cache for highly ambiguous adjacency (HyperTalk's `chunk chunk`
+exceeds the budget on one pinned example), and numeric per-fixture performance
+bounds.
 
 ## Baseline and outcome
 
