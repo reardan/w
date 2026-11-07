@@ -631,8 +631,12 @@ int asm_entry_symbol
 int asm_entry_pending
 
 
+void stack_usage_define(int symbol);   /* code_generator/stack_usage.w */
+void stack_usage_begin();
+void stack_usage_end();
 void be_function_define(int current_symbol, char* name):
 	wgrind_function_define(current_symbol, name)
+	if (stack_usage_mode): stack_usage_define(current_symbol)
 	if (asm_entry_pending && (asm_entry_symbol == current_symbol)):
 		asm_entry_pending = 0
 		return
@@ -678,6 +682,7 @@ int be_frame_words():
 void regargs_close(int framed);   /* compiler/regalloc_scan.w (unit O5) */
 void be_function_epilogue():
 	if (be_frame_active): dwarf_function_close()
+	if (stack_usage_active): stack_usage_end()
 	# x64: the register entry (O5), after the body and outside its
 	# .debug_frame range; nothing unless the body qualifies
 	if (target_isa == 0): regargs_close(be_frame_active)
@@ -705,6 +710,7 @@ void be_function_prologue():
 		# when the pre-scan promoted nothing (every other arm64 target)
 		regalloc_prologue_emit()
 	elif (target_isa == 0):
+		if (stack_usage_mode): stack_usage_begin()
 		emit(1, c"\x55")   # push ebp / push rbp
 		emit_x64_opcode()
 		emit(2, c"\x89\xe5")   # mov ebp,esp / mov rbp,rsp

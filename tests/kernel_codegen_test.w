@@ -621,6 +621,59 @@ void test_kernel_codegen_code_model():
 	assert_strings_equal(expected, kc_shell(high))
 
 
+# The entry of report line "file:L:C:name<TAB>bytes<TAB>static" for name
+# (exact, so "f [adapter]" is its own entry), or -1.
+int kc_report_bytes(list[char*] report, char* name):
+	for char* line in report:
+		int tab = index_of(line, c"\x09")
+		if (tab < 0): continue
+		int colon = tab
+		while ((colon > 0) && (line[colon - 1] != ':')): colon = colon - 1
+		if ((tab - colon == strlen(name)) && starts_with(line + colon, name)): return atoi(line + tab + 1)
+	return -1
+
+
+# --stack-usage: the report covers every W function, adapter and shim,
+# and no function ever goes deeper than its entry says. The stepper
+# measures each function's deepest stack use (callees excluded) in the
+# linked corpus; every function with a symbol of its own is checked.
+void test_kernel_codegen_stack_usage():
+	char* object = kc_path(c"usage.o")
+	kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", object)
+	char* text = file_read_text(kc_path(c"usage.su"))
+	assert1(text != 0)
+	list[char*] report = kc_lines(text)
+	assert_contains(report[0], c"corpus.w:")
+	assert_contains(text, c"static")
+	assert1(kc_report_bytes(report, c"kc_main [adapter]") > 0)
+	assert1(kc_report_bytes(report, c"kc_c_mix [c-call]") > 0)
+	# a 64-byte local buffer and eight 2-byte ones
+	assert1(kc_report_bytes(report, c"kc_bytes") >= 64 + 16 + 16)
+	char* exe = kc_link(c"usage", object)
+	char* plain = kc_shell(exe)
+	assert_strings_equal(plain, kc_run_traced(exe, 0))
+	char* symbols = kc_shell(strjoin(c"nm ", exe))
+	list[char*] lines = kc_lines(symbols)
+	int checked = 0
+	for char* line in lines:
+		if ((strlen(line) < 20) || ((line[17] != 't') && (line[17] != 'T'))): continue
+		int n = 0
+		int at = kc_hex(line, &n)
+		char* name = line + 19
+		int reported = kc_report_bytes(report, name)
+		if ((line[17] == 'T') && (kc_report_bytes(report, strjoin(name, c" [adapter]")) > 0)):
+			reported = kc_report_bytes(report, strjoin(name, c" [adapter]"))
+		if (reported < 0): continue
+		for i in range(kc_entry_count):
+			if (kc_entry_addr[i] == at):
+				if (kc_entry_depth[i] > reported):
+					println2(strjoin(strjoin(strjoin(strjoin(name, c": measured "), itoa(kc_entry_depth[i])), c" > reported "), itoa(reported)))
+					assert1(0)
+				checked = checked + 1
+	assert1(checked >= 12)
+	kc_reject(c"--stack-usage requires an x86 or x64 target", c"arm64", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", kc_path(c"arm.o"))
+
+
 void kc_float_reject(char* name, char* body):
 	char* source = kc_path(name)
 	assert_equal(1, file_write_text(source, body))

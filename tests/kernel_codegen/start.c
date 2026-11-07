@@ -34,6 +34,17 @@ long kc_c_mix(long a, long b, long c, long d, long e, long f, long g, long h)
 	return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + kc_callback(a + 5, (h & 3) + 1);
 }
 
+long kc_c_sum(long n, ...)
+{
+	__builtin_va_list ap;
+	long s = 0;
+	__builtin_va_start(ap, n);
+	for (long i = 0; i < n; i++)
+		s = s * 3 + __builtin_va_arg(ap, long);
+	__builtin_va_end(ap);
+	return s;
+}
+
 static void kc_write(const char *s, long n)
 {
 	long r;

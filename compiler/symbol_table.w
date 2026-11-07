@@ -672,7 +672,9 @@ void sym_define_global_at(int current_symbol, int v):
 	sym_set_value_at(t, v)
 
 
+int stack_usage_last_symbol   /* code_generator/stack_usage.w */
 void sym_define_global(int current_symbol):
+	stack_usage_last_symbol = current_symbol
 	# A symbol defined at codepos (a function entry) is a call target:
 	# what follows is reachable again (O1, the terminator note)
 	term_note_end = 0

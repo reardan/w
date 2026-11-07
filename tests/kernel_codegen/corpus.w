@@ -11,6 +11,7 @@ type kc_binary = fn(int, int) -> int
 
 extern int kc_c_mix(int a, int b, int c, int d, int e, int f, int g, int h)
 extern int kc_c_unwind()
+extern int kc_c_sum(int n, ...)
 
 struct kc_point:
 	int x
@@ -150,6 +151,11 @@ int kc_shifts(int x):
 	return r + (y >> 2) + (y / 7) + (y % 9) + (x * x) / 13
 
 
+# A variadic C call is converted inline at the call site.
+int kc_variadic(int x):
+	return kc_c_sum(3, x, x * 2, x * 3) + kc_c_sum(8, 1, 2, 3, 4, 5, 6, 7, x)
+
+
 export int kc_main():
 	int sum = kc_fib(15)
 	sum = sum + kc_many(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
@@ -159,6 +165,7 @@ export int kc_main():
 	sum = sum + kc_promoted(7)
 	sum = sum + kc_pointers()
 	sum = sum + kc_shifts(12345)
+	sum = sum + kc_variadic(sum & 1023)
 	sum = sum + kc_c_mix(1, 2, 3, 4, 5, 6, 7, sum & 255)
 	return sum
 

@@ -69,6 +69,9 @@ int elf_object /* --emit=obj: x64 ELF ET_REL object (implies elf_static) */
 int elf_object_text_start /* code offset where an object's .text begins */
 int freestanding_mode /* --freestanding: no auto-imported W runtime */
 int kernel_codegen /* --kernel-codegen: kernel-context code (no SSE/x87; docs/projects/object_files.md) */
+int stack_usage_mode /* --stack-usage: write <output>.su (code_generator/stack_usage.w) */
+int stack_usage_active /* 1 while a function body is emitted under --stack-usage */
+void stack_usage_sample(); /* code_generator/stack_usage.w */
 int elf_shared /* ELF shared object with explicit native exports */
 char* elf_soname /* Android shared object basename, set before finish */
 int elf_pie   /* ELF PIE; mandatory for Android */
@@ -274,6 +277,7 @@ void regalloc_guard():
 
 void emit(int n, char* s):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (stack_usage_active): stack_usage_sample()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
@@ -288,6 +292,7 @@ void emit_string(char* s):
 
 void emit_i(int v, int n):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (stack_usage_active): stack_usage_sample()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)

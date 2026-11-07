@@ -51,6 +51,8 @@ int type_get_pointer_level(int type_index);
 int type_float_kind(int t);
 void error(char* s);
 void movd_xmm0_eax();
+void stack_usage_shim(int stack_words);   /* code_generator/stack_usage.w */
+void stack_usage_extra(int words);
 void cvtss2sd_xmm0();
 void movq_rax_xmm0();
 void push_eax();
@@ -452,6 +454,7 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 	else if (word_size == 8): emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
 	else: emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 8)
 	emit(1, c"\xc3")           /* ret */
+	if (stack_usage_mode): stack_usage_shim(n)
 
 
 # The same conversion emitted inline at a call site: the n arguments were
@@ -462,6 +465,8 @@ void emit_ffi_call_inline_body(int n, char* classes, int ret_class, int got_vadd
 
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 	emitted_call_count = emitted_call_count + 1
+	# the inline C frame: saved frame pointer, alignment, stack arguments
+	if (stack_usage_mode): stack_usage_extra(3 + n)
 	# A parked expression operand (A3) never survives a call.
 	if (ers_count != 0): ers_spill_all()
 	# Loop-owned caller-saved registers (R3, compiler/regalloc_scan.w)

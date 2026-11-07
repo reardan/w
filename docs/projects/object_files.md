@@ -211,6 +211,34 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   `0x7f0000000000` in user space, where it runs and prints exactly what
   the ordinary link prints. This holds with or without the flag.
 
+## Stack usage
+
+`--stack-usage` (x86 and x64, any output kind) writes a per-function
+report next to the output, `<output minus .o>.su`, in the format of
+gcc's `-fstack-usage`, so frames too large for a kernel's 16 KB stack
+can be found:
+
+```
+drv.w:107:5:kc_promoted	280	static
+drv.w:153:12:kc_main [adapter]	56	static
+drv.w:12:12:kc_c_mix [c-call]	96	static
+```
+
+Each W function's number is the most it takes below its caller's stack
+pointer: the return address, `rbp`, saved registers and every word it
+pushes (locals, temporaries, outgoing arguments), callees excluded.
+`code_generator/stack_usage.w` derives it from the grammar's `stack_pos`
+bookkeeping: `emit()` samples the deepest `stack_pos` between the
+prologue and the epilogue, which bounds the real depth (parked
+expression registers only make the real stack shallower), and the one
+frame `stack_pos` does not see, the inline C-call frame of a variadic
+`extern` call, is added explicitly. Export adapters (`[adapter]`) and
+FFI shims (`[c-call]`) have fixed frames of their own. W has no
+dynamically sized stack allocation, so every entry is `static`. The
+test checks the report against the ptrace stepper's measurement of the
+linked corpus: no function goes deeper than its entry (the entries are
+exact for most functions and one word high for some leaves).
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64

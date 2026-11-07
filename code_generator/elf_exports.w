@@ -4,6 +4,7 @@ import code_generator.wasm_module
 import code_generator.ffi
 
 char* elf_export_addresses
+void stack_usage_adapter(int symbol, int words);   /* code_generator/stack_usage.w */
 
 
 # AAPCS64 adapter. Keep the native frame above the downward-growing W
@@ -71,6 +72,7 @@ void elf_emit_export_wrappers():
 			elf_emit_arm64_export(address, n, classes, load_i(wasm_export_rets + e * 4, 4))
 			continue
 		char* slots = ffi_assign_slots(n, classes, 6)
+		if (stack_usage_mode): stack_usage_adapter(sym, n)
 		# Preserve every System V callee-saved register around the W call.
 		emit(4, c"\x55\x48\x89\xe5")
 		push_reg(3)

@@ -12,6 +12,7 @@ import compiler.symbol_table
 # grammar rules that call them
 import compiler.script_profile
 import code_generator.elf_object
+import code_generator.stack_usage
 # Register promotion pre-scan and decision (reads the symbol and type
 # tables; the grammar's function rule calls it)
 import compiler.regalloc_scan
@@ -870,6 +871,7 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--emit=obj") == 0): return 1
 	if (strcmp(arg, c"--freestanding") == 0): return 1
 	if (strcmp(arg, c"--kernel-codegen") == 0): return 1
+	if (strcmp(arg, c"--stack-usage") == 0): return 1
 	if (starts_with(arg, c"--link=")): return 1
 	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
@@ -1142,6 +1144,7 @@ void help_shared_options():
 	println(c"  --freestanding        with --emit=obj: no W runtime (containers, allocator, startup)")
 	println(c"  --kernel-codegen      with --emit=obj --freestanding: code safe in kernel context")
 	println(c"                        (no floating point/SSE/x87; frame pointers; no red zone)")
+	println(c"  --stack-usage         x86/x64: write per-function stack frame sizes to <output>.su")
 	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
 	println(c"  --link=<path>         link a shared library, repeatable")
 	println(c"  --pie                 emit an x64/arm64 ELF position-independent executable")
@@ -1445,6 +1448,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	global_address_symbols = 0
 	freestanding_mode = 0
 	kernel_codegen = 0
+	stack_usage_mode = 0
+	stack_usage_active = 0
 	static_address_count = 0
 	wasm_export_count = 0
 	x64_syscall_abi = 0
@@ -1625,6 +1630,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
 		else if (strcmp(*flag_arg, c"--kernel-codegen") == 0): kernel_codegen = 1
+		else if (strcmp(*flag_arg, c"--stack-usage") == 0): stack_usage_mode = 1
 		else if (strcmp(*flag_arg, c"--shared") == 0):
 			elf_shared = 1
 			elf_pie = 1
@@ -1719,6 +1725,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
 	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
 	if (kernel_codegen && (freestanding_mode == 0)): target_option_error(c"--kernel-codegen requires --emit=obj --freestanding")
+	if (stack_usage_mode && (target_isa != 0)): target_option_error(c"--stack-usage requires an x86 or x64 target")
 	if (elf_shared && elf_static): target_option_error(c"--shared and --static are mutually exclusive")
 	if (elf_static && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
 		target_option_error(c"--static requires the x64 Linux target")
@@ -1975,6 +1982,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				if ((output_path[p] == '/') || (output_path[p] == '\\')): elf_soname = output_path + p + 1
 	profile_finish(output_path, check_mode)
 	if (elf_shared || elf_static): elf_emit_export_wrappers()
+	if (stack_usage_mode && (check_mode == 0)): stack_usage_write(output_path)
 	if (elf_static):
 		if (elf_object): elf_object_write()
 		else: static_library_write()
