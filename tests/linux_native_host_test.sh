@@ -17,4 +17,5 @@ WBUILD_HOST=linux-x64 bin/wexec_native -f "$fixture/manifest.json" probe >/dev/n
 printf second > "$fixture/input"
 WBUILD_HOST=linux-x64 bin/wexec_native -f "$fixture/manifest.json" probe >/dev/null
 [ "$(cat "$fixture/output")" = second ]
+python3 tests/linux_native_signal_test.py
 printf 'native Linux host qualification OK\n'
