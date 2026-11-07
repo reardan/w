@@ -21,6 +21,7 @@ int union_declaration():
 		expect(c":")
 		while (tab_level > start_tab_level):
 			int field_type = type_name()
+			seg_storage_check(field_type, c"a union field")
 			if (type_has_array_field(field_type)):
 				error(c"fixed array fields are not implemented in unions")
 			type_add_arg(type_index, strclone(token), field_type)

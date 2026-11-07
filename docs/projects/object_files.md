@@ -574,6 +574,47 @@ x86/x64 code, with or without `--kernel-codegen`):
 Ordering between CPUs is the hardware's: W emits no fences, so a
 kernel's `smp_mb()` and friends remain inline assembly (or calls).
 
+## Segment-relative accesses
+
+Kernels keep per-CPU data in a section linked at offset 0 and reach the
+running CPU's copy through a segment base (`%gs` on x86-64 Linux, `%fs`
+on 32-bit). C spells this with GCC's named address spaces `__seg_gs`
+and `__seg_fs`; W has the same two qualifiers (x86 and x64 targets
+only, in every output mode):
+
+```w
+extern __seg_gs pcpu_hot const_pcpu_hot     # the object lives in gs
+__seg_gs int* p                             # points into gs
+__seg_gs(task*)* slot                       # points at a task* in gs
+int cpu = *cast(__seg_gs int*, cast(uint64, &cpu_number))
+```
+
+`__seg_gs T` qualifies the object type T, as `const` does; the
+parenthesized form takes a whole type, so a pointer object in the
+segment (C's `T * __seg_gs`) is `__seg_gs(T*)`. A load or store of such
+an lvalue is the ordinary instruction with the override prefix (`65` /
+`64`, ahead of REX: `mov %gs:(%rax),%rax`), at the declared width;
+compound assignments and `++` load and store through it. The fields of
+a struct in a segment are in that segment. The address of a segment
+lvalue (`&x`, `cast(uint64, p)`) is its offset in the segment, which is
+the flat address the linker gave the symbol: a translator writes C's
+`*(T __seg_gs *)(uintptr_t)&var` as above. Converting between segment
+and flat pointers needs a `cast()`.
+
+Only globals and externs live in a segment; a local, a parameter or a
+field may point into one but not be in one (`a local variable cannot
+live in a segment address space`), and the qualified type must be a
+scalar, pointer or struct, not a W array, slice, string or container.
+Struct copies to or from a segment are rejected; assign the fields. The
+lowering is in the streaming front end (`promote`, `assign_store` and
+`seg_override` in `code_generator/x86.w`); the AST front end hands any
+expression with a segment lvalue to it. Such an access is never folded
+into a later memory-operand form, so each one is a single prefixed
+instruction. `tests/object_segment_test.w` links a W object with a C
+driver that points `%gs` and `%fs` at a copy of the data with
+`arch_prctl` and checks every width, fields, pointer objects, indexing
+in a loop and gcc's own `__seg_gs` reads against W's.
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64
