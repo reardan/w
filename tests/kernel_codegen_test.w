@@ -194,9 +194,11 @@ int kc_trace(char* exe, char* out_path, int clobber):
 		insn[0] = 0
 		insn[1] = 0
 		sys_pread(mem, &insn[0], 16, rip)
-		# a REX prefix ('call r11' is 41 ff d3) precedes the opcode
+		# an addr32 prefix (--c-abi's direct extern call is 67 e8) or a
+		# REX prefix ('call r11' is 41 ff d3) precedes the opcode
 		int k = 0
-		if (((insn[0] & 255) >= 0x40) && ((insn[0] & 255) <= 0x4f)): k = 1
+		if ((insn[k] & 255) == 0x67): k = k + 1
+		if (((insn[k] & 255) >= 0x40) && ((insn[k] & 255) <= 0x4f)): k = k + 1
 		int op = insn[k] & 255
 		int modrm = insn[k + 1] & 255
 		int is_call = (op == 0xe8) || ((op == 0xff) && (((modrm >> 3) & 7) == 2))
@@ -614,7 +616,8 @@ int kc_data_word(char* exe, int addr):
 
 # Code model: x64 W code reaches data and functions only PC-relatively
 # and stores pointers as 64-bit words, so the object carries nothing
-# but R_X86_64_PC32 and R_X86_64_64 relocations -- no R_X86_64_32/32S
+# but R_X86_64_PC32, R_X86_64_PLT32 (--c-abi direct extern calls) and
+# R_X86_64_64 relocations -- no R_X86_64_32/32S
 # that the kernel's top-2GB placement (or any address above 4GB) would
 # overflow. Linked at the kernel's own base the pointer words hold the
 # kernel addresses; linked high in user space the corpus runs and
@@ -628,7 +631,7 @@ void kc_check_code_model(int c_abi):
 		int at = index_of(line, c"R_X86_64_")
 		if (at < 0): continue
 		char* kind = line + at
-		if ((starts_with(kind, c"R_X86_64_PC32 ") == 0) && (starts_with(kind, c"R_X86_64_64 ") == 0)):
+		if ((starts_with(kind, c"R_X86_64_PC32 ") == 0) && (starts_with(kind, c"R_X86_64_PLT32 ") == 0) && (starts_with(kind, c"R_X86_64_64 ") == 0)):
 			println2(line)
 			assert1(0)
 		seen = seen + 1
