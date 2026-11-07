@@ -122,7 +122,7 @@ char* t262_unsupported(json_value* meta):
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
-		if (!jc_is(item, c"coalesce-expression")): features.push(item.string_value)
+		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
 	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution")): return c"module resolution is unsupported"
