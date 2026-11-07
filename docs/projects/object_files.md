@@ -153,6 +153,27 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   same output as a plain run; a C leaf compiled with its red zone is
   the negative control that this clobbering breaks.
 
+- **No SSE, AVX, MMX or x87.** The kernel saves only the general
+  registers on entry, so kernel code may not touch the FPU/SSE state.
+  W's integer code never does: struct copies, zeroing, array and
+  memory moves are word, narrow or `rep`-free integer loops, and the
+  prologues, adapters and shims move only general registers. Floating
+  point is the only source of SSE (`code_generator/sse.w`; values ride
+  the integer pipeline and touch xmm registers inside one operation),
+  so under the flag every x86 float emitter, the float paths of the FFI
+  shims and export adapters, and float literals stop with "floating
+  point is not allowed with --kernel-codegen (no SSE/x87 in kernel
+  code)" at the offending line. That covers arithmetic, comparisons,
+  conversions, literals, and `extern`/`export` signatures with a float
+  parameter or result (an `extern` is rejected where it is declared,
+  since its shim is emitted there). A float-typed variable that is only
+  copied bit-for-bit emits no SSE and is still accepted. The test
+  disassembles the corpus and freestanding-clean library modules
+  (`lib/sha256.w`, `lib/hex.w`, `lib/memory.w`, ... — about 50k
+  instructions) with `objdump` and rejects any xmm/ymm/zmm/mm/x87
+  register, x87 mnemonic or MXCSR/XSAVE instruction, and any operand
+  below `%rsp`; a float object built without the flag is the control.
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64

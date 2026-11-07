@@ -978,6 +978,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			token = saved_token
 		return
 	if (op == 'f'):
+		sse_kernel_reject()
 		if (word_size == 8): mov_rax_int64_halves(tree.value[id], tree.high[id])
 		else: mov_eax_int32(tree.value[id])
 		return

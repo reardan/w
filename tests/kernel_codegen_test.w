@@ -12,6 +12,7 @@
 import lib.testing
 import tests.tool_e2e
 import lib.file
+import lib.str
 
 
 char* kc_dir
@@ -228,6 +229,223 @@ void test_kernel_codegen_red_zone_control():
 	assert1((status != 0) || (strcmp(plain, traced) != 0))
 	char* unclobbered = kc_run_traced(exe, 0)
 	assert_strings_equal(plain, unclobbered)
+
+
+########################### the disassembly scan ###########################
+# objdump decodes .text linearly, but W keeps some literal bytes in
+# .text (string bytes after a function, or behind a 'jmp'; moving them
+# out is the section-placement work), which the decoder reads as
+# garbage. Code after an unconditional 'ret'/'jmp'/'ud2' is reachable
+# only as a branch or call target or a symbol, so the scan skips lines
+# from such a terminator until one of those addresses; when the decoder
+# steps over that address (desynchronized by the data), objdump is
+# restarted there.
+
+int kc_hex(char* s, int* end):
+	int v = 0
+	int i = 0
+	while (1):
+		int c = s[i]
+		if ((c >= '0') && (c <= '9')): v = v * 16 + c - '0'
+		else if ((c >= 'a') && (c <= 'f')): v = v * 16 + c - 'a' + 10
+		else: break
+		i = i + 1
+	*end = i
+	return v
+
+
+# One decoded instruction line: "  <hex addr>:\t<mnemonic> <operands>".
+# Returns the address, or -1 for any other line; *text_out is the
+# instruction text.
+int kc_insn_line(char* line, char** text_out):
+	int i = 0
+	while (line[i] == ' '): i = i + 1
+	int n = 0
+	int addr = kc_hex(line + i, &n)
+	if ((n == 0) || (line[i + n] != ':') || (line[i + n + 1] != 9)): return -1
+	*text_out = line + i + n + 2
+	return addr
+
+
+# A symbol line "<16 hex digits> <name>:": its address, else -1.
+int kc_symbol_line(char* line):
+	int n = 0
+	int addr = kc_hex(line, &n)
+	if ((n != 16) || (line[16] != ' ') || (line[17] != '<')): return -1
+	return addr
+
+
+# The direct target of a branch or call ("jne    2a5 <f+0x4e>"), or -1.
+int kc_branch_target(char* text):
+	if ((text[0] != 'j') && (starts_with(text, c"call") == 0)): return -1
+	int k = 0
+	while ((text[k] != 0) && (text[k] != ' ')): k = k + 1
+	while (text[k] == ' '): k = k + 1
+	int n = 0
+	int target = kc_hex(text + k, &n)
+	if ((n == 0) || (text[k + n] != ' ')): return -1
+	return target
+
+
+int kc_terminator(char* text):
+	if (starts_with(text, c"ret") || starts_with(text, c"ud2")): return 1
+	return starts_with(text, c"jmp ")
+
+
+# Why an instruction is not kernel-safe, or 0: SSE/AVX/MMX/x87 state, or
+# memory below %rsp.
+char* kc_insn_problem(char* text):
+	if (contains(text, c"%xmm") || contains(text, c"%ymm") || contains(text, c"%zmm")): return c"SSE/AVX register"
+	if (contains(text, c"%mm") || contains(text, c"%st")): return c"MMX/x87 register"
+	if (text[0] == 'f'): return c"x87 instruction"
+	if (starts_with(text, c"ldmxcsr") || starts_with(text, c"stmxcsr") || starts_with(text, c"emms")): return c"FPU state"
+	if (starts_with(text, c"xsave") || starts_with(text, c"xrstor") || starts_with(text, c"vzero")): return c"FPU state"
+	int at = index_of(text, c"(%rsp)")
+	if (at > 0):
+		int k = at - 1
+		while ((k > 0) && (text[k] != ' ') && (text[k] != ',') && (text[k] != '-')): k = k - 1
+		if (text[k] == '-'): return c"memory below %rsp"
+	return 0
+
+
+# The listing split into lines (NUL-terminated in place).
+list[char*] kc_lines(char* listing):
+	list[char*] lines = new list[char*]
+	int i = 0
+	while (listing[i] != 0):
+		int end = i
+		while ((listing[end] != 0) && (listing[end] != 10)): end = end + 1
+		int last = listing[end] == 0
+		listing[end] = 0
+		lines.push(listing + i)
+		if (last): break
+		i = end + 1
+	return lines
+
+
+# Scan obj's .text; returns the number of problems (each printed) and
+# the number of instructions checked in *count_out.
+int kc_scan(char* object, int* count_out):
+	map[int, int] targets = new map[int, int]
+	int problems = 0
+	int count = 0
+	int start = 0
+	while (start >= 0):
+		string_builder* cmd = string_new()
+		string_append(cmd, c"objdump -d --no-show-raw-insn -j .text --start-address=")
+		string_append_int(cmd, start)
+		string_append(cmd, c" ")
+		string_append(cmd, object)
+		char* listing = kc_shell(cmd.data)
+		list[char*] lines = kc_lines(listing)
+		# decoded line address -> its instruction text
+		map[int, char*] decoded = new map[int, char*]
+		for char* line in lines:
+			char* text = 0
+			int addr = kc_insn_line(line, &text)
+			if (addr >= 0):
+				decoded[addr] = text
+				int target = kc_branch_target(text)
+				if (target >= 0): targets[target] = 1
+			else:
+				addr = kc_symbol_line(line)
+				if (addr >= 0): targets[addr] = 1
+		int restart = -1
+		int live = 1
+		int skip_to = -1
+		int previous = start
+		for char* line in lines:
+			if (kc_symbol_line(line) >= 0):
+				live = 1
+				continue
+			char* text = 0
+			int addr = kc_insn_line(line, &text)
+			if (addr < 0): continue
+			if ((skip_to >= 0) && (addr < skip_to)): continue
+			skip_to = -1
+			if (live == 0):
+				if (targets.get(addr, 0)): live = 1
+				else:
+					# a target inside the previous decoded line: resync there
+					for a in range(previous + 1, addr):
+						if (targets.get(a, 0) && (restart < 0)): restart = a
+					previous = addr
+					if (restart >= 0): break
+					continue
+			previous = addr
+			count = count + 1
+			char* problem = kc_insn_problem(text)
+			if (problem != 0):
+				println2(strjoin(strjoin(strjoin(strjoin(object, c": "), problem), c": "), line))
+				problems = problems + 1
+			if (kc_terminator(text)): live = 0
+			# A forward 'call T' or 'jmp T' over literal bytes: the call
+			# form pushes the bytes' address and lands on a 'pop'. A target
+			# the decoder never reached is data in between (restart there).
+			int target = kc_branch_target(text)
+			int is_jump = starts_with(text, c"jmp ") || starts_with(text, c"call")
+			if (is_jump && (target > addr)):
+				char* at = decoded.get(target, cast(char*, 0))
+				if (at == 0):
+					restart = target
+					break
+				if (starts_with(text, c"call") && starts_with(at, c"pop")): skip_to = target
+		free(listing)
+		start = restart
+	*count_out = count
+	return problems
+
+
+# Integer-only programs compiled with the flag contain no SSE, AVX, MMX
+# or x87 instruction and no operand below %rsp: the corpus, the object
+# file test's library and freestanding-clean standard library modules.
+void test_kernel_codegen_no_fpu_instructions():
+	char*[8] sources
+	sources[0] = c"tests/kernel_codegen/corpus.w"
+	sources[1] = c"tests/object_file/library.w"
+	sources[2] = c"lib/sha256.w"
+	sources[3] = c"lib/hex.w"
+	sources[4] = c"lib/unicode_text.w"
+	sources[5] = c"lib/safe_vector.w"
+	sources[6] = c"lib/memory.w"
+	sources[7] = c"lib/checked.w"
+	int total = 0
+	for i in range(8):
+		char* object = kc_object(sources[i], strjoin(c"scan", itoa(i)))
+		int count = 0
+		assert_equal(0, kc_scan(object, &count))
+		assert1(count > 50)
+		total = total + count
+	assert1(total > 20000)
+
+
+# The scan's control: the same kind of object built without the flag
+# from float code does contain SSE, and the scan reports it.
+void test_kernel_codegen_scan_control():
+	char* source = kc_path(c"float.w")
+	assert_equal(1, file_write_text(source, c"export int f(int x):\n\tfloat64 y = cast(float64, x) * 2.5\n\treturn cast(int, y)\n"))
+	char* object = kc_path(c"float.o")
+	kc_compile(c"x64", c"--emit=obj", c"--freestanding", source, c"-o", object)
+	int count = 0
+	assert1(kc_scan(object, &count) > 0)
+
+
+void kc_float_reject(char* name, char* body):
+	char* source = kc_path(name)
+	assert_equal(1, file_write_text(source, body))
+	kc_reject(c"floating point is not allowed with --kernel-codegen", c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", source, c"-o", kc_path(c"rejected.o"))
+	free(source)
+
+
+# Float use is a compile error under the flag: literals, arithmetic,
+# conversions, float extern calls and float export signatures.
+void test_kernel_codegen_rejects_float():
+	kc_float_reject(c"f1.w", c"float64 add(float64 a, float64 b):\n\treturn a + b\n")
+	kc_float_reject(c"f2.w", c"export int f(int x):\n\tfloat64 y = 1.5\n\treturn x\n")
+	kc_float_reject(c"f3.w", c"export float32 f(int x):\n\treturn cast(float32, x)\n")
+	kc_float_reject(c"f4.w", c"export int f(float64 x):\n\treturn 1\n")
+	kc_float_reject(c"f5.w", c"extern float64 cf(int x)\nexport int f(int x):\n\treturn 1\n")
+	kc_float_reject(c"f6.w", c"int g(int x):\n\treturn cast(int, cast(float32, x))\n")
 
 
 void test_kernel_codegen_mode_rejections():

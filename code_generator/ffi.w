@@ -128,7 +128,9 @@ void emit_x64_c_frame_begin():
 
 # Float results come back in xmm0; W callers expect the bits in rax.
 # Then drop the frame.
+void sse_kernel_reject();   /* code_generator/sse.w */
 void emit_x64_c_frame_end(int ret_class):
+	if (ret_class != 0): sse_kernel_reject()
 	if (ret_class == 1):
 		emit(4, c"\x66\x0f\x7e\xc0")       /* movd eax,xmm0 */
 	else if (ret_class == 2):
@@ -157,6 +159,7 @@ void emit_x64_load_gp_reg(int reg, int disp):
 
 # movss/movsd xmm<reg>,[rbp+disp32] for xmm0..xmm7.
 void emit_x64_load_xmm_reg(int reg, int arg_class, int disp):
+	sse_kernel_reject()
 	if (arg_class == 2):
 		emit(1, c"\xf2")           /* movsd */
 	else:

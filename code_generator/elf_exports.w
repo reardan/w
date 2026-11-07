@@ -84,6 +84,7 @@ void elf_emit_export_wrappers():
 				emit_int32(16 + spilled * 8)
 				spilled = spilled + 1
 			else if (slot >= 16):
+				sse_kernel_reject()
 				# movq rax,xmmN; push rax (float bits are W stack words).
 				emit(4, c"\x66\x48\x0f\x7e")
 				emit_int8(0xc0 | ((slot - 16) << 3))
@@ -105,6 +106,7 @@ void elf_emit_export_wrappers():
 		pop_reg(3)
 		emit_int8(0x5d)
 		int ret_kind = load_i(wasm_export_rets + e * 4, 4)
+		if (ret_kind >= 2): sse_kernel_reject()
 		if (ret_kind == 2): emit(4, c"\x66\x0f\x6e\xc0")
 		if (ret_kind == 3): emit(5, c"\x66\x48\x0f\x6e\xc0")
 		emit_int8(0xc3)
