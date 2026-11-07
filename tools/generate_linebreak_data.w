@@ -2,25 +2,26 @@
 # wbuild: step="bin/wv2 tools/generate_linebreak_data.w -o bin/generate_linebreak_data"
 # wbuild: step="bin/generate_linebreak_data"
 # Emits lib/linebreak_data.w, the Line_Break table behind lib/linebreak.w
-# (UAX #14, issue #826), from the committed Unicode 15.0.0 Character
+# (UAX #14, issue #826), from the committed Unicode 18.0.0 Character
 # Database files under tools/unicode/:
-#   LineBreak.txt        Line_Break, with the defaults its header lists for
-#                        unassigned code points (ID in the CJK and Plane
-#                        1-3 ranges, PR in Currency Symbols, XX elsewhere)
-#   EastAsianWidth.txt   East_Asian_Width, for the [OP-\p{ea=F|W|H}] of
-#                        rule LB30
+#   LineBreak.txt        Line_Break; it lists the unassigned code points
+#                        that default to ID or PR, and XX is the default
+#                        for the rest
+#   EastAsianWidth.txt   East_Asian_Width, for the \p{ea=F|W|H} of rules
+#                        LB19a and LB30 (with the header's W defaults
+#                        for unassigned CJK code points)
 #   emoji-data.txt       Extended_Pictographic, for the
 #                        [\p{Extended_Pictographic}&\p{Cn}] of rule LB30b
 #   UnicodeData.txt      General_Category: SA marks (Mn, Mc) resolve to
 #                        CM here (rule LB1), and Cn for LB30b
-# The files are unmodified copies of the Unicode 15.0.0 data
-# (Public/15.0.0/ucd/, emoji-data.txt from ucd/emoji/).
+# The files are unmodified copies of the Unicode 18.0.0 data
+# (unicodetools/data/ucd/18.0.0/, emoji-data.txt from its emoji/).
 #
 # The table is a byte-string literal of 4-byte entries (24-bit big-endian
 # start, value byte): an entry's value covers every codepoint up to the
 # next entry's start. The value's low six bits are the class (the
 # lb_class_* numbering of lib/linebreak.w, in gen_class_names order); bit
-# 6 marks an OP or CP whose East_Asian_Width is F, W or H, bit 7 an unassigned
+# 6 marks a code point whose East_Asian_Width is F, W or H, bit 7 an unassigned
 # Extended_Pictographic code point.
 #
 # Run from the repo root: ./wbuild linebreak_data
@@ -48,7 +49,7 @@ void gen_fail(char* message, char* detail):
 
 # Line_Break short names in lb_class_* order (lib/linebreak.w).
 char* gen_class_names():
-	return c"XX BK CR LF CM NL SG WJ ZW GL SP ZWJ B2 BA BB HY CB CL CP EX IN NS OP QU IS NU PO PR SY AI AK AL AP AS CJ EB EM H2 H3 HL ID JL JV JT RI SA VF VI"
+	return c"XX BK CR LF CM NL SG WJ ZW GL SP ZWJ B2 BA BB HY CB CL CP EX IN NS OP QU IS NU PO PR SY AI AK AL AP AS CJ EB EM H2 H3 HL ID JL JV JT RI SA VF VI HH"
 
 
 # Index of word in a space-separated name list, or -1.
@@ -183,27 +184,24 @@ int gen_load_property(char* path, char* table, char* names):
 	return lines
 
 
-# Line_Break, with the header's documented defaults for unlisted code
-# points, SA marks resolved to CM and the two LB30/LB30b flags.
+# Line_Break, SA marks resolved to CM, and the East Asian (LB19a, LB30)
+# and LB30b flags.
 char* gen_load_classes():
+	# Since Unicode 16.0 the file lists the unassigned ID and PR ranges
+	# its header describes; everything else is the @missing XX (0).
 	char* table = gen_table(0)
-	int id = gen_name_index(gen_class_names(), c"ID")
-	gen_fill(table, 0x3400, 0x4dbf, id)
-	gen_fill(table, 0x4e00, 0x9fff, id)
-	gen_fill(table, 0xf900, 0xfaff, id)
-	gen_fill(table, 0x20000, 0x2fffd, id)
-	gen_fill(table, 0x30000, 0x3fffd, id)
-	gen_fill(table, 0x1f000, 0x1faff, id)
-	gen_fill(table, 0x1fc00, 0x1fffd, id)
-	gen_fill(table, 0x20a0, 0x20cf, gen_name_index(gen_class_names(), c"PR"))
 	if (gen_load_property(c"tools/unicode/LineBreak.txt", table, gen_class_names()) < 1000): gen_fail(c"LineBreak.txt is too short", 0)
 	int16* categories = gen_load_categories()
 	char* widths = gen_table(0)
+	# The header's W defaults for unassigned CJK code points (value 3).
+	gen_fill(widths, 0x3400, 0x4dbf, 3)
+	gen_fill(widths, 0x4e00, 0x9fff, 3)
+	gen_fill(widths, 0xf900, 0xfaff, 3)
+	gen_fill(widths, 0x20000, 0x2fffd, 3)
+	gen_fill(widths, 0x30000, 0x3fffd, 3)
 	gen_load_property(c"tools/unicode/EastAsianWidth.txt", widths, c"N A H W F Na")
 	int sa = gen_name_index(gen_class_names(), c"SA")
 	int cm = gen_name_index(gen_class_names(), c"CM")
-	int op = gen_name_index(gen_class_names(), c"OP")
-	int cp_class = gen_name_index(gen_class_names(), c"CP")
 	int mn = ('M' << 8) | 'n'
 	int mc = ('M' << 8) | 'c'
 	for cp in range(gen_max_cp + 1):
@@ -211,7 +209,7 @@ char* gen_load_classes():
 		int category = categories[cp] & 65535
 		if ((value == sa) && ((category == mn) || (category == mc))): table[cp] = cm
 		# East_Asian_Width H, W and F are values 2, 3 and 4.
-		if (((value == op) || (value == cp_class)) && (widths[cp] >= 2) && (widths[cp] <= 4)): table[cp] = value | gen_wide_flag
+		if ((widths[cp] >= 2) && (widths[cp] <= 4)): table[cp] = table[cp] | gen_wide_flag
 	# Extended_Pictographic code points that are still unassigned.
 	wstream* src = gen_open(c"tools/unicode/emoji-data.txt")
 	string_builder* line = string_new()
@@ -256,10 +254,10 @@ int main(int argc, int argv):
 	wstream* out = stream_open_write(path)
 	if (out == 0): gen_fail(c"cannot write", path)
 	stream_write_line(out, c"# Generated by tools/generate_linebreak_data.w from the Unicode database")
-	stream_write_line(out, c"# files under tools/unicode/, version 15.0.0.")
+	stream_write_line(out, c"# files under tools/unicode/, version 18.0.0.")
 	stream_write_line(out, c"# A build output, never committed: any ./wbuild run regenerates it (issue #323).")
 	stream_write_line(out, c"# Range table: 4-byte entries (24-bit big-endian start, value byte); the")
-	stream_write_line(out, c"# value is an lb_class_* number, plus 64 for an East Asian wide OP or CP and 128")
+	stream_write_line(out, c"# value is an lb_class_* number, plus 64 for East_Asian_Width F, W or H and 128")
 	stream_write_line(out, c"# for an unassigned Extended_Pictographic code point.")
 	stream_write_line(out, c"")
 	stream_write_line(out, c"")

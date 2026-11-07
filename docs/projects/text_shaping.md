@@ -144,12 +144,13 @@ the parity work in that issue. The same holds for 206 other system fonts
 Droid Sans Fallback; mixed scripts, mark stacks, ligatures and fractions,
 and Latin-1 text), Korean text in Noto Sans CJK KR and Droid Sans
 Fallback, and the Noto corpora again with GSUB, GPOS or GDEF hidden (each
-font with one table hidden, then another), but for two fonts without the
-hidden table: Noto Serif Ahom without GDEF (35 of 1,000 lines attach a
-mark HarfBuzz leaves unattached) and Noto Music without GPOS (11 lines of
-fallback placement over a multiple substitution that reorders marks). The
-Unicode data is 15.0, where HarfBuzz 15 has 18.0 (its Extended_Pictographic
-table is copied), so characters assigned since then can differ.
+font with one table hidden, then another). The last two differences there
+closed in issue #856: Noto Serif Ahom without GDEF needed Unicode 18 data
+(U+1171E AHOM CONSONANT SIGN MEDIAL RA became Mc, and without GDEF only Mn
+characters are marks), and Noto Music without GPOS needed the later pieces
+of a multiple substitution over a spacing mark (Mc) to stay marks in
+fallback placement. The Unicode data under `tools/unicode/` is 18.0, as
+HarfBuzz 15 has it.
 
 ## Carets, clusters and fonts
 
@@ -337,7 +338,7 @@ color, interleaved in paint order, so `ui_draw_text`, `ui_draw_shaped_run` and
 color glyphs at the device size too. `ui_font_face_has_color` and
 `ui_font_face_glyph_has_color` report color faces and glyphs.
 
-**Emoji presentation** (UTS #51, `lib.emoji`, Unicode 15.0's
+**Emoji presentation** (UTS #51, `lib.emoji`, Unicode 18.0's
 Emoji_Presentation property): the itemizer gives a grapheme presented as emoji
 (VS16, or any character with Emoji_Presentation: a base emoji, a skin-tone
 modifier, a regional indicator) the first color face that covers it, and one
@@ -514,7 +515,7 @@ The native adapter uses the published HarfBuzz contracts for
 ## Paragraph bidi analysis
 
 `graphics.ui.bidi` analyzes paragraphs with two engines, like shaping. The
-portable one is `lib.bidi`, a W implementation of UAX #9 (Unicode 15.0.0) that
+portable one is `lib.bidi`, a W implementation of UAX #9 (Unicode 18.0.0) that
 passes all 91,707 lines of the Unicode `BidiCharacterTest.txt`
 (`bin/bidi_conformance path/to/BidiCharacterTest.txt`; `./wbuild bidi_test`
 checks a committed sample). `graphics.ui.bidi_portable` wraps it with no native
@@ -685,7 +686,7 @@ using the published [FriBidi type masks](https://github.com/fribidi/fribidi/blob
 ## Line breaking
 
 `lib.linebreak` is a W implementation of the Unicode Line Breaking Algorithm
-([UAX #14](https://www.unicode.org/reports/tr14/), Unicode 15.0.0, to match
+([UAX #14](https://www.unicode.org/reports/tr14/), Unicode 18.0.0, to match
 `lib.bidi`) with no native dependency. `lb_breaks(cps, count, flags, breaks)`
 writes `count + 1` actions: `breaks[i]` is `lb_break_none`, `lb_break_allowed`
 or `lb_break_mandatory` between `cps[i - 1]` and `cps[i]`, with no break at the
@@ -693,23 +694,28 @@ start (LB2) and a mandatory one at the end (LB3). `lb_breaks_utf8(text, length,
 flags, breaks)` does the same per byte offset of valid UTF-8 (no break inside a
 character). `lb_class(cp)` reads the Line_Break property.
 
-It implements rules LB1-LB31, including the 15.0 aksara rule LB28a, the East
-Asian width exception of LB30 and the unassigned-pictographic case of LB30b.
-Numbers use the regular-expression form of LB25 from section 8.2, Example 7,
-as `LineBreakTest.txt` does. It passes all 7,654 lines of the Unicode 15.0.0
+It implements rules LB1-LB31 as Unicode 18.0 has them: the aksara rule LB28a
+(with the dotted circle), the quotation-mark rules LB15a/LB15b and LB19/LB19a
+(Pi/Pf punctuation, and East Asian context), the decimal-mark rules
+LB15c/LB15d, the word-initial hyphen of LB20a, the unambiguous hyphen class HH
+(Unicode 17.0: U+2010 HYPHEN, the soft hyphen and other unambiguous hyphens), the Unicode 18.0 LB12a (no
+exception after BA), the East Asian width exception of LB30 and the
+unassigned-pictographic case of LB30b. Numbers use LB25 as UAX #14 states it.
+It passes all 19,346 lines of the Unicode 18.0.0
 `LineBreakTest.txt` (`./wbuild linebreak_conformance`, then
 `bin/linebreak_conformance path/to/LineBreakTest.txt`); `linebreak_test` runs a
 committed sample.
 
 The property table is generated, not committed: `tools/generate_linebreak_data.w`
 (the `linebreak_data` target, in the `generated` umbrella every `./wbuild` run
-builds first) writes `lib/linebreak_data.w` from the unmodified Unicode 15.0.0
+builds first) writes `lib/linebreak_data.w` from the unmodified Unicode 18.0.0
 `LineBreak.txt`, `EastAsianWidth.txt`, `emoji-data.txt` and `UnicodeData.txt`
-under `tools/unicode/`. It applies the defaults `LineBreak.txt` documents for
-unlisted code points (ID in the CJK and Plane 1-3 ranges, PR among the currency
-symbols, XX elsewhere), resolves Southeast Asian marks (SA with Mn or Mc) to CM
-as LB1 does, and flags wide OP/CP and unassigned Extended_Pictographic code
-points for LB30 and LB30b. The table is about 3,600 ranges (14 KB).
+under `tools/unicode/`. `LineBreak.txt` lists the unassigned code points that
+default to ID or PR, and the rest default to XX. The generator resolves
+Southeast Asian marks (SA with Mn or Mc) to CM as LB1 does, and flags East
+Asian (F, W, H) code points for LB19a and LB30 and unassigned
+Extended_Pictographic code points for LB30b. The table is about 3,800 ranges
+(15 KB).
 
 Tailorings are `flags`, combined with `|`:
 
