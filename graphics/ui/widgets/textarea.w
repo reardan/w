@@ -35,6 +35,7 @@ import graphics.ui.widgets.buffer
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.scroll
+import graphics.ui.widgets.access_text
 
 
 struct ui_textarea_state:
@@ -221,6 +222,36 @@ void ui_textarea_backspace(ui_textarea_state* st):
 	st.caret_goal_col = st.caret_col
 
 
+# The area's glyph boxes and text attributes for the accessibility
+# snapshot (#863), from the layout ui_textarea draws: line k at
+# origin_y + k * line_h (origin_x, origin_y: the scrolled content
+# origin), each newline a zero-width box at its line's end. Past
+# ui_access_text_max_boxes characters only the attributes.
+void ui_textarea_access_layout(ui_context* ctx, ui_access_node* node, ui_textarea_state* st, float32 origin_x, float32 origin_y):
+	if ((node == 0) || (ctx.access == 0)): return
+	int scale = ctx.theme.text_scale
+	float32 line_h = cast(float32, ui_textarea_line_height(ctx))
+	int total = ui_access_char_count(st.buf.data, st.buf.length)
+	if (total <= ui_access_text_max_boxes):
+		# A box per byte at most, whatever the bytes decode to.
+		ui_rect* boxes = cast(ui_rect*, malloc((st.buf.length + 1) * sizeof(ui_rect)))
+		int count = 0
+		for line in range(st.buf.line_count):
+			float32 ly = origin_y + cast(float32, line) * line_h
+			int start = ui_text_buffer_line_start(&st.buf, line)
+			int len = ui_text_buffer_line_length(&st.buf, line)
+			char* text = &st.buf.data[start]
+			count = count + ui_access_line_boxes(text, len, scale, origin_x, ly, line_h, 1000000.0, &boxes[count])
+			if (line + 1 < st.buf.line_count):
+				float32 end_x = origin_x + cast(float32, ui_text_prefix_width(text, len, scale))
+				boxes[count] = ui_rect_new(end_x, ly, 0.0, line_h)
+				count = count + 1
+		ui_access_publish_boxes(ctx, node, boxes, count)
+	ui_color fill = ctx.theme.widget
+	if (ctx.disabled): fill = ctx.theme.disabled_widget
+	ui_access_field_attrs(ctx, node, scale, ui_text_color(ctx), fill)
+
+
 # The multi-line edit surface. Returns 1 on frames the buffer changed.
 int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	int id = ctx.next_id
@@ -362,4 +393,5 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	int anchor = caret
 	if (st.sel_anchor >= 0): anchor = st.sel_anchor
 	ui_access_set_caret(ctx, node, anchor, caret)
+	ui_textarea_access_layout(ctx, node, st, origin_x, origin_y)
 	return changed
