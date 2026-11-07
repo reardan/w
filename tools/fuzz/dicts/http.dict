@@ -1,0 +1,43 @@
+# HTTP/1.1 tokens for wfuzz --dict (tools/fuzz/harness_http.w)
+\r\n
+\r\n\r\n
+HTTP/1.1 
+HTTP/1.0 
+ HTTP/1.1\r\n
+GET 
+POST 
+HEAD 
+Host: 
+Content-Length: 
+Transfer-Encoding: chunked\r\n
+Transfer-Encoding: 
+Content-Encoding: gzip\r\n
+Content-Encoding: deflate\r\n
+Connection: close\r\n
+Connection: keep-alive\r\n
+chunked
+:
+; 
+0\r\n\r\n
+ffffffff\r\n
+7fffffff
+-1
+ 
+\t
+%
+%00
+%zz
+?
+#
+//
+/../
+http://
+https://
+[::1]
+@
+200 
+100 
+204 
+304 
+999 
+\x00
