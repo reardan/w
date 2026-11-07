@@ -239,6 +239,51 @@ test checks the report against the ptrace stepper's measurement of the
 linked corpus: no function goes deeper than its entry (the entries are
 exact for most functions and one word high for some leaves).
 
+## Memory accesses (volatile)
+
+W has no `volatile` qualifier, so a C translation of volatile objects,
+`READ_ONCE`/`WRITE_ONCE` and device registers depends on how the code
+generator treats ordinary accesses. The audit for kernel use found that
+every global, pointer, subscript and field access the source names is
+emitted once, in source order, at the declared width (this holds for all
+x86/x64 code, with or without `--kernel-codegen`):
+
+- **No caching across statements.** Register promotion
+  (`compiler/regalloc_scan.w`) keeps only locals and parameters in
+  registers, never a global, and never a local whose address is taken
+  (`int* q = &x` leaves `x` in its stack slot, read and written there).
+  A loop condition such as `while (flag == 0)` or `while (*p == 0)`
+  reloads every iteration; nothing hoists a load out of a loop
+  (induction-variable pointers step the address, the element is still
+  loaded each time), and a store followed by a load of the same
+  location reloads it.
+- **No merging or splitting.** Narrow stores stay narrow (`mov byte`,
+  `mov word`, `mov dword`), adjacent ones are not combined, and narrow
+  loads use the matching `movsx`/`movzx`. Struct copies move whole
+  words then the narrow tail; that is a bulk copy, as in C.
+- **No elimination.** Two stores to one location are both emitted; a
+  read stays even when its value is unused or multiplied by zero.
+  The one fold of a memory read is a `const` integer global whose
+  initializer this compilation wrote, loaded as an immediate (O1,
+  `const_global_note`): a translator must not mark a C `volatile const`
+  object `const`.
+- **Discarded reads (fixed here).** An expression statement that is
+  only a read -- `*p`, `g`, `p[i]`, `a[i]`, `s.f` -- used to compute the
+  address and stop, dropping the load that C's `(void)*p` or a bare
+  `READ_ONCE(x);` performs (a device register read for its side
+  effect). The AST front end now loads it (`statement_ast_bare_read`,
+  `code_generator/statement_ast.w`); assignment, call, increment and
+  cast roots are unchanged, since they already made their accesses.
+  The `--streaming` front end, kept only as a comparison oracle, still
+  drops the load. `tests/memory_access_order_test.w` (x86 and x64)
+  checks that such reads fault on a `PROT_NONE` page while address
+  arithmetic alone does not, that spin loops on a global and on a
+  pointer end when another thread stores, and that narrow stores leave
+  their neighbours intact.
+
+Ordering between CPUs is the hardware's: W emits no fences, so a
+kernel's `smp_mb()` and friends remain inline assembly (or calls).
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64

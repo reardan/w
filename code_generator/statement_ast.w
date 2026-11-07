@@ -32,11 +32,35 @@ void ast_expression_note_root(expression_ast* tree, int root);
 # Value-bearing statements own an expression child. Source terminators
 # are checked between value lowering and the final control transfer,
 # retaining the established coercion/diagnostic order.
+# An expression statement that is only a memory read -- '*p', 'g',
+# 'p[i]', 'a[i]' of a fixed array or list, 's.f', 'p.f' -- leaves the location's address in the
+# accumulator; load it anyway. W has no 'volatile': every access the
+# source names happens, so a read whose value is discarded (C's
+# '(void)*p', READ_ONCE(x); on a device register) is still performed,
+# exactly once. Only integer and pointer locations: a struct or array
+# has no single load, and an assignment, call or increment root has
+# already done its accesses (loading again would add a read).
+int statement_ast_bare_read(expression_ast* tree, int root, int type):
+	int op = tree.op[root]
+	if ((op != 'v') && (op != 'd') && (op != 'i') && (op != 'I') && (op != 'j') && (op != '.') && (op != 'B')): return 0
+	if (type_is_value(type) || (type == 3) || (type == 4) || type_is_array(type)): return 0
+	int t = type_unqualified(type)
+	if (type_num_args(t) > 0): return 0
+	if (type_get_pointer_level(t) > 0): return 1
+	return value_class_is_int_like(value_class(t))
+
+
+void statement_ast_discarded_read(statement_ast* node, expression_ast* tree, int root):
+	if (node.kind != ast_stmt_expression): return
+	if (statement_ast_bare_read(tree, root, node.expression_type)): promote(node.expression_type)
+
+
 void emit_statement_ast_expression(statement_ast* node):
 	if (node.expression_root < 0): return
 	# A guard's condition is in discard position (grammar/cond_branch.w)
 	if ((node.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
 	node.expression_type = emit_prepared_expression_ast(node.expression_tree, node.expression_root)
+	statement_ast_discarded_read(node, node.expression_tree, node.expression_root)
 
 
 void emit_statement_ast_value(statement_ast* node):
@@ -100,6 +124,7 @@ void emit_statement_ast_walk(retained_statement_walk* walk, int phase):
 		node.expression_tree = walk.tree
 		expression_lhs_readonly = walk.tree.readonly
 		node.expression_type = walk.tree.result_type[root]
+		statement_ast_discarded_read(node, walk.tree, root)
 	else if (phase == ast_walk_expression_end): emit_statement_ast_expression_end(node)
 	else if (phase == ast_walk_value): emit_statement_ast_value(node)
 	else if (phase == ast_walk_exit): emit_statement_ast_exit(node)
