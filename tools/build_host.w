@@ -11,7 +11,13 @@ int build_host_android():
 	return os_android()
 
 
+int build_host_linux_x64():
+	char* profile = env_get(c"WBUILD_HOST")
+	return profile != 0 && strcmp(profile, c"linux-x64") == 0
+
+
 char* build_host_compiler():
+	if (build_host_linux_x64()): return c"bin/wv2_native"
 	if (build_host_android()): return c"bin/wv2_android"
 	if (build_host_darwin()): return c"bin/wv2_darwin"
 	if (os_windows()): return c"bin/wv2.exe"
@@ -19,6 +25,7 @@ char* build_host_compiler():
 
 
 char* build_host_executor():
+	if (build_host_linux_x64()): return c"bin/wexec_native"
 	if (build_host_android()): return c"bin/wexec_android"
 	if (build_host_darwin()): return c"bin/wexec_darwin"
 	if (os_windows()): return c"bin/wexec.exe"
