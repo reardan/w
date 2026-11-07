@@ -133,7 +133,7 @@ inline_frame* inline_frame_top():
 int inline_call_site_ok(int sym):
 	if (inline_fd < 0): return 0
 	# a weak body may be replaced at link time
-	if (c_abi_weak_call_fixed_args(sym) >= 0): return 0
+	if (c_abi_calls_through_symbol(sym)): return 0
 	if (inline_fd == 0):
 		# never /dev/null directly (compiler/tokenizer.w, empty_stream_open)
 		inline_fd = empty_stream_open()

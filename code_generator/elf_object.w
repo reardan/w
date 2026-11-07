@@ -223,6 +223,11 @@ int object_name_is_weak(char* name):
 	return object_name_in(object_weak_names, name)
 
 
+int object_weak_count():
+	if (object_records_ready == 0): return 0
+	return object_weak_names.length
+
+
 # An '@alias("target")' declaration (symbol t, named name): the W symbol
 # is defined at the target's address as soon as the target is defined
 # (object_alias_defined, called by sym_define_global_at), so W code may
@@ -548,7 +553,7 @@ list[int] object_weak_text_symbols
 # --c-abi weak functions: W entry vaddr -> symbol. A function value
 # materializes the W entry and subtracts 5 (c_abi_function_value), so its
 # address slot binds to the symbol plus 5; direct W calls take the same
-# path (c_abi_weak_call_fixed_args).
+# path (c_abi_calls_through_symbol).
 list[int] object_weak_entry_vaddrs
 list[int] object_weak_entry_symbols
 

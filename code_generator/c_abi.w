@@ -32,6 +32,8 @@ void sse_kernel_reject();   /* code_generator/sse.w */
 void stack_usage_c_abi_adapter(int symbol, int words);   /* code_generator/stack_usage.w */
 void stack_usage_extra(int words);
 int object_symbol_is_alias(int t);
+int object_name_is_weak(char* name);
+int object_weak_count();
 void object_note_rel32(int pos);
 
 
@@ -173,28 +175,6 @@ int c_abi_arg_words(int type):
 	return 1
 
 
-# --c-abi object: a direct call of a '@weak' function binds through its
-# symbol, which a strong definition elsewhere in the link replaces (C's
-# '__weak' defaults, a kernel's arch hooks), so it takes the System V
-# call path of a C-variadic definition's calls with every parameter
-# fixed: the parameter count, or -1 for any other callee (and for a weak
-# function with record parameters or result, which keeps the direct W
-# call to its own body).
-int object_name_is_weak(char* name);   /* elf_object.w */
-
-
-int c_abi_weak_call_fixed_args(int t):
-	if ((c_abi_mode == 0) || (elf_object == 0) || (t < 0)): return -1
-	if ((load_int(table + t + 10) != 2) || (sym_variadic_fixed_args(t) >= 0) || (sym_w_variadic_fixed_args(t) >= 0)): return -1
-	if (object_name_is_weak(sym_record_name(t)) == 0): return -1
-	int n = sym_num_args(t)
-	if (n < 0): return -1
-	if (c_abi_type_is_record(load_int(table + t + 6))): return -1
-	for i in range(n):
-		if (c_abi_type_is_record(sym_param_type_wide(t, i))): return -1
-	return n
-
-
 # 1 for a C-variadic definition ('int f(int n, ... va)'): its last
 # parameter is the va_list its System V entry builds.
 int c_abi_is_c_variadic_definition(int t):
@@ -247,6 +227,20 @@ void c_abi_definition_note(int t, char* name, int exported, int is_static):
 	c_abi_global_syms.push(t)
 	c_abi_global_names.push(strclone(name))
 	c_abi_global_index[t] = c_abi_global_syms.length
+
+
+# 1 when a call of W function t binds through its symbol: --c-abi
+# object code calling a weak definition (one declared '@weak' before
+# the call) goes through the System V entry its symbol names, so a
+# strong definition elsewhere in the link wins. The callee value is
+# c_abi_function_value's and finish_call makes a System V call; direct
+# W calls, inlining and register calls would bind the local body.
+int c_abi_calls_through_symbol(int t):
+	if ((c_abi_mode == 0) || (elf_object == 0) || (t < 0)): return 0
+	if (object_weak_count() == 0): return 0
+	if ((table[t + 1] != 'D') && (table[t + 1] != 'U')): return 0
+	if ((load_int(table + t + 10) != 2) || (sym_got_vaddr(t) != 0)): return 0
+	return object_name_is_weak(sym_record_name(t))
 
 
 # rax = the System V address of function t, for a value use of its name
@@ -592,7 +586,7 @@ void c_abi_emit_extern_shim(int sym, int n, char* classes, int ret_class, int go
 # W stack words above the callee slot s + 1 (after a struct result's
 # hidden buffer pointer). Converts them to a System V call through r11
 # and leaves the result in rax.
-void c_abi_indirect_call(int callee_type, int s, int passed_args, int has_return_buffer, int declared_return):
+void c_abi_indirect_call(int callee_type, int callee_sym, int s, int passed_args, int has_return_buffer, int declared_return):
 	int signature = -1
 	if (type_get_pointer_level(callee_type) > 0):
 		int base = type_lookup_previous_pointer(callee_type)
@@ -604,6 +598,8 @@ void c_abi_indirect_call(int callee_type, int s, int passed_args, int has_return
 	for i in range(passed_args):
 		types[i] = -1
 		if ((signature >= 0) && (i < type_function_param_count(signature))): types[i] = type_function_param_type(signature, i)
+		# a weak function called through its symbol (c_abi_calls_through_symbol)
+		if ((signature < 0) && (callee_sym >= 0) && (i < sym_num_args(callee_sym))): types[i] = sym_param_type(callee_sym, i)
 		if (c_abi_type_unsupported(types[i])):
 			error(c"--c-abi cannot pass a multi-word value that is not a struct through a function pointer")
 		words = words + c_abi_arg_words(types[i])

@@ -1153,15 +1153,21 @@ int sym_get_value(char* s):
 	return sym_emit_value(t, s)
 
 
+int c_abi_calls_through_symbol(int t);   /* code_generator/c_abi.w */
+
+
 # 1 when a call to the symbol at table offset t may be a direct `call
 # rel32` (docs/projects/codegen_gap_plan.md §2.4, unit A4): a global W
 # function, defined ('D') or still pending ('U'), on the x86 family. A
 # gpu kernel keeps sym_emit_value's diagnostic, a thread_local the TLS
 # path; function-pointer values, C variadic imports (their inline ABI
 # path never calls through the symbol) and the other targets keep the
-# accumulator call. t may be -1 (a failed lookup).
+# accumulator call, as does a --c-abi call of a weak function, which
+# binds through its symbol (c_abi_calls_through_symbol). t may be -1
+# (a failed lookup).
 int direct_callee_ok(int t):
 	if (direct_calls_disabled): return 0
+	if (c_abi_calls_through_symbol(t)): return 0
 	if (target_isa != 0): return 0
 	if (t < 0): return 0
 	char scope_type = table[t + 1]

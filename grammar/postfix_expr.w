@@ -314,8 +314,9 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	else:
 		load_slot(s + 1)
 		if (callee_type != 4): promote(callee_type)
-		# --c-abi: a function-pointer value is a System V entry
-		if (c_abi_mode && (callee_type != 4)): c_abi_indirect_call(callee_type, s, passed_args, has_return_buffer, declared_return)
+		# --c-abi: a function-pointer value is a System V entry, as is the
+		# value of a weak function called through its symbol
+		if (c_abi_mode && ((callee_type != 4) || c_abi_calls_through_symbol(callee_sym))): c_abi_indirect_call(callee_type, callee_sym, s, passed_args, has_return_buffer, declared_return)
 		else: call_eax()
 	pop_to(s)
 	safe_foreign_owner_result(declared_return)
@@ -672,7 +673,6 @@ int postfix_expr():
 							callee_sym = callee
 							callee_name = strclone(last_identifier)
 							variadic_fixed = sym_variadic_fixed_args(callee)
-							if (variadic_fixed < 0): variadic_fixed = c_abi_weak_call_fixed_args(callee)
 							w_variadic_fixed = sym_w_variadic_fixed_args(callee)
 			else if (type_get_pointer_level(type) > 0):
 				int base_type = type_lookup_previous_pointer(type)

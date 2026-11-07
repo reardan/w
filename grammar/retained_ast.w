@@ -188,7 +188,7 @@ int retained_binding_is(retained_binding* binding, int source, int owner, int sc
 
 
 int retained_callable_excluded(int symbol):
-	return sym_is_generator(symbol) || sym_is_kernel(symbol) || (sym_variadic_fixed_args(symbol) >= 0) || (sym_w_variadic_fixed_args(symbol) >= 0) || (c_abi_weak_call_fixed_args(symbol) >= 0)
+	return sym_is_generator(symbol) || sym_is_kernel(symbol) || (sym_variadic_fixed_args(symbol) >= 0) || (sym_w_variadic_fixed_args(symbol) >= 0) || (c_abi_calls_through_symbol(symbol))
 
 
 int retained_binding_note(int sym, int owner):

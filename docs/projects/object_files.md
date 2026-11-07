@@ -336,12 +336,12 @@ Under `--c-abi` a function's global symbol is its System V entry stub,
 which sits at the start of the function's range and so lands in its
 section; its adapter (or the shared trap) follows it there. `@weak`
 makes that symbol weak, and W function values of it (`fp = f`, static
-tables) bind through the symbol, so a strong C definition wins for them
-too. So do direct W calls made after the `@weak` definition (or a
-`@weak` prototype): they take the System V call path through the
-symbol (`c_abi_weak_call_fixed_args`), as C calls a `__weak` default,
-and the body is never inlined. A weak function with a record parameter
-or result keeps the direct W call to its own body. `@alias` gives the
+tables) and W calls of it bind through the symbol, so a strong C
+definition wins for them too: a call of a weak function is a System V
+call of the address the symbol names, never a direct, inlined or
+register call of the local body. Declare the function `@weak` (on a
+prototype if need be) before its first call; a call that precedes the
+attribute still calls the W body. `@alias` gives the
 alias the target's entry, both as a symbol and as a W function value.
 `static` combines with the attributes: `@section(".init.text") static
 int f()` is a local symbol in `.init.text`.

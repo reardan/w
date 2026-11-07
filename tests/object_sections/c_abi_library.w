@@ -38,16 +38,42 @@ int table_a = 11
 int table_b = 31
 
 
+# A weak function declared before its callers: their calls bind through
+# the symbol too (a struct argument and result take the System V path).
+struct pair:
+	int a
+	int b
+
+@weak
+pair weak_swap(pair p, int bias);
+
+
+int call_swap(int a, int b):
+	pair p
+	p.a = a
+	p.b = b
+	pair q = weak_swap(p, 1)
+	return q.a * 100 + q.b
+
+
+@weak
+pair weak_swap(pair p, int bias):
+	pair q
+	q.a = p.b + bias
+	q.b = p.a + bias
+	return q
+
+
 @weak
 int weak_hook(int x):
 	return x + 5
 
 
-# The pointer and W's own direct call both go through the symbol, so a
-# strong C definition replaces the weak body for them too (C semantics).
+# W's own calls and pointers both bind through the symbol, so a strong
+# definition elsewhere in the link wins for them.
 int call_hook(int x):
 	unary* f = weak_hook
-	return f(x) * 1000 + weak_hook(x)
+	return f(x) * 1000 + weak_hook(x) * 10 + weak_hook(weak_hook(x))
 
 
 int real(int a):
