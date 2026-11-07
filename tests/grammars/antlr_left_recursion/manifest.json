@@ -1514,7 +1514,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "6b6f818fd95dd53273952fdb58c76378adc2eae79e1a80d4d32a4754a79ae196"
+      "sha256": "e798944bedb3a3a4262c0556bf8e11264797c18174b9ec3490992a58d384be68"
     },
     {
       "path": "RightAssoc.g4",
@@ -1526,7 +1526,7 @@
     },
     {
       "path": "current_refusals.json",
-      "sha256": "dc84ad90e7c270b68c012dce5437b256bbc4d2e5fffe4ace02467c5b1635a715"
+      "sha256": "0e4fcb8b92a65de2531bbc6189c5f48cdac3d74e067ae7530cff5fa7728a06c1"
     },
     {
       "path": "original_graph.json",
