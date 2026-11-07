@@ -159,6 +159,46 @@ void test_sections_link_with_script():
 	free(object)
 
 
+# --c-abi: the global symbols are System V entries in their sections,
+# the adapters follow them, and C calls the initcall table directly.
+void test_sections_c_abi():
+	char* object = sections_path(c"c_abi.o")
+	sections_compile(c"x64", c"--emit=obj", c"--freestanding", c"--c-abi", c"tests/object_sections/c_abi_library.w", c"-o", object)
+	char* listing = sections_shell(strjoin(c"readelf -S -s -W ", object))
+	assert_contains(sections_line(listing, c"] .init.text"), c"AX  0   0 64")
+	assert_contains(sections_line(listing, c" init_level1"), c"FUNC    GLOBAL DEFAULT    3 init_level1")
+	assert_contains(sections_line(listing, c" init_level6"), c"FUNC    GLOBAL DEFAULT    3 init_level6")
+	assert_contains(sections_line(listing, c" init_helper"), c"FUNC    LOCAL  DEFAULT    3 init_helper")
+	assert_contains(sections_line(listing, c" weak_hook"), c"FUNC    WEAK   DEFAULT    1 weak_hook")
+	char* real = sections_line(listing, c"DEFAULT    1 real")
+	char* alias = sections_line(listing, c" real_alias")
+	assert_contains(alias, c"FUNC    GLOBAL DEFAULT    1 real_alias")
+	int at = index_of(real, c": ") + 2
+	int alias_at = index_of(alias, c": ") + 2
+	assert_strings_equal(str_copy_range(real, at, at + 16), str_copy_range(alias, alias_at, alias_at + 16))
+	free(listing)
+	char*[4] modes
+	modes[0] = c""
+	modes[1] = c"-no-pie"
+	modes[2] = c"-static"
+	modes[3] = c"-DSTRONG"
+	for i in range(4):
+		char* exe = sections_path(strjoin(c"c_abi_host", itoa(i)))
+		string_builder* cmd = string_new()
+		string_append(cmd, c"cc ")
+		string_append(cmd, modes[i])
+		string_append(cmd, c" -o ")
+		string_append(cmd, exe)
+		string_append(cmd, c" tests/object_sections/c_abi_main.c ")
+		string_append(cmd, object)
+		string_append(cmd, c" -Wl,-T,tests/object_sections/sections.ld")
+		free(sections_shell(cmd.data))
+		char* out = sections_shell(exe)
+		assert_contains(out, c"object sections c-abi OK")
+		free(out)
+	free(object)
+
+
 # Attributes compile everywhere: an ordinary executable ignores the
 # placement and keeps the alias.
 void test_sections_native_executable():

@@ -15,8 +15,10 @@
 # reference whose two ends move apart -- recorded call cells included --
 # is rewritten or relocated against the target's section. Exported
 # functions are global symbols at their System V adapters
-# (elf_exports.w); globals declared in the command-line roots are
-# global data symbols; every other W function and global stays local.
+# (elf_exports.w), or under --c-abi every root function not marked
+# 'static' at its System V entry (c_abi.w); globals declared in the
+# command-line roots (and not 'static') are global data symbols; every
+# other W function and global stays local.
 # docs/projects/object_files.md describes the mode and its limits.
 #
 # This file is compiled by the committed seed: only seed-understood
@@ -24,6 +26,7 @@
 import code_generator.code_emitter
 import code_generator.static_link
 import code_generator.elf_exports
+import code_generator.c_abi
 import code_generator.dynamic_registry
 
 int sym_address(char* s);
@@ -239,7 +242,15 @@ void object_note_alias(int t, char* name, char* target, int is_function):
 	int target_symbol = sym_lookup(target)
 	if ((target_symbol >= 0) && (table[target_symbol + 1] == 'D')):
 		sym_define_global_at(t, sym_value_at(target_symbol))
+		c_abi_alias_defined(t, target_symbol)
 	else: object_alias_pending = object_alias_pending + 1
+
+
+int object_symbol_is_alias(int t):
+	if (object_records_ready == 0): return 0
+	for i in range(object_alias_symbols.length):
+		if (object_alias_symbols[i] == t): return 1
+	return 0
 
 
 void object_alias_defined(int t, int v):
@@ -249,6 +260,7 @@ void object_alias_defined(int t, int v):
 		if ((strcmp(object_alias_targets[i], name) == 0) && (table[alias + 1] != 'D')):
 			object_alias_pending = object_alias_pending - 1
 			sym_define_global_at(alias, v)
+			c_abi_alias_defined(alias, t)
 
 
 void object_aliases_check():
@@ -503,6 +515,11 @@ int object_table_data_symbol(int t, int value, int type):
 # elsewhere in the link wins).
 list[int] object_weak_text_vaddrs
 list[int] object_weak_text_symbols
+# --c-abi weak functions: W entry vaddr -> symbol. A function value
+# materializes the W entry and subtracts 5 (c_abi_function_value), so its
+# address slot binds to the symbol plus 5; direct W calls stay local.
+list[int] object_weak_entry_vaddrs
+list[int] object_weak_entry_symbols
 
 
 # Local symbols for W functions and the non-root globals; with
@@ -524,7 +541,7 @@ void object_table_symbols(int want_global):
 						object_weak_text_vaddrs.push(value)
 						object_weak_text_symbols.push(index)
 			else if (object_table_data_symbol(t, value, type)):
-				int binding = object_file_is_root(sym_decl_file_index(t))
+				int binding = object_file_is_root(sym_decl_file_index(t)) && (object_symbol_is_static(t) == 0)
 				if (weak): binding = 2
 				if ((binding != 0) == want_global):
 					object_data_symbol(name, binding, value, global_storage_size(type))
@@ -636,6 +653,16 @@ void object_layout():
 			if ((body >= p.start) && (body < p.end)):
 				object_piece_insert(placed, object_piece_new(adapter, adapter_end, p.section, 0))
 				break
+	# --c-abi: each System V adapter follows its function's entry stub.
+	if (c_abi_mode && (cast(int, c_abi_stub_syms) != 0)):
+		for k in range(c_abi_stub_positions.length):
+			int stub = c_abi_stub_positions[k]
+			if (c_abi_adapter_ends[k] > c_abi_adapter_starts[k]):
+				for i in range(placed_functions):
+					object_piece* p = placed[i]
+					if ((stub >= p.start) && (stub < p.end)):
+						object_piece_insert(placed, object_piece_new(c_abi_adapter_starts[k], c_abi_adapter_ends[k], p.section, 0))
+						break
 	object_text_pieces = object_pieces_complete(placed, elf_object_text_start, codepos, text_section)
 
 	placed = new list[object_piece*]
@@ -708,6 +735,8 @@ void elf_object_write():
 	object_global_names = new list[char*]
 	object_weak_text_vaddrs = new list[int]
 	object_weak_text_symbols = new list[int]
+	object_weak_entry_vaddrs = new list[int]
+	object_weak_entry_symbols = new list[int]
 	object_symbol_count = 0
 	object_u8(object_strtab, 0)
 	object_symbol(0, 0, 0, 0, 0, 0)
@@ -722,6 +751,8 @@ void elf_object_write():
 		if (dyn_import_get_symtype(i) == 1): object_global_names.push(dyn_import_name(i))
 	for i in range(object_alias_names.length):
 		if (object_alias_is_function[i]): object_global_names.push(object_alias_names[i])
+	if (c_abi_mode):
+		for i in range(c_abi_global_names.length): object_global_names.push(c_abi_global_names[i])
 	object_table_symbols(0)
 	int first_global = object_symbol_count
 	for e in range(wasm_export_count):
@@ -730,14 +761,30 @@ void elf_object_write():
 		int binding = 1
 		if (object_name_is_weak(name)): binding = 2
 		object_text_symbol(name, binding, adapter)
-	# A function alias names the target's global entry: its adapter when
-	# the target is exported, else its W entry.
+	# --c-abi: global functions at their System V entry stubs (c_abi.w),
+	# the same address W's function-pointer values hold; a weak one binds
+	# those values through its symbol
+	if (c_abi_mode):
+		for i in range(c_abi_global_syms.length):
+			int c_entry = c_abi_entry_of(c_abi_global_syms[i])
+			int c_binding = 1
+			if (object_name_is_weak(c_abi_global_names[i])): c_binding = 2
+			int c_index = object_text_symbol(c_abi_global_names[i], c_binding, c_entry)
+			if (c_binding == 2):
+				object_weak_text_vaddrs.push(c_entry)
+				object_weak_text_symbols.push(c_index)
+				object_weak_entry_vaddrs.push(c_entry + 5)
+				object_weak_entry_symbols.push(c_index)
+	# A function alias names the target's global entry: its System V
+	# entry under --c-abi, its adapter when the target is exported, else
+	# its W entry.
 	for i in range(object_alias_names.length):
 		if (object_alias_is_function[i]):
 			int vaddr = sym_value_at(object_alias_symbols[i])
 			for e in range(wasm_export_count):
 				if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), object_alias_targets[i]) == 0):
 					vaddr = load_i(elf_export_addresses + e * __word_size__, __word_size__)
+			if (c_abi_mode && c_abi_has_entry(object_alias_symbols[i])): vaddr = c_abi_entry_of(object_alias_symbols[i])
 			int binding = 1
 			if (object_name_is_weak(object_alias_names[i])): binding = 2
 			object_text_symbol(object_alias_names[i], binding, vaddr)
@@ -791,7 +838,16 @@ void elf_object_write():
 			if (seen[pos] == 0): target = object_slot_target(pos)
 			seen[pos] = 1
 		if (target >= 0):
-			if (object_in_text(target)): object_text_reference(pos, target, 0)
+			int weak_entry = -1
+			for w in range(object_weak_entry_vaddrs.length):
+				if (object_weak_entry_vaddrs[w] == target): weak_entry = object_weak_entry_symbols[w]
+			if (weak_entry >= 0):
+				object_piece* entry_site = object_text_piece(code_offset + pos)
+				object_section* entry_section = object_sections[entry_site.section]
+				int entry_offset = entry_site.out + pos - entry_site.start
+				object_rela(entry_section.rela, entry_offset, weak_entry, 2, 1)
+				save_int32(entry_section.bytes.bytes + entry_offset, 0)
+			else if (object_in_text(target)): object_text_reference(pos, target, 0)
 			else:
 				object_piece* site = object_text_piece(code_offset + pos)
 				object_section* site_section = object_sections[site.section]
@@ -857,6 +913,13 @@ void elf_object_write():
 	for i in range(object_import_slots.length):
 		object_piece* site = object_data_piece(object_import_slots[i])
 		object_rela(object_sections[site.section].rela, site.out + object_import_slots[i] - data_offset - site.start, first_import + i, 1, 0)
+	# --c-abi static cells holding an extern C function's address
+	if (c_abi_mode):
+		for i in range(c_abi_extern_cells.length):
+			for j in range(object_import_slots.length):
+				if (object_import_slots[j] == c_abi_extern_slots[i]):
+					object_piece* cell_site = object_data_piece(c_abi_extern_cells[i])
+					object_rela(object_sections[cell_site.section].rela, cell_site.out + c_abi_extern_cells[i] - data_offset - cell_site.start, first_import + j, 1, 0)
 	free(data_symbols)
 
 	object_buffer* names = object_buffer_new()
