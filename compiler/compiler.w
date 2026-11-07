@@ -1440,6 +1440,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	elf_object_text_start = 0
 	global_address_cells = 0
 	global_address_symbols = 0
+	global_address_names = 0
+	global_address_offsets = 0
 	freestanding_mode = 0
 	static_address_count = 0
 	wasm_export_count = 0

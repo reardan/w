@@ -109,6 +109,8 @@ int wfmt_token_role(pg_token* token, pg_ast_node* parent):
 			if (block): return wfmt_role_brace_close
 			return wfmt_role_close
 		if (block): return wfmt_role_brace_open
+		# 'rec r = {int32 1}': spaced after '=' like a grouping paren
+		if (wfmt_is_ast_kind(parent, wlang_ast_brace_data)): return wfmt_role_open_loose
 		return wfmt_role_open_tight
 	if ((k == wlang_token_RPAREN) || (k == wlang_token_RBRACK)): return wfmt_role_close
 	if (k == wlang_token_DOT): return wfmt_role_dot

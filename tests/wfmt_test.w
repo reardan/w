@@ -50,6 +50,7 @@ void test_brackets_calls_and_members():
 	assert_formats(c"int n = cast (int, sizeof (T))\x0a", c"int n = cast(int, sizeof(T))\x0a")
 	assert_formats(c"while(i < n):\x0a\x09i = i + 1\x0a", c"while (i < n):\x0a\x09i = i + 1\x0a")
 	assert_formats(c"return(x)\x0a", c"return (x)\x0a")
+	assert_formats(c"rec r ={ int32 1 , &g+8, pad 4 }\x0a", c"rec r = {int32 1, &g + 8, pad 4}\x0a")
 
 
 void test_pointer_types():

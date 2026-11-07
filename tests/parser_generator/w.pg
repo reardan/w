@@ -224,7 +224,14 @@ rule operator_def = type_ref KW_OPERATOR operator_token LPAREN param_list RPAREN
 rule operator_token = arith_op | EQ_EQ
 rule arith_op = PLUS | MINUS | STAR | SLASH | PERCENT
 rule global_decl = type_ref name_token decl_suffix global_suffix
-rule global_suffix = ASSIGN expression | SEMI | 
+rule global_suffix = ASSIGN brace_data | ASSIGN expression | SEMI | 
+# 'T name = {int32 1, &g + 8, f, c"s", pad 4}': a brace initializer's
+# raw data items (grammar/program.w, global_brace_initializer). 'pad N'
+# reads as a type name and a count; address items are expressions.
+rule brace_data = LBRACE gap_many brace_data_items gap_many RBRACE
+rule brace_data_items = brace_data_item brace_data_tail* |
+rule brace_data_tail = COMMA gap_many brace_data_item | COMMA
+rule brace_data_item = type_ref expression | expression
 rule function_body = SEMI | block
 rule decl_suffix = LBRACK expression RBRACK |
 

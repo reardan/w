@@ -108,6 +108,35 @@ void test_object_links_with_c():
 	free(object)
 
 
+# Brace-initialized globals (grammar/program.w) are C-layout static
+# data: C reads structs, struct arrays, unions, bitfield words, pointer
+# tables and strings from the object with no startup code.
+void test_object_static_data():
+	char* object = object_path(c"static_data.o")
+	object_compile(c"x64", c"--emit=obj", c"--freestanding", c"tests/object_file/static_data.w", c"-o", object)
+	char*[2] modes
+	modes[0] = c""
+	modes[1] = c"-static"
+	for i in range(2):
+		char* exe = object_path(strjoin(c"static_data_host", itoa(i)))
+		string_builder* cmd = string_new()
+		string_append(cmd, c"cc ")
+		string_append(cmd, modes[i])
+		string_append(cmd, c" -o ")
+		string_append(cmd, exe)
+		string_append(cmd, c" tests/object_file/static_data_main.c ")
+		string_append(cmd, object)
+		free(object_shell(cmd.data))
+		char* out = object_shell(exe)
+		assert_contains(out, c"static data OK")
+		free(out)
+	char* relocs = object_shell(strjoin(c"readelf -r ", object))
+	assert_contains(relocs, c"R_X86_64_64")
+	assert_contains(relocs, c"c_data + 0")
+	free(relocs)
+	free(object)
+
+
 # The runtime-retaining mode: sets, lists and maps inside the object,
 # with an allocator of its own beside libc's.
 void test_object_keeps_private_runtime():
@@ -272,8 +301,35 @@ void test_global_address_initializer_rejections():
 	object_reject(c"'&' in a global initializer needs a global variable, got 'missing'", object_path(c"local.w"), c"-o", out)
 	object_write(c"undefined.w", c"int f(int x);\nint g = f\nint main():\n\treturn 0\n")
 	object_reject(c"function 'f' used in a global initializer is never defined", object_path(c"undefined.w"), c"-o", out)
+	object_write(c"late.w", c"int* p = &later\nint main():\n\treturn 0\nint later(int x):\n\treturn x\n")
+	object_reject(c"'&' in a global initializer needs a global variable, got 'later'", object_path(c"late.w"), c"-o", out)
 	object_write(c"wasm.w", c"int base = 1\nint* p = &base\nint main():\n\treturn 0\n")
 	object_reject(c"address initializers for globals are not supported on the wasm target", c"wasm", object_path(c"wasm.w"), c"-o", out)
+	free(out)
+
+
+# Brace initializers (grammar/program.w, global_brace_initializer) lay
+# raw bytes into storage without array headers and must fit it.
+void test_brace_initializer_rejections():
+	char* out = object_path(c"brace_init")
+	object_write(c"array.w", c"int[4] a = {int 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'a' needs a type without array headers or runtime storage", object_path(c"array.w"), c"-o", out)
+	object_write(c"big.w", c"int32 x = {int32 1, int32 2}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer for global 'x' does not fit in its type 'int32'", object_path(c"big.w"), c"-o", out)
+	object_write(c"pad.w", c"int x = {pad 2, pad 7}\nint main():\n\treturn 0\n")
+	object_reject(c"does not fit in its type 'int'", c"x64", object_path(c"pad.w"), c"-o", out)
+	object_write(c"negative.w", c"int x = {pad 0 - 1}\nint main():\n\treturn 0\n")
+	object_reject(c"padding size must not be negative", object_path(c"negative.w"), c"-o", out)
+	object_write(c"float.w", c"int x = {float32 1}\nint main():\n\treturn 0\n")
+	object_reject(c"brace initializer items must be integer or pointer types, not 'float32'", object_path(c"float.w"), c"-o", out)
+	object_write(c"narrow.w", c"int g = 1\nint x = {int16 &g}\nint main():\n\treturn 0\n")
+	object_reject(c"an address item in a brace initializer needs a word-sized type", object_path(c"narrow.w"), c"-o", out)
+	object_write(c"function.w", c"int x = {never_defined}\nint main():\n\treturn 0\n")
+	object_reject(c"function 'never_defined' used in a global initializer is never defined", object_path(c"function.w"), c"-o", out)
+	object_write(c"notfunc.w", c"int x = {later}\nint main():\n\treturn 0\nint later = 1\n")
+	object_reject(c"function 'later' used in a global initializer is never defined", object_path(c"notfunc.w"), c"-o", out)
+	object_write(c"wasm_brace.w", c"int g = 1\nint x = {&g}\nint main():\n\treturn 0\n")
+	object_reject(c"address initializers for globals are not supported on the wasm target", c"wasm", object_path(c"wasm_brace.w"), c"-o", out)
 	free(out)
 
 

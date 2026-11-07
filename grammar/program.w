@@ -678,6 +678,12 @@ void global_initializer_check_type(char* name, int type):
 # once the whole program is compiled (global_address_finish).
 list[int] global_address_cells
 list[int] global_address_symbols
+# Forward references by name (symbol -1 above): a global or function not
+# yet declared where the initializer names it, so cyclic static data
+# ('a' holding &b while 'b' holds &a) needs no ordering. Names are
+# strclone'd char* kept as words; offsets add to a global's address.
+list[int] global_address_names
+list[int] global_address_offsets
 
 
 void global_address_store(int cell, int value):
@@ -686,32 +692,111 @@ void global_address_store(int cell, int value):
 	rebase_note(cell)
 
 
+int global_is_address_target(int t):
+	return (t >= 0) && (table[t + 1] == 'D') && (load_int(table + t + 10) == 1) && (sym_is_thread_local(t) == 0)
+
+
 void global_address_finish():
 	if (cast(int, global_address_cells) == 0): return;
 	for i in range(global_address_cells.length):
 		int t = global_address_symbols[i]
+		int value = 0
+		char* name = cast(char*, global_address_names[i])
+		if (t < 0):
+			t = sym_lookup(name)
+			if (global_address_offsets[i] >= 0):
+				# '&name': a global variable declared after the initializer
+				if (global_is_address_target(t) == 0):
+					error3(c"'&' in a global initializer needs a global variable, got '", name, c"'")
+				global_address_store(global_address_cells[i], sym_value_at(t) + global_address_offsets[i] - 1)
+				continue
+			if ((t < 0) || (load_int(table + t + 10) != 2)):
+				error3(c"function '", name, c"' used in a global initializer is never defined")
 		if (table[t + 1] != 'D'):
 			error3(c"function '", sym_record_name(t), c"' used in a global initializer is never defined")
 		global_address_store(global_address_cells[i], sym_value_at(t))
 	global_address_cells = 0
 	global_address_symbols = 0
+	global_address_names = 0
+	global_address_offsets = 0
 
 
-# 1 when the initializer at the current token is an address form, which
-# it then consumes and stores into the global at cell.
-int global_address_initializer(char* name, int cell, int type):
+# Defer the word at cell until the whole program is compiled: symbol t
+# (a prototyped function), or, with t = -1, the name -- a function, or
+# with offset >= 0 a global variable whose address plus offset - 1 the
+# word receives (offset -1 marks a function name).
+void global_address_defer(int cell, int t, char* name, int offset):
+	if (data_split == 0):
+		if (offset < 0): error3(c"function '", name, c"' must be defined before a global initializer takes its address")
+		error3(c"global '", name, c"' must be defined before a global initializer takes its address")
+	if (cast(int, global_address_cells) == 0):
+		global_address_cells = new list[int]
+		global_address_symbols = new list[int]
+		global_address_names = new list[int]
+		global_address_offsets = new list[int]
+	global_address_cells.push(cell)
+	global_address_symbols.push(t)
+	global_address_names.push(cast(int, strclone(name)))
+	global_address_offsets.push(offset)
+
+
+# 1 when the current token opens an address form: '&global', a c"..."
+# literal, or the name of a function. With forward set (brace
+# initializers), an identifier that names nothing yet is a function
+# defined later.
+int global_address_form_ahead(int forward):
+	if (peek(c"&") || ((token[0] == 'c') && (token[1] == '"'))): return 1
+	int t = sym_lookup(token)
+	if (t >= 0): return load_int(table + t + 10) == 2
+	if ((forward == 0) || (is_ident_start_byte(token[0]) == 0) || (nextc == '.')): return 0
+	if ((type_lookup(token) >= 0) || peek(c"const") || peek(c"fn") || generic_type_starts_here()): return 0
+	return 1
+
+
+# Parse the address form at the current token (global_address_form_ahead
+# said there is one) and store the address into the word at cell.
+# '&global' may carry a constant byte offset ('&table + 16', '&s - 8'),
+# the C '&a[i]' / '&s.field' forms with the offset folded in; the global
+# may be declared later in the program.
+void global_address_form(char* name, int cell):
+	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
 	int t = -1
 	int value = 0
-	if (peek(c"&") || ((token[0] == 'c') && (token[1] == '"'))): t = -1
+	if (accept(c"&")):
+		t = sym_lookup(token)
+		if ((t >= 0) && (global_is_address_target(t) == 0)):
+			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		if ((t < 0) && (is_ident_start_byte(token[0]) == 0)):
+			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		char* target = strclone(token)
+		if (t >= 0):
+			retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
+			value = sym_value_at(t)
+		get_token()
+		int offset = 0
+		if (accept(c"+")): offset = parse_constant_literal(c"address offset in initializer for global", name)
+		else if (accept(c"-")): offset = 0 - parse_constant_literal(c"address offset in initializer for global", name)
+		if (t < 0):
+			global_address_defer(cell, -1, target, offset + 1)
+			free(target)
+			return
+		free(target)
+		value = value + offset
+	else if ((token[0] == 'c') && (token[1] == '"')):
+		int length = process_prefixed_string_literal()
+		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
+		value = code_offset + codepos
+		emit(length, token)
+		emit_int8(0)
+		be_align_code()
+		get_token()
 	else:
 		t = sym_lookup(token)
-		if ((t < 0) || (load_int(table + t + 10) != 2)): return 0
-	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)):
-		diag_part(c"global '")
-		diag_part(name)
-		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
-	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
-	if (t >= 0):
+		if (t < 0):
+			# A function defined later (brace initializers only)
+			global_address_defer(cell, -1, token, -1)
+			get_token()
+			return
 		retained_initializer_note(name, retained_initializer_function, 0, t, 0, 0)
 		get_token()
 		if (peek(c"(")):
@@ -722,29 +807,87 @@ int global_address_initializer(char* name, int cell, int type):
 			error3(c"' must be a compile-time constant, got '", sym_record_name(t), c"'")
 		if (table[t + 1] != 'D'):
 			if (data_split == 0): error3(c"function '", sym_record_name(t), c"' must be defined before a global initializer takes its address")
-			if (cast(int, global_address_cells) == 0):
-				global_address_cells = new list[int]
-				global_address_symbols = new list[int]
-			global_address_cells.push(cell)
-			global_address_symbols.push(t)
-			return 1
+			global_address_defer(cell, t, sym_record_name(t), -1)
+			return
 		value = sym_value_at(t)
-	else if (accept(c"&")):
-		t = sym_lookup(token)
-		if ((t < 0) || (table[t + 1] != 'D') || (load_int(table + t + 10) != 1) || (sym_is_thread_local(t))):
-			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
-		retained_initializer_note(name, retained_initializer_global, 0, t, 0, 0)
-		value = sym_value_at(t)
-		get_token()
-	else:
-		int length = process_prefixed_string_literal()
-		retained_initializer_note(name, retained_initializer_string, 0, -1, token, length)
-		value = code_offset + codepos
-		emit(length, token)
-		emit_int8(0)
-		be_align_code()
-		get_token()
 	global_address_store(cell, value)
+
+
+# 1 when the initializer at the current token is an address form, which
+# it then consumes and stores into the global at cell.
+int global_address_initializer(char* name, int cell, int type):
+	if (global_address_form_ahead(0) == 0): return 0
+	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)):
+		diag_part(c"global '")
+		diag_part(name)
+		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
+	global_address_form(name, cell)
+	return 1
+
+
+# Store the low `width` bytes of value at a global's address, in whichever
+# segment holds it (see write_global_initial_value).
+void global_data_store(int addr, int value, int width):
+	if (data_split): save_i(data + (addr - data_offset), value, width)
+	else: save_i(code + (addr - code_offset), value, width)
+
+
+void global_data_overflow(char* name, int type):
+	diag_part(c"brace initializer for global '")
+	diag_part(name)
+	error_type(c"' does not fit in its type '", type, c"'")
+
+
+# 'T name = {item, ...}' at file scope: static data laid out byte for byte
+# in the global's storage, so a struct (or any type without fixed-array
+# headers) can hold C-layout data that is in the image at link time,
+# with no code run before main -- what C translators and kernels need for
+# ops tables, page tables and string tables. Items are placed one after
+# another with no implicit alignment:
+#
+#	'int32 5', 'uint8 -1'      an integer of the named type's width
+#	'&g', '&g + 8', 'f', c"s"  an address word (also after a word-sized
+#	                           type: 'char* c"s"')
+#	'pad 8'                    that many zero bytes
+#
+# Bytes after the last item stay zero. Values are 32-bit constants
+# sign-extended to the item's width; wider values are spelled as two
+# 'uint32' halves (low first). Address words are rebase cells, so PIE
+# executables and --emit=obj relocations (R_X86_64_64) cover them.
+int global_brace_initializer(char* name, int addr, int type):
+	if (peek(c"{") == 0): return 0
+	int t = type_canonical(type)
+	if (type_is_array(t) || type_is_slice(t) || type_has_array_field(t) || type_is_map(t) || type_is_set(t) || type_is_list(t) || type_is_string(t)):
+		diag_part(c"brace initializer for global '")
+		diag_part(name)
+		error_type(c"' needs a type without array headers or runtime storage, not '", type, c"'")
+	int size = type_get_size(t)
+	if ((type_get_pointer_level(t) > 0) || (size < 1)): size = word_size
+	get_token()
+	int pos = 0
+	while (peek(c"}") == 0):
+		if (peek(c"pad") && (type_lookup(c"pad") < 0)):
+			get_token()
+			int n = parse_constant_literal(c"padding in initializer for global", name)
+			if (n < 0): error(c"padding size must not be negative")
+			if (pos + n > size): global_data_overflow(name, type)
+			pos = pos + n
+		else:
+			int width = word_size
+			if (global_address_form_ahead(1) == 0):
+				int item_type = type_name()
+				if (type_get_pointer_level(item_type) == 0):
+					width = type_get_size(item_type)
+					if ((type_num_args(item_type) > 0) || type_float_kind(item_type) || ((width != 1) && (width != 2) && (width != 4) && (width != 8))):
+						error_type(c"brace initializer items must be integer or pointer types, not '", item_type, c"'")
+			if (pos + width > size): global_data_overflow(name, type)
+			if (global_address_form_ahead(1)):
+				if (width != word_size): error(c"an address item in a brace initializer needs a word-sized type")
+				global_address_form(name, addr + pos)
+			else: global_data_store(addr + pos, parse_constant_literal(c"initializer for global", name), width)
+			pos = pos + width
+		if (accept(c",") == 0): break
+	expect(c"}")
 	return 1
 
 
@@ -757,6 +900,7 @@ int global_address_initializer(char* name, int cell, int type):
 # the global, instead of the bare "valid primary expression" parse error
 # the '=' used to produce.
 void global_initializer(char* name, int current_symbol, int decl_type):
+	if (global_brace_initializer(name, sym_value_at(current_symbol), decl_type)): return;
 	global_initializer_check_type(name, decl_type)
 	if (global_address_initializer(name, sym_value_at(current_symbol), decl_type)): return;
 	int value = parse_constant_literal(c"initializer for global", name)

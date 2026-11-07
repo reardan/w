@@ -56,11 +56,47 @@ long w_add(long a, long b);
   (a two-word header, then the elements), not a C array.
 - **Static pointer data.** File-scope address initializers
   (`grammar/program.w`, `global_address_initializer`) make static pointer
-  tables expressible: `int* p = &g`, `unary* f = some_function` (defined
-  before or after) and `char* s = c"text"`. They work in every native
+  tables expressible: `int* p = &g`, `int* q = &g + 8` (a byte offset),
+  `unary* f = some_function` (defined before or after) and
+  `char* s = c"text"`. The `&g` global may be declared later in the
+  program, so cyclic tables need no ordering. They work in every native
   executable too (`tests/global_address_init_test.w`). A function
   pointer stored this way holds the W-convention entry, so it is for W
   callers; C should call exported functions by name.
+- **Static C-layout data.** A brace initializer
+  (`global_brace_initializer`) lays a global's bytes out item by item,
+  with no implicit alignment and no code run at startup:
+
+  ```w
+  struct entry:      # C: struct { short kind; char flag; int count; long *ref; const char *name; }
+  	int16 kind
+  	int8 flag
+  	uint8 pad0
+  	int32 count
+  	int* ref
+  	char* name
+
+  struct entry_table:  # C: struct entry table[2] (a struct of raw bytes, no array header)
+  	entry e0
+  	entry e1
+
+  entry_table table = {int16 1, int8 -1, pad 1, int32 100, &counter, c"first",
+  	int16 2, pad 2, int32 -5, &later_global + 16, c"second"}
+  ```
+
+  Items are `T value` (an integer constant stored at the width of the
+  integer type `T`, sign-extended; 64-bit values beyond 32 bits are two
+  `uint32` halves, low first), an address word (`&g`, `&g + N`, a
+  function name -- one not declared yet is resolved at the end of the
+  compile -- or `c"..."`, optionally after a word-sized type such as
+  `char*`), and `pad N` (N zero bytes). Bytes after the last item are
+  zero, `{}` is all zeros, and items may continue on following lines.
+  The type must have no fixed-array headers (structs, unions, scalars
+  and pointers; a C array becomes a struct of the right size, indexed
+  through a cast pointer), and the items must fit its size. Address
+  words are relocated like any address initializer
+  (`tests/object_file/static_data.w` links such data with C;
+  `tests/static_data_test.w` covers executables).
 
 ## Relocations
 
@@ -144,8 +180,9 @@ Next steps, roughly in order:
    code. The adapter already preserves every System V callee-saved
    register; interrupt-context use needs that audit.
 4. **Exported data and C-shaped aggregates.** An explicit marker for
-   exported globals (today: any root global), C-layout arrays, and
-   struct arguments by value in the adapters.
+   exported globals (today: any root global), a native C-layout array
+   type (today: brace-initialized raw structs), floating-point items in
+   brace initializers, and struct arguments by value in the adapters.
 5. **Several W objects in one link.** Each object today carries its own
    copy of whatever runtime it uses; a shared freestanding support
    object (or `COMDAT` groups) would let several W objects share one.
