@@ -496,6 +496,13 @@ int object_extern_data_at(int vaddr):
 	return -1
 
 
+# Index of the extern function slot at vaddr, or -1.
+int object_import_index(int vaddr):
+	for i in range(object_import_slots.length):
+		if (object_import_slots[i] == vaddr): return i
+	return -1
+
+
 # Name already given to a global or undefined symbol: a local W symbol of
 # the same name (an exported body, an extern shim) is left out.
 list[char*] object_global_names
@@ -520,6 +527,10 @@ int object_array_header_size(int type):
 int object_symbol_size(int type):
 	if (type_is_array(type_canonical(type))): return type_get_size(type) - 2 * word_size
 	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) > 0)): return type_get_size(type)
+	# An empty record is 0 bytes to C (gcc's symbol size), though W
+	# reserves it a word of its own (global_storage_size).
+	int kind = type_get_kind(type_canonical(type))
+	if ((type_get_pointer_level(type) == 0) && ((kind == 0) || (kind == type_kind_union))): return 0
 	return word_size
 
 
@@ -625,6 +636,41 @@ void object_text_reference(int pos, int target, int is_call):
 	save_int32(site_section.bytes.bytes + site_off, 0)
 
 
+# A datapos + 1 byte map with 1 at the data pointer cell of every array
+# header no text address slot or pointer cell reaches: an array only C
+# (or a linker script) sees keeps no relocation from .data into its
+# elements' section, which may be discarded (.modinfo, .discard.*).
+char* object_unused_array_headers():
+	char* skip = cast(char*, malloc(datapos + 1))
+	for j in range(datapos + 1): skip[j] = 0
+	char* reached = cast(char*, malloc(datapos + 1))
+	for j in range(datapos + 1): reached[j] = 0
+	for i in range(static_address_count):
+		int pos = load_int32(static_address_slots + i * 4)
+		if ((pos >= elf_object_text_start) && (pos <= codepos - 4)):
+			int target = object_slot_target(pos)
+			if ((target >= 0) && object_in_data(target)): reached[target - data_offset] = 1
+	for r in range(rebase_count):
+		int cell = load_i(rebase_table + r * 8, 8) - data_offset
+		if ((cell >= 0) && (cell <= datapos - 8)):
+			int value = load_i(data + cell, 8)
+			if (object_in_data(value)): reached[value - data_offset] = 1
+	int t = 0
+	while (t <= table_pos - 1):
+		t = t + strlen(table + t)
+		int value = sym_value_at(t)
+		int type = load_int(table + t + 6)
+		int header = object_array_header_size(type)
+		if ((table[t + 1] == 'D') && (header > 0) && object_table_data_symbol(t, value, type)):
+			int used = 0
+			for j in range(header):
+				if (reached[value - data_offset + j]): used = 1
+			if (used == 0): skip[value - data_offset] = 1
+		t = next_token(t)
+	free(reached)
+	return skip
+
+
 void object_section_header(object_buffer* b, int name, int type, int flags, int offset, int size, int link, int info, int align, int entsize):
 	object_u32(b, name)
 	object_u32(b, type)
@@ -693,6 +739,15 @@ void object_layout():
 	for r in range(rebase_count):
 		int cell = load_i(rebase_table + r * 8, 8) - data_offset
 		if ((cell >= 0) && (cell <= datapos)): cells[cell] = 1
+	# Extern function slots and C function-pointer cells are relocated
+	# too: a NOBITS section cannot carry them (ld -r drops the records).
+	for i in range(object_import_slots.length):
+		int slot = object_import_slots[i] - data_offset
+		if ((slot >= 0) && (slot <= datapos)): cells[slot] = 1
+	if (c_abi_mode):
+		for i in range(c_abi_extern_cells.length):
+			int cell = c_abi_extern_cells[i] - data_offset
+			if ((cell >= 0) && (cell <= datapos)): cells[cell] = 1
 	int t = 0
 	while (t <= table_pos - 1):
 		t = t + strlen(table + t)
@@ -850,6 +905,10 @@ void elf_object_write():
 	# rewrite them), so each is taken once.
 	char* seen = cast(char*, malloc(codepos + 1))
 	for p in range(codepos + 1): seen[p] = 0
+	# Extern function slots some code still loads (a function value, a
+	# variadic call) keep their relocation; the rest are never read.
+	char* import_used = cast(char*, malloc(object_import_slots.length + 1))
+	for j in range(object_import_slots.length): import_used[j] = (c_abi_mode == 0)
 	for i in range(static_address_count):
 		int pos = load_int32(static_address_slots + i * 4)
 		int target = -1
@@ -872,6 +931,7 @@ void elf_object_write():
 				object_section* site_section = object_sections[site.section]
 				int offset = site.out + pos - site.start
 				int extern_data = object_extern_data_at(target)
+				int import_index = object_import_index(target)
 				# R_X86_64_PC32 (2): S + A - P, P being the disp32 itself.
 				# A weak reference may stay undefined, which a PIE cannot
 				# reach PC-relatively: its lea loads the address from the
@@ -879,12 +939,21 @@ void elf_object_write():
 				int weak_lea = 0
 				if (extern_data >= 0):
 					weak_lea = object_name_is_weak(dyn_import_name(extern_data)) && ((code[pos - 2] & 255) == 0x8d) && (target == dyn_import_got_vaddr(extern_data))
-				if (weak_lea):
+				# --c-abi: an FFI shim's 'call [rip+slot]' becomes a
+				# direct 'addr32 call rel32' to the C symbol
+				# (R_X86_64_PLT32), as ld relaxes GOTPCRELX calls, so
+				# no data word links code to its callee.
+				if ((import_index >= 0) && c_abi_mode && ((code[pos - 2] & 255) == 0xff) && ((code[pos - 1] & 255) == 0x15)):
+					site_section.bytes.bytes[offset - 2] = 0x67
+					site_section.bytes.bytes[offset - 1] = 0xe8
+					object_rela(site_section.rela, offset, first_import + import_index, 4, -4)
+				else if (weak_lea):
 					site_section.bytes.bytes[offset - 2] = 0x8b
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 42, -4)
 				else if (extern_data >= 0):
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 2, target - dyn_import_got_vaddr(extern_data) - 4)
 				else:
+					if (import_index >= 0): import_used[import_index] = 1
 					object_piece* dest = object_data_piece(target)
 					object_section* dest_section = object_sections[dest.section]
 					object_rela(site_section.rela, offset, dest_section.symbol, 2, dest.out + target - data_offset - dest.start - 4)
@@ -899,9 +968,9 @@ void elf_object_write():
 	free(seen)
 
 	# Data relocations: absolute pointer cells, then the extern function
-	# slots.
-	char* cell_seen = cast(char*, malloc(datapos + 1))
-	for j in range(datapos + 1): cell_seen[j] = 0
+	# slots. The header cell of an array nothing in the object reaches
+	# stays unrelocated.
+	char* cell_seen = object_unused_array_headers()
 	for r in range(rebase_count):
 		int cell = load_i(rebase_table + r * 8, 8) - data_offset
 		if ((cell < 0) || (cell > datapos - 8)): error(c"internal error: --emit=obj pointer cell is outside data")
@@ -930,6 +999,7 @@ void elf_object_write():
 				else: error(c"internal error: --emit=obj pointer cell leaves the object")
 	free(cell_seen)
 	for i in range(object_import_slots.length):
+		if (import_used[i] == 0): continue
 		object_piece* site = object_data_piece(object_import_slots[i])
 		object_rela(object_sections[site.section].rela, site.out + object_import_slots[i] - data_offset - site.start, first_import + i, 1, 0)
 	# --c-abi static cells holding an extern C function's address
@@ -940,6 +1010,7 @@ void elf_object_write():
 					object_piece* cell_site = object_data_piece(c_abi_extern_cells[i])
 					object_rela(object_sections[cell_site.section].rela, cell_site.out + c_abi_extern_cells[i] - data_offset - cell_site.start, first_import + j, 1, 0)
 	free(data_symbols)
+	free(import_used)
 
 	object_buffer* names = object_buffer_new()
 	object_u8(names, 0)
@@ -948,6 +1019,7 @@ void elf_object_write():
 		object_section* s = object_sections[i]
 		s.name_offset = object_string(names, s.name)
 		if (s.rela.length > 0): rela_count = rela_count + 1
+		if ((s.rela.length > 0) && (s.type != 1)): error(c"internal error: --emit=obj relocation in a NOBITS section")
 	int name_stack = object_string(names, c".note.GNU-stack")
 	int name_symtab = object_string(names, c".symtab")
 	int name_strtab = object_string(names, c".strtab")

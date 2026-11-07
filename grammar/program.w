@@ -600,11 +600,78 @@ void emit_global_storage(int type);
 void emit_data_global_storage(int type, int base_vaddr);
 
 
+# A record of size 0 (one nesting only empty records) still gets a word:
+# every global keeps an address of its own, so it never shares a vaddr
+# -- or, in an object, a section -- with the next declaration.
 int global_storage_size(int type):
 	int bytes = word_size
 	int declared_size = type_get_size(type)
 	if ((type_num_args(type) > 0) | (declared_size > word_size)): bytes = declared_size
+	if (bytes < 1): bytes = word_size
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
+
+
+# Globals declared while their record type had no fields yet: C's
+# 'static struct s x;' ahead of the struct body. Their word-sized
+# reservation (incomplete_global_addresses, code_generator/
+# code_emitter.w) is too small once the body adds fields, so when the
+# type completes the record moves to fresh storage of its full size;
+# the address slots and pointer cells that took its address meanwhile
+# are retargeted (the type had no fields, so they all hold its start).
+list[int] incomplete_global_symbols
+list[int] incomplete_global_types
+
+
+int incomplete_global_type(int type):
+	int t = type_canonical(type)
+	if (type_get_pointer_level(t) != 0): return 0
+	if ((type_get_kind(t) != 0) && (type_get_kind(t) != type_kind_union)): return 0
+	return (type_num_args(t) == 0) && (type_get_size(t) == 0)
+
+
+void incomplete_global_note(int t, int type):
+	if ((data_split == 0) || (incomplete_global_type(type) == 0)): return;
+	if (cast(int, incomplete_global_symbols) == 0):
+		incomplete_global_symbols = new list[int]
+		incomplete_global_types = new list[int]
+		incomplete_global_addresses = new list[int]
+		incomplete_global_slots = new list[int]
+	incomplete_global_symbols.push(t)
+	incomplete_global_types.push(type)
+	incomplete_global_addresses.push(sym_value_at(t))
+
+
+void incomplete_global_move(int t, int type, int old):
+	int bytes = global_storage_size(type)
+	if (bytes <= word_size): return;
+	int moved = emit_data_zeros(bytes)
+	emit_data_global_storage(type, moved)
+	sym_set_value_at(t, moved)
+	for i in range(incomplete_global_slots.length):
+		int pos = incomplete_global_slots[i]
+		if ((pos >= 0) && (pos <= codepos - 4) && (be_addr_slot_read(pos) == old)): be_addr_slot_write(pos, moved)
+	for r in range(rebase_count):
+		int cell = load_i(rebase_table + r * 8, 8) - data_offset
+		if ((cell >= 0) && (cell <= datapos - word_size) && (load_i(data + cell, word_size) == old)): save_i(data + cell, moved, word_size)
+	if ((cast(int, const_global_addresses) != 0) && (const_global_addresses.get(t, -1) == old)): const_global_addresses[t] = moved
+
+
+# The record type type_index just got its fields.
+void incomplete_global_complete(int type_index):
+	if (cast(int, incomplete_global_symbols) == 0): return;
+	int canonical = type_canonical(type_index)
+	int i = 0
+	while (i < incomplete_global_symbols.length):
+		if (type_canonical(incomplete_global_types[i]) == canonical):
+			incomplete_global_move(incomplete_global_symbols[i], incomplete_global_types[i], incomplete_global_addresses[i])
+			int last = incomplete_global_symbols.length - 1
+			incomplete_global_symbols[i] = incomplete_global_symbols[last]
+			incomplete_global_types[i] = incomplete_global_types[last]
+			incomplete_global_addresses[i] = incomplete_global_addresses[last]
+			incomplete_global_symbols.pop()
+			incomplete_global_types.pop()
+			incomplete_global_addresses.pop()
+		else: i = i + 1
 
 
 # Define a mutable global variable's symbol and reserve its storage. With
@@ -1195,6 +1262,7 @@ void global_variable_declaration(int binding, int type, char* init_name):
 		define_global_variable(binding, type)
 		if (init_name): global_initializer(init_name, binding, type)
 	const_global_define(binding, type)
+	incomplete_global_note(binding, type)
 
 
 # Attributes ('@section(...)', '@weak', ...; grammar/object_attributes.w)

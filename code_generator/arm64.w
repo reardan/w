@@ -533,6 +533,7 @@ int be_addr_slot_writes
 # from the adrp+add immediates.
 void be_addr_slot_write(int pos, int v):
 	be_addr_slot_writes = be_addr_slot_writes + 1
+	if (cast(int, incomplete_global_addresses) != 0): incomplete_global_note_slot(pos, v)
 	if (target_isa == 2): wasm_addr_slot_write(pos, v)
 	elif (target_isa == 1): arm64_addr_slot_write(pos, v)
 	elif (word_size == 8):

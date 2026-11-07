@@ -41,7 +41,8 @@ long w_add(long a, long b);
   `--static` libraries use); the adapter is the global symbol. Calls to
   `extern` functions go through the existing FFI shims
   (`code_generator/ffi.w`), which call through a data word relocated to
-  the C symbol. Supported signatures are those of native exports:
+  the C symbol (under `--c-abi` the shim calls the C symbol directly
+  instead; see "Relocations"). Supported signatures are those of native exports:
   word-sized integers and pointers, `float32`, `float64`, void returns.
   A W `int` is 64 bits on x64 (C `long`/`int64_t`). Variadic exports
   and struct arguments or returns by value are rejected.
@@ -233,6 +234,7 @@ and every absolute pointer stored in data is a PIE rebase cell
 | Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against the target's section |
 | The same pointing at an `extern` data object | `R_X86_64_64` against the undefined symbol |
 | FFI slot of an `extern` function | `R_X86_64_64` against the undefined symbol |
+| `--c-abi`: an FFI shim's `call [rip+slot]` | rewritten to `addr32 call rel32` (`67 e8`), `R_X86_64_PLT32` against the undefined symbol; the slot keeps its relocation only while a function value still loads it |
 | Call cell or address slot reaching code in another section | `R_X86_64_PC32` against that section plus offset |
 | Call to a weak definition (or its address taken) | `R_X86_64_PLT32` / `R_X86_64_PC32` against the weak symbol |
 | Address of weak `extern` data | `lea` becomes `mov` from the GOT, `R_X86_64_REX_GOTPCRELX` |
@@ -254,7 +256,23 @@ programs keep a non-executable stack. `extern` data gets an unused
 placeholder in `.data`; every reference to it is relocated to the C
 symbol instead. A global goes to `.bss` when its bytes are all zero
 and it holds no pointer cell (a W fixed array's header is one, so such
-an array stays in `.data`).
+an array stays in `.data`). Nothing relocated ever goes to a `NOBITS`
+section: pointer cells, extern function slots and C function-pointer
+cells keep their global in `.data` (`ld -r` would drop the records). A
+fixed array's header cell is relocated only when some address slot or
+pointer cell in the object reaches the header; an array that only C or
+a linker script sees (a `.modinfo` string, a `.discard.*` entry) leaves
+no `.data` reference into its possibly discarded section.
+
+Two declaration shapes C translators produce get storage of their own
+(`grammar/program.w`): a global of a record type completed later in
+the file (`static struct s x;` ahead of the body) moves to storage of
+the completed size when the body arrives, and the address slots and
+pointer cells that took its address meanwhile follow it; a global of a
+record with size 0 (one nesting only an empty record, like a
+uniprocessor spinlock) still reserves a word, so it never shares an
+address or a section with the next declaration (its symbol size stays
+0, as gcc's).
 
 ## Sections and symbol attributes
 

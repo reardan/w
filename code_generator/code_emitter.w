@@ -376,6 +376,22 @@ void rebase_note(int vaddr):
 	rebase_count = rebase_count + 1
 
 
+# Globals whose storage was reserved while their record type had no
+# fields yet (a C tentative definition ahead of the struct body): their
+# vaddrs, and every address slot written with one of them, so the
+# record can move to storage of its completed size and the slots follow
+# it (incomplete_global_complete, grammar/program.w).
+list[int] incomplete_global_addresses
+list[int] incomplete_global_slots
+
+
+void incomplete_global_note_slot(int pos, int v):
+	for i in range(incomplete_global_addresses.length):
+		if (incomplete_global_addresses[i] == v):
+			incomplete_global_slots.push(pos)
+			return
+
+
 # Static libraries retain every address slot that can cross from text to
 # data. The writer filters slots removed by a peephole and stores final
 # targets, so repeated writes/backpatches are harmless.
