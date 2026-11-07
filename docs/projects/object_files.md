@@ -117,6 +117,42 @@ Explicit `import`s are still honored: importing `lib.lib` brings its
 code in, which is the program's choice. The compiler's built-in asm
 stubs (`syscall`, `setjmp`, ...) remain as unreferenced local code.
 
+## Kernel code generation
+
+`--kernel-codegen` (only with `--emit=obj --freestanding`) asks for code
+that is safe in kernel context, where an interrupt or exception can
+arrive on the current stack between any two instructions and the FPU
+state belongs to someone else:
+
+```sh
+./bin/wv2 x64 --emit=obj --freestanding --kernel-codegen drv.w -o drv.o
+```
+
+`tests/kernel_codegen_test.w` checks each property below on
+`tests/kernel_codegen/corpus.w`, an integer workload (register-promoted
+locals, parked expression registers, recursion, struct copies, narrow
+stores, function pointers, `switch`, ten-argument calls, C -> W -> C ->
+W chains) linked with a libc-free, `-mno-red-zone` startup
+(`tests/kernel_codegen/start.c`).
+
+- **No red zone.** The System V ABI lets user code keep data in the 128
+  bytes below `%rsp`; a kernel is built with `-mno-red-zone` because
+  interrupts overwrite that memory. W's x64 code never uses it: locals,
+  spills and temporaries are pushed (the stack-machine design keeps
+  `%rsp` at the top of everything live), parked expression registers
+  live in registers, register promotion's saved registers and parameter
+  homes are pushed or reserved with `sub rsp` in the prologue, and the
+  export adapters and FFI shims (`code_generator/elf_exports.w`,
+  `ffi.w`) only push and address `[rbp+disp]` above `%rsp`. Every
+  `[rsp+disp]` operand goes through `esp_disp` (`code_generator/x86.w`),
+  which under the flag rejects a negative displacement as an internal
+  error. The test runs the linked corpus single-stepped under `ptrace`,
+  overwriting the 256 bytes below `%rsp` through `/proc/<pid>/mem`
+  before every instruction (a signal cannot show this: Linux already
+  skips the red zone when it builds a signal frame), and requires the
+  same output as a plain run; a C leaf compiled with its red zone is
+  the negative control that this clobbering breaks.
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64

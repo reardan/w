@@ -241,7 +241,10 @@ int ers_slot_reg(int disp):
 	return ers_reg[ers_count - 1 - (disp >> word_size_log2)]
 
 # The real esp displacement of a logical one that names a stack word.
+# Nothing the emitter addresses lies below esp (no red zone), which
+# --kernel-codegen relies on: an interrupt overwrites that memory.
 int esp_disp(int disp):
+	if (kernel_codegen && (disp < 0)): ers_internal(c"stack word below rsp")
 	if (ers_count == 0): return disp
 	if (ers_slot_reg(disp) != 0): ers_internal(c"word used by an unhandled path")
 	return disp - ers_bias()
