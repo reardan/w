@@ -194,7 +194,7 @@ abrupt finalizer overrides the earlier completion.
 Labelled break exits its enclosing labelled statement; labelled continue targets
 the loop wrapped by one or more labels. Targets survive `finally` unless its
 abrupt completion overrides them, and labels cannot cross a function boundary.
-Labelled function declarations remain unsupported (Annex B semantics).
+Sloppy labelled function declarations (Annex B.3.2) declare like unlabelled ones.
 
 The initial semantic subset is deliberately explicit:
 
@@ -205,7 +205,8 @@ The initial semantic subset is deliberately explicit:
   `typeof` returns `undefined` for missing names while preserving TDZ failures.
 - Function/global `var` hoisting and redeclaration, parameter/var sharing, and
   duplicate body function declarations with the last declaration winning.
-  Nested block functions remain lexical; Annex B semantics are not implemented.
+  Nested block functions are block lexical; in sloppy code they also follow
+  Annex B.3.3/B.3.4 (see "Static semantics, modules and Annex B" below).
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
   function expressions, synchronous arrows with expression or block bodies,
@@ -233,10 +234,14 @@ The initial semantic subset is deliberately explicit:
   Substitutions execute once in source order; object conversion remains unsupported.
 - `= += -= *= /= &= |= ^= <<= >>= >>>=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
+- RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
+  or RegExp arguments create objects with own `lastIndex` and the shared
+  `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
+  "RegExp patterns" below).
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, regex execution, tagged
-templates, prototype-literal `__proto__`, loose equality and additional numeric
+through the script API, classes, generators/async, tagged templates,
+String.prototype RegExp methods (`match`, `replace`, `search`, `split`), prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
 keys and catch patterns remain unsupported. Global `this`, sloppy receiver
@@ -403,9 +408,11 @@ tools/mac/run_javascript_tests.sh
 The ordinary test targets require no Node installation. The explicit compatibility
 target requires Node v20.19.3 and fails visibly if it is missing or differs. It
 runs pinned Test262 syntax variants (respecting test metadata), a pinned real
-source fixture, bounded growth cases, and controlled execution comparisons. Nine additional cases compare actual W runtime
+source fixture, bounded growth cases, and controlled execution comparisons. Seventeen additional cases compare actual W runtime
 completion values with fresh Node realms, covering arrows, per-iteration capture,
-Unicode iteration, template cooking/number spelling, abrupt completions and TDZ.
+Unicode iteration, template cooking/number spelling, abrupt completions, TDZ and
+RegExp matching (captures, lookaround, Annex B escapes, case folding, `u` mode,
+`lastIndex` and the constructor).
 It also executes the actual builder and transformer, checks their output with
 both parsers, and compares original/transformed behavior and untouched bytes.
 `bin/javascript-compatibility.json` records results. This small corpus is a
@@ -429,19 +436,132 @@ on unexpected support changes. Use
 variant as well. Full upstream harness and full-suite execution remain deferred.
 
 Early-error checks include async/generator parameter expressions and duplicate
-parameters, duplicate module export names, missing local exports, chained labels
-and structural RegExp groups/assertions/quantifiers. Remaining work includes
-RegExp escape values, class ranges, named captures/backreferences and Unicode
-properties, complete ECMAScript early errors and cross-module export resolution,
-Annex B behavior, and broader contextual keyword handling. Function-call
-assignment targets are rejected; Node permits some of
-these forms and defers their failure until execution. Sloppy-context uses of `await`/`yield` as identifiers are not generally
-accepted outside label names. Label names have their own contextual checks, so
+parameters, duplicate module export names, missing local exports, chained labels,
+complete RegExp pattern validation (below), contextual `yield`/`await`,
+cross-module export resolution and the Annex B syntax described in
+[Static semantics, modules and Annex B](#static-semantics-modules-and-annex-b).
+Remaining static-semantics work is narrow: the Annex B.3.6 `for (var x = 1 in o)`
+initializer, `if (x) let` followed by a line break (parsed as a declaration
+instead of an expression statement), and syntax newer than ES2020 (numeric
+separators, string export names, import attributes), which Node accepts. Label
+names have their own contextual checks, so
 strict `eval`/`arguments` labels are valid while generator `yield`, async `await`,
 and module-reserved labels are rejected. This integration does not support TypeScript, JSX, or post-ES2020 syntax
 as a compatibility contract. Full-edition acceptance requires expanding the
 pinned corpus and eliminating these exclusions before closing #492 as complete
 ECMAScript compatibility.
+
+### Static semantics, modules and Annex B
+
+reardan/w#840 audited the parser against the ES2020 "Static Semantics: Early
+Errors" clauses with a differential oracle (each snippet checked with Node's
+`vm.Script` for scripts and `node --check` for modules). That audit used Node
+v22; the compatibility gate pins v20.19.3. `javascript_compatibility` also
+passes when its version pin is bypassed under v22.
+
+- **Contextual keywords.** The grammar has no `[Yield]`/`[Await]` parameters, so
+  pure predicates in `predicates.w` recover them from the consumed tokens: the
+  innermost enclosing function (arrows included) decides whether `yield` starts
+  a YieldExpression and `await` an AwaitExpression. Anywhere else both are
+  identifiers, checked against strict mode, the module goal and the context:
+  `var yield`, `function f(await)`, `yield => 1` and `() => yield` inside a
+  generator parse in sloppy code. A FunctionDeclaration's name follows the
+  enclosing context (`function* yield() {}` is valid sloppy code), a
+  FunctionExpression's its own (`(function* yield() {})` is not). Each
+  `yield`/`await` token costs a backward scan to its enclosing function.
+- **Early errors added:** duplicate `__proto__: value` in object literals (not
+  in assignment patterns), `let` as a let/const bound name, comma expressions
+  after `for (... of`, `for (let.x of ...)`, labelled functions as if/loop/with
+  bodies (IsLabelledFunction), tagged templates in optional chains, and
+  `new a?.b()`. A nested destructuring rest element is no longer reported
+  against the outer pattern.
+- **Cross-module export resolution.** `module_graph.w` builds ES2020 source
+  text module records (ParseModule's import, local, indirect and star export
+  entries, with re-exported imports rewritten to indirect entries) for a graph
+  loaded through a caller-supplied loader, then runs ResolveExport for every
+  import and indirect export: `export * from` star exports, ambiguous star
+  bindings (the same binding reached twice is not ambiguous), `export * as ns`,
+  "default is never star-exported" and indirect re-export cycles. Failures are
+  SyntaxErrors at the "resolution" phase (unloadable specifiers are
+  ReferenceErrors). `js_module_namespace_names` lists a namespace's keys without
+  ambiguous names. The runtime loader (`modules.w`) is unchanged; the Test262
+  adapter runs this static linker for every module test.
+- **Annex B.1.1 and B.1.3.** Sloppy legacy octal literals (`010` is 8) and
+  NonOctalDecimal literals (`08`, `019.5`) evaluate; a legacy octal literal
+  takes no fraction, exponent or BigInt suffix (`07.5` is an error). Strict
+  code still rejects both, and legacy string escapes. `<!--` comments and
+  line-leading `-->` comments (also after a multi-line comment containing a
+  line break) are comments in scripts and SyntaxErrors in modules.
+- **Annex B.3.2-B.3.5 functions.** Sloppy blocks and switch clauses may repeat
+  a plain function name. In sloppy function and script bodies a block-level
+  function also gets a var binding initialized to `undefined`, updated when its
+  declaration is evaluated, unless a parameter, an enclosing let/const/class or
+  an enclosing block function of that name would make `var f` an early error;
+  `if (x) function f() {}` acts as a braced block (`runtime_annexb.w`). Strict
+  code keeps block functions block-scoped. Switch statements and non-simple
+  catch parameters are outside the lowering subset, so those Test262 variants
+  stay UNSUPPORTED.
+- **Function-call assignment targets.** Decision: follow the Annex B web-compat
+  rule for non-strict code. `f() = 1`, `f() += 1`, `f()++`, `--f()` and
+  `for (f() in/of o)` parse in sloppy scripts and evaluate the call, then throw
+  a ReferenceError (the for-in/of form is outside the lowering subset). Strict
+  code and modules keep the ES2020 early SyntaxError; V8 defers those too, so
+  this is a deliberate difference from Node. Optional calls, `new`, tagged
+  templates, `import()` and destructuring targets stay early errors, as in Node.
+
+Tests: `javascript_early_errors_test`, `javascript_module_graph_test`,
+`javascript_runtime_annexb_test`, and the pinned Test262 variants listed in the
+[Test262 profile](../../tests/javascript/test262/README.md).
+
+### RegExp patterns
+
+`libs/extras/javascript/regexp_syntax.w` parses every RegExp literal with the
+ES2020 Pattern grammar (sec-patterns), including Annex B.1.4 for patterns
+without `u`, and reports each early error as a SyntaxError diagnostic:
+
+- Escape values: `\u{...}` above U+10FFFF or malformed, incomplete `\x`/`\u`,
+  `\c` without a control letter, decimal escapes beyond the capture count, `\0`
+  followed by a digit and identity escapes other than syntax characters and `/`
+  are errors with `u`. Without `u`, Annex B reinterprets them as legacy octal,
+  identity or literal-backslash escapes (`/\8/`, `/\101/`, `/\c/`, `/\u{2}/`).
+- Class ranges: out-of-order ranges are always errors; a class escape
+  (`\d`, `\p{...}`) at either end of a range is an error with `u` and makes
+  the `-` literal without it.
+- Named groups: names follow RegExpIdentifierName (Unicode 12.1 ID_Start/
+  ID_Continue, `\u` escapes including surrogate pairs), duplicates are errors,
+  and `\k<name>` must name a group anywhere in the pattern whenever the pattern
+  has a group name or `u`. Without either, `\k` is an identity escape.
+- Unicode property escapes (`u` only): `General_Category`/`gc`, `Script`/`sc`
+  and `Script_Extensions`/`scx` values, lone General_Category values and the
+  ES2020 binary properties, with exact (non-loose) names, pinned to Unicode 12.1
+  PropertyValueAliases. Values added after 12.1 (for example `Script=Kawi`) and
+  the Unicode 13 emoji aliases (`EPres`, ...) are rejected, where Node v20
+  (Unicode 15.1) accepts them.
+- Structure: unbalanced groups/classes, invalid group syntax, quantifiers
+  without an atom, reversed or lone braced quantifiers, quantified lookbehind and
+  (with `u`) quantified lookahead and lone `{`, `}` or `]`.
+
+The `v` flag and later RegExp syntax (modifiers, duplicate names in separate
+alternatives) are outside the ES2020 lexer profile.
+
+The interpreter compiles the same parse tree into a backtracking matcher
+(`regexp_runtime.w`) with the ECMAScript semantics for greedy/lazy and counted
+quantifiers (per-iteration capture reset and empty-iteration checks),
+backreferences (including forward and case-insensitive references), lookahead,
+lookbehind (matched right to left), word boundaries, `m`/`s` line handling,
+`u` code point matching, and `g`/`y` `lastIndex` handling (a `lastIndex` inside a
+surrogate pair starts at the pair, as in V8). `exec` results carry `index`,
+`input` and `groups`. Case-insensitive Canonicalize uses simple case folding
+with `u` and single-unit uppercase mapping without it; both tables are generated
+by `tools/javascript_regexp_case.py` from the vendored Unicode 15.0 UCD files in
+`tools/unicode/` into `regexp_case.w`. Every matcher instruction charges the
+evaluation step budget, so catastrophic backtracking ends with a limit
+completion. Property escapes match `Any`, `ASCII`, `ASCII_Hex_Digit`, `ID_Start`
+and `ID_Continue`; other valid properties need data the runtime does not ship
+and report unsupported during preflight (or from the constructor). Counted
+quantifiers expand to a bounded program; patterns that exceed it are also
+unsupported. String coercion of non-primitive inputs and the String.prototype
+RegExp methods remain outside the runtime subset.
 
 Generic infrastructure and restrictions are documented in
 [ParserGenerator](parser_generator.md): stateful mode is opt-in, lexer guards and
