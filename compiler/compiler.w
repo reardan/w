@@ -1143,7 +1143,7 @@ void help_shared_options():
 	println(c"  --emit=obj            emit an x64 ELF relocatable object (.o) for a system linker")
 	println(c"  --freestanding        with --emit=obj: no W runtime (containers, allocator, startup)")
 	println(c"  --kernel-codegen      with --emit=obj --freestanding: code safe in kernel context")
-	println(c"                        (no floating point/SSE/x87; frame pointers; no red zone)")
+	println(c"                        (no floating point/SSE/x87; discarded reads are performed)")
 	println(c"  --stack-usage         x86/x64: write per-function stack frame sizes to <output>.su")
 	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
 	println(c"  --link=<path>         link a shared library, repeatable")

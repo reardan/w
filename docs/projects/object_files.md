@@ -211,6 +211,10 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   `0x7f0000000000` in user space, where it runs and prints exactly what
   the ordinary link prints. This holds with or without the flag.
 
+- **Discarded reads are performed.** A statement that only reads
+  memory (`*p`, a global, `p[i]`, `s.f`) loads it, as a C volatile read
+  would; see "Memory accesses" below.
+
 ## Stack usage
 
 `--stack-usage` (x86 and x64, any output kind) writes a per-function
@@ -267,19 +271,23 @@ x86/x64 code, with or without `--kernel-codegen`):
   initializer this compilation wrote, loaded as an immediate (O1,
   `const_global_note`): a translator must not mark a C `volatile const`
   object `const`.
-- **Discarded reads (fixed here).** An expression statement that is
-  only a read -- `*p`, `g`, `p[i]`, `a[i]`, `s.f` -- used to compute the
-  address and stop, dropping the load that C's `(void)*p` or a bare
-  `READ_ONCE(x);` performs (a device register read for its side
-  effect). The AST front end now loads it (`statement_ast_bare_read`,
-  `code_generator/statement_ast.w`); assignment, call, increment and
-  cast roots are unchanged, since they already made their accesses.
-  The `--streaming` front end, kept only as a comparison oracle, still
-  drops the load. `tests/memory_access_order_test.w` (x86 and x64)
-  checks that such reads fault on a `PROT_NONE` page while address
-  arithmetic alone does not, that spin loops on a global and on a
-  pointer end when another thread stores, and that narrow stores leave
-  their neighbours intact.
+- **Discarded reads (`--kernel-codegen`).** An expression statement
+  that is only a read -- `*p`, `g`, `p[i]`, `a[i]`, `s.f` -- computes
+  the address and stops, dropping the load that C's `(void)*p` or a
+  bare `READ_ONCE(x);` performs (a device register read for its side
+  effect). Under the flag the AST front end loads it
+  (`statement_ast_bare_read`, `code_generator/statement_ast.w`);
+  assignment, call, increment and cast roots are unchanged, since they
+  already made their accesses. Without the flag the load is still
+  dropped: the `--streaming` front end cannot tell such a root apart
+  and `tests/ast_expression_test.w` requires both front ends to emit
+  identical images, so making it unconditional waits for the streaming
+  front end's retirement. `tests/kernel_codegen_test.w` calls each
+  bare read of `tests/kernel_codegen/reads.w` on a `PROT_NONE` page
+  and requires a fault (address arithmetic alone must not fault);
+  `tests/memory_access_order_test.w` (x86 and x64) checks that spin
+  loops on a global and on a pointer end when another thread stores,
+  and that narrow stores leave their neighbours intact.
 
 Ordering between CPUs is the hardware's: W emits no fences, so a
 kernel's `smp_mb()` and friends remain inline assembly (or calls).

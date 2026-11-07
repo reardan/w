@@ -32,14 +32,17 @@ void ast_expression_note_root(expression_ast* tree, int root);
 # Value-bearing statements own an expression child. Source terminators
 # are checked between value lowering and the final control transfer,
 # retaining the established coercion/diagnostic order.
-# An expression statement that is only a memory read -- '*p', 'g',
-# 'p[i]', 'a[i]' of a fixed array or list, 's.f', 'p.f' -- leaves the location's address in the
-# accumulator; load it anyway. W has no 'volatile': every access the
-# source names happens, so a read whose value is discarded (C's
-# '(void)*p', READ_ONCE(x); on a device register) is still performed,
+# --kernel-codegen: an expression statement that is only a memory read
+# -- '*p', 'g', 'p[i]', 'a[i]' of a fixed array or list, 's.f', 'p.f' --
+# leaves the location's address in the accumulator; load it anyway. W
+# has no 'volatile', so a read whose value is discarded (C's '(void)*p',
+# a bare READ_ONCE(x) of a device register) must still be performed,
 # exactly once. Only integer and pointer locations: a struct or array
 # has no single load, and an assignment, call or increment root has
-# already done its accesses (loading again would add a read).
+# already done its accesses (loading again would add a read). Outside
+# the flag the load is still dropped: the --streaming front end cannot
+# tell such a root apart, and the two must emit identical images
+# (tests/ast_expression_test.w) until it is retired.
 int statement_ast_bare_read(expression_ast* tree, int root, int type):
 	int op = tree.op[root]
 	if ((op != 'v') && (op != 'd') && (op != 'i') && (op != 'I') && (op != 'j') && (op != '.') && (op != 'B')): return 0
@@ -51,7 +54,7 @@ int statement_ast_bare_read(expression_ast* tree, int root, int type):
 
 
 void statement_ast_discarded_read(statement_ast* node, expression_ast* tree, int root):
-	if (node.kind != ast_stmt_expression): return
+	if ((kernel_codegen == 0) || (node.kind != ast_stmt_expression)): return
 	if (statement_ast_bare_read(tree, root, node.expression_type)): promote(node.expression_type)
 
 

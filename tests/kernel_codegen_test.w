@@ -681,6 +681,18 @@ void test_kernel_codegen_stack_usage():
 	kc_reject(c"--stack-usage requires an x86 or x64 target", c"arm64", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", kc_path(c"arm.o"))
 
 
+# A read whose value is discarded still happens under the flag
+# (code_generator/statement_ast.w, statement_ast_bare_read): each of
+# tests/kernel_codegen/reads.w's bare reads faults on a PROT_NONE page,
+# while address arithmetic alone does not.
+void test_kernel_codegen_discarded_reads():
+	char* object = kc_object(c"tests/kernel_codegen/reads.w", c"reads")
+	char* exe = kc_path(c"reads")
+	free(kc_shell(strjoin(strjoin(strjoin(c"cc -o ", exe), c" tests/kernel_codegen/reads_main.c "), object)))
+	char* out = kc_shell(exe)
+	assert_strings_equal(c"reads OK\n", out)
+
+
 void kc_float_reject(char* name, char* body):
 	char* source = kc_path(name)
 	assert_equal(1, file_write_text(source, body))

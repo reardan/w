@@ -6,106 +6,19 @@
 # READ_ONCE/WRITE_ONCE and device registers. These tests pin the
 # observable halves of it:
 #
-# - a read whose value is discarded ('*p', 'g', 'p[i]', 's.f' as a
-#   statement) still happens: on a PROT_NONE page it faults;
 # - a loop condition re-reads a global and a pointer target on every
 #   iteration: another thread's store ends the spin;
 # - narrow stores stay narrow: the neighbouring bytes survive.
+#
+# A read whose value is discarded ('*p' as a statement) is performed
+# under --kernel-codegen; tests/kernel_codegen_test.w checks that.
 import lib.testing
 import lib.thread
 import lib.time
 
 
-struct mao_pair:
-	int first
-	int second
-
-
 int mao_flag
-int mao_global
-int[4] mao_cells
 int* mao_shared
-
-
-# Runs body(page) in a forked child; the child exits 0 when body returns.
-# Returns the child's terminating signal, or 0 when it exited normally.
-type mao_body = fn(char*) -> void
-
-
-int mao_child_signal(mao_body* body, char* page):
-	int pid = fork()
-	if (pid == 0):
-		# the expected fault's crash report is noise here
-		int null_fd = open(c"/dev/null", 1, 0)
-		if (null_fd >= 0): dup2(null_fd, 2)
-		body(page)
-		exit(0)
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	return status & 0x7f
-
-
-char* mao_guard_page():
-	# PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS
-	int page = mmap(0, 4096, 0, 0x22)
-	assert1((page > 0) || (page < -4096))
-	return cast(char*, page)
-
-
-void mao_read_deref(char* page):
-	int* p = cast(int*, page)
-	*p
-
-
-void mao_read_index(char* page):
-	int* p = cast(int*, page)
-	p[3]
-
-
-void mao_read_byte(char* page):
-	page[17]
-
-
-void mao_read_field(char* page):
-	mao_pair* q = cast(mao_pair*, page)
-	q.second
-
-
-void mao_read_cast(char* page):
-	int* p = cast(int*, page)
-	cast(void, *p)
-
-
-void mao_nothing(char* page):
-	int* p = cast(int*, page)
-	int* q = p + 8
-
-
-# Protect the page holding a global, then name the global alone.
-void mao_read_global(char* page):
-	int at = cast(int, &mao_global) & (0 - 4096)
-	assert_equal(0, mprotect(at, 4096, 0))
-	mao_global
-
-
-void mao_read_fixed_array(char* page):
-	int at = cast(int, &mao_cells[2]) & (0 - 4096)
-	assert_equal(0, mprotect(at, 4096, 0))
-	mao_cells[2]
-
-
-void test_discarded_reads_happen():
-	char* page = mao_guard_page()
-	assert_equal(11, mao_child_signal(mao_read_deref, page))
-	assert_equal(11, mao_child_signal(mao_read_index, page))
-	assert_equal(11, mao_child_signal(mao_read_byte, page))
-	assert_equal(11, mao_child_signal(mao_read_field, page))
-	assert_equal(11, mao_child_signal(mao_read_cast, page))
-	assert_equal(11, mao_child_signal(mao_read_global, page))
-	assert_equal(11, mao_child_signal(mao_read_fixed_array, page))
-	# address arithmetic alone touches nothing
-	assert_equal(0, mao_child_signal(mao_nothing, page))
-	munmap(cast(int, page), 4096)
 
 
 void mao_set_flag(void* arg):
