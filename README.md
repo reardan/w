@@ -797,5 +797,6 @@ source-generator executables have a `_native` suffix. Explicit architecture
 selectors and the default architecture of ordinary programs/tests remain
 unchanged. For example, `WBUILD_HOST=linux-x64 ./wbuild --no-cache grapheme_data`
 compiles and executes a native generator, while `./wbuild grapheme_data` keeps
-the default host path. `./wbuild linux_native_host_test` checks native generators,
+the default host path. `WBUILD_HOST=linux-x64 ./wbuild tests_native_host` is the dedicated CI
+qualification suite. `./wbuild linux_native_host_test` checks native generators,
 fixpoint verification, cache input invalidation and preservation of `bin/wv2`.

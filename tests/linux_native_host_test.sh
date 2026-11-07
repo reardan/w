@@ -2,10 +2,15 @@
 # Opt-in native host regression: generators, freshness, fixpoint and cache inputs.
 set -eu
 case "$(uname -s)-$(uname -m)" in Linux-x86_64) ;; *) exit 0 ;; esac
-original=$(sha256sum bin/wv2 | cut -d' ' -f1)
+original=absent
+if [ -f bin/wv2 ]; then original=$(sha256sum bin/wv2 | cut -d' ' -f1); fi
 WBUILD_HOST=linux-x64 ./wbuild verify --no-cache grapheme_data >/dev/null
 file bin/wv2_native bin/wexec_native bin/generate_grapheme_data_native | awk '/ELF 64-bit/{n++} END {exit n != 3}'
-[ "$original" = "$(sha256sum bin/wv2 | cut -d' ' -f1)" ]
+if [ "$original" = absent ]; then
+  [ ! -e bin/wv2 ]
+else
+  [ "$original" = "$(sha256sum bin/wv2 | cut -d' ' -f1)" ]
+fi
 fixture=$(mktemp -d bin/native-cache-XXXXXX)
 trap 'rm -rf "$fixture"' EXIT HUP INT TERM
 printf first > "$fixture/input"
