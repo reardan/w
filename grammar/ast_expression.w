@@ -2600,6 +2600,9 @@ int ast_expression_unary(expression_ast* tree, int depth):
 # Resumed chunks retain the closing brace's source offset; replay uses
 # that event to resume the template tokenizer at exactly the same byte.
 int ast_expression_template(expression_ast* tree, int depth):
+	# A body holding one is not inlined, as template_string_literal
+	# rules for the streaming grammar (unit A5; reardan/w#886)
+	inline_hazard_count = inline_hazard_count + 1
 	int root = expression_ast_add(tree, 'E', -1, -1)
 	if (root < 0): return -1
 	tree.result_type[root] = string_literal_type
