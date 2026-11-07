@@ -10,6 +10,8 @@ extern long __w_table_start[], __w_table_end[];
 long init_level1(long);
 long weak_hook(long);
 long call_hook(long);
+long call_swap(long, long);
+struct pair { long a, b; };
 long real(long);
 long real_alias(long);
 long call_alias(long);
@@ -25,9 +27,12 @@ long c_scale(long x) { return x * 10; }
 
 #ifdef STRONG
 long weak_hook(long x) { return x + 9; }
+struct pair weak_swap(struct pair p, long bias) { struct pair q = { p.b + 2 * bias, p.a + 2 * bias }; return q; }
 #define HOOK 9
+#define BIAS 2
 #else
 #define HOOK 5
+#define BIAS 1
 #endif
 
 static int failures;
@@ -48,7 +53,8 @@ int main(void) {
 	check("table", __w_table_end - __w_table_start, 2);
 	check("table sum", __w_table_start[0] + __w_table_start[1], 42);
 	check("weak from C", weak_hook(1), 1 + HOOK);
-	check("weak through a W pointer", call_hook(1), (1 + HOOK) * 1000 + 6);
+	check("weak from W", call_hook(1), (1 + HOOK) * 1000 + (1 + HOOK) * 10 + 1 + 2 * HOOK);
+	check("weak declared before its W callers", call_swap(3, 4), (4 + BIAS) * 100 + 3 + BIAS);
 	check("alias from C", real_alias(4), 12);
 	check("alias address", real_alias == real, 1);
 	check("alias from W", call_alias(4), 24);

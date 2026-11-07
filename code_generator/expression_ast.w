@@ -1050,6 +1050,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		else if (target_isa == 3): gpu_sym_get_value(name)
 		# --c-abi: a function's name as a value is its System V entry
 		else if (c_abi_mode && (op == 'v') && (load_int(table + sym + 10) == 2)): c_abi_function_value(sym, name)
+		else if ((direct == 0) && (op == 'C') && c_abi_calls_through_symbol(sym)): c_abi_function_value(sym, name)
 		else if (direct == 0): sym_emit_value(sym, name)
 		if (op == 'X'):
 			int s = stack_pos

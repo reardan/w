@@ -386,7 +386,8 @@ int rt_call_begin(char* fn):
 		direct_call_record(s, 1, t)
 		return s
 	if (t < 0): sym_not_found_error(fn)
-	sym_emit_value(t, fn)
+	if (c_abi_calls_through_symbol(t)): c_abi_function_value(t, fn)
+	else: sym_emit_value(t, fn)
 	push_slot()
 	direct_call_record(s, 0, 0)
 	return s

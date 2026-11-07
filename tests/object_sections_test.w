@@ -206,6 +206,19 @@ void test_sections_c_abi():
 		char* out = sections_shell(exe)
 		assert_contains(out, c"object sections c-abi OK")
 		free(out)
+	# The streaming front end binds weak calls through the symbol too.
+	sections_compile(c"x64", c"--streaming", c"--emit=obj", c"--freestanding", c"--c-abi", c"tests/object_sections/c_abi_library.w", c"-o", object)
+	char* streaming = sections_path(c"c_abi_host_streaming")
+	string_builder* streaming_cmd = string_new()
+	string_append(streaming_cmd, c"cc -DSTRONG -o ")
+	string_append(streaming_cmd, streaming)
+	string_append(streaming_cmd, c" tests/object_sections/c_abi_main.c ")
+	string_append(streaming_cmd, object)
+	string_append(streaming_cmd, c" -Wl,-T,tests/object_sections/sections.ld")
+	free(sections_shell(streaming_cmd.data))
+	char* streaming_out = sections_shell(streaming)
+	assert_contains(streaming_out, c"object sections c-abi OK")
+	free(streaming_out)
 	free(object)
 
 

@@ -223,6 +223,11 @@ int object_name_is_weak(char* name):
 	return object_name_in(object_weak_names, name)
 
 
+int object_weak_count():
+	if (object_records_ready == 0): return 0
+	return object_weak_names.length
+
+
 # An '@alias("target")' declaration (symbol t, named name): the W symbol
 # is defined at the target's address as soon as the target is defined
 # (object_alias_defined, called by sym_define_global_at), so W code may
