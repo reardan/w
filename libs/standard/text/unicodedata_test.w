@@ -22,7 +22,9 @@
 #                      composition exclusions, non-starter decompositions
 #                      and compatibility forms from Part 1 plus a random
 #                      sample of it, every 14th row of Part 2 (canonical
-#                      ordering) and every other row of Part 3.
+#                      ordering) and every other row of Part 3. Every
+#                      row is unchanged in NormalizationTest-18.0.0.txt,
+#                      all of which the library also passes.
 import lib.testing
 import lib.str
 import libs.standard.text.unicodedata
