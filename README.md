@@ -784,3 +784,18 @@ seeds — is `docs/release.md`.
 
 See `docs/todo.txt` for the running working/missing inventory and
 `docs/done.txt` for history.
+
+### Native Linux x64 host tools
+
+`WBUILD_HOST=linux-x64 ./wbuild verify` opts into an x64 compiler, executor,
+and source generators. The first invocation bootstraps from the pinned x86
+seed, so provision it on a host that permits that seed before entering a
+sandbox that blocks x86 execution. Warm runs refresh native binaries using
+content hashes and verify `wv3_native == wv4_native == wv5_native`.
+`bin/wv2_native` and `bin/wexec_native` are separate from the default binaries;
+source-generator executables have a `_native` suffix. Explicit architecture
+selectors and the default architecture of ordinary programs/tests remain
+unchanged. For example, `WBUILD_HOST=linux-x64 ./wbuild --no-cache grapheme_data`
+compiles and executes a native generator, while `./wbuild grapheme_data` keeps
+the default host path. `./wbuild linux_native_host_test` checks native generators,
+fixpoint verification, cache input invalidation and preservation of `bin/wv2`.

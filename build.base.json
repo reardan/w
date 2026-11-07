@@ -536,6 +536,124 @@
 			"deps": [
 				"bench_report"
 			]
-		}
-	]
+		},
+    {
+      "name": "wv2_native",
+      "inputs": [
+        "w.w",
+        "compiler/",
+        "grammar/",
+        "code_generator/",
+        "lib/",
+        "structures/",
+        "libs/",
+        "debugger/",
+        "SEEDS"
+      ],
+      "outputs": [
+        "bin/wv2_native"
+      ],
+      "steps": [
+        {
+          "cmd": [
+            "bin/wv2_native",
+            "--strict",
+            "x64",
+            "w.w",
+            "-o",
+            "bin/wv2_native"
+          ],
+          "atomic_output": "bin/wv2_native"
+        }
+      ]
+    },
+    {
+      "name": "wexec_native",
+      "deps": [
+        "wv2_native"
+      ],
+      "inputs": [
+        "tools/", "lib/", "libs/", "structures/", "compiler/", "grammar/", "code_generator/", "debugger/"
+      ],
+      "outputs": [
+        "bin/wexec_native"
+      ],
+      "steps": [
+        {
+          "cmd": [
+            "bin/wv2_native",
+            "--strict",
+            "x64",
+            "tools/wexec_main.w",
+            "-o",
+            "bin/wexec_native"
+          ],
+          "atomic_output": "bin/wexec_native"
+        }
+      ]
+    },
+    {
+      "name": "build_native",
+      "deps": [
+        "wv2_native"
+      ],
+      "steps": [
+        {
+          "cmd": [
+            "bin/wv2_native",
+            "--strict",
+            "x64",
+            "w.w",
+            "-o",
+            "bin/wv3_native"
+          ],
+          "atomic_output": "bin/wv3_native"
+        },
+        {
+          "cmd": [
+            "bin/wv3_native",
+            "--strict",
+            "x64",
+            "w.w",
+            "-o",
+            "bin/wv4_native"
+          ],
+          "atomic_output": "bin/wv4_native"
+        },
+        {
+          "cmd": [
+            "bin/wv4_native",
+            "--strict",
+            "x64",
+            "w.w",
+            "-o",
+            "bin/wv5_native"
+          ],
+          "atomic_output": "bin/wv5_native"
+        }
+      ]
+    },
+    {
+      "name": "verify_native",
+      "deps": [
+        "build_native"
+      ],
+      "steps": [
+        {
+          "cmd": [
+            "cmp",
+            "bin/wv3_native",
+            "bin/wv4_native"
+          ]
+        },
+        {
+          "cmd": [
+            "cmp",
+            "bin/wv4_native",
+            "bin/wv5_native"
+          ]
+        }
+      ]
+    }
+  ]
 }
