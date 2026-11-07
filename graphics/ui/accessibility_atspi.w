@@ -1082,53 +1082,13 @@ int ui_atspi_select_text(ui_atspi_bridge* b, ui_access_node* n, int start, int e
 
 # Replace selection k of a node that takes several with [start, end)
 # (k == the current count adds one; start < 0 removes k), queued as one
-# UI_ACCESS_SET_SELECTIONS whose first pair keeps the primary anchor and
-# caret.
+# UI_ACCESS_SET_SELECTIONS (ui_access_selections_edit).
 int ui_atspi_edit_selections(ui_atspi_bridge* b, ui_access_node* n, int k, int start, int end):
-	int count = ui_atspi_char_count(&n.value)
-	if ((start > count) || (end > count) || ((start >= 0) && (end < 0))): return 0
-	int total = ui_access_selection_total(n)
-	int* pairs = cast(int*, malloc((total + 2) * 2 * __word_size__))
-	int used = 0
-	# The primary pair: anchor then caret, or the bare caret when the
-	# primary selection is empty or replaced away.
-	int caret = ui_atspi_caret(n)
-	int first = 0
-	pairs[0] = caret
-	pairs[1] = caret
-	used = 1
-	if (ui_access_has_selection(n)):
-		first = 1
-		if (k != 0):
-			int anchor = n.selection_start
-			if (caret == n.selection_start): anchor = n.selection_end
-			pairs[0] = anchor
-			pairs[1] = caret
-		else if (start >= 0):
-			pairs[0] = start
-			pairs[1] = end
-	for i in range(first, total):
-		if (i == k):
-			if (start >= 0):
-				pairs[used * 2] = start
-				pairs[used * 2 + 1] = end
-				used = used + 1
-		else:
-			int s = 0
-			int e = 0
-			ui_access_selection_range(n, i, &s, &e)
-			pairs[used * 2] = s
-			pairs[used * 2 + 1] = e
-			used = used + 1
-	if ((k == total) && (start >= 0)):
-		pairs[used * 2] = start
-		pairs[used * 2 + 1] = end
-		used = used + 1
-	char* payload = cast(char*, malloc(used * 24 + 1))
-	int length = ui_access_selections_format(payload, pairs, used)
+	char* payload = 0
+	int length = ui_access_selections_edit(n, k, start, end, &payload)
+	if (length <= 0): return 0
 	int ok = ui_atspi_enqueue(b, n, UI_ACCESS_SET_SELECTIONS, payload, length)
 	free(payload)
-	free(cast(char*, pairs))
 	return ok
 
 

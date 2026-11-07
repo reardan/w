@@ -179,3 +179,59 @@ int ui_access_rgb(float32 r, float32 g, float32 b):
 	if (gi > 255): gi = 255
 	if (bi > 255): bi = 255
 	return (ri << 16) | (gi << 8) | bi
+
+
+# The caret: n's caret offset, 0 when it shows none.
+int ui_access_caret_or_zero(ui_access_node* n):
+	if (n.caret < 0): return 0
+	return n.caret
+
+
+# The UI_ACCESS_SET_SELECTIONS payload that replaces selection k of n
+# (ui_access_selection_range order) with [start, end): k equal to the
+# current count adds one, start < 0 removes selection k. The first pair
+# keeps the primary selection's anchor and caret (or is the bare caret
+# when the primary is empty or removed). Stores a fresh payload in *out
+# and returns its length; 0 for an out-of-range request.
+int ui_access_selections_edit(ui_access_node* n, int k, int start, int end, char** out):
+	out[0] = 0
+	int count = ui_access_text_count(n)
+	int total = ui_access_selection_total(n)
+	if ((k < 0) || (k > total) || (start > count) || (end > count) || ((start >= 0) && (end < start))): return 0
+	if ((start < 0) && (k == total)): return 0
+	int* pairs = cast(int*, malloc((total + 2) * 2 * __word_size__))
+	int caret = ui_access_caret_or_zero(n)
+	int first = 0
+	pairs[0] = caret
+	pairs[1] = caret
+	int used = 1
+	if (ui_access_has_selection(n)):
+		first = 1
+		if (k != 0):
+			int anchor = n.selection_start
+			if (caret == n.selection_start): anchor = n.selection_end
+			pairs[0] = anchor
+			pairs[1] = caret
+		else if (start >= 0):
+			pairs[0] = start
+			pairs[1] = end
+	for i in range(first, total):
+		int s = 0
+		int e = 0
+		ui_access_selection_range(n, i, &s, &e)
+		if (i == k):
+			s = start
+			e = end
+		if (s >= 0):
+			pairs[used * 2] = s
+			pairs[used * 2 + 1] = e
+			used = used + 1
+	if ((k == total) && (start >= 0)):
+		pairs[used * 2] = start
+		pairs[used * 2 + 1] = end
+		used = used + 1
+	char* payload = cast(char*, malloc(used * 24 + 1))
+	int length = ui_access_selections_format(payload, pairs, used)
+	free(cast(char*, pairs))
+	out[0] = payload
+	return length
