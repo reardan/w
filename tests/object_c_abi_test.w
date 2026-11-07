@@ -192,6 +192,8 @@ void test_c_abi_rejections():
 	abi_compile(c"x64", c"check", abi_path(c"variadic.w"))
 	abi_write(c"unsized.w", c"extern int32[] numbers\n\nint main():\n\treturn numbers[0]\n")
 	abi_reject(c"extern array 'numbers' has no length: an unsized extern array needs --emit=obj", c"x64", abi_path(c"unsized.w"), c"-o", abi_path(c"rejected"))
+	abi_write(c"unsized_check.w", c"c_lib \"libc.so.6\"\nextern int32[] numbers\n\nint main():\n\treturn numbers[0]\n")
+	abi_compile(c"x64", c"check", abi_path(c"unsized_check.w"))
 	# the compiler's asm runtime stubs have no System V entry
 	abi_reject_source(c"int* take():\n\treturn cast(int*, syscall)\n", c"--c-abi cannot take the address of 'syscall': it has no System V entry")
 	abi_reject_source(c"static export int f(int a):\n\treturn a\n", c"'static' must be followed by a function or global definition")

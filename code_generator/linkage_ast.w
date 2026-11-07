@@ -20,7 +20,8 @@ void extern_object_import(int sym, int address, int size, char* name):
 # symbol of its own), so indexing it is unchecked pointer indexing and
 # its value is the array's address, as in C.
 void extern_unsized_array(int sym, int element_type, char* name):
-	if ((elf_object == 0) || (data_split == 0)):
+	# ('w check' keeps no code: it accepts the form anywhere)
+	if (((elf_object == 0) || (data_split == 0)) && (c_abi_check_only == 0)):
 		error3(c"extern array '", name, c"' has no length: an unsized extern array needs --emit=obj")
 	if (type_has_array_field(element_type)):
 		error3(c"extern array '", name, c"' needs elements without nested array headers")

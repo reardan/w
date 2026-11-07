@@ -64,7 +64,7 @@ map[int, int] object_extern_pointer_symbols
 
 
 # 1 under 'w check' (no code is kept): C-variadic definitions need no
-# --c-abi there.
+# --c-abi there, unsized extern arrays no --emit=obj.
 int c_abi_check_only
 
 
