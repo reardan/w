@@ -16,12 +16,15 @@ function_expression(optional name) = parameters, block;
 arrow = parameters, expression-or-block; for_of(let/const) = identifier, iterable, body;
 try = block, catch-or-empty, finally-block-or-empty; catch(name) = block;
 string_utf16 owns explicit code units in string_units;
-import(specifier) = [default-binding]; call = callee, arguments...;
+import(specifier) = [default-binding] [namespace|named]; call = callee, arguments...;
 member/computed_member = receiver, property; property(key) = value;
 template = template_text(raw spelling) and expression children.
 property_shorthand(name) preserves shorthand (notably __proto__). The
 string_non_directive("use strict") node retains an escaped spelling so
 printing does not turn an ordinary string into a strict-mode directive.
+Classes, async/generator functions, methods/accessors, computed keys,
+patterns, switch/with/for-in, module declarations and the other lowered
+kinds are tabulated in docs/projects/javascript.md ("Build and lower ASTs").
 */
 import libs.extras.javascript.ast
 import libs.extras.javascript.lexical
