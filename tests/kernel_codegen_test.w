@@ -78,6 +78,21 @@ char* kc_object(char* source, char* name):
 	return object
 
 
+# The same, with --c-abi when c_abi is set (System V entry stubs and
+# adapters for every function, System V function pointers).
+char* kc_object_mode(char* source, char* name, int c_abi):
+	if (c_abi == 0): return kc_object(source, name)
+	char* object = kc_path(strjoin(name, c"_c_abi.o"))
+	kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--c-abi", source, c"-o", object)
+	return object
+
+
+# "<name>" or "<name>_c_abi".
+char* kc_mode_name(char* name, int c_abi):
+	if (c_abi): return strjoin(name, c"_c_abi")
+	return name
+
+
 # Link object(s) with the bare startup into a static executable.
 char* kc_link(char* name, char* objects):
 	char* exe = kc_path(name)
@@ -179,8 +194,11 @@ int kc_trace(char* exe, char* out_path, int clobber):
 		insn[0] = 0
 		insn[1] = 0
 		sys_pread(mem, &insn[0], 16, rip)
-		int op = insn[0] & 255
-		int modrm = insn[1] & 255
+		# a REX prefix ('call r11' is 41 ff d3) precedes the opcode
+		int k = 0
+		if (((insn[0] & 255) >= 0x40) && ((insn[0] & 255) <= 0x4f)): k = 1
+		int op = insn[k] & 255
+		int modrm = insn[k + 1] & 255
 		int is_call = (op == 0xe8) || ((op == 0xff) && (((modrm >> 3) & 7) == 2))
 		int is_ret = op == 0xc3
 		assert_equal(0, sys_ptrace(9, pid, 0, 0))   # PTRACE_SINGLESTEP
@@ -223,14 +241,17 @@ char* kc_run_traced(char* exe, int clobber):
 	return out
 
 
+# Both conventions: W's own and --c-abi (whose entry stubs, adapters
+# and System V function-pointer calls are then on every path).
 void test_kernel_codegen_red_zone():
-	char* object = kc_object(c"tests/kernel_codegen/corpus.w", c"corpus")
-	char* exe = kc_link(c"corpus", object)
-	char* plain = kc_shell(exe)
-	assert1(strlen(plain) > 1)
-	char* traced = kc_run_traced(exe, 1)
-	assert_strings_equal(plain, traced)
-	assert1(kc_steps > 10000)
+	for c_abi in range(2):
+		char* object = kc_object_mode(c"tests/kernel_codegen/corpus.w", c"corpus", c_abi)
+		char* exe = kc_link(kc_mode_name(c"corpus", c_abi), object)
+		char* plain = kc_shell(exe)
+		assert1(strlen(plain) > 1)
+		char* traced = kc_run_traced(exe, 1)
+		assert_strings_equal(plain, traced)
+		assert1(kc_steps > 10000)
 
 
 # The control: a C leaf compiled with the red zone keeps its locals
@@ -254,10 +275,10 @@ void test_kernel_codegen_red_zone_control():
 
 
 ########################### the disassembly scan ###########################
-# objdump decodes .text linearly, but W keeps some literal bytes in
-# .text (string bytes after a function, or behind a 'jmp'; moving them
-# out is the section-placement work), which the decoder reads as
-# garbage. Code after an unconditional 'ret'/'jmp'/'ud2' is reachable
+# objdump decodes .text linearly. String literals now live in .rodata,
+# but some data still sits in .text -- tables emitted after a function
+# and descriptor blobs behind a 'jmp' or 'call' -- which the decoder
+# reads as garbage. Code after an unconditional 'ret'/'jmp'/'ud2' is reachable
 # only as a branch or call target or a symbol, so the scan skips lines
 # from such a terminator until one of those addresses; when the decoder
 # steps over that address (desynchronized by the data), objdump is
@@ -401,7 +422,7 @@ int kc_scan(char* object, int* count_out, list[int] calls):
 				println2(strjoin(strjoin(strjoin(strjoin(object, c": "), problem), c": "), line))
 				problems = problems + 1
 			if (kc_terminator(text)): live = 0
-			# A forward 'call T' or 'jmp T' over literal bytes: the call
+			# A forward 'call T' or 'jmp T' over inline data: the call
 			# form pushes the bytes' address and lands on a 'pop'. A target
 			# the decoder never reached is data in between (restart there).
 			int target = kc_branch_target(text)
@@ -440,6 +461,11 @@ void test_kernel_codegen_no_fpu_instructions():
 		assert1(count > 50)
 		total = total + count
 	assert1(total > 20000)
+	# the --c-abi entry stubs, adapters and function-pointer calls
+	char* object = kc_object_mode(sources[0], c"scan", 1)
+	int count = 0
+	assert_equal(0, kc_scan(object, &count, 0))
+	assert1(count > 1000)
 
 
 # The scan's control: the same kind of object built without the flag
@@ -488,13 +514,20 @@ int kc_framed(char* text, int size, int at):
 # function symbol except the built-in assembly stubs. The run-time half
 # is kc_c_unwind in tests/kernel_codegen/start.c, which walks the chain
 # from C through W frames back to _start and checks every return address.
-void test_kernel_codegen_frame_pointers():
-	char* object = kc_object(c"tests/kernel_codegen/corpus.w", c"frames")
+# A --c-abi entry stub is 'jmp rel32' to the adapter, which carries
+# the frame; anything else is the function itself.
+int kc_through_entry_stub(char* text, int size, int at):
+	if ((at < 0) || (at + 5 > size) || ((text[at] & 255) != 0xe9)): return at
+	return at + 5 + load_int32(text + at + 1)
+
+
+void kc_check_frames(int c_abi):
+	char* object = kc_object_mode(c"tests/kernel_codegen/corpus.w", c"frames", c_abi)
 	list[int] calls = new list[int]
 	int count = 0
 	assert_equal(0, kc_scan(object, &count, calls))
 	assert1(calls.length > 20)
-	char* raw = kc_path(c"frames.text")
+	char* raw = strjoin(object, c".text")
 	free(kc_shell(strjoin(strjoin(strjoin(c"objcopy -O binary --only-section=.text ", object), c" "), raw)))
 	int size = 0
 	char* text = kc_read(raw, &size)
@@ -511,22 +544,27 @@ void test_kernel_codegen_frame_pointers():
 		if (kc_is_asm_stub(name)):
 			stubs[at] = 1
 			continue
-		if (kc_framed(text, size, at) == 0):
+		if (kc_framed(text, size, kc_through_entry_stub(text, size, at)) == 0):
 			println2(strjoin(c"unframed function ", name))
 			assert1(0)
 		functions = functions + 1
 	for int target in calls:
 		# thread_create's call into stack_create stays inside the stubs
 		if (stubs.get(target, 0)): continue
-		if (kc_framed(text, size, target) == 0):
+		if (kc_framed(text, size, kc_through_entry_stub(text, size, target)) == 0):
 			println2(strjoin(c"unframed call target at .text+", itoa(target)))
 			assert1(0)
 	assert1(functions > 12)
 	# the linked corpus: the chain walk found every W frame well formed
-	char* exe = kc_link(c"frames", object)
+	char* exe = kc_link(kc_mode_name(c"frames", c_abi), object)
 	char* out = kc_shell(exe)
 	assert_lacks(out, c"bad frame chain")
 	assert_contains(out, c"frames 09")
+
+
+void test_kernel_codegen_frame_pointers():
+	kc_check_frames(0)
+	kc_check_frames(1)
 
 
 # The address nm reports for symbol name in exe.
@@ -581,8 +619,8 @@ int kc_data_word(char* exe, int addr):
 # overflow. Linked at the kernel's own base the pointer words hold the
 # kernel addresses; linked high in user space the corpus runs and
 # prints what the plain build prints.
-void test_kernel_codegen_code_model():
-	char* object = kc_object(c"tests/kernel_codegen/corpus.w", c"model")
+void kc_check_code_model(int c_abi):
+	char* object = kc_object_mode(c"tests/kernel_codegen/corpus.w", c"model", c_abi)
 	char* relocs = kc_shell(strjoin(c"readelf -rW ", object))
 	list[char*] lines = kc_lines(relocs)
 	int seen = 0
@@ -598,7 +636,7 @@ void test_kernel_codegen_code_model():
 	char* flags = c" -O1 -mno-red-zone -fno-omit-frame-pointer -fno-stack-protector -fno-asynchronous-unwind-tables -c -o "
 	char* kernel_start = kc_path(c"start_kernel.o")
 	free(kc_shell(strjoin(strjoin(strjoin(c"cc -mcmodel=kernel -fno-pie", flags), kernel_start), c" tests/kernel_codegen/start.c")))
-	char* kernel = kc_path(c"kernel.elf")
+	char* kernel = kc_path(kc_mode_name(c"kernel.elf", c_abi))
 	string_builder* cmd = string_new()
 	string_append(cmd, c"ld -nostdlib -static -e _start -Ttext-segment=0xffffffff80000000 -o ")
 	string_append(cmd, kernel)
@@ -614,7 +652,7 @@ void test_kernel_codegen_code_model():
 	# the same object above 4GB in user space runs unchanged
 	char* high_start = kc_path(c"start_high.o")
 	free(kc_shell(strjoin(strjoin(strjoin(c"cc -fpie", flags), high_start), c" tests/kernel_codegen/start.c")))
-	char* high = kc_path(c"high.elf")
+	char* high = kc_path(kc_mode_name(c"high.elf", c_abi))
 	cmd = string_new()
 	string_append(cmd, c"ld -nostdlib -static -e _start -Ttext-segment=0x7f0000000000 -o ")
 	string_append(cmd, high)
@@ -624,8 +662,13 @@ void test_kernel_codegen_code_model():
 	string_append(cmd, object)
 	free(kc_shell(cmd.data))
 	assert1(kc_symbol_address(high, c"kc_main") > (0x7f00 << 32))
-	char* expected = kc_shell(kc_link(c"model_low", object))
+	char* expected = kc_shell(kc_link(kc_mode_name(c"model_low", c_abi), object))
 	assert_strings_equal(expected, kc_shell(high))
+
+
+void test_kernel_codegen_code_model():
+	kc_check_code_model(0)
+	kc_check_code_model(1)
 
 
 # The entry of report line "file:L:C:name<TAB>bytes<TAB>static" for name
@@ -640,23 +683,42 @@ int kc_report_bytes(list[char*] report, char* name):
 	return -1
 
 
-# --stack-usage: the report covers every W function, adapter and shim,
-# and no function ever goes deeper than its entry says. The stepper
-# measures each function's deepest stack use (callees excluded) in the
-# linked corpus; every function with a symbol of its own is checked.
-void test_kernel_codegen_stack_usage():
+# measured <= reported for the function entered at addr, if it ran.
+int kc_check_depth(char* name, int addr, int reported):
+	if (reported < 0): return 0
+	for i in range(kc_entry_count):
+		if (kc_entry_addr[i] == addr):
+			if (kc_entry_depth[i] > reported):
+				println2(strjoin(strjoin(strjoin(strjoin(name, c": measured "), itoa(kc_entry_depth[i])), c" > reported "), itoa(reported)))
+				assert1(0)
+			return 1
+	return 0
+
+
+void kc_check_stack_usage(int c_abi):
 	char* object = kc_path(c"usage.o")
-	kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", object)
-	char* text = file_read_text(kc_path(c"usage.su"))
+	char* su = kc_path(c"usage.su")
+	if (c_abi):
+		object = kc_path(c"usage_c_abi.o")
+		su = kc_path(c"usage_c_abi.su")
+		kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--c-abi", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", object)
+	else: kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", object)
+	char* text = file_read_text(su)
 	assert1(text != 0)
 	list[char*] report = kc_lines(text)
 	assert_contains(report[0], c"corpus.w:")
 	assert_contains(text, c"static")
-	assert1(kc_report_bytes(report, c"kc_main [adapter]") > 0)
 	assert1(kc_report_bytes(report, c"kc_c_mix [c-call]") > 0)
+	# --c-abi: every function's System V adapter, which also serves exports
+	if (c_abi):
+		assert1(kc_report_bytes(report, c"kc_add [c-abi]") > 0)
+		assert1(kc_report_bytes(report, c"kc_main [c-abi]") > 0)
+	else:
+		assert1(kc_report_bytes(report, c"kc_main [adapter]") > 0)
+		assert_equal(-1, kc_report_bytes(report, c"kc_add [c-abi]"))
 	# a 64-byte local buffer and eight 2-byte ones
 	assert1(kc_report_bytes(report, c"kc_bytes") >= 64 + 16 + 16)
-	char* exe = kc_link(c"usage", object)
+	char* exe = kc_link(kc_mode_name(c"usage", c_abi), object)
 	char* plain = kc_shell(exe)
 	assert_strings_equal(plain, kc_run_traced(exe, 0))
 	char* symbols = kc_shell(strjoin(c"nm ", exe))
@@ -667,17 +729,26 @@ void test_kernel_codegen_stack_usage():
 		int n = 0
 		int at = kc_hex(line, &n)
 		char* name = line + 19
-		int reported = kc_report_bytes(report, name)
-		if ((line[17] == 'T') && (kc_report_bytes(report, strjoin(name, c" [adapter]")) > 0)):
-			reported = kc_report_bytes(report, strjoin(name, c" [adapter]"))
-		if (reported < 0): continue
-		for i in range(kc_entry_count):
-			if (kc_entry_addr[i] == at):
-				if (kc_entry_depth[i] > reported):
-					println2(strjoin(strjoin(strjoin(strjoin(name, c": measured "), itoa(kc_entry_depth[i])), c" > reported "), itoa(reported)))
-					assert1(0)
-				checked = checked + 1
+		# a symbol at a --c-abi entry stub: the stub's jmp lands in the
+		# adapter, and W callers enter the body 5 bytes on
+		int adapter = kc_report_bytes(report, strjoin(name, c" [c-abi]"))
+		if (adapter < 0): adapter = kc_report_bytes(report, strjoin(name, c" [adapter]"))
+		int body = kc_report_bytes(report, name)
+		if (adapter >= 0):
+			checked = checked + kc_check_depth(name, at, adapter)
+			if (c_abi): checked = checked + kc_check_depth(name, at + 5, body)
+		else: checked = checked + kc_check_depth(name, at, body)
 	assert1(checked >= 12)
+
+
+# --stack-usage: the report covers every W function, adapter and shim,
+# and no function ever goes deeper than its entry says. The stepper
+# measures each function's deepest stack use (callees excluded) in the
+# linked corpus; every function with a symbol of its own is checked, in both
+# conventions.
+void test_kernel_codegen_stack_usage():
+	kc_check_stack_usage(0)
+	kc_check_stack_usage(1)
 	kc_reject(c"--stack-usage requires an x86 or x64 target", c"arm64", c"--stack-usage", c"tests/kernel_codegen/corpus.w", c"-o", kc_path(c"arm.o"))
 
 
@@ -709,6 +780,10 @@ void test_kernel_codegen_rejects_float():
 	kc_float_reject(c"f4.w", c"export int f(float64 x):\n\treturn 1\n")
 	kc_float_reject(c"f5.w", c"extern float64 cf(int x)\nexport int f(int x):\n\treturn 1\n")
 	kc_float_reject(c"f6.w", c"int g(int x):\n\treturn cast(int, cast(float32, x))\n")
+	# a --c-abi adapter would move a float argument out of xmm0
+	char* source = kc_path(c"f7.w")
+	assert_equal(1, file_write_text(source, c"int g(float64 x):\n\treturn 1\n"))
+	kc_reject(c"floating point is not allowed with --kernel-codegen", c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--c-abi", source, c"-o", kc_path(c"rejected.o"))
 
 
 void test_kernel_codegen_mode_rejections():

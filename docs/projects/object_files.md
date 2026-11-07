@@ -46,7 +46,7 @@ long w_add(long a, long b);
   A W `int` is 64 bits on x64 (C `long`/`int64_t`). Variadic exports
   and struct arguments or returns by value are rejected.
 - **Symbols.** Exported adapters and globals declared in the
-  command-line root files are `GLOBAL`. `extern` functions and data
+  command-line root files (unless marked `static`) are `GLOBAL`. `extern` functions and data
   objects are undefined `GLOBAL` symbols. All other W functions and
   globals — including everything from imported modules and the runtime —
   are `LOCAL`, so two W objects (each with its own runtime) do not clash.
@@ -60,7 +60,77 @@ long w_add(long a, long b);
   before or after) and `char* s = c"text"`. They work in every native
   executable too (`tests/global_address_init_test.w`). A function
   pointer stored this way holds the W-convention entry, so it is for W
-  callers; C should call exported functions by name.
+  callers; C should call exported functions by name. `--c-abi` (below)
+  makes every function pointer a System V one.
+- **File-local symbols.** `static` before a function or global
+  definition (`static int helper(int a):`, `static int count = 0`)
+  keeps it a `LOCAL` symbol even in a root file, like C's `static`.
+  It is contextual like `export` (a type or symbol named `static`
+  keeps the identifier meaning), and other outputs accept and ignore
+  it, so one source compiles everywhere.
+
+## The C ABI mode
+
+`--c-abi` (with `--emit=obj --freestanding`, x64 only) makes the
+object usable as C code is: assembly and C call any of its functions
+by name, store their addresses in tables, and hand W their own
+function pointers.
+
+```sh
+./bin/wv2 x64 --emit=obj --freestanding --c-abi lib.w -o lib.o
+```
+
+`tests/object_c_abi_test.w` links `tests/object_file/c_abi_library.w`
+with `tests/object_file/c_abi_main.c` (PIE, `-no-pie`, `-static`, and
+under the AST, streaming and `-O0` front-end modes), and checks the
+symbol bindings and the diagnostics.
+
+- **Entries.** Every function compiled through `be_function_define`
+  gets a 5-byte System V entry right before its W entry: a `jmp` to an
+  adapter emitted after the last function (`code_generator/c_abi.w`).
+  The adapter is the export adapter's shape — System V arguments
+  (`rdi rsi rdx rcx r8 r9`, `xmm0-7`, then the stack) pushed as W stack
+  words, `rbx`, `rbp`, `r12-r15` preserved, float results moved to
+  `xmm0` — plus the sign or zero extension of each narrow integer
+  argument (`int8/16/32`, `uint8/16/32`, `char`, `bool`) to the word W
+  expects. Direct W-to-W calls keep W's stack convention and never touch
+  the stub.
+- **Symbols.** Every function defined in a root file and not marked
+  `static`, and every `export`ed function, is a `GLOBAL FUNC` symbol at
+  its entry stub. `static` functions and everything imported stay
+  `LOCAL` (at the W entry). Globals follow the rules above.
+- **Function values.** A function's name used as a value (`fp = f`,
+  `&f`, an argument, a `return`) and a file-scope address initializer
+  (`binop* table = f`) yield the entry stub, so a pointer W hands out
+  compares equal to C's `&f`. An `extern` C function's value is the C
+  symbol itself: loaded from its relocated import slot in code, an
+  `R_X86_64_64` against the symbol in a static cell.
+- **Calls through pointers.** A call through a function-pointer value
+  (`f(a, b)` with `f` a variable, field result or parameter) is a
+  System V call: the W argument words are moved into registers and a
+  16-byte-aligned stack exactly as an `extern` call's shim does
+  (`emit_c_abi_call_x64`, here through `r11`), and a narrow integer
+  result is extended per the pointer's declared return type. Pointers
+  without a signature (`int`, `void*` callees) pass every argument as an
+  integer word.
+- **Signatures.** Word-sized integers and pointers, the narrow integer
+  types, `float32`, `float64` and `void` results. Rejected with a
+  diagnostic naming the function: struct (or union) arguments or results
+  by value, W variadic functions (`int... xs`), more than 10
+  parameters, generators, and taking the address of a generic function
+  or of a function with no entry (an asm runtime stub). A function with
+  an unsupported signature that is neither global nor address-taken is
+  fine: its stub jumps to a `ud2` trap nothing reaches.
+- **Restrictions.** `--c-abi` requires `--freestanding` (the W runtime's
+  own callbacks keep W's convention) and rejects `--no-direct-calls`
+  (a function name's value use must stay distinguishable from a callee).
+
+Next steps for the mode: struct arguments and results by value (the
+System V classification of small aggregates into registers, and the
+hidden result pointer for large ones), C-variadic W functions (`va_list`
+over the register save area), binding global symbols straight to the
+adapters (one `jmp` fewer; today the stub keeps pointer identity), and
+the same mode for arm64 (AAPCS64 adapters reuse `elf_emit_arm64_export`).
 
 ## Relocations
 
@@ -72,21 +142,106 @@ and every absolute pointer stored in data is a PIE rebase cell
 
 | Site | Relocation |
 |---|---|
-| Text address slot (`lea`, FFI `call [rip+...]`) reaching data | `R_X86_64_PC32` against `.data` plus offset |
+| Text address slot (`lea`, FFI `call [rip+...]`) reaching data | `R_X86_64_PC32` against the data's section plus offset |
 | The same reaching an `extern` data object | `R_X86_64_PC32` against the undefined symbol |
-| Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against `.text` or `.data` |
+| Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against the target's section |
 | The same pointing at an `extern` data object | `R_X86_64_64` against the undefined symbol |
 | FFI slot of an `extern` function | `R_X86_64_64` against the undefined symbol |
+| Call cell or address slot reaching code in another section | `R_X86_64_PC32` against that section plus offset |
+| Call to a weak definition (or its address taken) | `R_X86_64_PLT32` / `R_X86_64_PC32` against the weak symbol |
+| Address of weak `extern` data | `lea` becomes `mov` from the GOT, `R_X86_64_REX_GOTPCRELX` |
 
-Text-to-text references (calls, jumps, function addresses) are
-PC-relative inside `.text` and need nothing. A slot whose target lies
-outside the object is an internal error rather than a silent bad link.
-The object contains `.text` (code and read-only literals), `.data` (all
-mutable storage; there is no separate `.bss`), `.symtab`, `.strtab`,
-`.rela.text`, `.rela.data` and an empty `.note.GNU-stack`, so linked
+Text-to-text references (calls, jumps, function addresses) inside one
+section are PC-relative and need no relocation; the writer rewrites the
+displacement when its two ends land in different pieces of the same
+section. Every `call rel32` is recorded while compiling
+(`call_relative32`, the export adapters) for this. A slot whose target
+lies outside the object is an internal error rather than a silent bad
+link.
+
+The object contains `.text` (code), `.data` (initialized mutable
+storage), `.rodata` (string literal bytes) and `.bss` (zero-initialized
+globals, `NOBITS`) when they are non-empty, the sections named by
+attributes (below), `.symtab`, `.strtab`, one `.rela<section>` per
+section with relocations, and an empty `.note.GNU-stack`, so linked
 programs keep a non-executable stack. `extern` data gets an unused
 placeholder in `.data`; every reference to it is relocated to the C
-symbol instead.
+symbol instead. A global goes to `.bss` when its bytes are all zero
+and it holds no pointer cell (a W fixed array's header is one, so such
+an array stays in `.data`).
+
+## Sections and symbol attributes
+
+Attributes before a function, global or `extern` declaration control
+its section, binding and alignment, as a kernel's linker script needs
+(`grammar/object_attributes.w`). They go on the declaration's line or
+on lines of their own:
+
+```w
+@section(".init.text")
+export int driver_init():          # code in .init.text (AX)
+	return setup(1)
+
+@section(".initcall6.init")
+unary* driver_initcall = driver_init_entry   # a table entry
+
+@section(".data..percpu") @align(64)
+int per_cpu_counter
+
+@align(4096)
+int[512] page_table
+
+@weak
+export int arch_hook():            # a strong C definition wins the link
+	return 0
+
+@weak
+extern int optional_symbol         # undefined weak: address 0 if absent
+
+@alias("driver_init")
+int driver_init_alias();           # a second global name, also usable from W
+```
+
+| Attribute | Meaning |
+|---|---|
+| `@section("name")` | Place the function (and its export adapter) or global in section `name`. |
+| `@align(n)` | Align the function or global to `n` (a power of two up to 1 MiB); the section's alignment rises to match. |
+| `@weak` | `STB_WEAK` binding: on a definition (a function or global symbol that would otherwise be local becomes weak too; for a function that is not exported, that symbol is its W-convention entry) or on an `extern` (an undefined weak reference). |
+| `@alias("target")` | On a function prototype or a global without initializer: a second name for `target`'s definition. W code may use either name; the object gets a global symbol at the target's (an exported target's adapter). The target may be defined before or after the alias. |
+| `@used` | Accepted for C translators. W never drops an unreferenced function or global, so it changes nothing. |
+
+Section flags follow gcc's rules for what a section holds: functions
+give `AX`; data gives `WA`, `A` when the name contains `.rodata`, and
+`NOBITS` when it starts with `.bss` (such a global must be
+zero-initialized). One section cannot hold both functions and data.
+Globals moved out of `.data` are word aligned and packed in declaration
+order, so the entries of a table section are contiguous like C's.
+
+Outside `--emit=obj` the attributes are accepted and `@section`,
+`@align` and `@weak` change nothing (like `export` on a native
+executable); `@alias` works everywhere. Calls from W to a weak
+definition in the same object bind to it through its symbol only when
+the symbol is the function's W entry: an exported function's weak
+symbol is its C adapter, so W callers keep calling the W body.
+
+Under `--c-abi` a function's global symbol is its System V entry stub,
+which sits at the start of the function's range and so lands in its
+section; its adapter (or the shared trap) follows it there. `@weak`
+makes that symbol weak, and W function values of it (`fp = f`, static
+tables) bind through the symbol, so a strong C definition wins for them
+too, while direct W calls keep calling the W body. `@alias` gives the
+alias the target's entry, both as a symbol and as a W function value.
+`static` combines with the attributes: `@section(".init.text") static
+int f()` is a local symbol in `.init.text`.
+
+`tests/object_sections_test.w` checks the sections and symbols with
+`readelf` and links `tests/object_sections/library.w` into
+`tests/object_sections/main.c` with a small linker script
+(`sections.ld`, `INSERT AFTER .data`) that collects `.w_initcall.*`
+levels in sorted order and a `.w_table` section into tables, which C
+and W both iterate, the same under `--c-abi`
+(`tests/object_sections/c_abi_library.w`, where C calls the initcall
+entries), and checks the diagnostics.
 
 ## Two runtime modes
 
@@ -190,9 +345,10 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   `gen_switch`, `thread_create`, ...): frameless leaves that a kernel
   object has no use for and that stay as unreferenced local code. A
   kernel built with the ORC unwinder (the x86-64 default) instead needs
-  `objtool` to understand each object; literal bytes kept in `.text`
-  stop it today, so such objects must be marked
-  `OBJECT_FILES_NON_STANDARD` until read-only data moves out of `.text`.
+  `objtool` to understand each object. String literals are in
+  `.rodata` now, but some data tables and descriptor blobs are still
+  emitted inside `.text`, which stops it, so such objects must be
+  marked `OBJECT_FILES_NON_STANDARD` until those move out as well.
 
 - **Code model.** Kernel code is linked in the top 2GB
   (`0xffffffff80000000` and up; gcc's `-mcmodel=kernel` uses
@@ -210,6 +366,18 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   `kc_add` hold their kernel addresses), and links it at
   `0x7f0000000000` in user space, where it runs and prints exactly what
   the ordinary link prints. This holds with or without the flag.
+
+- **With `--c-abi`.** The flag combines with `--c-abi`
+  (`code_generator/c_abi.w`): each 5-byte entry stub is a `jmp` to an
+  adapter that opens a standard frame, pushes the System V arguments as
+  W words and only pushes below `%rsp`; calls through function-pointer
+  values use the FFI shim's frame (`push rbp`, `and rsp,-16`, `call
+  r11`). Their xmm moves exist only for float arguments and results,
+  which the flag rejects, and `--stack-usage` lists each adapter as
+  `name [c-abi]`. The test runs the red-zone, disassembly,
+  frame-pointer, code-model and stack-usage checks on the corpus in
+  both conventions; the frame check follows each entry stub's `jmp` to
+  the adapter it lands in.
 
 - **Discarded reads are performed.** A statement that only reads
   memory (`*p`, a global, `p[i]`, `s.f`) loads it, as a C volatile read
@@ -236,8 +404,10 @@ bookkeeping: `emit()` samples the deepest `stack_pos` between the
 prologue and the epilogue, which bounds the real depth (parked
 expression registers only make the real stack shallower), and the one
 frame `stack_pos` does not see, the inline C-call frame of a variadic
-`extern` call, is added explicitly. Export adapters (`[adapter]`) and
-FFI shims (`[c-call]`) have fixed frames of their own. W has no
+`extern` call, is added explicitly. Export adapters (`[adapter]`),
+`--c-abi` adapters (`[c-abi]`) and FFI shims (`[c-call]`) have fixed
+frames of their own, and a `--c-abi` call through a function pointer
+adds its inline C-call frame like a variadic call. W has no
 dynamically sized stack allocation, so every entry is `static`. The
 test checks the report against the ptrace stepper's measurement of the
 linked corpus: no function goes deeper than its entry (the entries are
@@ -297,8 +467,8 @@ kernel's `smp_mb()` and friends remain inline assembly (or calls).
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64
 Linux target`), `thread_local` storage, profiling and coverage
 instrumentation, and combining with `--static`/`--shared`. Not
-diagnosed but unsupported: calling a W function pointer from C, C
-consumers of W fixed arrays as plain arrays, and (untested) the
+diagnosed but unsupported: calling a W function pointer from C without
+`--c-abi`, C consumers of W fixed arrays as plain arrays, and (untested) the
 runtime's panic and stack-trace reporting inside a runtime-retaining
 object, which expects a W-built ELF image around its code.
 
@@ -312,17 +482,15 @@ Next steps, roughly in order:
    pairs map to `R_AARCH64_ADR_PREL_PG_HI21` / `ADD_ABS_LO12_NC`; the
    static-library slot notes already exist for arm64
    (`arm64_addr_slot_write`).
-3. **Kernel-oriented controls.** Section placement and attributes
-   (`.text.*`, read-only data split out of `.text`, a real `.bss`,
-   alignment) and symbol visibility, so a kernel's linker script can
-   place W code. The code-generation side is done: `--kernel-codegen`
-   (no red zone, no SSE/x87, frame pointers; see "Kernel code
-   generation"), the code-model check, `--stack-usage`, and the
-   volatile/ordering audit ("Memory accesses"). Still open there:
-   literal bytes in `.text` (which keep `objtool`/ORC from reading W
-   objects), retpoline/IBT forms for indirect calls (`call *%rax` is
-   emitted as is), and the built-in assembly stubs, which stay in every
-   object as unreferenced code.
+3. **Kernel-oriented controls.** Section placement, weak symbols,
+   aliases, alignment, `.rodata` and `.bss` are done (above), and so is
+   the code-generation side: `--kernel-codegen` (no red zone, no
+   SSE/x87, frame pointers; see "Kernel code generation"), the
+   code-model check, `--stack-usage`, and the volatile/ordering audit
+   ("Memory accesses"). Left: symbol visibility (`STV_HIDDEN`),
+   `SHF_MERGE` string sections, retpoline/IBT forms for indirect calls
+   (`call *%rax` is emitted as is), and the built-in assembly stubs,
+   which stay in every object as unreferenced code.
 4. **Exported data and C-shaped aggregates.** An explicit marker for
    exported globals (today: any root global), C-layout arrays, and
    struct arguments by value in the adapters.

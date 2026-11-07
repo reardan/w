@@ -72,6 +72,8 @@ int kernel_codegen /* --kernel-codegen: kernel-context code (no SSE/x87; docs/pr
 int stack_usage_mode /* --stack-usage: write <output>.su (code_generator/stack_usage.w) */
 int stack_usage_active /* 1 while a function body is emitted under --stack-usage */
 void stack_usage_sample(); /* code_generator/stack_usage.w */
+int object_alias_pending /* '@alias' declarations whose target is not defined yet (elf_object.w) */
+int c_abi_mode /* --c-abi: System V entries and function pointers (code_generator/c_abi.w) */
 int elf_shared /* ELF shared object with explicit native exports */
 char* elf_soname /* Android shared object basename, set before finish */
 int elf_pie   /* ELF PIE; mandatory for Android */

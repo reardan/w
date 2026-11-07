@@ -38,6 +38,9 @@ import code_generator.ffi
 
 
 void ast_extern_object(int binding, int size, char* name);
+# The linked symbol name of the latest extern declaration (its weak
+# binding is an attribute, grammar/object_attributes.w).
+char* extern_last_name
 void ast_extern_function(int binding, int return_type, char* name, char* import_name, int count, char* classes, int return_class, int variadic);
 
 
@@ -97,7 +100,7 @@ int extern_statement():
 				save_int(table + sym + 14, size)
 				dyn_add_import_data(name, code_offset + codepos, size, 0)
 				emit_zeros(size)
-			free(name)
+			extern_last_name = name
 			return 1
 
 		# Parse the parameter list for arity/type checks and the ABI shim's
@@ -185,8 +188,8 @@ int extern_statement():
 			if (is_variadic): sym_set_variadic(sym, param_count)
 
 		free(param_classes)
-		if (import_name != name): free(import_name)
-		free(name)
+		if (import_name != name): free(name)
+		extern_last_name = import_name
 		return 1
 
 	return 0

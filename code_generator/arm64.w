@@ -629,6 +629,7 @@ void be_code_ptr_sign():
 # entry; the portable body's own be_function_define must keep it there.
 int asm_entry_symbol
 int asm_entry_pending
+void c_abi_function_entry(int t);   /* code_generator/c_abi.w */
 
 
 void stack_usage_define(int symbol);   /* code_generator/stack_usage.w */
@@ -640,6 +641,8 @@ void be_function_define(int current_symbol, char* name):
 	if (asm_entry_pending && (asm_entry_symbol == current_symbol)):
 		asm_entry_pending = 0
 		return
+	# --c-abi: the System V entry stub sits right before the W entry
+	if (c_abi_mode): c_abi_function_entry(current_symbol)
 	dwarf_function_define(current_symbol, name)
 	if (target_isa == 2):
 		sym_define_global_at(current_symbol, wasm_func_count + 1)

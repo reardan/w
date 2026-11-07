@@ -9,7 +9,8 @@
 # arguments), but not its callees' frames. W has no dynamically sized
 # stack allocation, so every entry is "static". Export adapters and FFI
 # shims (C-call conversions) get entries of their own, named
-# "name [adapter]" and "name [c-call]". x86 and x64 only;
+# "name [adapter]" and "name [c-call]", and so do --c-abi adapters,
+# "name [c-abi]". x86 and x64 only;
 # docs/projects/object_files.md ("Stack usage") describes how the
 # numbers are derived and checked.
 #
@@ -94,6 +95,12 @@ void stack_usage_shim(int stack_words):
 # arguments it pushes; the W body it calls has its own entry.
 void stack_usage_adapter(int symbol, int words):
 	stack_usage_add(symbol, c" [adapter]", (7 + words) * word_size)
+
+
+# A --c-abi adapter (code_generator/c_abi.w): the same frame as an
+# export adapter; its 5-byte entry stub only jumps to it.
+void stack_usage_c_abi_adapter(int symbol, int words):
+	stack_usage_add(symbol, c" [c-abi]", (7 + words) * word_size)
 
 
 void stack_usage_write(char* output_path):

@@ -176,7 +176,8 @@ System V AMD64 call for n arguments described by classes. arg_base is the
 rbp-relative offset of the LAST argument (the one on top of the W stack)
 after the frame is set up: 16 inside a stub (saved rbp + return address),
 8 when emitted inline at a call site (saved rbp only). Argument i (0
-based) then sits at [rbp + arg_base + 8 * (n - 1 - i)].
+based) then sits at [rbp + arg_base + 8 * (n - 1 - i)]. A got_vaddr of 0
+calls the address in r11 instead (--c-abi indirect calls, c_abi.w).
 */
 void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int arg_base):
 	emit_x64_c_frame_begin()
@@ -210,9 +211,12 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 
 	emit(1, c"\xb8")               /* mov eax,imm32: xmm registers used */
 	emit_int32(ffi_fp_used)
-	emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
-	static_note_address(codepos)
-	emit_int32(got_vaddr - code_offset - codepos - 4)
+	if (got_vaddr == 0):
+		emit(3, c"\x41\xff\xd3")   /* call r11: a function-pointer value (c_abi.w) */
+	else:
+		emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
+		static_note_address(codepos)
+		emit_int32(got_vaddr - code_offset - codepos - 4)
 
 	emit_x64_c_frame_end(ret_class)
 
