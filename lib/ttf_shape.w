@@ -558,10 +558,14 @@ int ttf_fallback_class(otl_glyph* g):
 	return ttf_modified_ccc(cp)
 
 # HarfBuzz's is_unicode_mark for a shaped glyph: Mn, Mc or Me (a
-# ligature formed over a nonspacing mark counts as a letter).
+# ligature formed over a nonspacing mark counts as a letter). A later
+# piece of a multiple substitution has its character's category, as
+# HarfBuzz copies the character's properties to every piece.
 int ttf_glyph_is_mark(otl_glyph* g):
 	if (g.unicode_mark): return 1
-	return (g.cp >= 0) && (ut_category(g.cp) == ut_cat_mc)
+	int cp = g.cp
+	if (cp < 0): cp = g.props_cp
+	return (cp >= 0) && (ut_category(cp) == ut_cat_mc)
 
 # Glyph extents as HarfBuzz reads them: x_bearing (the hmtx left side
 # bearing for a glyf outline), top, width and bottom, in box.

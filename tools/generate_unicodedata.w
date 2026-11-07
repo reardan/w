@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 tools/generate_unicodedata.w -o bin/generate_unicodedata"
 # wbuild: step="bin/generate_unicodedata"
 # Emits libs/standard/text/unicodedata_data.w, the lookup tables behind
-# libs/standard/text/unicodedata.w, from the committed Unicode 15.0.0
+# libs/standard/text/unicodedata.w, from the committed Unicode 18.0.0
 # Character Database files under tools/unicode/:
 #
 #   UnicodeData.txt            categories, bidi classes, combining classes,
@@ -17,9 +17,9 @@
 #                              (singletons, non-starter decompositions) is
 #                              derived from UnicodeData.txt here
 #
-# The four files beside UnicodeData.txt are the unmodified 15.0.0 UCD
+# The four files beside UnicodeData.txt are the unmodified 18.0.0 UCD
 # files as mirrored in github.com/unicode-org/unicodetools
-# (unicodetools/data/ucd/15.0.0/, DerivedNumericValues.txt from its
+# (unicodetools/data/ucd/18.0.0/, DerivedNumericValues.txt from its
 # extracted/ directory); that mirror's UnicodeData.txt is byte-identical
 # to the committed one.
 #
@@ -54,7 +54,7 @@ const int gen_max_full = 3
 
 # Update together with tools/unicode/*.txt.
 char* gen_unicode_version():
-	return c"15.0.0"
+	return c"18.0.0"
 
 
 # Must match the UNICODE_CAT_* order in libs/standard/text/unicodedata.w.
