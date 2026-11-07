@@ -1,5 +1,12 @@
 # wbuild: arch_only=x64
 # wbuild: deps=tests/kernel_codegen/
+# wbuild: deps=tests/object_file/library.w
+# wbuild: deps=lib/sha256.w
+# wbuild: deps=lib/hex.w
+# wbuild: deps=lib/unicode_text.w
+# wbuild: deps=lib/safe_vector.w
+# wbuild: deps=lib/memory.w
+# wbuild: deps=lib/checked.w
 # --kernel-codegen (docs/projects/object_files.md, "Kernel code
 # generation"): code that is safe in kernel context. The corpus
 # (tests/kernel_codegen/corpus.w) is compiled with --emit=obj
