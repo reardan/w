@@ -55,6 +55,7 @@
 			"wvmd_darwin": "native Apple Silicon daemon; exercised by the explicit native VM gate",
 			"vm_darwin_native_test": "required manual Apple Silicon execution gate; never substitute Linux cross-compilation",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it",
+			"graphics_clipboard_x11_test": "opt-in real X11 clipboard round trips (two clients, INCR, xclip) requiring Xvfb, GLX and xclip; graphics_ui_clipboard_test covers selection and the widget clipboard headlessly in tests",
 			"mermaid_editor_ui_test": "opt-in real-window editor workflow requiring Xvfb and X11/XTest; display-independent canvas and edit tests run in tests",
 			"mermaid_editor_atspi_test": "opt-in screen-reader qualification of the editor canvas against real at-spi2-core (Xvfb, session bus, pyatspi); mermaid_canvas_access_test covers the snapshot in tests",
 			"mermaid_editor_orca_test": "opt-in: mermaid_editor_atspi_test plus headless Orca and speech-dispatcher's dummy module, checking what Orca speaks",

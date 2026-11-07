@@ -26,6 +26,9 @@
 //             textInput(active, multiline, x, y, width, height, focusId),
 //             pointerMode(mode), pixelRatio() -> number,
 //               (optional mobile input and logical-pixel drawing support),
+//             clipboardWrite(text), clipboardRead() -> string | Promise
+//               (optional: the clipboard; without them the env keeps an
+//               in-memory clipboard, which is what headless runs get),
 //             nextEvent() -> { kind, code, x, y, mods } | null
 //               (optional: the input event queue; kind numbers mirror
 //               graphics/event.w's gfx_event_kind, mods its gfx_mod
@@ -41,6 +44,7 @@ const GL_STR_SCRATCH_END = 4096;
 export function makeEnv({ memory, gl, host, log = console.error }) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
+  const clipboard = { memo: '', read: null };
 
   const bytes = () => new Uint8Array(memory().buffer);
   const view = () => new DataView(memory().buffer);
@@ -259,6 +263,36 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
     gfx_host_pointer_mode: mode => host.pointerMode?.(mode),
     gfx_host_pixel_ratio_milli: () => Math.round((host.pixelRatio?.() ?? 1) * 1000),
     gfx_host_set_frame_callback: (tableIndex) => host.setFrameCallback(tableIndex),
+    // Clipboard: write is synchronous; a read is a request whose result
+    // gfx_host_clipboard_read_poll reports once the host's string or
+    // Promise settles (-1 until then, then the UTF-8 byte length).
+    gfx_host_clipboard_write: (ptr, length) => {
+      const text = decoder.decode(bytes().slice(ptr, ptr + length));
+      if (host.clipboardWrite) host.clipboardWrite(text);
+      else clipboard.memo = text;
+    },
+    gfx_host_clipboard_read: () => {
+      const read = { done: false, data: new Uint8Array(0) };
+      clipboard.read = read;
+      const settle = (text) => { read.data = encoder.encode(text ?? ''); read.done = true; };
+      let result;
+      try { result = host.clipboardRead ? host.clipboardRead() : clipboard.memo; }
+      catch (err) { log(`clipboard read failed: ${err}`); result = ''; }
+      if (result && typeof result.then === 'function') {
+        result.then(settle, err => { log(`clipboard read failed: ${err}`); settle(''); });
+      } else settle(result);
+    },
+    gfx_host_clipboard_read_poll: () => {
+      const read = clipboard.read;
+      if (!read) return 0;
+      return read.done ? read.data.length : -1;
+    },
+    gfx_host_clipboard_read_copy: (ptr) => {
+      const read = clipboard.read;
+      if (!read || !read.done) return;
+      bytes().set(read.data, ptr);
+      clipboard.read = null;
+    },
     gfx_host_next_event: (ptr) => {
       const e = host.nextEvent ? host.nextEvent() : null;
       if (!e) return 0;

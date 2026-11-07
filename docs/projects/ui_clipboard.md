@@ -3,7 +3,8 @@
 Design note, 2026-08-09. Written during round 2 of issue #441
 (`docs/projects/ui_widgets.md` §9) and deliberately **not** implemented
 there — this records the shape so the editor project can pick it up
-without re-deriving it.
+without re-deriving it. Implemented in 2026-11 by issue #850; §6 records
+what landed and where it departs from this design.
 
 Clipboard has been an explicit non-goal twice: `ui_widgets.md` §7 named
 it as round 1's, and §9.5 names it again for round 2. The reason has
@@ -138,3 +139,73 @@ Steps 1-3 are what the editor actually needs; 4 and 5 are the
 - **INCR transfers.** X11's chunked protocol for large selections. A
   first version can refuse anything past a fixed size rather than
   implement it, provided it refuses *visibly*.
+
+## 6. As implemented (#850, 2026-11)
+
+All five stages landed together, with INCR.
+
+**Seam.** Each window backend implements the three functions on its own
+`gfx_window` (`graphics/window.w` lists them), over the shared
+`gfx_clipboard_store` in `graphics/clipboard_store.w`. One change from §2:
+`gfx_clipboard_take(win)` returns the text as a malloc'd, NUL-terminated
+string that the caller frees, instead of filling a caller buffer. A paste
+can be any size, and a fixed `cap` would have needed a second "how big"
+call. A refused or empty read arrives as `""`, so a waiting caller always
+stops. Every backend turns CR LF and lone CR into LF and drops NUL bytes,
+so widgets see the same line ends everywhere. A null window uses an
+in-process clipboard, and so does the x86 stub. That is §4 step 1's stub
+backend, and the headless tests use it.
+
+**X11** (`window_x11.w`). Copy claims `CLIPBOARD` with the last input
+event's timestamp and answers `TARGETS`, `UTF8_STRING`,
+`text/plain;charset=utf-8`, `STRING` and `TEXT`. Text larger than the
+server's request limit goes out over INCR. Paste asks for `UTF8_STRING`,
+falls back to `STRING` (Latin-1, converted to UTF-8), and reads INCR
+replies chunk by chunk from `PropertyNotify`. Text the window owns
+itself is pasted without a server round trip. `SelectionClear` drops the
+claim. `PRIMARY` is still a non-goal.
+
+**Win32** (`window_win32.w`) writes `CF_UNICODETEXT` with CR LF line ends
+and reads it back synchronously. `OpenClipboard` is retried briefly while
+another process holds the clipboard. **Cocoa** (`window_cocoa.w`) uses
+`NSPasteboard generalPasteboard` with the plain-text UTI. It is
+cross-compiled only; a run on a Mac is still needed.
+
+**Web.** The host import set is `gfx_host_clipboard_write`, `_read`,
+`_read_poll` and `_read_copy` (`tools/web/README.md`). The page answers
+the Clipboard API's gesture and permission rules this way: the DOM
+`copy`/`cut`/`paste` events that Ctrl/Cmd+C, X and V fire run W's frame
+synchronously. So the copied text is set on `clipboardData`, and the
+pasted text answers W's read, inside the user gesture. `navigator.clipboard`
+is used only outside those events.
+
+**Widgets.** The pump is not the caller's job, as §3 proposed:
+`ui_begin_window` and `ui_end` call `ui_clipboard_pump`. `ui_end` gets the
+window that `ui_begin_window` stored, so a copy reaches the platform in
+the frame it happened. The browser needs that, because the copy event is
+still on the stack. Widget code never touches the window. It calls
+`ui_clipboard_copy`, `ui_clipboard_paste_request` and
+`ui_clipboard_paste_take`, and headless tests play the platform with
+`ui_clipboard_copied` and `ui_clipboard_deliver`. Commands are matched by
+`ui_clipboard_command`, which looks at the modifier and accepts either
+the control code (X11, Win32) or the letter (web, Cocoa's Command).
+Ctrl+Alt counts as AltGr typing.
+
+`ui_textbox` gained a selection (`anchor`): Shift with the arrows or
+Home/End, Ctrl/Cmd+A, mouse drag and Shift+click, a highlight, and
+forward Delete. Typing, Backspace and paste replace the selection. A
+paste into a single line turns newlines and tabs into spaces.
+`ui_textarea` already had keyboard selection; it gained drag (scrolling
+at the edges), Shift+click and the clipboard. Both report the selection
+to accessibility through `ui_access_set_caret`.
+
+**Tests.** `graphics_ui_clipboard_test` (in `tests`, headless) covers
+selection, all three shortcut encodings, the pump and the store.
+`graphics_clipboard_x11_test` (opt-in, Xvfb) does real round trips:
+between two X clients, over INCR both ways, and with `xclip`. The
+`clipboard` workflow of `mermaid_editor_ui_test` and
+`mermaid_editor_wine_test` drives the editor with real XTest keys.
+`web_mobile_input_test` covers the browser host.
+
+**Still open:** native runs on Windows and macOS (checklist step 2.10),
+double-click word selection, `PRIMARY`, and rich content.

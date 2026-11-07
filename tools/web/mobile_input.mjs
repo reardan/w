@@ -11,7 +11,8 @@ const SENTINEL = '\u200b';
 
 export function createInput({ canvas, editor, state, pushEvent,
   flushFrame = () => {}, document: doc = globalThis.document,
-  window: win = globalThis.window }) {
+  window: win = globalThis.window, navigator: nav = globalThis.navigator,
+  log = console.error }) {
   let pointer = null;
   let textActive = false;
   let composing = false;
@@ -213,8 +214,56 @@ export function createInput({ canvas, editor, state, pushEvent,
     justComposed = null;
     resetEditor();
   });
+  // Clipboard (docs/projects/ui_clipboard.md). Ctrl/Cmd+C, X and V fire
+  // copy/cut/paste synchronously inside the keydown's default action, after
+  // the keydown queued the shortcut for W. Running W's frame right there
+  // lets the widget's copy reach clipboardData inside the user gesture,
+  // and hands a paste's text to W's read without a permission prompt;
+  // navigator.clipboard (asynchronous, permission-gated) is only the
+  // fallback for reads and writes outside those events.
+  const clip = { inEvent: false, written: null, pasted: null, memo: '' };
+  const clipEvent = e => {
+    const data = e.clipboardData;
+    if (e.type === 'paste') {
+      const text = data?.getData('text/plain') ?? '';
+      e.preventDefault();
+      clip.pasted = text;
+      clip.inEvent = true;
+      try { flushFrame(); } finally { clip.inEvent = false; }
+      // W asked for nothing (a context-menu paste into the text sink, a
+      // build without clipboard support): keep the old behavior and type it.
+      if (clip.pasted !== null && e.target === editor) commit(text);
+      clip.pasted = null;
+      return;
+    }
+    clip.written = null;
+    clip.inEvent = true;
+    try { flushFrame(); } finally { clip.inEvent = false; }
+    if (clip.written !== null && data) {
+      data.setData('text/plain', clip.written);
+      e.preventDefault();
+    }
+  };
+  for (const type of ['copy', 'cut', 'paste']) doc.addEventListener?.(type, clipEvent);
+  const clipboardWrite = text => {
+    clip.memo = text;
+    if (clip.inEvent) { clip.written = text; return; }
+    nav?.clipboard?.writeText?.(text)?.catch?.(err => log(`clipboard write refused: ${err}`));
+  };
+  // A string, or a Promise of one; '' when the browser refuses.
+  const clipboardRead = () => {
+    if (clip.pasted !== null) {
+      const text = clip.pasted;
+      clip.pasted = null;
+      return text;
+    }
+    if (!nav?.clipboard?.readText) return clip.memo;
+    return nav.clipboard.readText().catch(err => { log(`clipboard read refused: ${err}`); return ''; });
+  };
   resetEditor();
   return {
+    clipboardWrite,
+    clipboardRead,
     setPointerMode: mode => { pointerMode = mode; },
     setTextInput(active, multiline, x, y, width, height, nextFocusId = active) {
       // W moved focus without a pointer press (pointerdown has already

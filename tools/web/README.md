@@ -131,7 +131,7 @@ Browser shortcuts with Ctrl/Command/Alt are left to the browser.
 
 The DOM textarea is an input sink, not a synchronized copy of W's complete
 text selection. Autocorrect is disabled; native selection handles, dictation
-replacement, cut/copy of a W selection, rich clipboard content, and full
+replacement, rich clipboard content, and full
 screen-reader widget semantics are not implemented. The host does not yet
 expose a semantic accessibility tree for canvas controls. Real-device Safari
 and Android checks remain necessary: Node event tests cannot prove keyboard
@@ -145,6 +145,19 @@ Host ABI additions (existing headless hosts may omit these callbacks):
   `1` keeps a widget's touch drag, `0` permits page-style touch panning.
 - `gfx_host_pixel_ratio_milli()` returns `host.pixelRatio()` times 1000
   (1000 when the host has none); `gfx_window_pixel_ratio` on wasm.
+- Clipboard (docs/projects/ui_clipboard.md):
+  `gfx_host_clipboard_write(ptr, length)` hands W's copied UTF-8 to
+  `host.clipboardWrite(text)`; `gfx_host_clipboard_read()` calls
+  `host.clipboardRead()` (a string or a Promise of one), and
+  `gfx_host_clipboard_read_poll()` reports -1 until it settles, then the
+  UTF-8 length that `gfx_host_clipboard_read_copy(ptr)` writes. Hosts
+  without the callbacks get an in-memory clipboard. The page's host
+  (`mobile_input.mjs`) runs W's frame inside the DOM `copy`/`cut`/`paste`
+  events that Ctrl/Cmd+C, X and V fire, so a copy lands in
+  `clipboardData` and a paste is read from it within the user gesture,
+  with no permission prompt; `navigator.clipboard` is the fallback
+  outside those events. A paste W did not ask for (the context menu over
+  the text sink) is still typed in as before.
 - Event kind `8` carries signed pixel scroll distance in `code` (positive
   down); kind `9` cancels the current pointer gesture.
 
