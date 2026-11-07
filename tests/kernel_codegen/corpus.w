@@ -10,6 +10,7 @@
 type kc_binary = fn(int, int) -> int
 
 extern int kc_c_mix(int a, int b, int c, int d, int e, int f, int g, int h)
+extern int kc_c_unwind()
 
 struct kc_point:
 	int x
@@ -121,7 +122,8 @@ int kc_promoted(int seed):
 		kc_table[i] = mix[i] & 1023
 	int s = 0
 	for i in range(16): s = s + mix[i] % 7 + kc_table[15 - i]
-	return a + b + c + d + e + s
+	# the C side walks the frame-pointer chain through every W frame
+	return a + b + c + d + e + s + kc_c_unwind()
 
 
 int kc_pointers():

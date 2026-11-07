@@ -174,6 +174,26 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   register, x87 mnemonic or MXCSR/XSAVE instruction, and any operand
   below `%rsp`; a float object built without the flag is the control.
 
+- **Frame pointers.** Every W function already opens with
+  `push rbp ; mov rbp,rsp` (`be_function_prologue`; promoted locals'
+  registers are pushed after it and popped before `pop rbp`/`leave`),
+  as do the export adapters, FFI shims and register entries, and no W
+  code allocates `rbp` to anything else. `[rbp]` is the caller's frame
+  and `[rbp+8]` the return address, the layout a kernel built with
+  `CONFIG_UNWINDER_FRAME_POINTER` walks. The flag changes nothing here;
+  the test checks it statically (each direct call target and function
+  symbol starts with that sequence) and at run time: C code compiled
+  with `-fno-omit-frame-pointer` walks the chain from a C -> W -> C -> W
+  -> C call nest back to `_start`, checking each return address lies in
+  `.text`. The exceptions are the compiler's built-in assembly stubs
+  (`syscall`, `syscall7`, `setjmp`/`longjmp`, `get_context`,
+  `gen_switch`, `thread_create`, ...): frameless leaves that a kernel
+  object has no use for and that stay as unreferenced local code. A
+  kernel built with the ORC unwinder (the x86-64 default) instead needs
+  `objtool` to understand each object; literal bytes kept in `.text`
+  stop it today, so such objects must be marked
+  `OBJECT_FILES_NON_STANDARD` until read-only data moves out of `.text`.
+
 ## Not covered yet
 
 Rejected with a diagnostic: other targets (`--emit=obj requires the x64

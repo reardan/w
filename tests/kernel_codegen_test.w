@@ -75,12 +75,27 @@ char* kc_object(char* source, char* name):
 char* kc_link(char* name, char* objects):
 	char* exe = kc_path(name)
 	string_builder* cmd = string_new()
-	string_append(cmd, c"cc -O1 -nostdlib -static -fno-pie -no-pie -mno-red-zone -fno-stack-protector -fno-asynchronous-unwind-tables -o ")
+	string_append(cmd, c"cc -O1 -nostdlib -static -fno-pie -no-pie -mno-red-zone -fno-omit-frame-pointer -fno-stack-protector -fno-asynchronous-unwind-tables -o ")
 	string_append(cmd, exe)
 	string_append(cmd, c" tests/kernel_codegen/start.c ")
 	string_append(cmd, objects)
 	free(kc_shell(cmd.data))
 	return exe
+
+
+char* kc_read(char* path, int* size_out):
+	int fd = open(path, 0, 0)
+	assert1(fd >= 0)
+	int size = file_size(fd)
+	char* bytes = cast(char*, malloc(size + 1))
+	int have = 0
+	while (have < size):
+		int n = read(fd, bytes + have, size - have)
+		assert1(n > 0)
+		have = have + n
+	close(fd)
+	*size_out = size
+	return bytes
 
 
 void test_kernel_codegen_setup():
@@ -221,7 +236,7 @@ void test_kernel_codegen_red_zone_control():
 	free(kc_shell(strjoin(strjoin(strjoin(c"cc -O0 -fno-pie -fno-stack-protector -c -o ", object), c" "), source)))
 	char* exe = kc_link(c"control", object)
 	char* plain = kc_shell(exe)
-	assert_strings_equal(c"84\n", plain)
+	assert_strings_equal(c"84\nframes 00\n", plain)
 	# clobbered: a wrong sum, or a crash once the loop index is garbage
 	char* out_path = strjoin(exe, c".out")
 	int status = kc_trace(exe, out_path, 1)
@@ -325,7 +340,7 @@ list[char*] kc_lines(char* listing):
 
 # Scan obj's .text; returns the number of problems (each printed) and
 # the number of instructions checked in *count_out.
-int kc_scan(char* object, int* count_out):
+int kc_scan(char* object, int* count_out, list[int] calls):
 	map[int, int] targets = new map[int, int]
 	int problems = 0
 	int count = 0
@@ -383,6 +398,7 @@ int kc_scan(char* object, int* count_out):
 			# form pushes the bytes' address and lands on a 'pop'. A target
 			# the decoder never reached is data in between (restart there).
 			int target = kc_branch_target(text)
+			if (starts_with(text, c"call") && (target >= 0) && (calls != 0)): calls.push(target)
 			int is_jump = starts_with(text, c"jmp ") || starts_with(text, c"call")
 			if (is_jump && (target > addr)):
 				char* at = decoded.get(target, cast(char*, 0))
@@ -413,7 +429,7 @@ void test_kernel_codegen_no_fpu_instructions():
 	for i in range(8):
 		char* object = kc_object(sources[i], strjoin(c"scan", itoa(i)))
 		int count = 0
-		assert_equal(0, kc_scan(object, &count))
+		assert_equal(0, kc_scan(object, &count, 0))
 		assert1(count > 50)
 		total = total + count
 	assert1(total > 20000)
@@ -427,7 +443,83 @@ void test_kernel_codegen_scan_control():
 	char* object = kc_path(c"float.o")
 	kc_compile(c"x64", c"--emit=obj", c"--freestanding", source, c"-o", object)
 	int count = 0
-	assert1(kc_scan(object, &count) > 0)
+	assert1(kc_scan(object, &count, 0) > 0)
+
+
+# The compiler's built-in assembly stubs: frameless leaves (a raw
+# syscall, setjmp/longjmp, context switches) that W code in a kernel
+# object has no reason to call; they stay as unreferenced local code.
+int kc_is_asm_stub(char* name):
+	char*[13] stubs
+	stubs[0] = c"syscall"
+	stubs[1] = c"syscall7"
+	stubs[2] = c"thread_create"
+	stubs[3] = c"stack_create"
+	stubs[4] = c"__w_tls_size"
+	stubs[5] = c"__w_tls_set"
+	stubs[6] = c"get_context"
+	stubs[7] = c"store_context"
+	stubs[8] = c"repl_setjmp"
+	stubs[9] = c"setjmp"
+	stubs[10] = c"repl_longjmp"
+	stubs[11] = c"longjmp"
+	stubs[12] = c"gen_switch"
+	for i in range(13):
+		if (strcmp(name, stubs[i]) == 0): return 1
+	return 0
+
+
+# 'push rbp ; mov rbp,rsp' at text offset at.
+int kc_framed(char* text, int size, int at):
+	if ((at < 0) || (at + 4 > size)): return 0
+	return ((text[at] & 255) == 0x55) && ((text[at + 1] & 255) == 0x48) && ((text[at + 2] & 255) == 0x89) && ((text[at + 3] & 255) == 0xe5)
+
+
+# Every function a frame-pointer unwinder can meet starts with the
+# standard frame: each direct call target in the corpus (W bodies, the
+# export adapters' callees, FFI shims, register entries) and each
+# function symbol except the built-in assembly stubs. The run-time half
+# is kc_c_unwind in tests/kernel_codegen/start.c, which walks the chain
+# from C through W frames back to _start and checks every return address.
+void test_kernel_codegen_frame_pointers():
+	char* object = kc_object(c"tests/kernel_codegen/corpus.w", c"frames")
+	list[int] calls = new list[int]
+	int count = 0
+	assert_equal(0, kc_scan(object, &count, calls))
+	assert1(calls.length > 20)
+	char* raw = kc_path(c"frames.text")
+	free(kc_shell(strjoin(strjoin(strjoin(c"objcopy -O binary --only-section=.text ", object), c" "), raw)))
+	int size = 0
+	char* text = kc_read(raw, &size)
+	map[int, int] stubs = new map[int, int]
+	char* symbols = kc_shell(strjoin(c"nm --defined-only ", object))
+	list[char*] lines = kc_lines(symbols)
+	int functions = 0
+	for char* line in lines:
+		# "<16 hex> t name"
+		if ((strlen(line) < 20) || ((line[17] != 't') && (line[17] != 'T'))): continue
+		int n = 0
+		int at = kc_hex(line, &n)
+		char* name = line + 19
+		if (kc_is_asm_stub(name)):
+			stubs[at] = 1
+			continue
+		if (kc_framed(text, size, at) == 0):
+			println2(strjoin(c"unframed function ", name))
+			assert1(0)
+		functions = functions + 1
+	for int target in calls:
+		# thread_create's call into stack_create stays inside the stubs
+		if (stubs.get(target, 0)): continue
+		if (kc_framed(text, size, target) == 0):
+			println2(strjoin(c"unframed call target at .text+", itoa(target)))
+			assert1(0)
+	assert1(functions > 12)
+	# the linked corpus: the chain walk found every W frame well formed
+	char* exe = kc_link(c"frames", object)
+	char* out = kc_shell(exe)
+	assert_lacks(out, c"bad frame chain")
+	assert_contains(out, c"frames 09")
 
 
 void kc_float_reject(char* name, char* body):
