@@ -3,9 +3,9 @@
 # --emit=obj --freestanding --c-abi data layout and extern calls
 # (docs/projects/object_files.md): a static whose record type completes
 # later keeps its full size and the extern slots after it out of .bss,
-# an empty-record static stays out of the next global's section, an
-# array nothing in the object reaches has no header relocation into its
-# section, and extern calls are direct PLT32 calls. The object links
+# an empty-record static (or fixed array of them) stays out of the next
+# global's section, an array nothing in the object reaches has no header
+# relocation into its section, and extern calls are direct PLT32 calls. The object links
 # with C directly and after 'ld -r', which drops relocations against
 # NOBITS sections.
 import lib.testing
@@ -82,6 +82,7 @@ void test_layout_readelf():
 		# lock is a 0-byte symbol of its own in .bss
 		assert_contains(layout_line(listing, c" rootfs"), c"    24 OBJECT  LOCAL  DEFAULT    3 rootfs")
 		assert_contains(layout_line(listing, c" once_lock"), c"     0 OBJECT  LOCAL  DEFAULT    3 once_lock")
+		assert_contains(layout_line(listing, c" lock_pair"), c"     0 OBJECT  LOCAL  DEFAULT    3 lock_pair")
 		assert_contains(layout_line(listing, c" discard_keep"), c"OBJECT  LOCAL  DEFAULT    4 discard_keep")
 		# the unreached array's W header references no section
 		assert1(contains(listing, c".layout_info + 0") == 0)

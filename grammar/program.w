@@ -602,12 +602,16 @@ void emit_data_global_storage(int type, int base_vaddr);
 
 # A record of size 0 (one nesting only empty records) still gets a word:
 # every global keeps an address of its own, so it never shares a vaddr
-# -- or, in an object, a section -- with the next declaration.
+# -- or, in an object, a section -- with the next declaration. So does
+# the payload of a fixed array of empty records, which would otherwise
+# start where the next declaration does (its descriptor header comes
+# first).
 int global_storage_size(int type):
 	int bytes = word_size
 	int declared_size = type_get_size(type)
 	if ((type_num_args(type) > 0) | (declared_size > word_size)): bytes = declared_size
 	if (bytes < 1): bytes = word_size
+	if (type_is_array(type_canonical(type)) && (declared_size <= 2 * word_size)): bytes = 2 * word_size + word_size
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
 
 

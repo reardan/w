@@ -2,7 +2,8 @@
 # (tests/object_layout_test.w links this with layout_main.c, also through
 # 'ld -r'): a static whose record type completes after the extern
 # declarations that follow it, a static of a record nesting only an
-# empty record ahead of a global in a discarded section, an array only
+# empty record (and a fixed array of empty records) ahead of a global in
+# a discarded section, an array only
 # a linker script sees, and extern calls that become direct calls.
 type pick = fn(int, int) -> int
 
@@ -32,6 +33,10 @@ struct spinlock:
 
 static spinlock once_lock
 
+# A fixed array of empty records: its payload must not start where the
+# discarded global does.
+static empty_lock[2] lock_pair
+
 @section(".discard.layout")
 static int discard_keep = {int 5}
 
@@ -41,6 +46,10 @@ static uint8[8] layout_info = {uint8 108, uint8 97, uint8 121}
 
 spinlock* layout_lock():
 	return &once_lock
+
+
+empty_lock* layout_lock_pair():
+	return &lock_pair[1]
 
 
 int layout_register(uint8* name):
