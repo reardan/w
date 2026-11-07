@@ -138,6 +138,8 @@ void test_object_static_data():
 	char* symbols = object_shell(strjoin(c"readelf -s ", object))
 	assert_contains(symbols, c"    20 OBJECT  GLOBAL DEFAULT    2 w_primes")
 	assert_contains(symbols, c"    72 OBJECT  GLOBAL DEFAULT    2 w_entries")
+	# Other objects have their declared size, not the word-rounded storage
+	assert_contains(symbols, c"    20 OBJECT  GLOBAL DEFAULT    2 w_misc")
 	free(symbols)
 	free(object)
 

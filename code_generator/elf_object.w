@@ -202,8 +202,12 @@ void object_table_symbols(int want_global):
 					# A fixed array's symbol names its elements, as a C
 					# array's does; the {data, length} header W code
 					# indexes through sits just before them.
+					# A symbol's size is the object's (C sees 'int32' as 4
+					# bytes, a packed record as its exact size), not the
+					# word-rounded storage reserved for it.
 					int symbol_offset = 0
-					int symbol_size = global_storage_size(type)
+					int symbol_size = word_size
+					if ((type_get_pointer_level(type) == 0) && (type_get_size(type) > 0)): symbol_size = type_get_size(type)
 					if (type_is_array(type_canonical(type))):
 						symbol_offset = 2 * word_size
 						symbol_size = type_get_size(type) - symbol_offset
