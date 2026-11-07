@@ -794,6 +794,12 @@ int postfix_expr():
 						if (type_is_gpu_object(type) && (ci_is_bit_field_access(member_type) == 0)):
 							if ((type_get_pointer_level(member_type) == 0) && (type_num_args(member_type) == 0) && (type_is_buffer(member_type) == 0)):
 								member_type = type_get_gpu(member_type)
+						# A field of a struct in a segment address space
+						# ('__seg_gs hot*' receiver, a '__seg_gs hot'
+						# global) is in that space too: scalars, pointers
+						# and nested structs alike (segment records are
+						# named apart from pointer records).
+						member_type = seg_member_type(type, member_type)
 						# An imported C bit-field member: the field's type
 						# is a zero-size access type whose side table
 						# records the storage unit and bit range the SysV

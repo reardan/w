@@ -16,6 +16,13 @@ void assign_store(int type):
 		assign_store(type_strip_gpu(type))
 		ptx_global_access = 0
 		return;
+	# A segment-space lvalue: the store gets the override prefix (the
+	# promote() twin in grammar/promote.w)
+	if (type_seg_prefix(type)):
+		seg_access_begin(type)
+		assign_store(type_strip_seg(type))
+		seg_override = 0
+		return;
 	type = type_canonical(type)
 	# An imported C bit-field member: ebx addresses its storage unit;
 	# read-modify-write it (grammar/promote.w, bit_field_assign_store)
@@ -38,7 +45,7 @@ void assign_store(int type):
 # through other paths (a struct copy, an imported C bit-field, a device
 # object) or at a width the operand forms do not cover.
 int assign_mem_size(int type):
-	if (type_is_gpu_object(type)): return 0
+	if (type_is_gpu_object(type) || type_seg_prefix(type)): return 0
 	int t = type_canonical(type)
 	if (ci_is_bit_field_access(t)): return 0
 	if (type_num_args(t) > 0): return 0
@@ -86,6 +93,7 @@ void struct_copy_eax_to_ebx(int type):
 
 void assign_store_struct(int type):
 	gpu_host_access_check(type)
+	if (type_seg_prefix(type)): error(c"struct copies to or from a segment address space are not supported; assign the fields")
 	struct_copy_eax_to_ebx(type)
 
 

@@ -54,6 +54,7 @@ int struct_declaration():
 				print2(c"type_token: ")
 				print2(token)
 			int field_type = type_name()
+			seg_storage_check(field_type, c"a struct field")
 			if (verbosity >= 1):
 				print_int0(c"[", field_type)
 				println2(c"]")

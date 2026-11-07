@@ -464,6 +464,7 @@ void function_definition(int current_symbol):
 			is_c_variadic = 1
 			break
 		int type = type_name()
+		seg_storage_check(type, c"a parameter")
 		# "T... name" declares a W variadic function: the callee sees the
 		# trailing arguments as a T[] slice parameter.
 		if (accept(c".")):

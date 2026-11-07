@@ -60,6 +60,7 @@ syntax here.
 int type_name();
 int safe_qualifier_ahead();  /* grammar/type_name.w */
 int gpu_qualifier_ahead();   /* grammar/type_name.w */
+int seg_qualifier_ahead();   /* grammar/type_name.w */
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
 int* function_lifetime_order_types(int* parameters, int result, int count);
@@ -550,7 +551,7 @@ int generic_field_accept(char* spelling):
 generic_type_ast* generic_field_capture(int depth):
 	if (depth > 32): return 0
 	if ((tab_level == 0) || (is_ident_start_byte(token[0]) == 0)): return 0
-	if (peek(c"const") || peek(c"gpu") || safe_qualifier_ahead()): return 0
+	if (peek(c"const") || peek(c"gpu") || seg_qualifier_ahead() || safe_qualifier_ahead()): return 0
 	int container = 0
 	if (nextc == '['):
 		container = 3
@@ -1019,7 +1020,7 @@ int generic_declaration_scan():
 	# type_name) cannot start a generic function definition; neither can
 	# a 'gpu'-qualified pointer type (grammar/type_name.w)
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")): return 0
-	if (gpu_qualifier_ahead()): return 0
+	if (gpu_qualifier_ahead() || seg_qualifier_ahead()): return 0
 	if (generic_signature_qualifier()): return generic_declaration_scan_checked_return()
 	# An import alias's qualified type ('alias.T name') is never a
 	# generic definition; leave it for type_name()'s alias branch

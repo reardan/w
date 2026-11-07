@@ -510,6 +510,9 @@ int ast_expression_assignment(expression_ast* tree, int depth);
 # type records, imports, symbol uses or diagnostics are committed by a probe.
 int ast_expression_scalar_type(int type):
 	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
+	# Segment-space lvalues (__seg_gs/__seg_fs) lower on the streaming
+	# path, whose promote/assign_store emit the override prefix
+	if (type_seg_prefix(type)): return 0
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
 	# P1.1: one kind lookup serves every type_is_<kind> predicate.
@@ -535,6 +538,7 @@ int ast_expression_scalar_value(int type):
 int ast_expression_record_type(int type):
 	if (type_is_value(type)): return 0
 	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
+	if (type_seg_prefix(type)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
 	if ((kind != 0) && (kind != type_kind_union) && (kind != type_kind_safe_record) && (kind != type_kind_safe_recordmut)): return 0
@@ -566,6 +570,7 @@ int ast_expression_storage_type(int type):
 	# Building an lvalue computes its address. Host reads are still
 	# rejected by the value predicates when that lvalue is consumed.
 	if (type_is_gpu_object(type)): type = type_strip_gpu(type)
+	if (type_seg_prefix(type)): return 0
 	if (type_is_buffer(type) || type_is_list(type)): return 1
 	return ast_expression_scalar_type(type) || ast_expression_record_type(type)
 
@@ -632,6 +637,7 @@ int ast_expression_warning_safe(int want, int got):
 	if (want == 4): return 0
 	if (type_is_gpu_pointer(want) || type_is_gpu_pointer(got)): return 0
 	if (type_is_gpu_object(want) || type_is_gpu_object(got)): return 0
+	if (type_seg_prefix(want) || type_seg_prefix(got)): return 0
 	if (type_is_var(want) || type_is_var(got)): return 0
 	if (ast_expression_record_type(want) && ast_expression_record_type(got)): return 1
 	if (got == 4): return ast_expression_scalar_type(want)

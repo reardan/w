@@ -379,7 +379,7 @@ int type_get_alias_target(int type_index):
 	# A gpu-object record (type_kind_gpu, see type_get_gpu) canonicalizes
 	# like an alias: everything but the qualifier-aware checks sees the
 	# plain element type through it.
-	if ((t.kind != type_kind_alias) && (t.kind != 20)): return -1
+	if ((t.kind != type_kind_alias) && (t.kind != 20) && (t.kind != 31) && (t.kind != 32)): return -1
 	return t.alias_target
 
 
@@ -846,6 +846,87 @@ int type_get_gpu(int target):
 		i = i + 1
 	new_type.alias_target = real_target
 	new_type.kind = 20
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
+	int new_type_index = type_records.length
+	type_records.push(cast(int, new_type))
+	return new_type_index
+
+
+# Segment address spaces: C's x86 named address spaces __seg_gs and
+# __seg_fs, for per-CPU data in kernels (docs/projects/object_files.md,
+# "Segment-relative accesses"). '__seg_gs T x' declares x in the %gs
+# space; '__seg_gs T* p' points into it; '__seg_gs(T*)' is a pointer
+# object that itself lives there. Like the gpu-object record above, a
+# segment record (kind 31 for gs, 32 for fs) copies its target's size,
+# fields and pointer level and canonicalizes to it, so every size, field
+# and arithmetic helper sees the plain type; only promote() and
+# assign_store() look at the raw record, and prefix the one load or
+# store of the lvalue with the segment override. Its name is unique per
+# target ('__seg_gs int', '__seg_gs(int*)'), so the name-keyed pointer
+# records over it never collide with the target's own.
+const int type_kind_seg_gs = 31
+const int type_kind_seg_fs = 32
+
+
+# The segment-override prefix byte of a segment record (0x65 for gs,
+# 0x64 for fs; value-ness ignored), 0 for any other type.
+int type_seg_prefix(int type_index):
+	type_index = type_real(type_index)
+	if (type_index < 0): return 0
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	if (t.kind == type_kind_seg_gs): return 0x65
+	if (t.kind == type_kind_seg_fs): return 0x64
+	return 0
+
+
+# The plain type under a segment record (value-ness preserved); anything
+# else is returned unchanged.
+int type_strip_seg(int type_index):
+	if (type_seg_prefix(type_index) == 0):
+		return type_index
+	type_rec* t = cast(type_rec*, type_records[type_real(type_index)])
+	if (type_is_value(type_index)): return type_value(t.alias_target)
+	return t.alias_target
+
+
+# Memoized segment record over target in the segment space kind
+# (type_kind_seg_gs or type_kind_seg_fs). A target that already is a
+# segment record is re-qualified (the last qualifier wins, as in C a
+# type has at most one address space).
+int type_get_seg(int target, int kind):
+	int real_target = type_canonical(type_strip_seg(target))
+	int i = 0
+	while (i < type_records.length):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if ((t.kind == kind) && (t.alias_target == real_target)): return i
+		i = i + 1
+	type_rec* target_record = type_record(real_target)
+	char* prefix = c"__seg_gs"
+	if (kind == type_kind_seg_fs): prefix = c"__seg_fs"
+	char* name = 0
+	if (target_record.pointer_level == 0): name = strjoin(prefix, strjoin(c" ", target_record.name))
+	else:
+		char* stars = cast(char*, malloc(target_record.pointer_level + 2))
+		int s = 0
+		while (s < target_record.pointer_level):
+			stars[s] = '*'
+			s = s + 1
+		stars[s] = ')'
+		stars[s + 1] = 0
+		name = strjoin(prefix, strjoin(c"(", strjoin(target_record.name, stars)))
+	type_rec* new_type = type_alloc()
+	new_type.name = name
+	new_type.num_fields = target_record.num_fields
+	new_type.total_size = target_record.total_size
+	new_type.pointer_level = target_record.pointer_level
+	i = 0
+	while (i < target_record.num_fields):
+		new_type.field_names.push(target_record.field_names[i])
+		new_type.field_types.push(target_record.field_types[i])
+		i = i + 1
+	new_type.alias_target = real_target
+	new_type.kind = kind
 	new_type.fn_return_type = -1
 	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
