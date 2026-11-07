@@ -1688,3 +1688,14 @@ failing command needs. Also, `profile_check`'s `bench.wprof` file list is
 hand-maintained in build.base.json and had fallen behind the corpus
 (`regex_pathological.w` missing, so a fresh profile read 76%); it could be
 derived from `tests/bench/` the way `wprof corpus` derives its programs.
+
+## Declare-before-use errors in long files (2026-11-07, #863 accessibility)
+
+Adding a few dozen functions to `graphics/ui/accessibility_uia.w` (3700
+lines) cost several `check` round trips on "Cannot find symbol: 'x':
+declared later in this file", one symbol per run: the checker stops at the
+first, so moving one block exposed the next. Direction: report every
+forward reference in one `check` run (they are all known once the file is
+scanned), with the line of the declaration each needs to move above, or a
+`check --fix` mode that reorders a moved-up function to just before its
+first use.

@@ -240,6 +240,52 @@ clamp. `ui_textarea` publishes its caret and selection and `ui_textbox`
 (single-line, no selection) its caret; both apply a request on the next frame,
 snapped to grapheme boundaries, the textbox moving its caret to the active end.
 
+### Text depth, multi-selection and table structure (#863)
+
+The snapshot also carries what screen magnifiers, braille displays and
+spreadsheet-style navigation need, and every bridge reads it through
+`graphics.ui.accessibility_text`:
+
+- Glyph geometry: `ui_access_set_char_boxes(tree, id, boxes, count)` stores one
+  `ui_rect` per character of the value (in the tree's coordinates; a newline
+  is a zero-width box at its line's end). `ui_access_char_box`,
+  `ui_access_range_box`, `ui_access_range_lines` (one box per line),
+  `ui_access_offset_at_point` and `ui_access_caret_at_point` answer from them,
+  and return 0 / -1 for a node without boxes so the bridges fall back to its
+  bounds. `ui_textbox` and `ui_textarea` publish them from the layout they draw
+  (`graphics.ui.widgets.access_text`; a textarea past 8192 characters skips
+  them).
+- Text attributes: `ui_access_default_attrs(tree, id)` returns the node's
+  default `ui_access_text_attrs` (family, size in points, weight, italic,
+  underline, foreground and background as `0xRRGGBB`, -1 unknown) to fill in,
+  and `ui_access_add_attr_run(tree, id, start, end)` an ordered,
+  non-overlapping run that starts as a copy of the defaults.
+  `ui_access_attrs_at(node, k, &start, &end)` resolves the attributes at a
+  character and the stretch they hold over. The text widgets publish their
+  font and colours.
+- Multiple selections: `ui_access_add_selection(tree, id, start, end)` adds
+  selections after the primary one; `ui_access_selection_total` /
+  `ui_access_selection_range` enumerate them all. A node offering
+  `UI_ACCESS_SET_SELECTIONS` takes the whole list from a bridge as
+  `"anchor active start end start end ..."` (the primary pair first;
+  `ui_access_selections_parse` / `_format`).
+- Multi-selection containers: `UI_ACCESS_MULTISELECTABLE` on a list, tab list
+  or table lets the client choose the selection; its items offer
+  `UI_ACCESS_SELECT` with the payload `"add"`, `"remove"` or `"only"`
+  (`ui_access_select_mode`, `ui_access_dispatch_select`). `ui_access_dispatch`
+  refuses `"add"` and `"remove"` outside a multiselectable parent.
+- Tables: `UI_ACCESS_HEADER` marks a ROW as the column header row and a CELL
+  in a data row as a row header; `row_span` / `col_span` (default 1) span
+  cells. `graphics.ui.accessibility_table` lays the grid out as HTML does
+  (`ui_access_cell_slot`, `ui_access_table_cell_at`, `ui_access_row_headers_of`,
+  `ui_access_column_headers_of`, `ui_access_table_row_headers`).
+
+`ui_access_tree_same` and `ui_access_tree_clone` cover all of it, so a change in
+geometry, attributes or selections republishes. The widgets' own lists and
+tables stay single-selection: no widget yet publishes multiple selections, a
+multiselectable container, row headers or spans; applications building their
+own snapshot can.
+
 ```
 ui_access_tree* fresh = ui_access_tree_new(4096, 65536)
 ui_access_capture(ctx, fresh)
@@ -321,24 +367,43 @@ application's tree, as in the other bridges; publishing drops queued actions
 for the old snapshot.
 
 Text reports `CaretOffset` and `GetNSelections`/`GetSelection` from the
-snapshot (one selection at most). `SetCaretOffset`, `SetSelection(0, ...)`,
+snapshot: the primary selection and then any extra ones
+(`ui_access_add_selection`). `SetCaretOffset`, `SetSelection(0, ...)`,
 `AddSelection` (only while nothing is selected, and never empty) and
 `RemoveSelection(0)` (which keeps the caret) queue `UI_ACCESS_SET_SELECTION`
 for nodes offering it, range-checked against the published text; those nodes
-also carry the selectable-text state. A republication emits
-`TextSelectionChanged` when a non-empty selection appears, changes or goes,
-then `TextCaretMoved` with the new offset. The bridge knows no fonts or
-colours, so `GetAttributes`, `GetAttributeRun`, `GetDefaultAttributes` and
-`GetDefaultAttributeSet` return empty sets, the runs spanning the whole text,
-and `GetAttributeValue` an empty string.
+also carry the selectable-text state. A node offering
+`UI_ACCESS_SET_SELECTIONS` takes several: `AddSelection` appends one,
+`SetSelection(k, ...)` replaces and `RemoveSelection(k)` drops selection k,
+each queued as the whole new list (see "Text depth" below). A republication
+emits `TextSelectionChanged` when the selections appear, change or go, then
+`TextCaretMoved` with the new offset.
 
-Tables implement Table and their data cells TableCell. The snapshot has no
-header flag, so the bridge treats a TABLE's first ROW as its column header
-row when that row has no actions and is not selected while a later row has
-actions or is selected; its cells publish as table column headers and answer
-`GetColumnHeader`, `GetColumnDescription` and `GetColumnHeaderCells`. Row
-indices count data rows only, every span is 1 and a cell's index is
-`row * columns + column`. A row without a name of its own is named from its
+Text attributes come from the node's defaults and runs: `GetDefaultAttributes`
+/ `GetDefaultAttributeSet` report `family-name`, `size` (points), `weight`,
+`style`, `underline`, `fg-color` and `bg-color` (ATK's 16-bit `r,g,b`), and
+`GetAttributeRun` the run covering an offset (or the stretch between runs),
+with the defaults merged when asked; `GetAttributes` and `GetAttributeValue`
+answer from the same data, and a change in either emits
+`TextAttributesChanged`. A node without attributes still answers empty sets.
+Glyph geometry: `GetCharacterExtents`, `GetRangeExtents` (window or screen
+coordinates) and `GetOffsetAtPoint` use the node's character boxes, falling
+back to the field's bounds when it publishes none.
+
+Tables implement Table and their data cells TableCell. A ROW flagged
+`UI_ACCESS_HEADER` is the column header row; without one the bridge treats a
+TABLE's first ROW as its column header row when that row has no actions and
+is not selected while a later row has actions or is selected; its cells
+publish as table column headers and answer `GetColumnHeader`,
+`GetColumnDescription` and `GetColumnHeaderCells`. A CELL flagged
+`UI_ACCESS_HEADER` in a data row is a row header (role table row header),
+answering `GetRowHeader`, `GetRowDescription` and `GetRowHeaderCells`. Cells
+span `row_span` rows and `col_span` columns, laid out as HTML tables are
+(a spanned slot is skipped by the rows below); `GetAccessibleAt` on any
+covered slot returns the spanning cell, `GetRowExtentAt` /
+`GetColumnExtentAt` and TableCell's `RowSpan` / `ColumnSpan` /
+`GetRowColumnSpan` report the spans. Row indices count data rows only and a
+cell's index is `row * columns + column` of its first slot. A row without a name of its own is named from its
 cells' names (as ARIA rows are), since Orca announces a focused row by name.
 That derived name (`ui_access_effective_name`) is what changes are compared
 on, so a row whose cell is renamed emits `accessible-name` itself.
@@ -346,7 +411,22 @@ Lists, tab lists and tables implement Selection: `SelectChild` and
 `AddRowSelection` queue `ACTIVATE` on the child, as a click would (and
 return true without a call when it is already selected); deselection,
 `SelectAll` and `ClearSelection` return false, since a single-selection
-host owns that policy.
+host owns that policy. A container flagged `UI_ACCESS_MULTISELECTABLE`
+(state multiselectable) whose items offer `UI_ACCESS_SELECT` lets the
+client own it: `SelectChild` / `AddRowSelection` queue `SELECT "add"`,
+`DeselectChild`, `DeselectSelectedChild` and `RemoveRowSelection`
+`SELECT "remove"`, `SelectAll` adds every unselected item and
+`ClearSelection` removes every selected one.
+
+Peer-to-peer bus: the bridge also listens on an abstract unix socket
+(`unix:abstract=w-atspi-<pid>-<n>`) and returns that address from
+`Application.GetApplicationBusAddress`, as the ATK bridge does, so libatspi
+sends its queries straight to the application instead of through the
+accessibility bus daemon. Connections authenticate with SASL EXTERNAL and
+are accepted only from the same uid (`SO_PEERCRED`); they are served on the
+same dispatch call, and events still go out on the bus.
+`ui_access_atspi_p2p_address` and `ui_access_atspi_p2p_calls` report it;
+`W_ATSPI_NO_P2P=1` turns it off.
 
 `Cache.GetItems` returns the full preload, `a((so)(so)(so)iiassusau)`: the
 application root and then every node in tree order with its parent, index,
@@ -405,9 +485,22 @@ Orca 46.1, run headless against the same editor while it moved its own caret and
 selection, said "Notes entry one two thrée." on focus, "two selected" when a word
 was selected and "Text unselected." when the selection collapsed; a caret move
 without keyboard input was processed silently, as Orca does for any
-application. Not yet provided: real text attributes (fonts, colours,
-spelling), multiple selections, row headers, multi-selection policy, and a
-peer-to-peer application bus.
+application.
+
+The #863 depth was qualified the same way by `access_atspi_depth_test`
+(opt-in; at-spi2-core 2.52, libatspi through python `gi` Atspi, the fixture
+`tools/access_depth_app.w` driven by `tools/access_atspi_depth_check.py`):
+character and range extents in window and screen coordinates, the offset at
+a point, the default attributes and runs, `get_text_attribute_value`, two
+selections read back, `add_selection` / `remove_selection` reaching the
+application as `SET_SELECTIONS` and republished with
+`text-selection-changed`; the multiselectable list's `select_child`,
+`select_all`, `deselect_child` and `clear_selection` with
+`selection-changed`; the table's row header, spanning column header, row
+and column extents, the cell at a covered slot, its span and header cells;
+and libatspi answering its queries over the peer-to-peer bus once it has the
+address. Not yet provided: spelling and other non-font attributes, and Orca
+runs over the new text depth.
 
 ## Windows UI Automation and MSAA
 
@@ -671,19 +764,45 @@ as a stub: it returns `S_OK` and its FIXME trace shows the payload
 (`(provider, 4, 2, L"Exported", L"W.Announcement")`), while a registered
 notification handler receives nothing, so delivery is untested.
 
+Text, selection and table depth (#863): a range's `GetBoundingRectangles`
+returns one rectangle per line from the node's character boxes (a degenerate
+range is its character's box; without boxes, the field's rectangle) and
+`RangeFromPoint` the nearest caret position on the nearest line (falling back
+to the old proportional guess). `GetAttributeValue` answers FontName,
+FontSize, FontWeight, IsItalic, UnderlineStyle, ForegroundColor and
+BackgroundColor (COLORREF) from the attributes, the reserved mixed value when
+a range spans runs that differ and the not-supported value for others;
+`FindAttribute` finds the first (or last) stretch with a value.
+`GetSelection` returns every selection and `SupportedTextSelection` is
+Multiple for nodes offering `UI_ACCESS_SET_SELECTIONS`, whose ranges'
+`AddToSelection` / `RemoveFromSelection` queue the new list. The text
+provider is also `ITextProvider2` (`GetCaretRange`, whether the field has
+focus; `RangeFromAnnotation` finds none) and editable fields offer
+`ITextEditProvider` (no active composition). Multi-selection containers
+report `CanSelectMultiple` and their items `Select` (`SELECT "only"`),
+`AddToSelection` and `RemoveFromSelection`; MSAA reports
+`STATE_SYSTEM_MULTISELECTABLE | EXTSELECTABLE` and `accSelect` takes, adds,
+removes and extends. Grid items report spans, row header cells are
+HeaderItems (`ROLE_SYSTEM_ROWHEADER`) and Table / TableItem answer
+`GetRowHeaders` / `GetRowHeaderItems`. Every element offers the
+LegacyIAccessible pattern (`ILegacyIAccessibleProvider` over the MSAA
+answers), `IEnumVARIANT` for `AccessibleChildren` (and `get_accSelection`
+with several selected children returns one), spatial `accNavigate`
+(up/down/left/right: the nearest sibling whose bounds lie that way) and
+`IServiceProvider`, which hands out `IAccessible2` (role, states, unique id
+`-id`, window, index in parent, group position; IAccessible's methods
+through the same object). `graphics_ui_accessibility_uia_test` checks all of
+it under wine, `AccessibleChildren` through wine's oleacc.
+
 Narrator, NVDA, JAWS, Accessibility Insights and Inspect on real Windows have
 not been run against the bridge. That is the qualification still owed.
 
 Not yet provided:
 
-- Text pattern depth: glyph geometry (ranges are bounded by the whole field,
-  `RangeFromPoint` is proportional), text attributes beyond IsReadOnly,
-  scrolling in `GetVisibleRanges`, `ITextProvider2` (`GetCaretRange`) and
-  `ITextEditProvider`, multiple selections.
-- Multiple selection, row headers, cell spans, and spatial MSAA navigation;
-  `get_accSelection` reports one selected child.
-- The LegacyIAccessible UIA pattern, and IAccessible2 or `IEnumVARIANT`
-  children enumeration (`AccessibleChildren` falls back to `get_accChild`).
+- Scrolling in `GetVisibleRanges`, the `Format` text unit by attribute
+  runs, IME compositions in `ITextEditProvider`, annotations.
+- IAccessible2's relations, extended roles and states, and its text, table
+  and value interfaces (`IAccessibleText`, `IAccessibleTable2`, ...).
 - Embedded fragment roots.
 
 ## One bridge per target, and custom canvases
