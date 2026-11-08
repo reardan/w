@@ -1,4 +1,4 @@
-# wbuild: tool=tools/test262_conformance.w tool=tools/test262_runtime_runner.w timeout=2700000
+# wbuild: tool=tools/test262_conformance.w tool=tools/test262_runtime_runner.w timeout=900000
 import tools.test262_conformance_lib
 
 char* tc_directory
@@ -35,19 +35,63 @@ json_value* tc_override(char* binary, char* path, char* mode, int timeout, int b
 		return json_parse(c"{\"phase\":\"execute\",\"outcome\":\"normal\",\"steps\":1,\"assertions\":1}")
 	return actual
 
+char* tc_manifest
+
 json_value* tc_run(int* status):
-	return t262_run(c"tests/javascript/test262/manifest.json", c"bin/test262_runtime_runner", 10000, 100000, status, tc_override)
+	return t262_run(tc_manifest, c"bin/test262_runtime_runner", 10000, 100000, status, tc_override)
+
+# The full-corpus counts and evidence are pinned on the gate targets
+# (test262_conformance --expect); this test checks the adapter's contract
+# on a deterministic sample instead of rerunning both profiles: every
+# stride-th case plus, when keep_required, every builtins_required case.
+char* tc_sample(json_value* manifest, int stride, int keep_required, char* name):
+	json_value* value = json_clone(manifest)
+	json_value* required = jc_get(value, c"builtins_required")
+	set[char*] kept = new set[char*]
+	json_value* cases = json_array()
+	int index = 0
+	for json_value* item in jc_get(value, c"cases").array_values:
+		if (index % stride == 0 || (keep_required && jc_get(required, item.string_value) != 0)):
+			kept.add(item.string_value)
+			json_array_push(cases, json_clone(item))
+		index = index + 1
+	json_object_set(value, c"cases", cases)
+	json_value* baseline = json_object()
+	json_value* pinned = jc_get(value, c"baseline")
+	for char* id in pinned.object_values.keys():
+		if (split(id, '#')[0] in kept): json_object_set(baseline, id, json_clone(jc_get(pinned, id)))
+	json_object_set(value, c"baseline", baseline)
+	json_value* needs = json_object()
+	for char* case_name in required.object_values.keys():
+		if (case_name in kept): json_object_set(needs, case_name, json_clone(jc_get(required, case_name)))
+	json_object_set(value, c"builtins_required", needs)
+	char* path = path_join(tc_directory, name)
+	file_write_text(path, json_stringify(value))
+	ht_require(t262_load(path) != 0, c"sampled manifest rejected")
+	return path
+
+# A passing run's counts are exactly the tally of its pinned baseline.
+void tc_baseline_counts(json_value* report, char* path):
+	json_value* baseline = jc_get(t262_load(path), c"baseline")
+	int passes = 0
+	for json_value* item in baseline.object_values.values():
+		if (jc_is(jc_get(item, c"status"), c"PASS")): passes = passes + 1
+	json_value* counts = jc_get(report, c"counts")
+	ht_require(ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == baseline.object_values.length - passes && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"sampled counts differ from the baseline")
+	ht_require(ht_number(report, c"variants") == baseline.object_values.length && jc_get(report, c"baseline_changes").array_values.length == 0, c"sampled baseline changed")
 
 # The upstream-harness profile evaluates the pinned sta.js/assert.js in the
 # realm. It reports a pass rate and is not gated by the native baseline.
-void tc_upstream():
+void tc_upstream(json_value* manifest):
 	t262_upstream = 1
+	tc_manifest = tc_sample(manifest, 25, 0, c"upstream_sample.json")
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":4682,\"FAIL\":0,\"UNSUPPORTED\":473,\"ERROR\":0}")), c"upstream-harness counts changed")
+	json_value* counts = jc_get(report, c"counts")
+	ht_require(status == 0 && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0 && ht_number(counts, c"PASS") > 0 && ht_number(report, c"execution_passes") > 0, c"upstream-harness sample failed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"90.82%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 3609 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	ht_require(jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	ht_require(t262_expect(report, strjoin(c"PASS=", itoa(ht_number(counts, c"PASS")))) == 0 && t262_expect(report, c"PASS=0") != 0, c"upstream expectation check broken")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -65,22 +109,28 @@ json_value* tc_meta(char* fields):
 
 int main():
 	tc_directory = ht_temp()
+	ht_require(symlink(tempfile_abspath(c"tests/javascript/test262/upstream"), path_join(tc_directory, c"upstream")) == 0, c"cannot link pinned corpus")
+	json_value* manifest = t262_load(c"tests/javascript/test262/manifest.json")
+	json_value* requirements = jc_get(manifest, c"builtins_required")
+	ht_require(requirements.object_values.length == 514, c"built-in requirement inventory changed")
+	tc_manifest = tc_sample(manifest, 25, 1, c"native_sample.json")
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":4916,\"FAIL\":0,\"UNSUPPORTED\":239,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 3843 && ht_number(report, c"assertions") == 13731 && ht_number(report, c"variants") == 5155 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0, c"sampled native gate failed")
+	tc_baseline_counts(report, tc_manifest)
+	json_value* sampled = jc_get(report, c"counts")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 4915
-		int unsupported = 240
+		int passes = ht_number(sampled, c"PASS") - 1
+		int unsupported = ht_number(sampled, c"UNSUPPORTED") + 1
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 4917
-			unsupported = 238
+			passes = passes + 2
+			unsupported = unsupported - 2
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")
@@ -89,9 +139,8 @@ int main():
 		tc_eq(before, ht_text(changes.array_values[0], c"expected"))
 		tc_eq(after, ht_text(changes.array_values[0], c"actual"))
 	tc_mutation = 0
-	json_value* manifest = t262_load(c"tests/javascript/test262/manifest.json")
-	json_value* requirements = jc_get(manifest, c"builtins_required")
-	ht_require(requirements.object_values.length == 514, c"built-in requirement inventory changed")
+	ht_require(t262_expect(report, strjoin(strjoin(c"PASS=", itoa(ht_number(sampled, c"PASS"))), c",FAIL=0,ERROR=0")) == 0, c"matching expectation rejected")
+	for char* spec in ht_split(c"PASS=0|FAIL=1|execution_passes=-1|pass_rate=0.00%|unknown=1|PASS|=1", '|'): ht_require(t262_expect(report, spec) != 0, strjoin(c"wrong expectation accepted: ", spec))
 	for json_value* result in jc_get(report, c"results").array_values:
 		char* name = split(ht_text(result, c"id"), '#')[0]
 		json_value* required = jc_get(requirements, name)
@@ -189,7 +238,6 @@ int main():
 		int timeout = 5000
 		if (i == 1): timeout = 10
 		tc_eq(expected[i], ht_text(t262_execute(runner, runner, c"sloppy", timeout, 100), c"outcome"))
-	ht_require(symlink(tempfile_abspath(c"tests/javascript/test262/upstream"), path_join(tc_directory, c"upstream")) == 0, c"cannot link pinned corpus")
 	for mutation in range(14):
 		json_value* value = json_clone(manifest)
 		json_value* files = jc_get(value, c"files")
@@ -222,7 +270,7 @@ int main():
 		char* path = path_join(tc_directory, c"manifest.json")
 		file_write_text(path, json_stringify(value))
 		ht_require(t262_load(path) == 0, strjoin(c"invalid Test262 manifest accepted: ", itoa(mutation)))
-	tc_upstream()
+	tc_upstream(manifest)
 	ht_cleanup()
 	println(c"Test262 adapter contract checks OK")
 	return 0

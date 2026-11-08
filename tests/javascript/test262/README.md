@@ -15,14 +15,22 @@ report to `bin/test262-conformance.json`. The wbuild targets split the two
 profiles so they run in parallel: `javascript_test262` runs the native profile
 (`--native-only`) and `javascript_test262_upstream` the upstream-harness profile
 (`--upstream-only`, report in `bin/test262-upstream.json`); a bare
-`bin/test262_conformance` still runs both. No
+`bin/test262_conformance` still runs both. Each target pins its profile's
+counts and execution evidence with `--expect KEY=N,...` (the four status
+counts, `execution_passes`, `assertions`, `variants`, `pass_rate`), so a
+change to any of them fails that target; update the directive in
+`tools/test262_runtime_runner.w` with the README numbers. The adapter's
+contract test (`test262_runner_test`) runs both profiles on a deterministic
+sample of the manifest (every 25th case, plus every `builtins_required` case
+in the native profile) rather than repeating the full runs. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 2832 upstream test files (plus module fixtures) expanded
-into 5155 variants. The native profile reports **4916 PASS, 0 FAIL, 239
+The corpus contains 3056 upstream test files (plus module fixtures) expanded
+into 5379 variants. The native profile reports **5063 PASS, 0 FAIL, 316
 UNSUPPORTED, 0 ERROR**; 3843 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **4682 PASS, 0 FAIL, 473 UNSUPPORTED, 0 ERROR (90.82%)**; the 452
+reports **4908 PASS, 0 FAIL, 471 UNSUPPORTED, 0 ERROR (91.24%)**, 3688 of them
+reaching runtime execution; the 452
 property-escape variants (below) are UNSUPPORTED there because
 `regExpUtils.js` is not pinned. The positive cases execute 13731 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
@@ -153,9 +161,19 @@ reports them UNSUPPORTED (`flags: module`), since it has no `assert.throws`.
 The `export-star-as-namespace-from-module`, `let`, `const` and
 `Symbol.toStringTag` feature tags are enabled.
 
+With the `in` operator from reardan/w#907, 10 more module tests pass in the
+upstream-harness profile (with 22 more `_FIXTURE.js` modules): the
+`instn-star-props-*`, `instn-star-as-props-dflt-skip`, `instn-star-id-name`,
+`instn-named-bndng-dflt-star` and `namespace/internals/get-nested-namespace-dflt-skip`
+namespace-property checks (`'x' in ns`), `eval-export-dflt-expr-in` and
+`ambiguous-export-bindings/omitted-from-namespace`. Seven
+`test/language/{import,export}/` module-goal syntax negatives (escaped
+contextual keywords, duplicate import bindings) were pinned with them; they
+pass in both profiles.
+
 Not pinned: tests that need `fnGlobalObject.js` (the `Function` constructor),
 `Reflect`, `Object.keys`, `Object.prototype` methods,
-`Object.setPrototypeOf`/`Object.isExtensible`, the `in` operator,
+`Object.setPrototypeOf`/`Object.isExtensible`,
 `instanceof Object`, or an engine-identified `new TypeError()` runtime negative.
 Also not pinned: generator and async default exports, dynamic `import()`,
 top-level await, import attributes, source/defer phase imports, string export

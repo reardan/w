@@ -353,3 +353,21 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 	json_object_set(report, c"results", results)
 	*status = ht_number(counts, c"FAIL") != 0 || ht_number(counts, c"ERROR") != 0 || changes.array_values.length != 0
 	return report
+
+# Pinned run evidence for the gate targets: "KEY=VALUE,..." where a key
+# names a count (PASS FAIL UNSUPPORTED ERROR) or a report field
+# (execution_passes assertions variants files pass_rate). Returns 0 when
+# every value matches, else a message naming the first mismatch.
+char* t262_expect(json_value* report, char* spec):
+	for char* item in split(spec, ','):
+		list[char*] pair = split(item, '=')
+		if (pair.length != 2 || strlen(pair[0]) == 0): return strjoin(c"invalid expectation: ", item)
+		if (!jc_choice(json_string(pair[0]), c"PASS FAIL UNSUPPORTED ERROR execution_passes assertions variants files pass_rate")): return strjoin(c"unknown expectation: ", pair[0])
+		json_value* actual = jc_get(jc_get(report, c"counts"), pair[0])
+		if (actual == 0): actual = jc_get(report, pair[0])
+		if (actual == 0): return strjoin(c"report has no ", pair[0])
+		char* text = 0
+		if (actual.type == json_type_string()): text = actual.string_value
+		else: text = itoa(actual.int_value)
+		if (strcmp(text, pair[1]) != 0): return strjoin(strjoin(strjoin(c"expected ", item), c", got "), text)
+	return 0

@@ -15515,6 +15515,201 @@
       "path": "upstream/test/language/module-code/instn-star-star-cycle-indirect-x_FIXTURE.js",
       "upstream_path": "test/language/module-code/instn-star-star-cycle-indirect-x_FIXTURE.js",
       "sha256": "2fe6cb418d7d490ae825fe7da6fcadf9210f1d4996be364bf7deafba39dfe675"
+    },
+    {
+      "path": "upstream/test/language/export/escaped-as-export-specifier.js",
+      "upstream_path": "test/language/export/escaped-as-export-specifier.js",
+      "sha256": "d49a0f074128a9ad3f84655b12d9332a8a3df9cf40bd53545b43330923c902b5"
+    },
+    {
+      "path": "upstream/test/language/export/escaped-default.js",
+      "upstream_path": "test/language/export/escaped-default.js",
+      "sha256": "b8bb67c1db599f90eecf75542bccf4991e71aadcdd969a33d00ff166fbcc2b60"
+    },
+    {
+      "path": "upstream/test/language/export/escaped-from.js",
+      "upstream_path": "test/language/export/escaped-from.js",
+      "sha256": "25aa13b6d9c98f872c1b90a92f1188dba7365a2ddef2cfb671a19bcd5e6d3079"
+    },
+    {
+      "path": "upstream/test/language/import/dup-bound-names.js",
+      "upstream_path": "test/language/import/dup-bound-names.js",
+      "sha256": "713377cef5d18a264594cc81330d0c2d400c4a49d435be7d8585747188cc2519"
+    },
+    {
+      "path": "upstream/test/language/import/escaped-as-import-specifier.js",
+      "upstream_path": "test/language/import/escaped-as-import-specifier.js",
+      "sha256": "5df8fa3fd6b4e09fc6e450056073a2ab49e583f41ab7b5d8f313ebd66e28c846"
+    },
+    {
+      "path": "upstream/test/language/import/escaped-as-namespace-import.js",
+      "upstream_path": "test/language/import/escaped-as-namespace-import.js",
+      "sha256": "ea1861604b38c5262c0fd324ef297fa63ea3584a116c72ed904fc3864c73ccfc"
+    },
+    {
+      "path": "upstream/test/language/import/escaped-from.js",
+      "upstream_path": "test/language/import/escaped-from.js",
+      "sha256": "caee3ce2bfcbd50910856d98488036d93a252a1a5962ffc75fa2c0a7fac806de"
+    },
+    {
+      "path": "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace.js",
+      "upstream_path": "test/language/module-code/ambiguous-export-bindings/omitted-from-namespace.js",
+      "sha256": "47239d1ac289c855e372dcfd86e15ddaa57be453cec4d32cc1edc45e2f8217e1"
+    },
+    {
+      "path": "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace_FIXTURE.js",
+      "upstream_path": "test/language/module-code/ambiguous-export-bindings/omitted-from-namespace_FIXTURE.js",
+      "sha256": "dfdb499dcdedf15de650ad013f4ee0ce265ce58cc8a1cd23cedbd1778d91ae93"
+    },
+    {
+      "path": "upstream/test/language/module-code/eval-export-dflt-expr-in.js",
+      "upstream_path": "test/language/module-code/eval-export-dflt-expr-in.js",
+      "sha256": "7551d897ea97bab6c708d0db6791c2da411bb16f279515758bcd14c6a5a45fba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-bndng-dflt-star.js",
+      "upstream_path": "test/language/module-code/instn-named-bndng-dflt-star.js",
+      "sha256": "ba471a14418389ae63bd62f70f30eb29b88ee7dd017505f3bf7db8c247d9b8e5"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-as-props-dflt-skip.js",
+      "upstream_path": "test/language/module-code/instn-star-as-props-dflt-skip.js",
+      "sha256": "0d990f64dbe8bff75c21662557d99937fc15b71eb06ac38543767f060ee94fe7"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-as-named_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-as-named_FIXTURE.js",
+      "sha256": "a9e18ad2a48f70e95e129b0fc1119af5a7a66075ed1b61cde799d07c657e1fd6"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-as-prod_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-as-prod_FIXTURE.js",
+      "sha256": "b043408e10c350675ca16de6236e236d76aa456229b28a6322dbc8f478d15bef"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-id-name.js",
+      "upstream_path": "test/language/module-code/instn-star-id-name.js",
+      "sha256": "ce5f3e8f8421103d0bb194288f5de2a400c415e6dd0f1329a5fdc8ac8d092983"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-circular.js",
+      "upstream_path": "test/language/module-code/instn-star-props-circular.js",
+      "sha256": "21110439f8153a2e48aedf1c29f07a05129ec56c31c3a8e74a71b7cbeecc35e9"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-circular-a_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-circular-a_FIXTURE.js",
+      "sha256": "979d714e9db2f63067295dd95f164b3dbe1229256e49bcb213b44702f8a484a8"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-circular-b_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-circular-b_FIXTURE.js",
+      "sha256": "de70ec15c45acb330f50ec9aff47f20a21deb5bb401800e6143f1cd654b9d9d0"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-indirect.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-indirect.js",
+      "sha256": "8286b8fc549b2ffa6cc693ae620173c583318318c0383765e6ee929a647a3607"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-indirect-reexport_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-indirect-reexport_FIXTURE.js",
+      "sha256": "2cd49c0f041ede9d3ca81c1526d0930e3a3af3bf010f0e56987b742737fcc285"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-local.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-local.js",
+      "sha256": "3ddb05ffd040df1c3f24836ebb4e9f5d12052ee9b15f5616346aeb4fc772a49f"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-local-named_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-local-named_FIXTURE.js",
+      "sha256": "4fb97e7b9301574154e5645fc91f291b7e6d299a85ee75311fb70768b738e4f1"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-local-prod_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-local-prod_FIXTURE.js",
+      "sha256": "93ae7ac04c29b5a512163a00259bc38d0d2f3589cfeb4af6670f42648b67134b"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip.js",
+      "sha256": "0409abf4479510abc7756637572e04df0a8e3e65217a96bde01ece7e7a9df15b"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-named_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-named_FIXTURE.js",
+      "sha256": "2c8c09f85e81665705dec329edda9bf25becfc08b1d4cb92f898bea045c2eb0c"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-prod_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-prod_FIXTURE.js",
+      "sha256": "9c46666643bae8abd917fe31c55e42dabea8128fbd2b9012ff5adde5a5c281b2"
+    },
+    {
+      "path": "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip.js",
+      "upstream_path": "test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip.js",
+      "sha256": "9a7eac9328403480e06b15cce9ac2279486bf2bbc036d19e5223380247984ca2"
+    },
+    {
+      "path": "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-named_FIXTURE.js",
+      "upstream_path": "test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-named_FIXTURE.js",
+      "sha256": "ce8799937a6671573f4c0b2dcfdf46f8e595a23d9bdd5de6a307343d7970bc8d"
+    },
+    {
+      "path": "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-prod_FIXTURE.js",
+      "upstream_path": "test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-prod_FIXTURE.js",
+      "sha256": "f4b066890b604a1fd83857d58dd0a74a09aa05f3127ae601909b109726492ef6"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-as-prod-end_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-as-prod-end_FIXTURE.js",
+      "sha256": "b9af329375f371cddbec3e46804af29bea7a2ac992b4181135021ab5f3939b59"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-keep-indirect-def_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-keep-indirect-def_FIXTURE.js",
+      "sha256": "93ae7ac04c29b5a512163a00259bc38d0d2f3589cfeb4af6670f42648b67134b"
+    },
+    {
+      "path": "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace-1_FIXTURE.js",
+      "upstream_path": "test/language/module-code/ambiguous-export-bindings/omitted-from-namespace-1_FIXTURE.js",
+      "sha256": "da063d7cea6c2ddfb33c462850ed97c90ade8d57bda9655debc8acc6d4cd63e2"
+    },
+    {
+      "path": "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace-2_FIXTURE.js",
+      "upstream_path": "test/language/module-code/ambiguous-export-bindings/omitted-from-namespace-2_FIXTURE.js",
+      "sha256": "865336830a521eb03d82ef1579dba5fb7fb04fbc617fdba2259b90562c43364a"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-star-as-named-end_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-star-as-named-end_FIXTURE.js",
+      "sha256": "4f1ecf3ed3337648b0d453d223ad34f5a24f0df166561699864c008dd8d0b43c"
+    },
+    {
+      "path": "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-prod-end_FIXTURE.js",
+      "upstream_path": "test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-prod-end_FIXTURE.js",
+      "sha256": "b9af329375f371cddbec3e46804af29bea7a2ac992b4181135021ab5f3939b59"
+    },
+    {
+      "path": "upstream/test/language/expressions/dynamic-import/dynamic-import-module_FIXTURE.js",
+      "upstream_path": "test/language/expressions/dynamic-import/dynamic-import-module_FIXTURE.js",
+      "sha256": "08bd41ffb3fbbfe3a33b50b66d0ca03f6266e5a4468cafc266eb109c15d7a261"
+    },
+    {
+      "path": "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-named-end_FIXTURE.js",
+      "upstream_path": "test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip-named-end_FIXTURE.js",
+      "sha256": "4f1ecf3ed3337648b0d453d223ad34f5a24f0df166561699864c008dd8d0b43c"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-named_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-named_FIXTURE.js",
+      "sha256": "9e686f230b690be9db20c2606abf482c2489f64a7f0e0792a8608677db8a1d92"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-props-dflt-skip-prod_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-props-dflt-skip-prod_FIXTURE.js",
+      "sha256": "f32ff0747161ff1794b27fef16f6807ba39b350b445e17ec2ff27c3b0317c8d4"
     }
   ],
   "cases": [
@@ -18556,7 +18751,24 @@
     "upstream/test/language/module-code/namespace/internals/get-sym-not-found.js",
     "upstream/test/language/module-code/namespace/internals/super-access-to-tdz-binding.js",
     "upstream/test/language/module-code/namespace/internals/super-set-to-tdz-binding-with-accessor.js",
-    "upstream/test/language/module-code/early-dup-lex.js"
+    "upstream/test/language/module-code/early-dup-lex.js",
+    "upstream/test/language/export/escaped-as-export-specifier.js",
+    "upstream/test/language/export/escaped-default.js",
+    "upstream/test/language/export/escaped-from.js",
+    "upstream/test/language/import/dup-bound-names.js",
+    "upstream/test/language/import/escaped-as-import-specifier.js",
+    "upstream/test/language/import/escaped-as-namespace-import.js",
+    "upstream/test/language/import/escaped-from.js",
+    "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace.js",
+    "upstream/test/language/module-code/eval-export-dflt-expr-in.js",
+    "upstream/test/language/module-code/instn-named-bndng-dflt-star.js",
+    "upstream/test/language/module-code/instn-star-as-props-dflt-skip.js",
+    "upstream/test/language/module-code/instn-star-id-name.js",
+    "upstream/test/language/module-code/instn-star-props-circular.js",
+    "upstream/test/language/module-code/instn-star-props-dflt-keep-indirect.js",
+    "upstream/test/language/module-code/instn-star-props-dflt-keep-local.js",
+    "upstream/test/language/module-code/instn-star-props-dflt-skip.js",
+    "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -34950,6 +35162,67 @@
     },
     "upstream/test/language/module-code/early-dup-lex.js#module": {
       "status": "PASS"
+    },
+    "upstream/test/language/export/escaped-as-export-specifier.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/export/escaped-default.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/export/escaped-from.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/import/dup-bound-names.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/import/escaped-as-import-specifier.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/import/escaped-as-namespace-import.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/import/escaped-from.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/ambiguous-export-bindings/omitted-from-namespace.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/eval-export-dflt-expr-in.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-named-bndng-dflt-star.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-as-props-dflt-skip.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-id-name.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-props-circular.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-props-dflt-keep-indirect.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-props-dflt-keep-local.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-star-props-dflt-skip.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/namespace/internals/get-nested-namespace-dflt-skip.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
     }
   },
   "builtins_required": {
