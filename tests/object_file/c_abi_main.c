@@ -31,6 +31,7 @@ long w_self_indirect(long a);
 long w_ops_run(struct w_ops *ops);
 void w_ops_fill(struct w_ops *ops);
 long w_private_total_value(void);
+long w_dirty_results(long x);
 extern long w_calls;
 extern binop w_table_add, w_table_hidden, w_table_c_sub, w_table_late;
 extern sum8 w_table_weigh8;
@@ -59,6 +60,18 @@ double w_float_records(struct fpair p, struct mixed m, struct imixed q);
 double w_call_float_records(struct mixed (*make)(double, long));
 double c_float_records(struct fpair p, struct mixed m, struct imixed q) { return p.x + p.y * 10 + m.f * 100 + m.i * 1000 + q.i * 10000 + q.f * 100000 + q.g * 1000000; }
 static struct mixed c_make_mixed(double f, long i) { struct mixed m = {f, i}; return m; }
+
+/* Narrow results with junk above them in rax, as gcc may leave it
+   (a bool computed by setne al over a pointer still in rax). */
+__attribute__((naked)) _Bool c_dirty_bool(long x) {
+	__asm__("movabsq $0x123456789abcde00, %rax\n\ttestq %rdi, %rdi\n\tsetne %al\n\tret");
+}
+__attribute__((naked)) unsigned char c_dirty_byte(long x) {
+	__asm__("movabsq $0x7edcba98765432c8, %rax\n\tret");
+}
+__attribute__((naked)) int c_dirty_int32(long x) {
+	__asm__("movabsq $0x12345678fffffffb, %rax\n\tret");
+}
 
 static int failures;
 
@@ -131,6 +144,8 @@ int main(void) {
 	struct imixed q1 = {5, 6, 7};
 	check("w_float_records", (long)w_float_records(p1, m1, q1), (long)c_float_records(p1, m1, q1));
 	check("w_call_float_records", (long)w_call_float_records(c_make_mixed), (long)(2.5 * 2 + 9));
+
+	check("w_dirty_results", w_dirty_results(1), 1 + 200 - 5);
 
 	if (failures == 0) printf("c abi object OK\n");
 	return failures != 0;

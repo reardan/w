@@ -34,6 +34,10 @@ type mixed_maker = fn(float64, int) -> mixed
 extern int c_sub(int a, int b)
 extern float64 c_float_records(fpair p, mixed m, imixed q)
 extern int c_weigh8(int a, int b, int c, int d, int e, int f, int g, int h)
+# Narrow results whose callee leaves junk in the upper bits of rax.
+extern bool c_dirty_bool(int x)
+extern uint8 c_dirty_byte(int x)
+extern int32 c_dirty_int32(int x)
 
 int w_calls = 0
 static int w_private_total = 0
@@ -182,3 +186,13 @@ float64 w_float_records(fpair p, mixed m, imixed q):
 float64 w_call_float_records(mixed_maker* make):
 	mixed m = make(2.5, 9)
 	return m.f * cast(float64, 2) + m.i
+
+
+# System V defines only the result's own bits of rax: each call here
+# must see the narrow value, not the junk above it.
+int w_dirty_results(int x):
+	int n = 0
+	if (c_dirty_bool(x)): n = n + 1
+	if (c_dirty_bool(0)): n = n + 10
+	n = n + c_dirty_byte(x) + c_dirty_int32(x)
+	return n
