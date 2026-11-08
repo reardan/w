@@ -5,10 +5,10 @@ so AT-SPI and UI Automation (and MSAA) describe the same rows, columns,
 headers and selections.
 
 Tables: a TABLE's ROW children hold CELL children. A row with the
-UI_ACCESS_HEADER state is the column-header row (the first such row);
-without one, the first row is the column-header row when it offers no
-action and is not selected while a later row does or is (the shape
-graphics/ui/widgets/table.w publishes). Table row indices count data
+UI_ACCESS_HEADER state is the column-header row (the first such row;
+graphics/ui/widgets/table.w marks its header row so); without one, the
+first row is the column-header row when it offers no action and is not
+selected while a later row does or is. Table row indices count data
 rows only. A data-row CELL with UI_ACCESS_HEADER is a row header.
 
 Cells may span rows and columns (row_span, col_span; #863). They are

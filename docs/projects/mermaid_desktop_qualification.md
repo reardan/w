@@ -252,7 +252,14 @@ Insights for Windows can show the tree alongside.
 6. In Inspect, on the "Alpha to Beta: pays" item, use the SelectionItem pattern
    Select (Action menu). **Expect:** the edge is selected on the canvas within a
    frame and becomes the focused element; IsSelected becomes true.
-7. Use Accessibility Insights' FastPass on the window. **Expect:** record the
+7. In Inspect, the **List** named "Nodes" under the inspector. **Expect:** its
+   Selection pattern has CanSelectMultiple true; Ctrl+click and Shift+Down
+   there select several nodes on the canvas, and Narrator announces each
+   list item with its selected state. On an ER entity, the compartment
+   **Table** has the column headers Name, Type, Keys and Comment and each
+   attribute name as its row's header (TableItem row header items).
+   `graphics_ui_widgets_uia_test` checks the same patterns under wine.
+8. Use Accessibility Insights' FastPass on the window. **Expect:** record the
    reported failures (the bridge has no Text pattern, so source-text checks are
    expected to fail; record which others appear).
 

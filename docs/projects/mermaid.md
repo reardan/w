@@ -65,6 +65,17 @@ configuration and other Markdown fences; deleting edges also updates indexed
 `linkStyle` assignments. Each graphical operation is one undo step, and failed
 edits leave the document unchanged.
 
+Under the inspector, a **Nodes** list (a multi-selection list box,
+`graphics.ui.widgets.listbox`, #913) lists every node the canvas can select
+and mirrors the canvas selection both ways: click, Ctrl+click and
+Shift+click, Shift+arrows, Space and Ctrl+A there select on the canvas.
+With one ER entity, class or requirement selected, a compartment grid
+(`graphics.ui.widgets.table`) beside it shows its attributes (name, type,
+keys, comment), members (text, kind) or properties, with the first column
+heading each row; picking a row picks the line the inspector's Line field
+edits. Screen readers see the list as multiselectable and the grid as a
+table with column and row headers (`mermaid_editor_atspi_test`).
+
 Every graphical edit is a source splice validated by reparsing: the result must
 keep every other node (label, shape, members, annotation, attributes, scope,
 styles), every other edge in order, the notes, class definitions, direction,

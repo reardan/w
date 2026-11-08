@@ -72,6 +72,9 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_value_id = 0
 	ctx.access_value_length = 0
 	ctx.access_selection_id = 0
+	ctx.access_select_count = 0
+	ctx.access_focus_owner = 0
+	ctx.access_focus_child = 0
 	ctx.clip_out = 0
 	ctx.clip_out_ready = 0
 	ctx.clip_paste_id = 0
@@ -320,6 +323,7 @@ void ui_begin(ui_context* ctx, int width, int height):
 	ctx.access_label = 0
 	ctx.access_next_aux = 0
 	ctx.access_parent = 0
+	ctx.access_focus_owner = 0
 	if (ctx.access != 0):
 		if (ui_access_add(ctx.access, ui_access_root_id, 0, UI_ACCESS_DOCUMENT, ui_rect_new(0.0, 0.0, cast(float32, width), cast(float32, height))) != 0):
 			ctx.access_parent = ui_access_root_id
@@ -392,11 +396,16 @@ void ui_end(ui_context* ctx):
 	if (ctx.access != 0):
 		ui_access_node* focused = ui_access_find(ctx.access, ctx.focus)
 		ctx.access.focused_id = 0
-		if ((focused != 0) && ((focused.states & UI_ACCESS_FOCUSABLE) != 0)): ctx.access.focused_id = ctx.focus
+		if ((focused != 0) && ((focused.states & UI_ACCESS_FOCUSABLE) != 0)):
+			ctx.access.focused_id = ctx.focus
+			# A focused list reports its cursor item instead.
+			if ((ctx.access_focus_owner == ctx.focus) && (ui_access_find(ctx.access, ctx.access_focus_child) != 0)):
+				ctx.access.focused_id = ctx.access_focus_child
 	# Assistive requests live for exactly the frame after their dispatch.
 	ctx.access_activation_count = 0
 	ctx.access_value_id = 0
 	ctx.access_selection_id = 0
+	ctx.access_select_count = 0
 	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
@@ -473,6 +482,21 @@ int ui_access_take_activation(ui_context* ctx, int id):
 			ctx.access_activation_count = ctx.access_activation_count - 1
 			ctx.access_activations[i] = ctx.access_activations[ctx.access_activation_count]
 			return 1
+	return 0
+
+
+# Consume a pending UI_ACCESS_SELECT request for item id: its
+# UI_ACCESS_SELECT_* mode, or 0 when there is none. Multi-selection
+# containers call it for each item they issue.
+int ui_access_take_select(ui_context* ctx, int id):
+	if (ctx.disabled || ui_scope_blocked(ctx)): return 0
+	for i in range(ctx.access_select_count):
+		if (ctx.access_selects[i] == id):
+			int mode = ctx.access_select_modes[i]
+			ctx.access_select_count = ctx.access_select_count - 1
+			ctx.access_selects[i] = ctx.access_selects[ctx.access_select_count]
+			ctx.access_select_modes[i] = ctx.access_select_modes[ctx.access_select_count]
+			return mode
 	return 0
 
 
@@ -627,6 +651,14 @@ int ui_access_widget_action(void* context, int id, int action, char* data, int l
 		ctx.access_selection_anchor = anchor
 		ctx.access_selection_active = active
 		ctx.access_selection_id = id
+		return 1
+	if (action == UI_ACCESS_SELECT):
+		# Select-all and clear arrive as one request per item.
+		int mode = ui_access_select_mode(data, length)
+		if ((mode == 0) || (ctx.access_select_count >= 256)): return 0
+		ctx.access_selects[ctx.access_select_count] = id
+		ctx.access_select_modes[ctx.access_select_count] = mode
+		ctx.access_select_count = ctx.access_select_count + 1
 		return 1
 	return 0
 
