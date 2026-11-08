@@ -39,6 +39,8 @@ struct js_module_record:
 	list[js_module_entry*] local_exports
 	list[js_module_entry*] indirect_exports
 	list[js_module_entry*] star_exports
+	# [[HostDefined]]: the runtime loader's js_module (modules.w), or 0.
+	void* host_defined
 
 
 struct js_module_graph:
@@ -172,7 +174,18 @@ void js_module_export_names(list[char*] names, pg_ast_node* node):
 # ParseModule's ExportEntries split, done after the import entries are known.
 void js_module_export_entries(js_module_record* record, pg_ast_node* node):
 	if (js_cst_child(node, c"KW_DEFAULT") != 0):
-		js_module_entry_add(record.local_exports, c"default", 0, c"*default*", -1)
+		# A named default function or class declaration binds its own name;
+		# anything else binds *default*.
+		char* local = 0
+		pg_ast_node* value = 0
+		if (node.children.length > 2 && node.children[2].children.length > 0): value = node.children[2].children[0]
+		if (value != 0 && (js_cst_is(value, c"function_expr") || js_cst_is(value, c"class_expr"))):
+			pg_ast_node* binding = js_cst_child(value, c"binding_identifier")
+			if (binding != 0): local = js_identifier_decode(binding.first_token.text)
+		if (local == 0): js_module_entry_add(record.local_exports, c"default", 0, c"*default*", -1)
+		else:
+			js_module_entry_add(record.local_exports, c"default", 0, local, -1)
+			free(local)
 		return
 	pg_ast_node* all = js_cst_child(node, c"export_all")
 	if (all != 0):
@@ -238,10 +251,9 @@ js_module_record* js_module_graph_find(js_module_graph* graph, char* identifier)
 	return 0
 
 
-js_module_record* js_module_graph_add(js_module_graph* graph, char* identifier, char* source, int length, int depth):
-	if (graph.records.length >= graph.max_modules || depth > graph.max_depth):
-		js_module_graph_fail(graph, 0, c"SyntaxError", c"module graph limit")
-		return 0
+# ParseModule's record for already parsed source text: the record owns parsed
+# and is appended to the graph; requested modules are left to the caller.
+js_module_record* js_module_graph_record(js_module_graph* graph, char* identifier, pg_parse_result* parsed):
 	js_module_record* record = new js_module_record()
 	record.identifier = strclone(identifier)
 	record.specifiers = new list[char*]
@@ -250,12 +262,21 @@ js_module_record* js_module_graph_add(js_module_graph* graph, char* identifier, 
 	record.local_exports = new list[js_module_entry*]
 	record.indirect_exports = new list[js_module_entry*]
 	record.star_exports = new list[js_module_entry*]
+	record.host_defined = 0
+	record.parsed = parsed
 	graph.records.push(record)
-	record.parsed = js_parse(source, length, record.identifier, 1)
+	if (parsed.success): js_module_record_entries(record)
+	return record
+
+
+js_module_record* js_module_graph_add(js_module_graph* graph, char* identifier, char* source, int length, int depth):
+	if (graph.records.length >= graph.max_modules || depth > graph.max_depth):
+		js_module_graph_fail(graph, 0, c"SyntaxError", c"module graph limit")
+		return 0
+	js_module_record* record = js_module_graph_record(graph, identifier, js_parse(source, length, identifier, 1))
 	if (record.parsed.success == 0):
 		js_module_graph_fail(graph, record, c"SyntaxError", c"invalid module source text")
 		return 0
-	js_module_record_entries(record)
 	for i in range(record.specifiers.length):
 		char* specifier = record.specifiers[i]
 		js_module_text* loaded = graph.loader(graph.context, specifier, record.identifier)
@@ -319,7 +340,11 @@ int js_module_resolve_export(js_module_record* record, char* name, js_module_res
 	return 1
 
 
-int js_module_graph_resolve(js_module_graph* graph, js_module_record* record, char* name):
+# ResolveExport from record: 1 with *module/*binding set to the resolved
+# binding ("*namespace*" for a namespace re-export), 0 when it cannot be
+# resolved, 2 when ambiguous and 3 past the resolve-set limit. *binding is
+# borrowed from the graph.
+int js_module_graph_resolve_binding(js_module_graph* graph, js_module_record* record, char* name, js_module_record** module, char** binding):
 	js_module_resolution state
 	state.module = 0
 	state.binding = 0
@@ -331,7 +356,13 @@ int js_module_graph_resolve(js_module_graph* graph, js_module_record* record, ch
 	if (state.overflow): status = 3
 	__w_list_free(cast(__w_list*, state.seen_modules))
 	__w_list_free(cast(__w_list*, state.seen_names))
+	if (module != 0): *module = state.module
+	if (binding != 0): *binding = state.binding
 	return status
+
+
+int js_module_graph_resolve(js_module_graph* graph, js_module_record* record, char* name):
+	return js_module_graph_resolve_binding(graph, record, name, 0, 0)
 
 
 int js_module_graph_check(js_module_graph* graph, js_module_record* record, char* name, js_module_record* owner):
@@ -342,14 +373,20 @@ int js_module_graph_check(js_module_graph* graph, js_module_record* record, char
 	return js_module_graph_fail(graph, owner, c"SyntaxError", c"module export cannot be resolved")
 
 
-# ModuleDeclarationEnvironmentSetup's static checks for every loaded module.
+# ModuleDeclarationEnvironmentSetup's static checks for one loaded module
+# whose requested modules are all present.
+int js_module_graph_validate_record(js_module_graph* graph, js_module_record* record):
+	for js_module_entry* entry in record.indirect_exports:
+		if (js_module_graph_check(graph, record, entry.export_name, record) == 0): return 0
+	for js_module_entry* entry in record.imports:
+		if (strcmp(entry.import_name, c"*") == 0): continue
+		if (js_module_graph_check(graph, record.requested[entry.request], entry.import_name, record) == 0): return 0
+	return 1
+
+
 int js_module_graph_validate(js_module_graph* graph):
 	for js_module_record* record in graph.records:
-		for js_module_entry* entry in record.indirect_exports:
-			if (js_module_graph_check(graph, record, entry.export_name, record) == 0): return 0
-		for js_module_entry* entry in record.imports:
-			if (strcmp(entry.import_name, c"*") == 0): continue
-			if (js_module_graph_check(graph, record.requested[entry.request], entry.import_name, record) == 0): return 0
+		if (js_module_graph_validate_record(graph, record) == 0): return 0
 	return 1
 
 
