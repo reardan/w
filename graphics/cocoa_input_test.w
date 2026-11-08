@@ -173,7 +173,7 @@ int test_window_events():
 	# Left button at AppKit (30, 110) = top-left (30, 40), shift held.
 	post_mouse(win, 1, 30.0, 110.0, 0x20000)
 	gfx_window_poll(win)
-	expect_event(win, GFX_EVENT_MOUSE_DOWN, 1, 30, 40, GFX_MOD_SHIFT)
+	expect_event(win, GFX_EVENT_MOUSE_DOWN, 1, 30, 40, gfx_mods_with_clicks(GFX_MOD_SHIFT, 1))
 	assert_equal(1, win.mouse_buttons)
 	assert_near(30, win.mouse_x)
 	assert_near(40, win.mouse_y)
@@ -185,7 +185,7 @@ int test_window_events():
 	post_mouse(win, 4, 10.0, 140.0, 0)
 	gfx_window_poll(win)
 	expect_event(win, GFX_EVENT_MOUSE_UP, 1, 50, 50, 0)
-	expect_event(win, GFX_EVENT_MOUSE_DOWN, 3, 10, 10, 0)
+	expect_event(win, GFX_EVENT_MOUSE_DOWN, 3, 10, 10, gfx_mods_with_clicks(0, 1))
 	expect_event(win, GFX_EVENT_MOUSE_UP, 3, 10, 10, 0)
 	assert_equal(0, win.mouse_buttons)
 

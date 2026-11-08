@@ -314,7 +314,10 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	else:
 		load_slot(s + 1)
 		if (callee_type != 4): promote(callee_type)
-		call_eax()
+		# --c-abi: a function-pointer value is a System V entry, as is the
+		# value of a weak function called through its symbol
+		if (c_abi_mode && ((callee_type != 4) || c_abi_calls_through_symbol(callee_sym))): c_abi_indirect_call(callee_type, callee_sym, s, passed_args, has_return_buffer, declared_return)
+		else: call_eax()
 	pop_to(s)
 	safe_foreign_owner_result(declared_return)
 	int type = 3  # call results are plain values
@@ -472,7 +475,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		type_error3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
-	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
+	c_variadic_call_emit(callee_sym, passed_args, arg_classes, declared_return)
 	free(arg_classes)
 	pop_to(s)
 	int type = 3  # call results are plain values
@@ -791,6 +794,12 @@ int postfix_expr():
 						if (type_is_gpu_object(type) && (ci_is_bit_field_access(member_type) == 0)):
 							if ((type_get_pointer_level(member_type) == 0) && (type_num_args(member_type) == 0) && (type_is_buffer(member_type) == 0)):
 								member_type = type_get_gpu(member_type)
+						# A field of a struct in a segment address space
+						# ('__seg_gs hot*' receiver, a '__seg_gs hot'
+						# global) is in that space too: scalars, pointers
+						# and nested structs alike (segment records are
+						# named apart from pointer records).
+						member_type = seg_member_type(type, member_type)
 						# An imported C bit-field member: the field's type
 						# is a zero-size access type whose side table
 						# records the storage unit and bit range the SysV

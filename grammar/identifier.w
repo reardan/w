@@ -19,6 +19,7 @@ int identifier_value_at(int t, char* name):
 		direct_callee_note(1, t)
 		return 4 /* function */
 	if (t < 0): sym_not_found_error(name)
+	if (c_abi_calls_through_symbol(t)): return c_abi_function_value(t, name)
 	return sym_emit_value(t, name)
 
 

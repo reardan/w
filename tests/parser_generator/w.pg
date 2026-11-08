@@ -83,6 +83,11 @@ literal KW_OPERATOR "operator"
 literal KW_KERNEL "kernel"
 literal KW_LAUNCH "launch"
 literal KW_GPU "gpu"
+# The x86 segment address spaces (C's __seg_gs/__seg_fs named address
+# spaces, grammar/type_name.w): contextual like 'gpu', so also in
+# name_token.
+literal KW_SEG_GS "__seg_gs"
+literal KW_SEG_FS "__seg_fs"
 literal KW_UNSAFE "unsafe"
 literal KW_OWN "own"
 literal KW_OPTOWN "optown"
@@ -98,6 +103,10 @@ literal KW_EXPORT "export"
 # 'thread_local' is contextual in the compiler too (grammar/program.w;
 # docs/projects/thread_local.md), so it is also listed in name_token.
 literal KW_THREAD_LOCAL "thread_local"
+# 'static' is contextual in the compiler too (grammar/program.w: it marks
+# the next function or global file-local in an --emit=obj object), so it
+# is also listed in name_token.
+literal KW_STATIC "static"
 
 literal ELLIPSIS "..."
 literal SHL_ASSIGN "<<="
@@ -152,6 +161,10 @@ literal RBRACK "]"
 literal LBRACE "{"
 literal RBRACE "}"
 literal QUESTION "?"
+# Declaration attributes ('@section(".init.text")', '@weak', ...;
+# grammar/object_attributes.w) prefix a function, global or extern
+# declaration, on its line or on lines of their own.
+literal AT "@"
 
 start program
 
@@ -163,14 +176,17 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | thread_local_decl | message_decl | operator_def | function_decl | global_decl
+rule declaration = attribute_decl | import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | static_decl | thread_local_decl | message_decl | operator_def | function_decl | global_decl
+rule attribute_decl = AT name_token attribute_args
+rule attribute_args = LPAREN attribute_arg RPAREN |
+rule attribute_arg = STRING | expression
 rule import_decl = KW_IMPORT dotted_name import_alias_opt import_attestation_opt
 rule import_alias_opt = KW_AS name_token |
 # An audited foreign boundary: 'unsafe "<sha256>"' (docs/projects/safe_mode.md).
 rule import_attestation_opt = KW_UNSAFE STRING |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_UNSAFE | KW_OWN | KW_OPTOWN | KW_REF | KW_REFMUT | KW_OPTREF | KW_OPTREFMUT | KW_EXPORT | KW_THREAD_LOCAL
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_SEG_GS | KW_SEG_FS | KW_UNSAFE | KW_OWN | KW_OPTOWN | KW_REF | KW_REFMUT | KW_OPTREF | KW_OPTREFMUT | KW_EXPORT | KW_THREAD_LOCAL | KW_STATIC
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN extern_alias | KW_EXTERN type_ref IDENT
 rule extern_alias = ASSIGN STRING |
@@ -206,6 +222,9 @@ rule message_number = ASSIGN NUMBER |
 # wasm real-signature exports: 'export' marks a function definition
 # (grammar/program.w; docs/projects/wasm_backend.md stage 5)
 rule export_decl = KW_EXPORT function_decl
+# file-local functions and globals: 'static' before the definition
+rule static_decl = KW_STATIC static_target
+rule static_target = function_decl | global_decl
 # thread_local globals (grammar/program.w; docs/projects/thread_local.md).
 # The function and initializer spellings are compile errors, parse-only
 # here so their fixtures (tests/thread_local_*_error_fixture.w) parse.
@@ -224,7 +243,14 @@ rule operator_def = type_ref KW_OPERATOR operator_token LPAREN param_list RPAREN
 rule operator_token = arith_op | EQ_EQ
 rule arith_op = PLUS | MINUS | STAR | SLASH | PERCENT
 rule global_decl = type_ref name_token decl_suffix global_suffix
-rule global_suffix = ASSIGN expression | SEMI | 
+rule global_suffix = ASSIGN brace_data | ASSIGN expression | SEMI | 
+# 'T name = {int32 1, &g + 8, f, c"s", pad 4}': a brace initializer's
+# raw data items (grammar/program.w, global_brace_initializer). 'pad N'
+# reads as a type name and a count; address items are expressions.
+rule brace_data = LBRACE gap_many brace_data_items gap_many RBRACE
+rule brace_data_items = brace_data_item brace_data_tail* |
+rule brace_data_tail = COMMA gap_many brace_data_item | COMMA
+rule brace_data_item = type_ref expression | expression
 rule function_body = SEMI | block
 rule decl_suffix = LBRACK expression RBRACK |
 
@@ -237,12 +263,15 @@ rule tab_prefix = TAB tab_prefix | TAB
 
 rule param_list = param param_tail* | 
 rule param_tail = COMMA gap_many param
-rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
+# A C-variadic definition's '...' (optionally named), --c-abi.
+rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref | ELLIPSIS name_token | ELLIPSIS
 rule param_default = ASSIGN expression |
 
 # 'gpu T*' marks a device-memory pointer (grammar/type_name.w); gpu_for_stmt
 # is tried first at statement start, and 'for' is never a type_atom.
-rule type_ref = KW_CONST type_ref | KW_GPU type_ref | KW_OWN lifetime_opt type_ref | KW_OPTOWN lifetime_opt type_ref | KW_REF lifetime_opt type_ref | KW_REFMUT lifetime_opt type_ref | KW_OPTREF lifetime_opt type_ref | KW_OPTREFMUT lifetime_opt type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+# '__seg_gs T' / '__seg_gs(T)' put an object in a segment address space.
+rule type_ref = KW_CONST type_ref | KW_GPU type_ref | seg_kw LPAREN type_ref RPAREN pointer_part* array_part* | seg_kw type_ref | KW_OWN lifetime_opt type_ref | KW_OPTOWN lifetime_opt type_ref | KW_REF lifetime_opt type_ref | KW_REFMUT lifetime_opt type_ref | KW_OPTREF lifetime_opt type_ref | KW_OPTREFMUT lifetime_opt type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+rule seg_kw = KW_SEG_GS | KW_SEG_FS
 rule lifetime_opt = LBRACK name_token fn_binder_tail* RBRACK |
 # Generics ([T] parameter lists on definitions, [int] argument lists at
 # instantiation sites). Permissive: type_ref covers both bare parameter
