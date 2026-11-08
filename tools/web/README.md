@@ -131,7 +131,7 @@ Browser shortcuts with Ctrl/Command/Alt are left to the browser.
 
 The DOM textarea is an input sink, not a synchronized copy of W's complete
 text selection. Autocorrect is disabled; native selection handles, dictation
-replacement, rich clipboard content, and full
+replacement, and full
 screen-reader widget semantics are not implemented. The host does not yet
 expose a semantic accessibility tree for canvas controls. Real-device Safari
 and Android checks remain necessary: Node event tests cannot prove keyboard
@@ -155,9 +155,27 @@ Host ABI additions (existing headless hosts may omit these callbacks):
   (`mobile_input.mjs`) runs W's frame inside the DOM `copy`/`cut`/`paste`
   events that Ctrl/Cmd+C, X and V fire, so a copy lands in
   `clipboardData` and a paste is read from it within the user gesture,
-  with no permission prompt; `navigator.clipboard` is the fallback
-  outside those events. A paste W did not ask for (the context menu over
-  the text sink) is still typed in as before.
+  with no permission prompt. A copy outside those events (a button)
+  still runs inside its click's gesture, so the page first tries
+  `document.execCommand('copy')` and answers that copy event itself;
+  `navigator.clipboard` is the fallback after that, and for reads outside
+  a paste event. A paste W did not ask for (the context menu over the
+  text sink) is still typed in as before.
+  `gfx_host_clipboard_write_rich(ptr, length, html, html_length, png,
+  png_length)` is a copy with rich flavors (a length of 0: none):
+  `host.clipboardWrite(text, { html, png })`. The page puts `text/html` on
+  the copy event's `clipboardData` and writes an image as one
+  `ClipboardItem` (`text/plain`, `text/html`, `image/png`) through
+  `navigator.clipboard.write`, since `clipboardData` cannot carry one.
+- A pointerdown's click count rides in the event's mods bits 8..11
+  (graphics/event.w `gfx_mods_with_clicks`); `pointerdown.detail` is 0 by
+  the Pointer Events spec, so `mobile_input.mjs` counts presses of one
+  button within 500 ms and 4 CSS pixels (16 for touch). A single press
+  leaves the bits clear.
+- `node tools/web/run_browser_clipboard.mjs bin/graphics_ui_clipboard.wasm
+  [chromium firefox webkit]` (`./wbuild web_clipboard_browser_test`)
+  checks all of this in Playwright's headless browsers, through
+  `graphics/ui/clipboard_demo_web.w`.
 - Event kind `8` carries signed pixel scroll distance in `code` (positive
   down); kind `9` cancels the current pointer gesture.
 
