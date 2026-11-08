@@ -29,6 +29,14 @@ int data_size
 int datapos
 int data_offset
 int data_split
+# Linux x86/x64 in-process sessions (repl/__arch__/x86|x64/jit.w): 64,
+# so every inline global gets cache lines of its own. A store to a line
+# that also holds code the core has fetched is self-modifying code to
+# the CPU, which then flushes the pipeline on every store: the session
+# allocator's bin heads and bump pointer sat next to its hot code and a
+# malloc/free pair cost ~1 us on x86 (scripting.md R3 notes). 0 keeps
+# globals packed (file targets split them out anyway).
+int inline_global_line
 
 
 # Target instruction-set family: 0 = x86/x86-64, 1 = arm64 (AArch64).
@@ -421,6 +429,13 @@ void emit_zeros(int num):
 	while (num > 0):
 		emit_int8(0)
 		num = num - 1
+
+
+# Start or end an inline global on its own cache line (inline_global_line).
+void inline_global_pad():
+	if (inline_global_line <= 0): return;
+	int mask = inline_global_line - 1
+	emit_zeros((inline_global_line - (codepos & mask)) & mask)
 
 
 # Bounds-check kinds for be_bounds_branch (code_generator/x86.w, issue

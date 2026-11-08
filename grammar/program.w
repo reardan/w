@@ -598,8 +598,10 @@ void define_global_variable(int current_symbol, int decl_type):
 	if (data_split == 0):
 		# arm64 in process (repl/jit_arm64.w): an atomic on a misaligned word faults
 		if (target_isa == 1): emit_zeros((8 - (codepos & 7)) & 7)
+		inline_global_pad()
 		sym_define_global(current_symbol)
 		emit_global_storage(decl_type)
+		inline_global_pad()
 		return
 	# Reserve the whole record up front so the symbol's address is the data
 	# segment vaddr of its first byte, then fill in the fields.
