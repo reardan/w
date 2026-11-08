@@ -57,7 +57,8 @@ void js_annexb_qualify(js_annexb_scan* scan, js_node* function, list[char*] oute
 	if (binding != 0 && binding.lexical_binding):
 		js_text_free(key)
 		return
-	if (binding == 0):
+	if (binding == 0 && scan.env == rt.global): js_runtime_global_declare(rt, key, 0, 0)
+	else if (binding == 0):
 		js_runtime_put(rt, scan.env, key, rt.undefined_value)
 		binding = js_runtime_property(scan.env, key)
 		if (binding != 0):
@@ -147,6 +148,7 @@ int js_annexb_evaluate(js_runtime* rt, js_node* node, js_value* env):
 		js_value* binding = js_runtime_binding(env, node.text)
 		if (binding != 0): value = js_runtime_binding_value(rt, binding)
 	js_value* target = js_annexb_variable_environment(env)
-	if (value != 0 && target != 0 && rt.completion.status == 0): js_runtime_put(rt, target, key, value)
+	if (value != 0 && target == rt.global && rt.completion.status == 0): js_runtime_member_write(rt, rt.global_object, key, value)
+	else if (value != 0 && target != 0 && rt.completion.status == 0): js_runtime_put(rt, target, key, value)
 	js_text_free(key)
 	return 1

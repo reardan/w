@@ -189,6 +189,8 @@ js_value* js_runtime_intrinsic_text(js_runtime* rt, js_value* object):
 		if (object.intrinsic_error_name[0] != 0 || (object.prototype != 0 && rt.error_prototypes.length > 0 && object.prototype == rt.error_prototypes[0])): name = c"Error"
 		if (object.regexp != 0): name = c"RegExp"
 		if (object.builtin_state == 1): name = c"String"
+		if (object.builtin_state == 3): name = c"Number"
+		if (object.builtin_state == 5): name = c"Boolean"
 		for i in range(strlen(name)): text.units.push(name[i])
 	text.units.push(']')
 	js_value* value = js_runtime_string(rt, text)
@@ -729,20 +731,14 @@ js_value* js_object_function(void* runtime, void* context, js_value* receiver, l
 		if (first.kind == 0 || first.kind == 1): return js_runtime_type_error(rt, c"Object.getPrototypeOf called on null or undefined")
 		js_value* prototype = 0
 		if (js_runtime_object(first)): prototype = first.prototype
-		else if (first.kind == 4): prototype = rt.string_prototype
-		else if (first.kind == 11): prototype = rt.symbol_prototype
-		else: return js_runtime_fail_unsupported(rt)
+		else: prototype = js_runtime_lookup_prototype(rt, first)
+		if (prototype == 0 && first.kind == 10): return js_runtime_fail_unsupported(rt)
 		if (prototype == 0): return js_runtime_alloc(rt, 1)
 		return prototype
 	if (operation == 4): return js_runtime_boolean(rt, first.kind == 6)
-	if (js_runtime_object(first)): return first
-	if (first.kind == 4):
-		list[js_value*] wrapped = new list[js_value*]
-		wrapped.push(first)
-		js_value* wrapper = js_runtime_construct(rt, rt.string_constructor, wrapped, rt.string_constructor)
-		__w_list_free(cast(__w_list*, wrapped))
-		return wrapper
-	if (first.kind != 0 && first.kind != 1): return js_runtime_fail_unsupported(rt)
+	# Object(value) and new Object(value): ToObject, or a new ordinary object
+	# for undefined and null (runtime_wrappers.w).
+	if (first.kind != 0 && first.kind != 1): return js_runtime_to_object(rt, first)
 	return js_runtime_alloc(rt, 5)
 
 
