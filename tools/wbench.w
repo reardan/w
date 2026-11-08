@@ -133,7 +133,8 @@ int bench_field(char* text, char* label):
 	return value
 
 
-# One workload: compile source with the given compiler, runs times.
+# One workload: compile source for x86 (the baseline's target; the
+# compiler defaults to x64) with the given compiler, runs times.
 bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 	bench_result* r = new bench_result()
 	r.ok = 0
@@ -143,13 +144,14 @@ bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 	r.bytes = -1
 	r.failure = c"?"
 	for i in range(runs):
-		char** full = strv_new(6)
+		char** full = strv_new(7)
 		strv_set(full, 0, compiler)
-		strv_set(full, 1, c"--quiet")
-		strv_set(full, 2, c"--stats")
-		strv_set(full, 3, source)
-		strv_set(full, 4, c"-o")
-		strv_set(full, 5, out_path)
+		strv_set(full, 1, c"x86")
+		strv_set(full, 2, c"--quiet")
+		strv_set(full, 3, c"--stats")
+		strv_set(full, 4, source)
+		strv_set(full, 5, c"-o")
+		strv_set(full, 6, out_path)
 		int t0 = process_monotonic_ms()
 		process_result* result = process_run(compiler, full, 0, 0, 600000)
 		int elapsed = process_monotonic_ms() - t0
