@@ -483,6 +483,11 @@ void ttf_free(ttf_font* f):
 int ttf_glyph_id_12(ttf_font* f, int code):
 	int sub = f.cmap12
 	int groups = ttf_u32(f, sub + 12)
+	# Only groups inside the blob: a corrupt 32-bit count made every
+	# lookup scan billions of zero records (issue #842).
+	int room = (f.size - sub - 16) / 12
+	if (room < 0): room = 0
+	if ((groups < 0) || (groups > room)): groups = room
 	for i in range(groups):
 		int rec = sub + 16 + i * 12
 		int start = ttf_u32(f, rec)
@@ -1156,12 +1161,16 @@ void ttf_pad4(string_builder* b):
 	while (b.length % 4 != 0): string_append_char(b, 0)
 
 
-# glyf bytes of gid: offset (absolute) in off[0], length returned.
+# glyf bytes of gid: offset (absolute) in off[0], length returned; 0
+# when loca gives a reversed span or one that runs past the blob (a
+# corrupt loca entry once made ttf_subset copy gigabytes of padding,
+# issue #842).
 int ttf_glyph_span(ttf_font* f, int gid, int* off):
 	int start = ttf_glyf_offset(f, gid)
 	int end = ttf_glyf_offset(f, gid + 1)
 	off[0] = f.glyf + start
-	if (end < start): return 0
+	if ((start < 0) || (end < start)): return 0
+	if (end > f.size - f.glyf): return 0
 	return end - start
 
 
@@ -1186,10 +1195,13 @@ void ttf_subset_closure(ttf_font* f, char* keep):
 		int gid = 0
 		while (gid < f.glyph_count):
 			int off = 0
-			if (keep[gid] && (ttf_glyph_span(f, gid, &off) > 0) && (ttf_s16(f, off) < 0)):
+			int span = 0
+			if (keep[gid]): span = ttf_glyph_span(f, gid, &off)
+			if ((span > 0) && (ttf_s16(f, off) < 0)):
+				int end = off + span
 				int pos = off + 10
 				int more = 1
-				while (more):
+				while (more && (pos + 4 <= end)):
 					int flags = ttf_u16(f, pos)
 					int component = ttf_u16(f, pos + 2)
 					if ((component < f.glyph_count) && (keep[component] == 0)):
@@ -1209,6 +1221,8 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 	int contours = ttf_s16(f, off)
 	if (contours >= 0):
 		int head = 10 + contours * 2
+		# A header longer than the glyph is malformed: keep it empty.
+		if (head + 2 > length): return
 		int instructions = ttf_u16(f, off + head)
 		ttf_put_range(b, f, off, head)
 		string_append_be16(b, 0)
@@ -1218,13 +1232,18 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 		return
 	ttf_put_range(b, f, off, 10)
 	int pos = off + 10
+	int end = off + length
 	int more = 1
-	while (more):
+	while (more && (pos + 4 <= end)):
 		int flags = ttf_u16(f, pos)
 		int size = ttf_component_size(flags)
+		# A component id past the glyph count (new_id has glyph_count
+		# entries) becomes .notdef.
+		int component = ttf_u16(f, pos + 2)
+		if (component >= f.glyph_count): component = 0
 		# Drop WE_HAVE_INSTRUCTIONS (0x100): the instructions are gone.
 		string_append_be16(b, flags & (65535 - 256))
-		string_append_be16(b, new_id[ttf_u16(f, pos + 2)])
+		string_append_be16(b, new_id[component])
 		ttf_put_range(b, f, pos + 4, size - 4)
 		pos = pos + size
 		more = flags & 32

@@ -1,0 +1,70 @@
+# C tokens for wfuzz --dict (tools/fuzz/harness_c.w)
+#define 
+#undef 
+#if 
+#ifdef 
+#ifndef 
+#elif 
+#else\n
+#endif\n
+#include 
+#include_next 
+#pragma once\n
+#error 
+#line 
+defined(
+__VA_ARGS__
+__COUNTER__
+__LINE__
+__FILE__
+##
+#
+\\\n
+(
+)
+,
+...
+/*
+*/
+//
+"
+'
+<
+>
+typedef 
+struct 
+union 
+enum 
+extern 
+static 
+const 
+volatile 
+unsigned 
+signed 
+long long 
+char 
+short 
+int 
+float 
+double 
+void 
+_Bool 
+__attribute__((
+sizeof(
+[
+]
+{
+}
+;
+*
+: 3
+= 
+0x7fffffff
+-1
+1 << 31
+/ 0
+% 0
+? 1 : 
+<stddef.h>
+<stdint.h>
+"self.h"
