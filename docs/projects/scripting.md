@@ -1,7 +1,7 @@
 # W as an embedded scripting language: the addon engine plan
 
 Status: **Phase E (E1-E6), Phase S (S1, S2), Phase A1/A2 (arm64 Linux and macOS),
-Phase P (P1, P2) and Phase R1 (the `map` runtime) implemented**
+Phase P (P1, P2, P2b) and Phase R1 (the `map` runtime) implemented**
 (A2 added 2026-11-01): the engine API is `repl/embed.w` (documented at its top),
 saved variables are `lib/saved_vars.w`, `examples/scripting/addon_host.w`
 runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
@@ -10,8 +10,10 @@ runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
 (§5); the in-process engine and the whole engine API run on arm64 Linux
 (`repl/jit_arm64.w`; `repl_test_arm64`, `addon_host_test_arm64`,
 `addon_profile_test_arm64` under qemu); `map[int,int]` is 4.2x faster
-(2.0x C, ahead of V8). A3, P3, the rest of R3 and W are
-tracked below. Companion study with the
+(2.0x C, ahead of V8); in-process x86/x64 globals no longer trigger
+self-modifying-code flushes (x86 `strings(1M)` 4.6 s -> 0.30 s). A3
+(blocked on arm64 threads in the language runtime), P3, the compiler
+side of R3 and W are tracked below. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
 
@@ -114,7 +116,8 @@ container with the API (best of a few runs, a loaded 4-core machine):
 (17 ms with `import structures.json`); `engine_reload` of it with one
 later unit replayed 22 ms; `engine_call1` 6 ns per call against 2 ns
 through a raw function pointer; `strings(1M)` 292 ms with provenance off
-(the engine default) against 2312 ms with `engine_checked`; 20 reloads of
+(the engine default) against 2312 ms with `engine_checked` (since the
+inline-global padding of §3 R3, ~300 and ~500 ms on x86 and x64 alike); 20 reloads of
 an addon grow the buffer by 0 bytes. Notes on how the units landed:
 
 - E1: `repl/core.w` only gained embedder parameters, all 0 for the REPL
@@ -222,13 +225,17 @@ the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
   global; `engine_reload` stores it before the rollback and restores it
   after the reload through two bound functions and short helper entries
   (`to_json`/`from_json` compiled in the session, rolled back after they
-  run). Landing it exposed two rollback gaps the engine now closes: a
-  struct/union/enum redefinition resets its type record in place, which
-  a count-based type-table rollback does not undo (the engine saves and
-  restores the layouts a unit redefines), and the `to_json` descriptor
-  cache (`grammar/json_builtin.w`) kept entries pointing into released
-  code (pruned on every rollback, and dropped for a type about to be
-  redefined). The REPL's own rollback and `:reset` still have both gaps.
+  run). Landing it exposed two rollback gaps: a struct/union/enum
+  redefinition resets its type record in place, which a count-based
+  type-table rollback does not undo, and the `to_json` descriptor cache
+  (`grammar/json_builtin.w`) kept entries pointing into released code or
+  at the old layout. The engine first closed them with a text scan of
+  each unit; both are now closed in the compiler for every rollback, the
+  REPL's per-entry rollback and `:reset` included: `type_redefine`
+  (`grammar/type_redefine.w`) journals the layout before the in-place
+  reset and drops the type's cached descriptors, and `repl_state_restore`
+  undoes the journal (layout, enum constants, descriptors) back to the
+  checkpoint (`tests/repl_type_rollback_test.w`).
 
 ### Phase A: arm64 Linux, then macOS (G1) — the long pole for a Mac game
 
@@ -253,6 +260,17 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   `repl_test_darwin` and the addon tests in the macOS suite.
 - **A3 threads in the engine on arm64** (M, optional): today the
   session thread rules (`repl_threads_enable`) are x86/x64 only.
+  Blocked below the engine (checked 2026-11 with qemu-user-static):
+  arm64 Linux has no threads or `thread_local` in AOT programs either.
+  `thread_local` is a compile error there
+  (`tests/thread_local_target_error_fixture.w`, `be_tls_address` emits
+  only the fs/gs forms), `lib/thread.w` has no arm64 `thread_create`
+  stub, and the host `atomic_add`/`atomic_cas` it needs have no A64
+  emitter (`docs/projects/threads.md` "Per-target support", staging
+  step 1). Once those land, A3 is the session part: map the 64 KB
+  per-thread block and point TPIDR_EL0 at it (the `__w_tls_set` stub),
+  let `repl_threads_enable` accept `target_isa == 1`, and run
+  `repl_test_arm64`'s thread cases under qemu.
 
 **Status (A1 and A2 implemented).** The engine runs on arm64 Linux:
 `bin/wv2 arm64 repl.w` builds a working REPL, and `repl_test_arm64`
@@ -341,7 +359,8 @@ A2 (macOS) uses the same API and A64 emitter, with native host support:
   holding only the curated modules (`tools/script_modules.txt`, built
   and checked by `bin/script_root`), passed to E1, wins over the upward
   search (`--import-root` precedence, `compilation_model.md` §7).
-- **P2 `--profile=script`** (M). **Done**, §5.2: a compiler flag (the
+- **P2 `--profile=script`** (M). **Done**, §5.2 (P2b, the runtime's
+  syscall wrappers and per-addon allowlists, done too): a compiler flag (the
   engine sets the global `script_profile_mode`) that rejects `asm`,
   `raw_asm`, the raw built-ins (`syscall*`, `thread_create`, ...),
   `c_lib`/`extern`/`c_import`, `unsafe:`, `cast` to pointer types and
@@ -435,6 +454,45 @@ A2 (macOS) uses the same API and A64 emitter, with native host support:
   one division per digit (reciprocal multiply or a two-digit table).
   Reusing the builder block as the result descriptor was also tried and
   saved only 3.5% of instructions, so it was not kept.
+
+  **R3 follow-up (2026-11).** Done: (3) `string_append_int` takes two
+  digits per division from a `00`..`99` pair table, and
+  `__w_template_new` starts the builder at 32 bytes instead of 16, which
+  is the measured part of (1): `strings(200k)` AOT fell from 588 M to
+  435 M instructions on x86 and from 479 M to 403 M on x64 (callgrind,
+  same tree otherwise). Not done: (1) as a compiler-computed exact
+  capacity. The default AST front end could size it, but the streaming
+  front end emits the `__w_template_new` call before it has read the
+  rest of the template, and `ast_expression_verify` requires the two to
+  produce byte-identical images on all six targets; it becomes a local
+  change once the streaming grammar is retired
+  (`ast_completion_plan.md` P1.5). (2) still needs a re-pin of the
+  audited `lib/memory.w`.
+
+  **x86 engine `strings(1M)`: self-modifying-code flushes, fixed.** The
+  ~2.2 s x86 figure (4-4.7 s on the loaded container this was measured
+  on, against 0.45-0.52 s on x64) was not the generated code: callgrind
+  counted ~400 instructions per malloc/free pair on x86 and ~370 on x64,
+  yet the pair took ~1.2 us on x86 and ~50 ns on x64 in the engine,
+  while x86 AOT was fast. Linux in-process sessions keep globals inline
+  in the RWX code buffer (no `data_split`), so the session allocator's
+  bump pointer and bin heads sat in cache lines that also held fetched
+  code, and every store to them was a self-modifying-code pipeline
+  clear; which globals shared a line with hot code depended on the
+  layout, which is why x64 escaped it with provenance off but not with
+  it on (5.6-6.2 s). Padding inline globals to whole cache lines
+  (`inline_global_line = 64`, set by the x86/x64 `repl_jit_configure`)
+  removes it: malloc/free 1184 -> 55 ms per million on x86, and
+  `strings(1M)` through the engine (best of 3, same container):
+
+  | | x86 before | x86 after | x64 before | x64 after |
+  |---|---:|---:|---:|---:|
+  | provenance off (engine default) | 3720 | 301 | 453 | 293 |
+  | provenance on (`engine_checked`) | 5291 | 460 | 5581 | 499 |
+
+  (the "after" columns include the R3 runtime change above; without it
+  327/438 and 319/553). File targets are unaffected (their globals are
+  in the data segment).
 
 ### Phase W: wasm tier JIT (optional, only if untrusted scripts matter)
 
@@ -598,6 +656,9 @@ on both front ends; the texts are frozen by the fixtures and have codes:
 | `unsafe:` blocks | `script profile: unsafe blocks are not allowed` | W0423 |
 | `cast(T, x)` with a pointer or function-pointer `T` | `script profile: cast to a pointer type is not allowed` | W0424 |
 | an import outside the import roots | `script profile: import 'lib.file' is not in an import root` | W0425 |
+| naming a runtime system-layer function or global (P2b, below) | `script profile: runtime function 'open' is not visible to addon code` | W0437 |
+| the `debugger` statement (`int3`, which the fault window does not catch) | `script profile: debugger statements are not allowed` | W0438 |
+| naming a module compiled after the engine's base session from outside the addon's own allowlist | `script profile: 'ap_beta_value' is declared in a module outside this addon's import roots` | W0439 |
 
 A built-in is matched by what the name resolves to, so a local named
 `bind` or `connect` is fine; only a use that reaches the compiler's stub
@@ -639,27 +700,67 @@ function that uses them.
 
 **Limits** (P2 is API gating, not a sandbox):
 
-- **The runtime's global namespace.** W has one flat namespace, and the
-  runtime every session compiles defines raw entry points: `lib/lib.w`
-  and `lib/linux.w` wrap system calls as ordinary W functions (`open`,
-  `write`, `unlink`, `mmap`, `exit`, `kill`, ...). The profile refuses
-  the stubs and the imports, but an addon can still call those wrappers
-  by name. Closing that needs a per-source visibility rule (a deny list
-  keyed by declaring file and name, or a split of `lib/lib.w` into a
-  pure prelude and a system layer the engine keeps out of the addon's
-  view). That is a follow-up (call it P2b); it matters for
-  community-addon trust, which P3 or the wasm tier supersede anyway.
 - **Raw pointers stay raw.** Pointer arithmetic, indexing and field
   access through `T*` are unchanged, so an addon can still read or write
   any address it can compute from a pointer it holds. Memory safety is
   P3's job.
-- **Denial of service.** Runaway loops, deep recursion (G5) and the
-  `debugger` statement (`int3`, which the fault window does not catch)
-  are not refused.
-- **The allowlist is the union of the roots** the session has when the
-  addon compiles. A host that adds a full `lib/` root for itself opens
-  it to addons too, so keep the curated root the only one, or add host
-  roots only around host compiles.
+- **Denial of service.** Runaway loops and deep recursion (G5) are not
+  refused (`debugger` is, W0438).
+- **The flat namespace stays flat.** P2b hides the system layer and
+  other allowlists' modules by name, but an addon still shares one
+  global namespace with the host's binds, the other addons' own
+  definitions and the pure runtime; it can call another addon's
+  functions and read its globals. Isolation between addons is P3's (or
+  the wasm tier's) job.
+
+**P2b: runtime visibility and per-addon allowlists.** Done (2026-11).
+
+- *System layer.* Every session compiles `lib/lib.w` and the container
+  runtime into the addon's namespace, and their ordinary W functions wrap
+  system calls. `script_profile_identifier` (both identifier paths, and
+  `alias.member` in `import_alias_member`) resolves the name and reads
+  the declaring file of the symbol it reaches; a symbol a trusted runtime
+  file declares is refused (W0437) when that file is in the system
+  layer: anything under `lib/__arch__/`, `lib/arm64/` or `lib/darwin/`
+  (the syscall wrappers: `open`, `write`, `unlink`, `mmap`, `kill`,
+  `exit`, sockets, ...), `lib/linux.w`, `lib/syscalls_linux_x86.w`,
+  `lib/win32_stubs.w`, `lib/not_android.w`, `lib/context_x86_64.w`,
+  `lib/stack_trace.w`, `lib/valgrind.w` and the allocator internals
+  (`lib/memory_freelist.w`, `lib/memory_debug.w`,
+  `lib/memory_provenance.w`, and every `lib/memory.w` name except
+  `malloc`, `free` and `realloc`), plus `lib/lib.w`'s file-descriptor
+  I/O, startup and exit names (`_main`, `exit`, `open_or_create`,
+  `file_size`, `write_string`, the `getchar*` readers, `print_write*`,
+  `putc`, `translate_syscall_failure`, ...). The deny list is keyed by
+  declaring file and name (`script_profile_system_symbol`), so the pure
+  runtime (strings, `print`/`println` to stdout and stderr, `itoa`,
+  lists, maps, f-strings, json) stays visible, a local may reuse a hidden
+  name, and the files match wherever they resolved (the checkout or the
+  curated root's copies). Taking the address (`cast(int, open)`) is a use
+  like a call.
+- *Per-addon allowlists.* `engine_addon_roots(addon, roots)` gives one
+  addon its own ':'-separated root list (`""`: nothing new may be
+  imported); an addon without one uses the roots `engine_init` was given,
+  not whatever import roots the host adds later. Around every compile of
+  an addon (load, the reload compile check, a reload replay) the engine
+  passes that list to the compiler (`script_profile_roots_begin`/`_add`/
+  `_end`): a gated import resolves only in those roots, and the imports
+  of the trusted modules it pulls in search them first. Since a module
+  another addon (or a host entry) already compiled is a no-op import,
+  modules are also tracked by when they were opened: after `engine_init`
+  seals the base session (`script_profile_seal`), every newly opened
+  module is visible to an addon with an allowlist only when its file lies
+  inside one of that addon's roots (W0439). The base session (the runtime
+  and the preloaded modules) stays visible to all, minus the system
+  layer. On the command line nothing changes: the allowlist is the
+  `--import-root` list.
+- Tests: `addon_profile_test` (and its x64/arm64 twins: wrappers,
+  `alias.member`, address-of, a local shadowing `open`, `debugger`, two
+  roots with one addon restricted to the first), the
+  `script_profile_runtime_error_fixture`/`_debugger_error_fixture`
+  fixtures in `script_profile_error_test` (both front ends via
+  `script_root_test`) and `script_profile_root_runtime_error_fixture`
+  (lib/lib.w compiled from the curated root).
 
 ### 5.3 P3: checked addons (not started)
 

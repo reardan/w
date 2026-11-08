@@ -396,9 +396,11 @@ installs bounded Number, Math and Date operations; this is not a complete standa
 library. BigInt literals lower to a distinct node for the bounded binary-boundary
 implementation; arbitrary-precision arithmetic is not implemented. No DOM, timer
 task queue or browser authority is installed by the runtime. The separate
-[module API](javascript_modules.md) provides bounded acyclic graph loading with
-named const/function exports and live read-only imports. Browser module loading
-does not yet support top-level await.
+[module API](javascript_modules.md) links and evaluates ES2020 module graphs,
+cyclic ones included, on `module_graph.w`'s records. It supports default,
+namespace and named imports, `export *` and `export * as ns` live bindings,
+and TDZ for bindings that are not initialized yet. Browser module loading does
+not yet support top-level await.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
@@ -649,8 +651,9 @@ passes when its version pin is bypassed under v22.
   "default is never star-exported" and indirect re-export cycles. Failures are
   SyntaxErrors at the "resolution" phase (unloadable specifiers are
   ReferenceErrors). `js_module_namespace_names` lists a namespace's keys without
-  ambiguous names. The runtime loader (`modules.w`) is unchanged; the Test262
-  adapter runs this static linker for every module test.
+  ambiguous names. The runtime loader (`modules.w`) links and evaluates
+  graphs on these records (see [javascript_modules.md](javascript_modules.md)),
+  and the Test262 adapter also runs this static linker for every module test.
 - **Annex B.1.1 and B.1.3.** Sloppy legacy octal literals (`010` is 8) and
   NonOctalDecimal literals (`08`, `019.5`) evaluate; a legacy octal literal
   takes no fraction, exponent or BigInt suffix (`07.5` is an error). Strict

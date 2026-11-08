@@ -9,7 +9,7 @@
 #       host can ship lib/ and structures/ beside itself (--import-root,
 #       docs/projects/compilation_model.md §7). flags: engine_checked keeps
 #       the session allocator's provenance tracking on (needed by checked
-#       addons crossing attested boundaries; off by default, it costs ~5x
+#       addons crossing attested boundaries; off by default, it costs ~1.6x
 #       on allocation-heavy code); engine_script compiles every addon
 #       source under --profile=script (scripting.md P2; pass the curated
 #       root from bin/script_root in roots). Returns 1, or 0 when a root is not a
@@ -18,6 +18,13 @@
 #       MAP_NORESERVE in the low 2 GB, so only touched pages cost memory).
 #       Faults in addon code run their handler on an alternate signal
 #       stack, so a stack overflow is recovered like a segfault.
+#   int engine_addon_roots(char* addon, char* roots)
+#       With engine_script: the ':'-separated import roots this addon's
+#       compiles may import from ("" for none), instead of engine_init's
+#       roots (scripting.md §5.2 P2b). It also hides modules compiled
+#       after engine_init from outside those roots (another addon's
+#       imports, the host's). Applies to the addon's next load and every
+#       reload. 1, or 0 when a root is not a directory.
 #   int engine_bind(char* name, char* signature, int address)
 #       Expose a host function to addons: declares name in the session as
 #       a pointer of the W function type signature ("fn(char*) -> void")
@@ -101,10 +108,19 @@ int engine_tid
 int engine_script_profile_requested
 
 
-# Add each ':'-separated root as an --import-root. 0 when one is not a
-# directory (import_root_add would exit the process).
-int engine_add_roots(char* roots):
-	if (roots == 0): return 1
+# The roots engine_init was given (cleaned absolute paths): every addon's
+# import allowlist unless engine_addon_roots gave it its own.
+list[char*] engine_default_roots
+# Per-addon allowlists set by engine_addon_roots, by addon name.
+list[char*] engine_root_addons
+list[list[char*]] engine_root_lists
+
+
+# The cleaned absolute paths of a ':'-separated root list, or 0 when one
+# is not a directory.
+list[char*] engine_parse_roots(char* roots):
+	list[char*] out = new list[char*]
+	if (roots == 0): return out
 	list[char*] parts = split(roots, ':')
 	int ok = 1
 	for part in parts:
@@ -118,10 +134,66 @@ int engine_add_roots(char* roots):
 				absolute = strjoin(prefix, part)
 				free(prefix)
 				free(cwd)
-			if (import_root_is_dir(absolute)): import_root_add(absolute)
+			if (import_root_is_dir(absolute)): out.push(import_root_clean(absolute))
 			else: ok = 0
 			free(absolute)
-	return ok
+	for part in parts: free(part)
+	list_free[char*](parts)
+	if (ok == 0):
+		for r in out: free(r)
+		list_free[char*](out)
+		return 0
+	return out
+
+
+# Add each ':'-separated root as an --import-root. 0 when one is not a
+# directory (import_root_add would exit the process).
+int engine_add_roots(char* roots):
+	list[char*] parsed = engine_parse_roots(roots)
+	if (parsed == 0): return 0
+	for r in parsed: import_root_add(r)
+	engine_default_roots = parsed
+	return 1
+
+
+# The allowlist an addon's compiles use (docs/projects/scripting.md §5.2).
+list[char*] engine_roots_for(char* addon):
+	if (engine_root_addons != 0):
+		for i in range(engine_root_addons.length):
+			if (strcmp(engine_root_addons[i], addon) == 0): return engine_root_lists[i]
+	return engine_default_roots
+
+
+int engine_addon_roots(char* addon, char* roots):
+	if ((engine_ready == 0) || (addon == 0)): return 0
+	list[char*] parsed = engine_parse_roots(roots)
+	if (parsed == 0): return 0
+	if (engine_root_addons == 0):
+		engine_root_addons = new list[char*]
+		engine_root_lists = new list[list[char*]]
+	for i in range(engine_root_addons.length):
+		if (strcmp(engine_root_addons[i], addon) == 0):
+			engine_root_lists[i] = parsed
+			return 1
+	engine_root_addons.push(strclone(addon))
+	engine_root_lists.push(parsed)
+	return 1
+
+
+# Profile an addon compile: script_profile_mode plus the addon's own
+# import allowlist; engine_profile_end undoes both.
+void engine_profile_begin(char* addon):
+	script_profile_mode = engine_script_profile_requested
+	if (script_profile_mode == 0): return;
+	script_profile_roots_begin()
+	list[char*] roots = engine_roots_for(addon)
+	if (roots != 0):
+		for r in roots: script_profile_roots_add(r)
+
+
+void engine_profile_end():
+	script_profile_mode = 0
+	script_profile_roots_end()
 
 
 # Map the alternate signal stack the fault handlers run on (per thread:
@@ -159,6 +231,9 @@ int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	retained_semantic_mode = 1
 	repl_semantic_mode = 1
 	repl_init()
+	# Modules compiled from here on (addon and host imports) are visible
+	# to an addon only inside its own import roots (compiler/script_profile.w).
+	script_profile_seal()
 	# Faults are reported through engine_fault_text, not printed.
 	repl_fault_hook = cast(int, engine_fault_record)
 	engine_tid = repl_gettid()
@@ -231,95 +306,9 @@ int engine_symbol(char* name):
 # can name the addon a faulting function belongs to (E4).
 
 # A struct, union or enum redefinition resets the existing type record in
-# place (type_reset_for_redefinition) rather than pushing a new one, so
-# rolling the type table back by count does not undo it. Before each
-# compile the engine saves the layout of every existing type the text
-# redefines at top level, and puts it back whenever that compile is
-# undone.
-struct engine_type_saved:
-	int index
-	int num_fields
-	int total_size
-	int pointer_level
-	int decl_file_index
-	int decl_line
-	int decl_column
-	list[char*] names
-	list[int] types
-
-
-# Name declared by a top-level "struct NAME", "union NAME" or "enum NAME"
-# line, or 0.
-char* engine_declared_type(char* line):
-	int at = 0
-	if (starts_with(line, c"struct ")): at = 7
-	else if (starts_with(line, c"union ")): at = 6
-	else if (starts_with(line, c"enum ")): at = 5
-	else: return 0
-	while (line[at] == ' '): at = at + 1
-	int end = at
-	while (((line[end] >= 'a') && (line[end] <= 'z')) || ((line[end] >= 'A') && (line[end] <= 'Z')) || ((line[end] >= '0') && (line[end] <= '9')) || (line[end] == '_')): end = end + 1
-	if (end == at): return 0
-	return substring(line, at, end)
-
-
-list[engine_type_saved*] engine_types_snapshot(char* text):
-	list[engine_type_saved*] saved = 0
-	list[char*] lines = split(text, '\n')
-	for line in lines:
-		char* name = engine_declared_type(line)
-		if (name != 0):
-			int index = type_lookup(name)
-			if (index >= 0):
-				repl_codec_drop_if(index, -1)
-				if (saved == 0): saved = new list[engine_type_saved*]
-				type_rec* t = cast(type_rec*, type_records[index])
-				engine_type_saved* e = new engine_type_saved
-				e.index = index
-				e.num_fields = t.num_fields
-				e.total_size = t.total_size
-				e.pointer_level = t.pointer_level
-				e.decl_file_index = t.decl_file_index
-				e.decl_line = t.decl_line
-				e.decl_column = t.decl_column
-				e.names = new list[char*]
-				e.types = new list[int]
-				for k in range(t.field_names.length): e.names.push(t.field_names[k])
-				for k in range(t.field_types.length): e.types.push(t.field_types[k])
-				saved.push(e)
-			free(name)
-	for line in lines: free(line)
-	list_free[char*](lines)
-	return saved
-
-
-# Put saved layouts back (records the rollback truncated are skipped).
-void engine_types_restore(list[engine_type_saved*] saved):
-	if (saved == 0): return;
-	for e in saved:
-		if (e.index < type_count()):
-			type_rec* t = cast(type_rec*, type_records[e.index])
-			t.num_fields = e.num_fields
-			t.total_size = e.total_size
-			t.pointer_level = e.pointer_level
-			t.decl_file_index = e.decl_file_index
-			t.decl_line = e.decl_line
-			t.decl_column = e.decl_column
-			t.field_names.clear()
-			t.field_types.clear()
-			for k in range(e.names.length): t.field_names.push(e.names[k])
-			for k in range(e.types.length): t.field_types.push(e.types[k])
-
-
-void engine_types_free(list[engine_type_saved*] saved):
-	if (saved == 0): return;
-	for e in saved:
-		list_free[char*](e.names)
-		list_free[int](e.types)
-		free(cast(char*, e))
-	list_free[engine_type_saved*](saved)
-
-
+# place; the compiler journals it (grammar/type_redefine.w) and every
+# rollback below undoes it with the rest of the session state, cached
+# to_json/from_json descriptors included.
 struct engine_unit:
 	char* name
 	char* text
@@ -330,8 +319,6 @@ struct engine_unit:
 	int staged
 	# its symbols are the records in [checkpoint.table_pos, table_end)
 	int table_end
-	# layouts of the existing types it redefined, as they were before it
-	list[engine_type_saved*] types
 
 
 list[engine_unit*] engine_units
@@ -448,7 +435,6 @@ engine_unit* engine_unit_new(char* name, char* text, int bind_address):
 	u.checkpoint = 0
 	u.staged = 0
 	u.table_end = 0
-	u.types = 0
 	return u
 
 
@@ -456,7 +442,6 @@ void engine_unit_free(engine_unit* u):
 	free(u.name)
 	free(u.text)
 	if (u.checkpoint != 0): free(cast(char*, u.checkpoint))
-	engine_types_free(u.types)
 	free(cast(char*, u))
 
 
@@ -478,13 +463,12 @@ engine_result engine_compile(engine_unit* u):
 	u.checkpoint = new repl_state
 	repl_state_capture(u.checkpoint)
 	u.staged = repl_staged_count
-	u.types = engine_types_snapshot(u.text)
 	engine_diag_begin()
 	engine_fault_scope(cast(int, &u))
 	engine_loading = u
-	script_profile_mode = engine_script_profile_requested && (u.bind_address == 0)
+	if (u.bind_address == 0): engine_profile_begin(u.name)
 	repl_result r = repl_eval(u.text)
-	script_profile_mode = 0
+	engine_profile_end()
 	engine_fault_scope(0)
 	engine_diag_end(repl_staged_path, u.name)
 	u.table_end = table_pos
@@ -503,7 +487,6 @@ engine_result engine_compile(engine_unit* u):
 		if (engine_units == 0): engine_units = new list[engine_unit*]
 		engine_units.push(u)
 	else:
-		engine_types_restore(u.types)
 		engine_unstage(u.staged)
 		engine_unit_free(u)
 	return res
@@ -842,17 +825,6 @@ void engine_units_truncate(int first):
 	while (engine_units.length > first): engine_unit_free(engine_units.pop())
 
 
-# Undo in-place type redefinitions of the units from index first on,
-# newest first, so the oldest unit's saved layout wins. Call after the
-# type table was rolled back.
-void engine_units_restore_types(int first):
-	if (engine_units == 0): return;
-	int i = engine_units.length - 1
-	while (i >= first):
-		engine_types_restore(engine_units[i].types)
-		i = i - 1
-
-
 engine_generation* engine_checkpoint():
 	engine_generation* g = new engine_generation
 	g.state = new repl_state
@@ -867,7 +839,6 @@ engine_generation* engine_checkpoint():
 # valid for another rollback; engine_generation_free releases it.
 void engine_rollback(engine_generation* g):
 	engine_restore(g.state, g.staged)
-	engine_units_restore_types(g.units)
 	engine_units_truncate(g.units)
 
 
@@ -914,17 +885,14 @@ engine_result engine_reload(char* addon, char* text):
 	if (source == 0): source = old.text
 	# 1. compile check at the end of the session, nothing runs
 	engine_generation* probe = engine_checkpoint()
-	list[engine_type_saved*] probe_types = engine_types_snapshot(source)
 	repl_no_run = 1
 	engine_diag_begin()
-	script_profile_mode = engine_script_profile_requested
+	engine_profile_begin(addon)
 	repl_result checked = repl_eval(source)
-	script_profile_mode = 0
+	engine_profile_end()
 	engine_diag_end(repl_staged_path, addon)
 	repl_no_run = 0
 	engine_rollback(probe)
-	engine_types_restore(probe_types)
-	engine_types_free(probe_types)
 	engine_generation_free(probe)
 	if (checked.status != engine_ok):
 		res.status = engine_error
@@ -945,7 +913,6 @@ engine_result engine_reload(char* addon, char* text):
 	for i in range(index + 1, engine_units.length): replay.push(engine_units[i])
 	repl_state* st = old.checkpoint
 	engine_restore(st, old.staged)
-	engine_units_restore_types(index)
 	while (engine_units.length > index): engine_units.pop()
 	# 4. the addon itself, falling back to its previous text
 	char* previous = strclone(old.text)

@@ -102,7 +102,9 @@ int ast_statement_simple(int* jumps):
 	if (ast_expressions_mode < 2): return 0
 	int kind = 0
 	if (peek(c"pass")): kind = ast_stmt_pass
-	else if (peek(c"debugger")): kind = ast_stmt_debugger
+	else if (peek(c"debugger")):
+		script_profile_reject(c"script profile: debugger statements are not allowed")
+		kind = ast_stmt_debugger
 	else if (peek(c"break")): kind = ast_stmt_break
 	else if (peek(c"continue")): kind = ast_stmt_continue
 	if (kind == 0): return 0

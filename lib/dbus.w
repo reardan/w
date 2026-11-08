@@ -149,6 +149,33 @@ void dbus_put_double_int(dbus_buf* b, int v):
 	dbus_put_byte(b, hi >> 24)
 
 
+# A float32 as an IEEE 754 double ('d'), widened bit by bit so it
+# works on 32-bit targets (no float64 there); denormals become zero.
+void dbus_put_double_f32(dbus_buf* b, float32 v):
+	float32[1] f
+	f[0] = v
+	int bits = load_int32(cast(char*, &f[0]))
+	int sign = (bits >> 31) & 1
+	int e = (bits >> 23) & 255
+	int m = bits & 0x7fffff
+	int hi = 0
+	int lo = 0
+	if (e == 255): hi = (2047 << 20) | (m >> 3)
+	else if (e != 0):
+		hi = ((e - 127 + 1023) << 20) | (m >> 3)
+		lo = (m & 7) << 29
+	if (sign): hi = hi | (1 << 31)
+	dbus_pad(b, 8)
+	dbus_put_byte(b, lo)
+	dbus_put_byte(b, lo >> 8)
+	dbus_put_byte(b, lo >> 16)
+	dbus_put_byte(b, lo >> 24)
+	dbus_put_byte(b, hi)
+	dbus_put_byte(b, hi >> 8)
+	dbus_put_byte(b, hi >> 16)
+	dbus_put_byte(b, hi >> 24)
+
+
 void dbus_put_string_n(dbus_buf* b, char* s, int n):
 	dbus_put_u32(b, n)
 	dbus_put_bytes(b, s, n)
@@ -269,6 +296,29 @@ int dbus_read_i32(dbus_reader* r):
 	int v = dbus_read_u32(r)
 	if ((__word_size__ == 8) && (((v >> 31) & 1) != 0)): v = v - (1 << 32)
 	return v
+
+
+# A double ('d') narrowed to float32 (out-of-range values saturate to
+# infinity, tiny ones to zero), without float64 for 32-bit targets.
+float32 dbus_read_double_f32(dbus_reader* r):
+	dbus_read_align(r, 8)
+	float32[1] f
+	f[0] = 0.0
+	if (!dbus_reader_need(r, 8)): return f[0]
+	int lo = load_le32(&r.data[r.pos])
+	int hi = load_le32(&r.data[r.pos + 4])
+	r.pos = r.pos + 8
+	int sign = (hi >> 31) & 1
+	int big = (hi >> 20) & 2047
+	int m = ((hi & 0xfffff) << 3) | ((lo >> 29) & 7)
+	int e = big - 1023 + 127
+	int bits = 0
+	if ((big == 2047) || (e >= 255)): bits = 255 << 23
+	else if ((big != 0) && (e > 0)): bits = (e << 23) | m
+	if (big == 2047): bits = bits | m
+	if (sign): bits = bits | (1 << 31)
+	save_int32(cast(char*, &f[0]), bits)
+	return f[0]
 
 
 int dbus_read_bool(dbus_reader* r):

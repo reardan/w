@@ -858,6 +858,8 @@ struct repl_state:
 	int generic_defs
 	int generic_insts
 	int generic_forwards
+	# type_redefine_count(): in-place struct/union/enum redefinitions to undo
+	int type_redefines
 
 
 # The session's retained semantic mode, as each entry starts: top-level
@@ -901,6 +903,7 @@ void repl_state_capture(repl_state* st):
 	st.generic_defs = generic_def_count()
 	st.generic_insts = generic_inst_count()
 	st.generic_forwards = generic_forward_count()
+	st.type_redefines = type_redefine_count()
 
 
 # The JSON and protobuf codecs cache descriptor blobs per type index.
@@ -983,6 +986,10 @@ void repl_state_restore(repl_state* st):
 	defer_truncate(st.defer_count)
 	for_cleanup_truncate(st.for_cleanup_count)
 	number_of_args = st.number_of_args
+	# In-place redefinitions first (grammar/type_redefine.w): their layouts,
+	# descriptor-cache entries and enum constants go back before the count
+	# truncation discards the records pushed since.
+	type_redefine_undo(st.type_redefines)
 	type_table_truncate(st.type_count)
 	# Descriptor caches must follow every rollback, including :reset and
 	# failed REPL entries. codepos retains any code still used by threads.
