@@ -77,21 +77,23 @@ null with diagnostics. Its output is deterministic, with explicit expression
 parentheses. Reparse printed output when a validated JavaScript program is
 required: node-shape validation is not a full contextual validator.
 
-The facade supports simple variables, function declarations/expressions and
-parameters, synchronous arrows, blocks, return, throw, if, while/do/for loops,
-lexical `for-of`, labelled statements and labelled/unlabelled
-break/continue, try/catch/finally, expressions, assignments and prefix/postfix
-updates, calls/members, dense arrays, ordinary named/string-keyed
-objects (including distinct shorthand properties), templates, simple imports,
-and exported declarations. Lowering preserves escaped non-directive strings so
-printing cannot accidentally introduce a strict-mode directive. Parsing is
-broader: lowering intentionally rejects classes, async/generator functions,
-computed object keys and richer module declarations. Runtime-oriented lowering
-also supports binding patterns, rest/default parameters, `new`, optional chains,
-spread and object methods. These newer nodes are not yet supported by every
-printer/rewrite operation; `js_print` reports an explicit unsupported shape.
-Node shapes are documented in `libs/extras/javascript/printer.w` and exercised
-in `tests/javascript/roundtrip_test.w`. Additional shapes are:
+Lowering and printing cover every construct the grammar accepts: variables
+and binding patterns, all function forms (async, generator, async generator,
+arrows and async arrows) with default/rest parameters, classes and class
+expressions with static/accessor/async/generator/computed methods, `super`,
+`new.target`, `await`/`yield`, blocks and every statement (including `switch`,
+`with`, `debugger`, `for-in`, `var`/assignment-target `for-of`, `for await`
+and destructured `catch`), expressions with optional chains, spread, holes,
+destructuring assignment, tagged templates, computed/numeric object keys,
+accessors, `import.meta`/`import()`, and every import/export form. Lowering
+preserves escaped non-directive strings so printing cannot accidentally
+introduce a strict-mode directive. `tests/javascript/roundtrip_test.w`
+lowers, prints, reparses and compares programs covering every node kind
+`js_lower` produces, and fails if a kind is not reached. Ordinary object
+methods keep their historical `property` + `function_expression` shape; numeric
+literal keys and string keys that need UTF-16 storage lower as computed keys,
+which is semantically equivalent. Node shapes are documented in
+`libs/extras/javascript/printer.w`. Additional shapes are:
 
 | Kind | Text | Ordered children |
 | --- | --- | --- |
@@ -112,11 +114,43 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `try` | empty | block, catch or empty, finally block or empty |
 | `catch` | optional identifier | block |
 | `string_utf16` | empty | none; value in `string_units` |
+| `async_function`, `generator_function`, `async_generator_function` and their `_expression` forms | optional name | parameters, block |
+| `async_arrow` | empty | parameters, expression or block |
+| `await` | empty | expression |
+| `yield` | empty or `*` | optional expression |
+| `class`, `class_expression` | optional name | heritage or `empty`, then `method`/`static_method` |
+| `method`, `static_method` | `method`, `get` or `set` | key, unnamed function expression |
+| `property_key` / `computed_key` | decoded name / empty | none / key expression |
+| `computed_property` | empty | key expression, value |
+| `property_shorthand` | name | optional initializer (assignment patterns only) |
+| `computed_pattern_property` | empty | key expression, binding pattern |
+| `super`, `new_target`, `import_meta` | empty | none |
+| `import_call` | empty | specifier expression |
+| `tagged_template` | empty | tag, template |
+| `switch` | empty | discriminant, `case`/`default` clauses |
+| `case` / `default` | empty | test then statements / statements |
+| `with` | empty | object, body |
+| `debugger` | empty | none |
+| `for_in`, `for_of`, `for_await_of` | `var`, `let`, `const` or empty (assignment target) | binding or target, expression, body |
+| `catch` | empty | binding pattern, block (destructured parameter) |
+| `import` | specifier | optional default `identifier`, then `import_namespace` (identifier) or `import_named` (`import_specifier(imported)` = local identifier) |
+| `export` | empty | declaration |
+| `export_default` | empty | function/class declaration (optional name) or expression |
+| `export_named` / `export_from` | empty / specifier | `export_specifier(local)` = `property_key(exported)` |
+| `export_all` | specifier | optional `property_key` alias |
+
+Array holes and pattern elisions use `empty` children. Destructuring
+assignment keeps array/object literal targets (`assignment` with an `array` or
+`object` left side). The printer parenthesizes construct callees, keeps the
+parts of an optional chain unparenthesized (so `(a?.b).c` and `a?.b.c` stay
+distinct), and prints anonymous declarations only under `export default`.
 
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
-source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings and
-catch destructuring remain explicit lowering failures. The printer handles
-loop bodies and label wrappers when protecting against a dangling `else`.
+source-backed nodes preserve byte spans. The printer handles loop, `with` and
+label wrappers when protecting against a dangling `else`. The interpreter's
+preflight rejects the lowered shapes it does not execute (classes,
+async/generators, `for-in`, `var`/target `for-of`, catch patterns, holes,
+destructuring assignment, modules through the script API) with status 6.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
 UTF-16 code units in `units`. `js_text_decode(bytes, byte_length)` decodes a
@@ -232,14 +266,25 @@ The initial semantic subset is deliberately explicit:
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
   Substitutions execute once in source order; object conversion remains unsupported.
 - `= += -= *= /= &= |= ^= <<= >>= >>>=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
-  labelled/unlabelled break/continue, return, throw and try/catch/finally.
+  labelled/unlabelled break/continue, return, throw, try/catch/finally and
+  `switch` (strict-equality matching, one clause scope, fallthrough, default
+  after unmatched cases).
+- `new F(...)` for ordinary functions: `F.prototype` is created on first
+  observation (with a `constructor` link), the new object inherits from it, and
+  an object result replaces it. `instanceof` walks the prototype chain.
+  `Error`, `TypeError`, `ReferenceError`, `SyntaxError`, `RangeError`,
+  `EvalError` and `URIError` construct objects inheriting their prototypes
+  (`name`, `message`, `constructor`; `Error.prototype.toString`), and
+  engine-issued errors inherit the same prototypes, so `e.constructor ===
+  TypeError` holds. Only engine-issued errors carry the host intrinsic brand.
+  `String(value)` converts primitives.
 - RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
   or RegExp arguments create objects with own `lastIndex` and the shared
   `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
   "RegExp patterns" below).
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, tagged templates,
+through the script API, classes, generators/async, tagged templates, `in`,
 String.prototype RegExp methods (`match`, `replace`, `search`, `split`), prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
@@ -432,7 +477,11 @@ PASS/FAIL/UNSUPPORTED/ERROR results. Run `./wbuild javascript_test262` to save i
 report to `bin/test262-conformance.json`. Its reviewed per-variant baseline fails
 on unexpected support changes. Use
 `bin/test262_conformance --require-all` to fail on every unsupported
-variant as well. Full upstream harness and full-suite execution remain deferred.
+variant as well. The same run then executes the `upstream-harness-v1` profile:
+the pinned `sta.js`, `assert.js` and declared includes run unmodified in each
+realm before the test, module tests load their pinned `_FIXTURE.js` graphs
+through the module loader, and the report's `full_harness` object records its
+counts and `pass_rate`. Full-suite execution remains deferred.
 
 Early-error checks include async/generator parameter expressions and duplicate
 parameters, duplicate module export names, missing local exports, chained labels

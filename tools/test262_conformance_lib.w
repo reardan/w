@@ -3,6 +3,12 @@ import tools.javascript_conformance_lib
 import libs.standard.text.re
 
 map[char*, char*] t262_sources
+# Upstream-harness profile (upstream-harness-v1): pinned harness scripts run
+# unmodified in the realm before each test, and module tests load their
+# pinned fixtures through the runner's file resolver.
+int t262_upstream
+char* t262_corpus
+list[char*] t262_harness
 set[char*] t262_builtins
 type t262_executor = fn(char*, char*, char*, int, int) -> json_value*
 
@@ -112,20 +118,21 @@ char* t262_unsupported(json_value* meta):
 	list[char*] blocked = new list[char*]
 	for json_value* flag in jc_get(meta, c"flags").array_values:
 		if (!jc_choice(flag, c"onlyStrict noStrict raw module async generated CanBlockIsFalse CanBlockIsTrue non-deterministic")): unknown.push(flag.string_value)
-		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic")): blocked.push(flag.string_value)
+		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic") && !(t262_upstream && jc_is(flag, c"module"))): blocked.push(flag.string_value)
 	ht_sort(unknown)
 	ht_sort(blocked)
 	if (unknown.length): return strjoin(c"unknown flags: ", join(unknown, c", "))
 	if (blocked.length): return strjoin(c"unsupported flags: ", join(blocked, c", "))
 	list[char*] includes = new list[char*]
-	for json_value* item in jc_get(meta, c"includes").array_values: includes.push(item.string_value)
+	for json_value* item in jc_get(meta, c"includes").array_values:
+		if (!t262_upstream || !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
 		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
-	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution")): return c"module resolution is unsupported"
+	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution") && !t262_upstream): return c"module resolution is unsupported"
 	return 0
 
 json_value* t262_load(char* path):
@@ -144,6 +151,7 @@ json_value* t262_load(char* path):
 	char* directory = path_dirname(tempfile_abspath(path))
 	char* corpus = ht_resolve(path_join(directory, c"upstream"))
 	if (!jc_require(corpus != 0, c"cannot resolve corpus")): return 0
+	t262_corpus = corpus
 	for json_value* item in files.array_values:
 		if (!jc_require(jc_fields(item, c"path upstream_path sha256", c"path upstream_path sha256") && jc_type(jc_get(item, c"upstream_path"), json_type_string()), c"invalid source entry")): return 0
 		char* name = jc_string(jc_get(item, c"path"))
@@ -191,18 +199,32 @@ json_value* t262_load(char* path):
 		if (!jc_require(jc_fields(expected, fields, fields), c"invalid baseline fields")): return 0
 	return data
 
+# Module tests run from a staging directory mirroring the upstream layout, with
+# every pinned sibling *_FIXTURE.js copied beside them for relative imports.
+char* t262_stage_module(char* directory, char* name):
+	char* folder = path_join(directory, path_dirname(name))
+	ht_mkdir(folder)
+	for char* other in t262_sources.keys():
+		if (strcmp(path_dirname(other), path_dirname(name)) == 0 && contains(other, c"_FIXTURE")): ht_write(path_join(directory, other), t262_sources[other], strlen(t262_sources[other]))
+	return path_join(directory, name)
+
 json_value* t262_execute(char* binary, char* path, char* mode, int timeout, int budget):
 	if (!path_exists(binary)): return jc_process_error(c"harness_error")
 	char* goal = c"script"
 	char* harness = c"harness"
 	if (strcmp(mode, c"module") == 0): goal = c"module"
 	if (strcmp(mode, c"raw") == 0): harness = c"raw"
-	process_result* proc = ht_run(ht_argv(binary, path, goal, itoa(budget), harness), 0, 0, timeout)
+	list[char*] command = ht_argv(binary, path, goal, itoa(budget), harness)
+	if (t262_upstream && strcmp(harness, c"harness") == 0):
+		command[4] = c"upstream"
+		for char* file in t262_harness: command.push(file)
+	process_result* proc = ht_run(command, 0, 0, timeout)
 	if (proc.status != 0): return jc_result(proc)
 	jc_error = 0
 	json_value* actual = json_parse(proc.stdout_text)
 	int valid = jc_require(jc_equal(jc_get(actual, c"protocol"), json_int(1)), c"invalid runner protocol")
-	if (valid): valid = jc_require(jc_choice(jc_get(actual, c"phase"), c"parse early lower execute") && jc_choice(jc_get(actual, c"outcome"), c"normal error throw unsupported limit"), c"invalid result")
+	if (valid): valid = jc_require(jc_choice(jc_get(actual, c"phase"), c"parse early lower execute harness") && jc_choice(jc_get(actual, c"outcome"), c"normal error throw unsupported limit"), c"invalid result")
+	if (valid && jc_is(jc_get(actual, c"phase"), c"harness") && jc_is(jc_get(actual, c"outcome"), c"error")): actual = jc_process_error(c"harness_error")
 	if (valid && jc_choice(jc_get(actual, c"outcome"), c"normal throw")):
 		json_value* steps = jc_get(actual, c"steps")
 		json_value* assertions = jc_get(actual, c"assertions")
@@ -270,6 +292,11 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 				char* content = source
 				if (strcmp(mode, c"strict") == 0): content = strjoin(c"\"use strict\";\n", source)
 				char* path = path_join(directory, c"case.js")
+				if (t262_upstream):
+					t262_harness = new list[char*]
+					for char* file in split(c"sta.js assert.js"): t262_harness.push(path_join(path_join(t262_corpus, c"harness"), file))
+					for json_value* item in jc_get(meta, c"includes").array_values: t262_harness.push(path_join(path_join(t262_corpus, c"harness"), item.string_value))
+					if (strcmp(mode, c"module") == 0): path = t262_stage_module(directory, name)
 				ht_write(path, content, strlen(content))
 				actual = execute(binary, path, mode, timeout, budget)
 			char* id = strjoin(strjoin(name, c"#"), mode)
@@ -284,7 +311,7 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 			json_object_set(result, c"actual", actual)
 			json_value* expected = jc_get(jc_get(manifest, c"baseline"), id)
 			json_object_set(result, c"baseline", json_clone(expected))
-			if (!jc_is(jc_get(expected, c"status"), classification)):
+			if (!t262_upstream && !jc_is(jc_get(expected, c"status"), classification)):
 				json_value* change = json_object()
 				json_object_set(change, c"id", json_string(id))
 				json_object_set(change, c"expected", json_clone(jc_get(expected, c"status")))
@@ -296,7 +323,15 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 			if (jc_get(actual, c"assertions") != 0): assertions = assertions + jc_get(actual, c"assertions").int_value
 	shutil_rmtree(directory)
 	json_object_set(report, c"upstream", json_clone(jc_get(manifest, c"upstream")))
-	json_object_set(report, c"profile", json_string(c"native-boolean-samevalue-v1"))
+	char* profile = c"native-boolean-samevalue-v1"
+	if (t262_upstream): profile = c"upstream-harness-v1"
+	json_object_set(report, c"profile", json_string(profile))
+	int variants = results.array_values.length
+	int rate = 0
+	if (variants > 0): rate = ht_number(counts, c"PASS") * 10000 / variants
+	json_object_set(report, c"pass_rate_basis_points", json_int(rate))
+	char* percent = strjoin(strjoin(itoa(rate / 100), c"."), strjoin(itoa(rate / 10 % 10), itoa(rate % 10)))
+	json_object_set(report, c"pass_rate", json_string(strjoin(percent, c"%")))
 	json_object_set(report, c"files", json_int(jc_get(manifest, c"cases").array_values.length))
 	json_object_set(report, c"variants", json_int(results.array_values.length))
 	json_object_set(report, c"counts", counts)
