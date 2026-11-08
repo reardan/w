@@ -40,6 +40,7 @@ import graphics.cocoa
 import graphics.gl
 import graphics.event
 import graphics.input_queue
+import graphics.clipboard_store
 
 
 # Hooks a text-input bridge installs (see the header comment); the
@@ -93,6 +94,8 @@ struct gfx_window:
 	gfx_cocoa_focus_hook* focus_hook
 	int text_bridge
 	int32 text_focus
+	# Clipboard (graphics.clipboard_store); NSPasteboard is synchronous.
+	gfx_clipboard_store clip
 
 
 # The window gfx_text_input addresses: the most recently opened one.
@@ -198,6 +201,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.key_location = objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, c"locationInWindow"))
 	win.scroll_accum = 0
 	gfx_input_queue_init(&win.input_queue)
+	gfx_clipboard_store_init(&win.clip)
 	win.key_hook = cast(gfx_cocoa_key_hook*, 0)
 	win.focus_hook = cast(gfx_cocoa_focus_hook*, 0)
 	win.text_bridge = 0
@@ -377,6 +381,53 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 	return 1
 
 
+# ---- clipboard: NSPasteboard ----------------------------------------------
+#
+# [NSPasteboard generalPasteboard] is synchronous and keeps its own copy,
+# so the text outlives this process. The type is the plain-text UTI that
+# NSPasteboardTypeString names (public.utf8-plain-text); a string object
+# built from it compares equal to the AppKit constant.
+
+int gfx_cocoa_nsstring(char* text):
+	return objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, text))
+
+
+int gfx_clipboard_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_clipboard_local_set(text)
+	gfx_clipboard_store_own(&win.clip, text, strlen(text))
+	int pool = objc_autoreleasePoolPush()
+	int board = objc_msg0(objc_getClass(c"NSPasteboard"), sel_registerName(c"generalPasteboard"))
+	int ok = 0
+	if (board != 0):
+		objc_msg0(board, sel_registerName(c"clearContents"))
+		int value = gfx_cocoa_nsstring(text)
+		# setString:forType: returns a BOOL: only the low byte is defined.
+		if (value != 0): ok = objc_msg2(board, sel_registerName(c"setString:forType:"), value, gfx_cocoa_nsstring(c"public.utf8-plain-text")) & 0xff
+	objc_autoreleasePoolPop(pool)
+	return ok != 0
+
+
+void gfx_clipboard_request(gfx_window* win):
+	if (win == 0):
+		gfx_clipboard_local_request()
+		return
+	gfx_clipboard_store_begin(&win.clip, GFX_CLIPBOARD_REQUESTED)
+	int pool = objc_autoreleasePoolPush()
+	int board = objc_msg0(objc_getClass(c"NSPasteboard"), sel_registerName(c"generalPasteboard"))
+	if (board != 0):
+		int value = objc_msg1(board, sel_registerName(c"stringForType:"), gfx_cocoa_nsstring(c"public.utf8-plain-text"))
+		if (value != 0):
+			char* bytes = cast(char*, objc_msg0(value, sel_registerName(c"UTF8String")))
+			if (bytes != 0): gfx_clipboard_store_append(&win.clip, bytes, strlen(bytes))
+	objc_autoreleasePoolPop(pool)
+	gfx_clipboard_store_arrive(&win.clip)
+
+
+char* gfx_clipboard_take(gfx_window* win):
+	if (win == 0): return gfx_clipboard_local_take()
+	return gfx_clipboard_store_take(&win.clip)
+
+
 # Drain pending AppKit events. Returns 1 while the window should stay
 # open (0 once the red button closed it).
 int gfx_window_poll(gfx_window* win):
@@ -418,5 +469,6 @@ void gfx_window_destroy(gfx_window* win):
 	objc_msg0(win.window, win.sel_close)
 	objc_autoreleasePoolPop(win.pool)
 	gfx_input_queue_free(&win.input_queue)
+	gfx_clipboard_store_free(&win.clip)
 	if (gfx_cocoa_active == win): gfx_cocoa_active = cast(gfx_window*, 0)
 	free(win)

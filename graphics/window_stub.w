@@ -7,6 +7,7 @@ gl smoke test SKIPs, the demo exits).
 */
 import lib.lib
 import graphics.event
+import graphics.clipboard_store
 
 
 struct gfx_window:
@@ -44,6 +45,21 @@ void gfx_window_swap(gfx_window* win):
 # (ui_render_set_pixel_scale). This backend draws 1:1.
 float32 gfx_window_pixel_ratio(gfx_window* win):
 	return 1.0
+
+
+# No platform clipboard: every window (there are none) shares the
+# in-process store, so copy and paste still round-trip inside one
+# program.
+int gfx_clipboard_set(gfx_window* win, char* text):
+	return gfx_clipboard_local_set(text)
+
+
+void gfx_clipboard_request(gfx_window* win):
+	gfx_clipboard_local_request()
+
+
+char* gfx_clipboard_take(gfx_window* win):
+	return gfx_clipboard_local_take()
 
 
 void gfx_window_destroy(gfx_window* win):

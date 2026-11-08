@@ -131,6 +131,8 @@ const host = {
   pixelRatio: () => size.ratio,
   textInput: (...args) => input.setTextInput(...args),
   pointerMode: mode => input.setPointerMode(mode),
+  clipboardWrite: text => input.clipboardWrite(text),
+  clipboardRead: () => input.clipboardRead(),
   setFrameCallback: tableIndex => { frameCallback = tableIndex; },
   nextEvent: () => events.next(),
 };
