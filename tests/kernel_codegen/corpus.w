@@ -156,8 +156,20 @@ int kc_variadic(int x):
 	return kc_c_sum(3, x, x * 2, x * 3) + kc_c_sum(8, 1, 2, 3, 4, 5, 6, 7, x)
 
 
+# A local pointing at itself: '&self' in its own initializer names the
+# word the value is pushed to, an address below %rsp that is never read.
+int kc_self_address():
+	void* self = &self
+	int* again = cast(int*, &again)
+	int r = 0
+	if (self == cast(void*, &self)): r = r + 5
+	if (again == cast(int*, &again)): r = r + 7
+	return r
+
+
 export int kc_main():
 	int sum = kc_fib(15)
+	sum = sum + kc_self_address()
 	sum = sum + kc_many(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 	sum = sum + kc_structs()
 	for v in range(16): sum = sum + kc_switch(v * 5 + 1)

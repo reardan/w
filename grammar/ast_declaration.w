@@ -39,6 +39,32 @@ void ast_declaration_bind(statement_ast* node, int depth):
 	node.stack_depth = depth
 
 
+# A typed local is in scope in its own initializer (as in C), but its slot
+# does not exist until the initializer's value is stored: reading it there
+# would load a stack word below the stack pointer. Taking its address
+# ('void* p = &p') stays legal; any read is rejected. A statement that
+# starts with '(' on the next line is absorbed as a call of the initializer
+# ('int n = 2' then '(n)'); that already reports W0084 and a call error,
+# so a read inside it adds nothing and is not reported again.
+void ast_declaration_self_read_check(expression_ast* tree, int binding):
+	for event in range(tree.count):
+		if ((tree.op[event] == ast_warning) && (tree.high[event] == 7)):
+			if (strcmp(cast(char*, tree.value[event]), c"warning: call arguments continue from the previous line") == 0): return
+	for id in range(tree.count):
+		if ((tree.op[id] == 'v') && (tree.symbol[id] == binding)):
+			int taken = 0
+			for parent in range(tree.count):
+				if ((tree.op[parent] == 'r') && (tree.left[parent] == id)): taken = 1
+			if (taken == 0):
+				int k = expression_ast_token_at(tree, tree.offset[id])
+				if (k >= 0):
+					int* row = expression_ast_token_row(tree, k)
+					line_number = row[3]
+					diag_token_line = row[1]
+					diag_token_column = row[2]
+				error3(c"local '", table + tree.value[id], c"' is read in its own initializer")
+
+
 int ast_local_declaration(statement_ast* node, char* name):
 	if (node.inferred == 0): node.binding = last_declared_symbol
 	node.expression_tree = 0
@@ -63,6 +89,7 @@ int ast_local_declaration(statement_ast* node, char* name):
 			if (node.inferred == 0): coerce_checked(node.declared_type, node.expression_type, c"initialization")
 			emit_declaration_ast_trace(node)
 		else:
+			if (node.inferred == 0): ast_declaration_self_read_check(&tree, node.binding)
 			node.expression_tree = &tree
 			node.expression_root = root
 			node.end_offset = tree.end_offset

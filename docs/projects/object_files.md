@@ -332,6 +332,19 @@ definition in the same object bind to it through its symbol only when
 the symbol is the function's W entry: an exported function's weak
 symbol is its C adapter, so W callers keep calling the W body.
 
+Function symbols are sized: each runs to the next function entry (or
+the end of its section piece), so tools that look code up by address
+(objtool, perf, `addr2line`) find the enclosing function. Under
+`--c-abi` a function's symbol, local (`static`) or global, is its
+System V entry stub, so the stub and its W body are one sized function,
+and a C table entry naming a static function lands on its symbol.
+
+System V defines only a narrow integer result's own bits of `rax` (a
+`bool` callee may return `setne al` over a pointer still in `rax`), so
+an x64 extern's shim zero- or sign-extends `bool`, 8-, 16- and 32-bit
+results to the declared type before W reads the word, as calls through
+C function pointers and C-variadic calls already did.
+
 Under `--c-abi` a function's global symbol is its System V entry stub,
 which sits at the start of the function's range and so lands in its
 section; its adapter (or the shared trap) follows it there. `@weak`

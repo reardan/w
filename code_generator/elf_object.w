@@ -459,10 +459,62 @@ int object_symbol(char* name, int binding, int symtype, int shndx, int value, in
 
 # A symbol at a code or data vaddr: its section and offset come from the
 # piece holding it.
+# Function entry addresses, ascending (object_function_starts_init): a
+# function symbol's size runs to the next entry or the end of its piece,
+# so tools that look functions up by address (objtool, perf) find them.
+# Under --c-abi a function's entry is its System V stub, so the stub and
+# its W body are one function.
+list[int] object_function_starts
+
+
+int object_in_text(int vaddr);
+
+
+void object_function_starts_init():
+	object_function_starts = new list[int]
+	int t = 0
+	while (t <= table_pos - 1):
+		t = t + strlen(table + t)
+		if ((table[t + 1] == 'D') && (load_int(table + t + 10) == 2)):
+			int value = sym_value_at(t)
+			if (c_abi_mode && c_abi_has_entry(t)): value = c_abi_entry_of(t)
+			if (object_in_text(value) && (value < code_offset + codepos)): object_function_starts.push(value)
+		t = next_token(t)
+	for e in range(wasm_export_count): object_function_starts.push(load_i(elf_export_addresses + e * __word_size__, __word_size__))
+	# Shell sort: ascending.
+	int n = object_function_starts.length
+	int gap = n / 2
+	while (gap > 0):
+		int i = gap
+		while (i < n):
+			int v = object_function_starts[i]
+			int j = i
+			while ((j >= gap) && (object_function_starts[j - gap] > v)):
+				object_function_starts[j] = object_function_starts[j - gap]
+				j = j - gap
+			object_function_starts[j] = v
+			i = i + 1
+		gap = gap / 2
+
+
+# The size of the function symbol at vaddr in piece p.
+int object_function_size(object_piece* p, int vaddr):
+	int end = code_offset + p.end
+	int lo = 0
+	int hi = object_function_starts.length
+	while (lo < hi):
+		int mid = (lo + hi) / 2
+		if (object_function_starts[mid] <= vaddr): lo = mid + 1
+		else: hi = mid
+	if ((lo < object_function_starts.length) && (object_function_starts[lo] < end)): end = object_function_starts[lo]
+	if (end < vaddr): return 0
+	return end - vaddr
+
+
 int object_text_symbol(char* name, int binding, int vaddr):
 	object_piece* p = object_text_piece(vaddr)
 	object_section* s = object_sections[p.section]
-	return object_symbol(name, binding, 2, s.index, p.out + vaddr - code_offset - p.start, 0)
+	return object_symbol(name, binding, 2, s.index, p.out + vaddr - code_offset - p.start, object_function_size(p, vaddr))
 
 
 int object_data_symbol(char* name, int binding, int vaddr, int size):
@@ -572,6 +624,10 @@ void object_table_symbols(int want_global):
 			int weak = object_name_is_weak(name)
 			if ((symtype == 2) && object_in_text(value) && (value < code_offset + codepos) && (object_name_is_global(name) == 0)):
 				if (weak == want_global):
+					# --c-abi: a local function's symbol is its System V entry
+					# stub, like a global one's, so a C table entry that names
+					# the stub (a section-relative relocation) lands on a symbol.
+					if (c_abi_mode && !weak && c_abi_has_entry(t)): value = c_abi_entry_of(t)
 					int index = object_text_symbol(name, weak << 1, value)
 					if (weak):
 						object_weak_text_vaddrs.push(value)
@@ -799,6 +855,7 @@ void elf_object_write():
 	object_records_init()
 	object_aliases_check()
 	object_layout()
+	object_function_starts_init()
 
 	# Section indices: the content sections first, then the fixed ones,
 	# then one .rela section per content section that needs it.
