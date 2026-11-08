@@ -267,6 +267,7 @@ js_value* js_coroutine_close_begin(js_runtime* rt, js_value* record);
 void js_coroutine_close_finish(js_runtime* rt, js_value* closing);
 int js_coroutine_supported(js_node* node);
 js_value* js_runtime_in(js_runtime* rt, js_value* key, js_value* object);
+int js_list_iterator_intact(js_runtime* rt, js_value* value);
 
 
 void js_runtime_fail(js_runtime* rt, int status, char* message):

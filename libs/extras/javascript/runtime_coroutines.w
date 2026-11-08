@@ -953,6 +953,15 @@ js_value* js_list_iterator_create(void* runtime, void* context, js_value* receiv
 	return iterator
 
 
+# Whether an array or string still iterates with the built-in list iterator,
+# so binding patterns may index it directly (a replaced
+# Array.prototype[Symbol.iterator] or an own override is observable).
+int js_list_iterator_intact(js_runtime* rt, js_value* value):
+	js_value* method = js_runtime_get_symbol_method(rt, value, JS_SYMBOL_ITERATOR)
+	if (rt.completion.status != 0 || method == 0): return 0
+	return method.kind == 9 && method.host == cast(int, js_list_iterator_create)
+
+
 js_value* js_list_iterator_next(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
 	if (js_runtime_object(receiver) == 0 || receiver.coroutine_kind != JS_CO_LIST_ITERATOR): return js_runtime_type_error(rt, c"iterator next called on an incompatible receiver")
