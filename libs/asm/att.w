@@ -166,6 +166,23 @@ void asm_att_mem(asm_parse* p, asm_operand* op):
 	if (asm_att_peek(p) == ')'): p.pos = p.pos + 1
 
 
+# The segment-override prefix byte the last operand named (0 = none),
+# moved to asm_insn.segment by asm_att_parse.
+int asm_att_seg
+
+
+# The prefix byte of a segment register name: %es 0x26, %cs 0x2e,
+# %ss 0x36, %ds 0x3e, %fs 0x64, %gs 0x65; 0 for any other name.
+int asm_att_segment_prefix(char* name):
+	if (strcmp(name, c"fs") == 0): return 0x64
+	if (strcmp(name, c"gs") == 0): return 0x65
+	if (strcmp(name, c"es") == 0): return 0x26
+	if (strcmp(name, c"cs") == 0): return 0x2e
+	if (strcmp(name, c"ss") == 0): return 0x36
+	if (strcmp(name, c"ds") == 0): return 0x3e
+	return 0
+
+
 # One operand into op. mnem_size is the mnemonic's suffix width (0 when
 # none), applied to a memory or immediate operand that has none of its
 # own. Returns 1 on success.
@@ -182,9 +199,11 @@ int asm_att_operand(asm_parse* p, asm_operand* op, int mnem_size):
 		char* name = asm_att_ident(p)
 		asm_att_skip_spaces(p)
 		if (asm_att_peek(p) == ':'):
-			# A segment override `%gs:`/`%fs:` before a memory operand;
-			# the encoder has no segment field, so only the memory is kept.
+			# A segment override `%gs:`/`%fs:` before a memory operand:
+			# the prefix byte is carried to the instruction by the caller
+			# (asm_att_seg), the memory operand is parsed as usual.
 			p.pos = p.pos + 1
+			asm_att_seg = asm_att_segment_prefix(name)
 			asm_att_mem(p, op)
 			if (op.size == 0): op.size = mnem_size
 			return 1
@@ -295,6 +314,7 @@ int asm_att_parse(char* line, int arch, asm_insn* insn):
 	asm_operand b
 	asm_operand cc
 	int count = 0
+	asm_att_seg = 0
 	asm_att_skip_spaces(p)
 	if (asm_att_peek(p) != 0):
 		if (asm_att_operand(p, &a, mnem_size)): count = 1
@@ -315,6 +335,7 @@ int asm_att_parse(char* line, int arch, asm_insn* insn):
 		insn.op2 = b
 		insn.op3 = a
 
+	insn.segment = asm_att_seg
 	if (is_two):
 		insn.op1.size = two_dst
 		if (insn.op2.kind == ASM_OP_MEM): insn.op2.size = two_src

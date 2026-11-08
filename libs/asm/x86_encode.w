@@ -282,6 +282,17 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	char* m = insn.mnemonic
 	int is64 = asm_enc_is64(insn)
 
+	# A segment override (%fs:/%gs: on the memory operand) is the first
+	# prefix, ahead of lock and the operand-size prefix, as gas orders it.
+	int segment = insn.segment
+	if (segment != 0):
+		asm_buffer_byte(b, segment)
+		insn.segment = 0
+		int sr = asm_x86_encode(b, insn)
+		insn.segment = segment
+		if (sr <= 0): return 0 - 1
+		return b.length - start
+
 	# One-byte opcodes with no operand (flags, interrupt enable, ...).
 	int ob = asm_enc_one_byte(m)
 	if (ob >= 0):

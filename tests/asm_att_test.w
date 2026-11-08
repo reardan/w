@@ -120,5 +120,16 @@ int main():
 	att_is(c"fxsaveq (%rax)", c"48 0F AE 00")
 	att_is(c"fxrstorq (%rax)", c"48 0F AE 08")
 
+	# Segment overrides: the %fs/%gs prefix comes first, ahead of lock and
+	# the operand-size prefix (per-CPU and thread-local accesses).
+	att_is(c"movq %gs:0x28, %rax", c"65 48 8B 04 25 28 00 00 00")
+	att_is(c"movq %fs:0, %rax", c"64 48 8B 04 25 00 00 00 00")
+	att_is(c"movl %gs:8(%rdi), %eax", c"65 8B 47 08")
+	att_is(c"movw %ax, %gs:(%rdi)", c"65 66 89 07")
+	att_is(c"lock incl %gs:(%rdi)", c"65 F0 FF 07")
+	att_is(c"addq $1, %gs:16", c"65 48 83 04 25 10 00 00 00 01")
+	att_is(c"movq %rax, %fs:(%rbx,%rcx,8)", c"64 48 89 04 CB")
+	att_is(c"incq %gs:0x10", c"65 48 FF 04 25 10 00 00 00")
+
 	println(c"asm_att_test passed")
 	return 0
