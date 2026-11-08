@@ -314,6 +314,22 @@ void test_dropdown_opens_moves_and_closes_from_the_keyboard():
 	assert_equal(0, open)
 	assert_equal(0, ctx.popup_depth)
 	assert_equal(1, ctx.focus)
+	# Open, the combobox controls its list (#911).
+	ui_test_char(ctx, 32)
+	dropdown_frame(ctx, &selected, &open)
+	assert_equal(1, open)
+	ui_access_tree* tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	dropdown_frame(ctx, &selected, &open)
+	ui_access_capture(ctx, 0)
+	ui_access_node* combo = ui_access_find(tree, 1)
+	ui_access_node* list = 0
+	assert_equal(1, ui_access_related(tree, combo, UI_ACCESS_REL_CONTROLLER_FOR, 0, &list))
+	assert_equal(UI_ACCESS_LIST, list.role)
+	ui_access_node* back = 0
+	assert_equal(1, ui_access_related(tree, list, UI_ACCESS_REL_CONTROLLED_BY, 0, &back))
+	assert_equal(1, back.id)
+	ui_access_tree_free(tree)
 	ui_render_destroy(&fx.r)
 
 
@@ -452,6 +468,8 @@ void test_widgets_describe_themselves():
 	ui_access_node* bar = root.last_child
 	assert_equal(UI_ACCESS_PROGRESS, bar.role)
 	assert_strings_equal(c"50%", bar.value.data)
+	# The number behind it (#911).
+	asserts(c"progress range", bar.has_range && (bar.range_now == 50.0) && (bar.range_min == 0.0) && (bar.range_max == 100.0))
 	assert_equal(0, tree.focused_id)
 
 	# An identical frame captures an identical snapshot; focus changes it.
@@ -991,4 +1009,130 @@ void test_table_spans_survive_scrolling():
 	ui_access_node* cherry = ui_access_table_cell_at(table, 1, 1)
 	asserts(c"Cherry keeps its column", (cherry != 0) && (strcmp(cherry.name.data, c"Cherry") == 0))
 	ui_access_tree_free(tree)
+	ui_render_destroy(&fx.r)
+
+
+# The visible stretch of the area's text (#912), as [start, end).
+void visible_range(ui_access_node* area, int* out):
+	int[8] ranges
+	assert_equal(1, ui_access_visible_ranges(area, ui_access_text_clip(area), &ranges[0], 4))
+	out[0] = ranges[0]
+	out[1] = ranges[1]
+
+
+# A bridge's SCROLL_TO scrolls a textarea without moving its caret, and
+# the snapshot's glyph boxes (so its visible ranges) follow (#912).
+void test_textarea_scrolls_a_range_into_view():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textarea_state ta
+	ui_textarea_init(&ta)
+	# Twenty lines "a0".."a9", "b0".."b9": three characters each with
+	# the newline, so line k starts at character 3 * k.
+	char[64] text
+	int n = 0
+	for k in range(20):
+		text[n] = 'a' + k / 10
+		text[n + 1] = '0' + k % 10
+		text[n + 2] = 10
+		n = n + 3
+	text[n - 1] = 0
+	ui_textarea_set(&ta, &text[0])
+	int32 clicks = 0
+	ui_access_tree* tree = captured_area(ctx, &ta, &clicks)
+	ui_access_node* area = ui_access_find(tree, 1)
+	asserts(c"scroll action", (area.actions & UI_ACCESS_SCROLL_TO) != 0)
+	float32 line_h = cast(float32, ui_textarea_line_height(ctx))
+	int[2] shown
+	visible_range(area, &shown[0])
+	assert_equal(0, shown[0])
+	asserts(c"later lines hidden", shown[1] < 59)
+
+	# Line 10 to the top.
+	char[48] payload
+	int length = ui_access_scroll_format(&payload[0], 30, 32, UI_ACCESS_SCROLL_TOP)
+	assert_equal(1, ui_access_dispatch(tree, 1, UI_ACCESS_SCROLL_TO, &payload[0], length))
+	ui_access_tree_free(tree)
+	tree = captured_area(ctx, &ta, &clicks)
+	asserts(c"scrolled to line 10", ta.scroll.offset_y == 10.0 * line_h)
+	assert_equal(0, ui_textarea_caret_offset(&ta))
+	visible_range(ui_access_find(tree, 1), &shown[0])
+	asserts(c"line 10 shows first", (shown[0] <= 30) && (shown[0] >= 27) && (shown[1] > 30))
+
+	# Line 15 to the bottom; then line 2 anywhere (the least move).
+	length = ui_access_scroll_format(&payload[0], 45, 47, UI_ACCESS_SCROLL_BOTTOM)
+	assert_equal(1, ui_access_dispatch(tree, 1, UI_ACCESS_SCROLL_TO, &payload[0], length))
+	ui_access_tree_free(tree)
+	tree = captured_area(ctx, &ta, &clicks)
+	asserts(c"line 15 at the bottom", ta.scroll.offset_y == 16.0 * line_h - ta.scroll.view_h)
+	length = ui_access_scroll_format(&payload[0], 6, 7, UI_ACCESS_SCROLL_ANYWHERE)
+	assert_equal(1, ui_access_dispatch(tree, 1, UI_ACCESS_SCROLL_TO, &payload[0], length))
+	ui_access_tree_free(tree)
+	tree = captured_area(ctx, &ta, &clicks)
+	asserts(c"line 2 at the top", ta.scroll.offset_y == 2.0 * line_h)
+	# A malformed request is refused.
+	assert_equal(0, ui_access_dispatch(tree, 1, UI_ACCESS_SCROLL_TO, c"9 3 0", 5))
+	ui_access_tree_free(tree)
+	ui_textarea_free(&ta)
+	ui_render_destroy(&fx.r)
+
+
+# An IME composition shows in the snapshot as on screen (#912): spliced
+# into the value at the caret with its glyph boxes, the caret at the
+# end of the conversion target, and the composition and target ranges
+# recorded; committing replaces it with the committed text.
+void test_text_fields_publish_the_ime_composition():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textarea_state ta
+	ui_textarea_init(&ta)
+	ui_textarea_set(&ta, c"ab\ncd")
+	ui_textarea_set_caret(&ta, 4)
+	ctx.focus = 1
+	# "xyz" with "y" the clause being converted: BEGIN's y is its
+	# start, its code the length.
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_BEGIN, 1, 1, 1, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'x', 1, 0, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'y', 1, 0, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'z', 1, 0, 0)
+	int32 clicks = 0
+	ui_access_tree* tree = captured_area(ctx, &ta, &clicks)
+	ui_access_node* area = ui_access_find(tree, 1)
+	assert_strings_equal(c"ab\ncxyzd", area.value.data)
+	assert_equal(4, area.composition_start)
+	assert_equal(3, area.composition_length)
+	assert_equal(5, area.conversion_start)
+	assert_equal(1, area.conversion_length)
+	assert_equal(6, area.caret)
+	asserts(c"glyphs cover the composition", ui_access_has_glyphs(area) && (area.char_box_count == 8))
+	ui_rect* b = area.char_boxes
+	asserts(c"composition boxes follow each other", (b[5].x == b[4].x + b[4].w) && (b[6].x == b[5].x + b[5].w) && (b[4].y == b[3].y))
+	# The buffer itself is untouched until the commit.
+	assert_equal(5, ta.buf.length)
+	ui_access_tree_free(tree)
+
+	# The single-line field the same way.
+	form_model m
+	form_model_init(&m)
+	ui_textbox_set(&m.name, c"Ad")
+	ctx.focus = 4
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_BEGIN, 0, 4, 1, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 0x4e2d, 4, 0, 0)
+	tree = captured_frame(ctx, &m)
+	ui_access_node* name = ui_access_find(tree, 4)
+	assert_strings_equal(c"Ad\xe4\xb8\xad", name.value.data)
+	assert_equal(2, name.composition_start)
+	assert_equal(1, name.composition_length)
+	assert_equal(0, name.conversion_length)
+	assert_equal(3, name.caret)
+	ui_access_tree_free(tree)
+
+	# Ending the preview drops it from the next snapshot.
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_END, 0, 4, 0, 0)
+	tree = captured_frame(ctx, &m)
+	name = ui_access_find(tree, 4)
+	assert_strings_equal(c"Ad", name.value.data)
+	assert_equal(0, name.composition_length)
+	ui_access_tree_free(tree)
+	ui_textarea_free(&ta)
 	ui_render_destroy(&fx.r)
