@@ -340,6 +340,56 @@
       "name": "regexp-constructor-source",
       "source": "let n = ''; try { new RegExp('[z-a]'); } catch (e) { n = e.name; } `${n}|${new RegExp('a/b\\n').source}|${/a/gimsuy.flags}|${/x/g.toString()}|${RegExp('b').test('abc')}`;",
       "stdout": "SyntaxError|a\\/b\\n|gimsuy|/x/g|true\n"
+    },
+    {
+      "name": "string-match",
+      "source": "`${'a1b22c333'.match(/\\d+/g)}|${'a1b2'.match(/(?<d>\\d)/).groups.d}|${'xyz'.match(/q/)}|${'aaa'.match(/a*?/g).length}|${'ab'.match()}`;",
+      "stdout": "1,22,333|1|null|4|\n"
+    },
+    {
+      "name": "string-replace-substitutions",
+      "source": "`${'2020-12-31'.replace(/(?<y>\\d+)-(?<m>\\d+)-(?<d>\\d+)/, '$<d>.$<m>.$<y>')}|${'abc'.replace(/b/, \"[$&|$\\`|$'|$$|$0|$1]\")}|${'abc'.replace(/(b)/, '$01$10$2')}|${'aaa'.replace(/a/g, (m, p) => p)}`;",
+      "stdout": "31.12.2020|a[b|a|c|$|$0|$1]c|abb0$2c|012\n"
+    },
+    {
+      "name": "string-replace-functions",
+      "source": "`${'x-y_z'.replace(/[-_](.)/g, (m, c, p, s) => `${c}${p}${s.length}`)}|${'aaa'.replace('a', '$&$&')}|${'abc'.replace('', '_')}|${'a.b.c'.replace('.', () => '!')}|${'xy'.replace(/(?<n>y)/, (...args) => typeof args[args.length - 1])}`;",
+      "stdout": "xy15z35|aaaa|_abc|a!b.c|xobject\n"
+    },
+    {
+      "name": "string-search",
+      "source": "`${'hello world'.search(/o/)}|${'abc'.search(/z/)}|${'a.b'.search('.')}|${(() => { const r = /b/g; r.lastIndex = 2; const i = 'abc'.search(r); return `${i},${r.lastIndex}`; })()}`;",
+      "stdout": "4|-1|0|1,2\n"
+    },
+    {
+      "name": "string-split",
+      "source": "`${'a,b,,c'.split(',')}|${'a,b,,c'.split(',', 2)}|${'abc'.split('').length}|${'a1b2c3'.split(/(\\d)/)}|${'test'.split(/(?:)/).length}|${''.split(',').length}|${''.split('').length}|${'\\u{1F600}x'.split(/(?:)/u).length}`;",
+      "stdout": "a,b,,c|a,b|3|a,1,b,2,c,3,|4|1|0|2\n"
+    },
+    {
+      "name": "string-match-all",
+      "source": "(() => { const out = []; for (const m of 'a1b22c333'.matchAll(/(?<n>\\d+)/g)) out.push(`${m[0]}@${m.index}:${m.groups.n}`); const it = 'xx'.matchAll(/x/g); return `${out}|${typeof it.next}|${it[Symbol.iterator]() === it}|${[...'aXbX'.matchAll('X')].length}`; })();",
+      "stdout": "1@1:1,22@3:22,333@6:333|function|true|2\n"
+    },
+    {
+      "name": "string-regexp-coercion",
+      "source": "(() => { const order = []; const pattern = { toString() { order.push('pattern'); return 'b'; } }; const flags = { toString() { order.push('flags'); return 'g'; } }; const r = new RegExp(pattern, flags); const o = { valueOf() { return 'v'; }, toString() { return 't'; } }; return `${r.source}${r.flags}|${order}|${'atb'.replace(o, '_')}|${'aaa'.split({ toString() { return 'a'; } }).length}|${String(Symbol('d'))}`; })();",
+      "stdout": "bg|pattern,flags|a_b|4|Symbol(d)\n"
+    },
+    {
+      "name": "string-symbol-dispatch",
+      "source": "(() => { const calls = []; const re = { [Symbol.match](s) { calls.push(`match:${s}`); return 1; }, [Symbol.replace](s, v) { calls.push(`replace:${s}:${v}`); return 2; }, [Symbol.search](s) { calls.push(`search:${s}`); return 3; }, [Symbol.split](s, l) { calls.push(`split:${s}:${l}`); return 4; } }; const r = [ 'q'.match(re), 'q'.replace(re, 'v'), 'q'.search(re), 'q'.split(re, 9) ]; return `${r}|${calls}`; })();",
+      "stdout": "1,2,3,4|match:q,replace:q:v,search:q,split:q:9\n"
+    },
+    {
+      "name": "regexp-symbol-last-index",
+      "source": "(() => { const r = /a/y; r.lastIndex = 1; const g = /a/g; g.lastIndex = 5; const m = 'aaa'.match(g); const s = /a/gy; return `${'baa'.replace(r, 'X')}|${r.lastIndex}|${m.length}|${g.lastIndex}|${'aaba'.replace(s, 'X')}|${s.lastIndex}|${'aXbX'.split(/X/y)}`; })();",
+      "stdout": "bXa|2|3|0|XXba|0|a,b,\n"
+    },
+    {
+      "name": "regexp-symbol-exec-species",
+      "source": "(() => { const re = /./g; let n = 0; re.exec = function (s) { n++; return n > 2 ? null : { 0: 'z', length: 1, index: n - 1 }; }; const viaExec = 'abc'.replace(re, '_'); return `${viaExec}|${n}|${RegExp.prototype[Symbol.split].call(/b/, 'abc')}|${/x/[Symbol.replace]('axb', '[$&]')}|${RegExp[Symbol.species] === RegExp}`; })();",
+      "stdout": "__c|3|a,c|a[x]b|true\n"
     }
   ]
 }
