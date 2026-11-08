@@ -11,10 +11,11 @@ import time
 
 def child_gone(stat):
     """The child is reaped (no /proc entry) or a zombie. The entry can
-    vanish between an exists() check and the read, so read once."""
+    vanish between an exists() check and the read (ENOENT on open,
+    ESRCH on read), so read once."""
     try:
         return stat.read_text().split()[2] == 'Z'
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return True
 
 
