@@ -104,8 +104,10 @@ void test_host_deps_command_and_failure_cache():
 	assert_strings_equal(c"--import-root", strv_get(args, 3))
 	assert_strings_equal(c"tests/wtest/host", strv_get(args, 4))
 	free(cast(char*, args))
+	# x86 is spelled out: the compiler's default target is x64.
 	args = deps_wv2_argv(c"x86 tests/wtest/host/root.w", c"deps")
-	assert_strings_equal(c"deps", strv_get(args, 1))
+	assert_strings_equal(c"x86", strv_get(args, 1))
+	assert_strings_equal(c"deps", strv_get(args, 2))
 	free(cast(char*, args))
 	deps_entry* entry = deps_entry_new(c"x86 tests/wtest/host/root.w", 0)
 	entry.failed = 1

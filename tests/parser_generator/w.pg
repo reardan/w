@@ -49,6 +49,7 @@ literal KW_CHAR "char"
 literal KW_VOID "void"
 literal KW_STRING "string"
 literal KW_ASM "asm"
+literal KW_ASM_NATIVE "asm_native"
 literal KW_INLINE "inline"
 literal KW_FN "fn"
 literal KW_BOOL "bool"
@@ -302,11 +303,20 @@ rule statement = base_statement statement_suffix
 # ('i = i + 1; if (i == 2): continue', 'if (x): break; pass').
 rule statement_suffix = SEMI statement_after_semi |
 rule statement_after_semi = statement |
-rule base_statement = unsafe_stmt | if_stmt | elif_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | gpu_for_stmt | for_stmt | launch_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | goto_stmt | pass_stmt | debugger_stmt | asm_block_stmt | local_decl | infer_decl | label_stmt | expression_stmt | block
+rule base_statement = unsafe_stmt | if_stmt | elif_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | gpu_for_stmt | for_stmt | launch_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | goto_stmt | pass_stmt | debugger_stmt | inline_asm_stmt | asm_block_stmt | local_decl | infer_decl | label_stmt | expression_stmt | block
 # 'asm x86:' + indented string lines opening a function body
 # (grammar/asm_function.w); the lines parse as string statements.
 rule unsafe_stmt = KW_UNSAFE block
 rule asm_block_stmt = KW_ASM name_token block
+# native inline asm statement (grammar/inline_asm_stmt.w): asm_native: +
+# indented operand directives (`input rax = v`, `output rcx:4 = p`,
+# `clobber rdx`) and AT&T template string lines. Unlike a function's
+# asm body, the block ends at the first line that is neither, so the
+# statements after it parse as statements.
+rule inline_asm_stmt = KW_ASM_NATIVE COLON inline_asm_line+
+rule inline_asm_line = NEWLINE tab_prefix inline_asm_item
+rule inline_asm_item = STRING | IDENT name_token inline_asm_width ASSIGN expression | IDENT name_token
+rule inline_asm_width = COLON NUMBER |
 rule if_stmt = KW_IF paren_expression_opt block
 rule switch_stmt = KW_SWITCH paren_expression_opt block
 rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block

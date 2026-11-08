@@ -228,6 +228,102 @@ int object_weak_count():
 	return object_weak_names.length
 
 
+# --- Native inline asm sections and relocations ----------------------
+#
+# An asm_native template (grammar/inline_asm_template.w) can switch to a
+# named section (.pushsection) and emit instructions or data there, and
+# can reference a label in another section or a symbol outside the
+# object. Its section bytes collect here, one buffer per name, and become
+# sections of their own at layout; each cross-section or symbol
+# reference becomes a relocation record:
+#
+#   site:   asm section index and offset, or OBJECT_ASM_TEXT and a code
+#           buffer offset (an instruction inline in a W function)
+#   target: asm section index and offset, OBJECT_ASM_TEXT and a code
+#           buffer offset, or OBJECT_ASM_SYMBOL and a symbol name
+#
+# The addend is relative to the target (S + A [- P]).
+const int OBJECT_ASM_TEXT = -1
+const int OBJECT_ASM_SYMBOL = -2
+
+list[char*] object_asm_names
+list[int] object_asm_flags
+list[int] object_asm_aligns
+list[object_buffer*] object_asm_buffers
+list[int] object_asm_out           # object_sections index, set at layout
+list[int] object_asm_rel_site_section
+list[int] object_asm_rel_site_offset
+list[int] object_asm_rel_type
+list[int] object_asm_rel_target_section
+list[int] object_asm_rel_target_offset
+list[char*] object_asm_rel_symbol
+list[int] object_asm_rel_addend
+int object_asm_ready
+
+
+void object_asm_init():
+	if (object_asm_ready): return
+	object_asm_ready = 1
+	object_asm_names = new list[char*]
+	object_asm_flags = new list[int]
+	object_asm_aligns = new list[int]
+	object_asm_buffers = new list[object_buffer*]
+	object_asm_out = new list[int]
+	object_asm_rel_site_section = new list[int]
+	object_asm_rel_site_offset = new list[int]
+	object_asm_rel_type = new list[int]
+	object_asm_rel_target_section = new list[int]
+	object_asm_rel_target_offset = new list[int]
+	object_asm_rel_symbol = new list[char*]
+	object_asm_rel_addend = new list[int]
+
+
+# The asm section named name (created on first use with ELF flags), as
+# an index for the calls below.
+int object_asm_section(char* name, int flags):
+	object_asm_init()
+	for i in range(object_asm_names.length):
+		if (strcmp(object_asm_names[i], name) == 0): return i
+	object_asm_names.push(strclone(name))
+	object_asm_flags.push(flags)
+	object_asm_aligns.push(1)
+	object_asm_buffers.push(object_buffer_new())
+	object_asm_out.push(0)
+	return object_asm_names.length - 1
+
+
+int object_asm_size(int section):
+	return object_asm_buffers[section].length
+
+
+void object_asm_put(int section, char* bytes, int n):
+	object_put(object_asm_buffers[section], bytes, n)
+
+
+# Pad the section to a multiple of a with fill bytes; the section is at
+# least that aligned.
+void object_asm_align(int section, int a, int fill):
+	object_buffer* b = object_asm_buffers[section]
+	while ((b.length % a) != 0): object_u8(b, fill)
+	if (a > object_asm_aligns[section]): object_asm_aligns[section] = a
+
+
+# The bytes of an asm section, for patching a resolved reference.
+char* object_asm_data(int section):
+	return object_asm_buffers[section].bytes
+
+
+void object_asm_reloc(int site_section, int site_offset, int rtype, int target_section, int target_offset, char* symbol, int addend):
+	object_asm_init()
+	object_asm_rel_site_section.push(site_section)
+	object_asm_rel_site_offset.push(site_offset)
+	object_asm_rel_type.push(rtype)
+	object_asm_rel_target_section.push(target_section)
+	object_asm_rel_target_offset.push(target_offset)
+	object_asm_rel_symbol.push(symbol)
+	object_asm_rel_addend.push(addend)
+
+
 # An '@alias("target")' declaration (symbol t, named name): the W symbol
 # is defined at the target's address as soon as the target is defined
 # (object_alias_defined, called by sym_define_global_at), so W code may
@@ -875,6 +971,61 @@ void object_layout():
 		t = next_token(t)
 	free(cells)
 	object_data_pieces = object_pieces_complete(placed, 0, datapos, data_section)
+	# Native inline asm sections: their own bytes, flags and alignment.
+	if (object_asm_ready):
+		for i in range(object_asm_names.length):
+			int index = object_section_for(object_asm_names[i], 2)
+			object_section* s = object_sections[index]
+			s.flags = object_asm_flags[i]
+			s.align = object_asm_aligns[i]
+			s.size = object_asm_buffers[i].length
+			object_asm_out[i] = index
+
+
+# The symbol a template's name binds to, as the assembler binds it: a
+# global (or undefined) symbol of that name, else a local definition
+# (a C static of the unit), else a new undefined global. Symbols from
+# first_global on are the global ones; index 0 and the section symbols
+# have no name.
+int object_global_symbol_named(char* name, int first_global):
+	for i in range(first_global, object_symbol_count):
+		int name_off = load_int32(object_symtab.bytes + i * 24)
+		if (strcmp(object_strtab.bytes + name_off, name) == 0): return i
+	for i in range(1, first_global):
+		int name_off = load_int32(object_symtab.bytes + i * 24)
+		if ((name_off != 0) && (strcmp(object_strtab.bytes + name_off, name) == 0)): return i
+	return object_symbol(name, 1, 0, 0, 0, 0)
+
+
+# The relocation records of the native inline asm templates: each site
+# and target mapped to its object section and offset.
+void object_asm_relocations(int first_global):
+	if (object_asm_ready == 0): return
+	for i in range(object_asm_rel_type.length):
+		int rtype = object_asm_rel_type[i]
+		int addend = object_asm_rel_addend[i]
+		object_section* site_section = cast(object_section*, 0)
+		int site_off = object_asm_rel_site_offset[i]
+		if (object_asm_rel_site_section[i] == OBJECT_ASM_TEXT):
+			object_piece* site = object_text_piece(code_offset + site_off)
+			site_section = object_sections[site.section]
+			site_off = site.out + site_off - site.start
+		else: site_section = object_sections[object_asm_out[object_asm_rel_site_section[i]]]
+		int symbol = 0
+		int target = object_asm_rel_target_section[i]
+		if (target == OBJECT_ASM_SYMBOL): symbol = object_global_symbol_named(object_asm_rel_symbol[i], first_global)
+		else if (target == OBJECT_ASM_TEXT):
+			int pos = object_asm_rel_target_offset[i]
+			object_piece* dest = object_text_piece(code_offset + pos)
+			symbol = object_sections[dest.section].symbol
+			addend = addend + dest.out + pos - dest.start
+		else:
+			symbol = object_sections[object_asm_out[target]].symbol
+			addend = addend + object_asm_rel_target_offset[i]
+		object_rela(site_section.rela, site_off, symbol, rtype, addend)
+		int width = 4
+		if ((rtype == 1) || (rtype == 24)): width = 8
+		for j in range(width): site_section.bytes.bytes[site_off + j] = 0
 
 
 void elf_object_write():
@@ -997,6 +1148,11 @@ void elf_object_write():
 		if (s.type == 1):
 			for j in range(p.end - p.start): s.bytes.bytes[p.out + j] = data_copy[p.start + j]
 	free(data_copy)
+	if (object_asm_ready):
+		for i in range(object_asm_names.length):
+			object_section* s = object_sections[object_asm_out[i]]
+			object_buffer* src = object_asm_buffers[i]
+			for j in range(src.length): s.bytes.bytes[j] = src.bytes[j]
 
 	# Text relocations: address slots (to data, extern data or code) and
 	# call cells. Slots are noted on every write (backpatch chains
@@ -1110,6 +1266,7 @@ void elf_object_write():
 					object_rela(object_sections[cell_site.section].rela, cell_site.out + c_abi_extern_cells[i] - data_offset - cell_site.start, first_import + j, 1, 0)
 	free(data_symbols)
 	free(import_used)
+	object_asm_relocations(first_global)
 
 	object_buffer* names = object_buffer_new()
 	object_u8(names, 0)

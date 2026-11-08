@@ -68,7 +68,7 @@ Mac it bootstraps a native Mach-O executor from `./w_darwin`; only the
 darwin targets run here — everything else needs Linux.
 
 Compile and run one program: `./bin/wv2 file.w -o out && ./out`
-(insert `x64` before the file for 64-bit). The AST front end is the
+(64-bit x86-64 by default; insert `x86` before the file for 32-bit). The AST front end is the
 default; `--streaming` selects the older streaming front end (same image;
 kept as a comparison oracle until it is retired), and `--ast-required`
 additionally rejects any expression fallback (`./wbuild ast_expression_suite`

@@ -606,6 +606,18 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# xchg r/m8, r8 (0x86) and r/m32, r32 (0x87): the form the encoder
+	# uses for a memory operand or two registers neither of which is eax.
+	if (op == 0x86 || op == 0x87):
+		insn.mnemonic = c"xchg"
+		int size = d.opsize
+		if (op == 0x86): size = 1
+		int modrm = asm_x86_u8(d)
+		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), size)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
+		insn.length = d.pos - start
+		return insn.length
+
 	# mov r/m8,r8 (0x88) ; r/m32,r32 (0x89) ; r8,r/m8 (0x8a) ; r32,r/m32 (0x8b)
 	if (op == 0x88 || op == 0x89 || op == 0x8a || op == 0x8b):
 		insn.mnemonic = c"mov"

@@ -47,7 +47,7 @@ int wy_prefix_follows(char* text, char* line, char* prefix):
 	return 0
 
 
-# The fake compiler: 'bin/wv2 deps [x64] <root>' keyed on the root.
+# The fake compiler: 'bin/wv2 <arch> deps <root>' keyed on the root.
 #   ok.w           -> success; closure ok.w + dep.w
 #   bad1.w         -> "cannot locate 'gen/missing1.w'" until that file
 #                     appears, then success (the M-line retry story)
@@ -75,9 +75,7 @@ char* wy_fake_wv2_source():
 	sc_src(sb, 0, c"int main(int argc, char** argv):")
 	sc_src(sb, 1, c"char* nl = cast(char*, malloc(1))")
 	sc_src(sb, 1, c"nl[0] = 10")
-	sc_src(sb, 1, c"char* root = argv[2]")
-	sc_src(sb, 1, c"if (fake_eq(root, c\"x64\")):")
-	sc_src(sb, 2, c"root = argv[3]")
+	sc_src(sb, 1, c"char* root = argv[argc - 1]")
 	sc_src(sb, 1, c"int n = strlen(root)")
 	sc_src(sb, 1, c"if (fake_eq(root, c\"ok.w\")):")
 	sc_src(sb, 2, c"println(c\"ok.w\")")
@@ -137,7 +135,7 @@ int main(int argc, char** argv):
 		first = 0
 		string_append(manifest, c"\t\t{\"name\": \"")
 		string_append(manifest, f)
-		string_append(manifest, c"_t\", \"steps\": [{\"cmd\": [\"bin/wv2\", \"")
+		string_append(manifest, c"_t\", \"steps\": [{\"cmd\": [\"bin/wv2\", \"x86\", \"")
 		string_append(manifest, f)
 		string_append(manifest, c".w\", \"-o\", \"bin/")
 		string_append(manifest, f)

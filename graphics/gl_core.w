@@ -20,6 +20,7 @@ extern void glClearColor(float32 red, float32 green, float32 blue, float32 alpha
 extern void glClear(int mask)
 extern void glEnable(int capability)
 extern void glDisable(int capability)
+extern int glIsEnabled(int capability)
 extern void glBlendFunc(int source_factor, int dest_factor)
 extern char* glGetString(int name)
 extern int glGetError()
@@ -79,3 +80,25 @@ extern void glUniform2f(int location, float32 x, float32 y)
 extern void glUniform3f(int location, float32 x, float32 y, float32 z)
 extern void glUniform4f(int location, float32 x, float32 y, float32 z, float32 w)
 extern void glUniformMatrix4fv(int location, int count, int transpose, float32* value)
+extern void glUniform1fv(int location, int count, float32* value)
+extern void glUniform2fv(int location, int count, float32* value)
+
+############################## state query ############################
+
+extern void glGetIntegerv(int pname, int32* params)
+
+#################### framebuffers and renderbuffers ###################
+
+# Render-to-texture (GL 3.0 / ARB_framebuffer_object; core in WebGL2):
+# a framebuffer object routes draws into a texture's level 0 instead of
+# the window, and glReadPixels reads whichever framebuffer is bound.
+extern void glGenFramebuffers(int count, int32* framebuffers)
+extern void glDeleteFramebuffers(int count, int32* framebuffers)
+extern void glBindFramebuffer(int target, int framebuffer)
+extern void glFramebufferTexture2D(int target, int attachment, int texture_target, int texture, int level)
+extern int glCheckFramebufferStatus(int target)
+extern void glGenRenderbuffers(int count, int32* renderbuffers)
+extern void glDeleteRenderbuffers(int count, int32* renderbuffers)
+extern void glBindRenderbuffer(int target, int renderbuffer)
+extern void glRenderbufferStorage(int target, int internal_format, int width, int height)
+extern void glFramebufferRenderbuffer(int target, int attachment, int renderbuffer_target, int renderbuffer)

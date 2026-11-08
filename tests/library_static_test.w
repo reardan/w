@@ -104,7 +104,7 @@ void test_static_rejects_invalid_inputs():
 	static_write(c"bad.wa", c"W")
 	static_reject(c"invalid static library", c"x64", bad_link, static_path(c"app.w"), c"-o", out)
 	static_reject(c"--link requires a library path", c"x64", c"--link=", static_path(c"app.w"), c"-o", out)
-	static_reject(c"--static requires the x64 Linux target", c"--static", static_path(c"leaf.w"), c"-o", out)
+	static_reject(c"--static requires the x64 Linux target", c"x86", c"--static", static_path(c"leaf.w"), c"-o", out)
 	static_reject(c"mutually exclusive", c"x64", c"--static", c"--shared", static_path(c"leaf.w"), c"-o", out)
 	static_reject(c"--static does not support profiling", c"x64", c"--static", c"--profile-generate", static_path(c"leaf.w"), c"-o", out)
 	static_reject(c"--static does not support thread_local", c"x64", c"--static", c"tests/library_shared_tls_input.w", c"-o", out)

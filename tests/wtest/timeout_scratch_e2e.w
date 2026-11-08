@@ -46,7 +46,7 @@ void wt_fake_head(string_builder* sb):
 	sc_src(sb, 0, c"int main(int argc, char** argv):")
 	sc_src(sb, 1, c"char* nl = cast(char*, malloc(1))")
 	sc_src(sb, 1, c"nl[0] = 10")
-	sc_src(sb, 1, c"char* root = argv[2]")
+	sc_src(sb, 1, c"char* root = argv[argc - 1]")
 	# One write per line: wtest runs first attempts concurrently, and
 	# two O_APPEND writes per line would interleave between children.
 	sc_src(sb, 1, c"int n = strlen(root)")
@@ -59,7 +59,7 @@ void wt_fake_head(string_builder* sb):
 	sc_src(sb, 2, c"close(fd)")
 
 
-# The first fake compiler: 'bin/wv2 deps <root>' behavior keyed on the root.
+# The first fake compiler: 'bin/wv2 <arch> deps <root>' behavior keyed on the root.
 #   w.w      -> instant success (the seed closure; keeps the seed
 #               residue rule quiet)
 #   slow.w   -> sleeps past the budget on the FIRST call, succeeds on
@@ -113,7 +113,7 @@ int main(int argc, char** argv):
 	sc_write(c"slow.w", c"import dep\n")
 	sc_write(c"hang.w", c"import dep\n")
 	sc_write(c"broken.w", c"import dep\n")
-	sc_write(c"build.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"slow_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"slow.w\", \"-o\", \"bin/slow\"]}\n\t\t\t]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"hang_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"hang.w\", \"-o\", \"bin/hang\"]}\n\t\t\t]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"broken_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"broken.w\", \"-o\", \"bin/broken\"]}\n\t\t\t]\n\t\t}\n\t]\n}\n")
+	sc_write(c"build.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"slow_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"x86\", \"slow.w\", \"-o\", \"bin/slow\"]}\n\t\t\t]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"hang_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"x86\", \"hang.w\", \"-o\", \"bin/hang\"]}\n\t\t\t]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"broken_t\",\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"x86\", \"broken.w\", \"-o\", \"bin/broken\"]}\n\t\t\t]\n\t\t}\n\t]\n}\n")
 
 	# 1) Cold run. slow.w times out once and succeeds on the retry (its
 	# closure selection survives within the same run); hang.w times out

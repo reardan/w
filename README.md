@@ -66,8 +66,8 @@ it needs from that seed (`rm -rf bin` resets the world).
 Compile and run an arbitrary program:
 
 ```sh
-./bin/wv2 file.w -o out && ./out          # 32-bit x86
-./bin/wv2 x64 file.w -o out && ./out      # 64-bit x86-64
+./bin/wv2 file.w -o out && ./out          # 64-bit x86-64 (the default)
+./bin/wv2 x86 file.w -o out && ./out      # 32-bit x86
 ./bin/wv2 file.w > out && chmod +x out    # without -o, the ELF goes to stdout
 ```
 
@@ -585,6 +585,12 @@ seeds — is `docs/release.md`.
 
 ## Tooling for agents
 
+- Use `bin/wdrive run --steps '[...]' -- PROGRAM` (`./wbuild wdrive`) to
+  drive a native W graphics program: click, type, step frames, assert
+  pixels, take PNG screenshots and read the graphics.ui accessibility
+  tree, headless under a private Xvfb when there is no display.
+  `wdrive serve` keeps a session open over NDJSON on stdin/stdout. See
+  [the wdrive guide](docs/projects/wdrive.md).
 - Use `./bin/wv2 reduce bug.w -o minimal.w -- ./interesting.sh {}` to
   minimize a failing program. The predicate receives a candidate source path;
   exit 0 keeps a deletion. The reducer removes declarations, indentation

@@ -100,6 +100,7 @@ struct asm_insn:
 	asm_operand op1
 	asm_operand op2
 	asm_operand op3
+	int segment         # segment-override prefix byte (0x64 %fs, 0x65 %gs), or 0
 
 
 void asm_insn_clear(asm_insn* insn):
@@ -112,6 +113,7 @@ void asm_insn_clear(asm_insn* insn):
 	asm_operand_clear(&insn.op1)
 	asm_operand_clear(&insn.op2)
 	asm_operand_clear(&insn.op3)
+	insn.segment = 0
 
 
 # Minimal-width lowercase hex ("0x12", not the zero-padded "0x00000012"

@@ -503,6 +503,10 @@ current state:
 		pointers and structs:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value
+			`new T(field: v)` on a struct with a fixed-array field leaves the
+				array descriptor zeroed, so the first index of that field
+				traps "index out of range: length 0" (`new T()` is fine;
+				graphics/effects_core.w fx_effect_new works around it)
 		debugging:
 			wdbg's backtrace is still heuristic (return-address scan) even
 				though x86/x64 code now keeps a frame-pointer chain (crash

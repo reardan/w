@@ -18,7 +18,7 @@
 		{
 			"name": "compiles",
 			"steps": [
-				{"cmd": ["bin/wv2", "tests/wexec/list_json_fixture.w", "-o", "bin/wexec_list_json_fixture"]}
+				{"cmd": ["bin/wv2", "x86", "tests/wexec/list_json_fixture.w", "-o", "bin/wexec_list_json_fixture"]}
 			]
 		},
 		{

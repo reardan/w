@@ -78,6 +78,13 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
   const shaderLog = (shader) => gl.getShaderInfoLog(objects[shader]) || '';
   const programLog = (program) => gl.getProgramInfoLog(objects[program]) || '';
 
+  // W draws in logical pixels on the canvas, so viewport/scissor boxes
+  // scale by the device pixel ratio there; a bound framebuffer object
+  // (render-to-texture) is sized in its texture's own texels, so boxes
+  // pass through unscaled while one is bound for drawing.
+  let drawFramebuffer = 0;
+  const drawRatio = () => (drawFramebuffer ? 1 : host.pixelRatio?.() ?? 1);
+
   // 0x1903 GL_RED / 0x1908 GL_RGBA at 0x1401 GL_UNSIGNED_BYTE.
   const texBytesPerPixel = (format, type) => {
     if (type !== 0x1401 || (format !== 0x1903 && format !== 0x1908))
@@ -89,13 +96,14 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
     ...makeAccessibilityEnv({ memory, access: host.accessibility }),
     // ------------------------------ core GL ------------------------------
     glViewport: (x, y, w, h) => {
-      const ratio = host.pixelRatio?.() ?? 1;
+      const ratio = drawRatio();
       gl.viewport(Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio));
     },
     glClearColor: (r, g, b, a) => gl.clearColor(r, g, b, a),
     glClear: (mask) => gl.clear(mask),
     glEnable: (cap) => gl.enable(cap),
     glDisable: (cap) => gl.disable(cap),
+    glIsEnabled: (cap) => (gl.isEnabled(cap) ? 1 : 0),
     glBlendFunc: (src, dst) => gl.blendFunc(src, dst),
     glGetError: () => gl.getError(),
     glFinish: () => gl.finish(),
@@ -147,7 +155,7 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
     glDrawArrays: (mode, first, count) => gl.drawArrays(mode, first, count),
     glDrawElements: (mode, count, type, offset) => gl.drawElements(mode, count, type, offset),
     glScissor: (x, y, w, h) => {
-      const ratio = host.pixelRatio?.() ?? 1;
+      const ratio = drawRatio();
       gl.scissor(Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio));
     },
     glBufferSubData: (target, offset, size, ptr) =>
@@ -245,6 +253,67 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
     glUniform4f: (loc, x, y, z, w) => gl.uniform4f(uniforms[loc], x, y, z, w),
     glUniformMatrix4fv: (loc, count, transpose, ptr) =>
       gl.uniformMatrix4fv(uniforms[loc], !!transpose, new Float32Array(memory().buffer, ptr, 16 * count)),
+    glUniform1fv: (loc, count, ptr) =>
+      gl.uniform1fv(uniforms[loc], new Float32Array(memory().buffer, ptr, count)),
+    glUniform2fv: (loc, count, ptr) =>
+      gl.uniform2fv(uniforms[loc], new Float32Array(memory().buffer, ptr, 2 * count)),
+
+    // ----------------------------- state query -----------------------------
+    glGetIntegerv: (pname, outPtr) => {
+      // Scalars, booleans, typed arrays (VIEWPORT) and bound objects
+      // (FRAMEBUFFER_BINDING, CURRENT_PROGRAM, ...) all come back from
+      // getParameter; objects map back to their handle-table id.
+      const dv = view();
+      const p = gl.getParameter(pname);
+      if (p === null || p === undefined) dv.setInt32(outPtr, 0, true);
+      else if (typeof p === 'boolean') dv.setInt32(outPtr, p ? 1 : 0, true);
+      else if (typeof p === 'number') dv.setInt32(outPtr, p | 0, true);
+      else if (ArrayBuffer.isView(p) || Array.isArray(p)) {
+        // 0x0BA2 VIEWPORT / 0x0C10 SCISSOR_BOX report device pixels;
+        // undo the glViewport/glScissor scaling so a saved box restores.
+        const ratio = pname === 0x0ba2 || pname === 0x0c10 ? drawRatio() : 1;
+        for (let i = 0; i < p.length; i++) dv.setInt32(outPtr + 4 * i, Math.round(Number(p[i]) / ratio) | 0, true);
+      } else dv.setInt32(outPtr, Math.max(0, objects.indexOf(p)), true);
+    },
+
+    // ------------------- framebuffers and renderbuffers -------------------
+    glGenFramebuffers: (count, outPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++)
+        dv.setInt32(outPtr + 4 * i, allocObject(gl.createFramebuffer()), true);
+    },
+    glDeleteFramebuffers: (count, idsPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++) {
+        const id = dv.getInt32(idsPtr + 4 * i, true);
+        if (objects[id]) { gl.deleteFramebuffer(objects[id]); objects[id] = null; }
+      }
+    },
+    glBindFramebuffer: (target, id) => {
+      // 0x8D40 FRAMEBUFFER binds both; 0x8CA9 DRAW_FRAMEBUFFER draws.
+      if (target === 0x8d40 || target === 0x8ca9) drawFramebuffer = id;
+      gl.bindFramebuffer(target, id ? objects[id] : null);
+    },
+    glFramebufferTexture2D: (target, attachment, textarget, id, level) =>
+      gl.framebufferTexture2D(target, attachment, textarget, id ? objects[id] : null, level),
+    glCheckFramebufferStatus: (target) => gl.checkFramebufferStatus(target),
+    glGenRenderbuffers: (count, outPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++)
+        dv.setInt32(outPtr + 4 * i, allocObject(gl.createRenderbuffer()), true);
+    },
+    glDeleteRenderbuffers: (count, idsPtr) => {
+      const dv = view();
+      for (let i = 0; i < count; i++) {
+        const id = dv.getInt32(idsPtr + 4 * i, true);
+        if (objects[id]) { gl.deleteRenderbuffer(objects[id]); objects[id] = null; }
+      }
+    },
+    glBindRenderbuffer: (target, id) => gl.bindRenderbuffer(target, id ? objects[id] : null),
+    glRenderbufferStorage: (target, internalFormat, w, h) =>
+      gl.renderbufferStorage(target, internalFormat, w, h),
+    glFramebufferRenderbuffer: (target, attachment, rbTarget, id) =>
+      gl.framebufferRenderbuffer(target, attachment, rbTarget, id ? objects[id] : null),
 
     // ----------------------- window / canvas host -----------------------
     gfx_host_canvas_init: (titlePtr, width, height) =>

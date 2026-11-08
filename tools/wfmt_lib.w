@@ -121,6 +121,8 @@ int wfmt_token_role(pg_token* token, pg_ast_node* parent):
 		return wfmt_role_open_tight
 	if (k == wlang_token_COLON):
 		if (wfmt_is_ast_kind(parent, wlang_ast_slice_tail)): return wfmt_role_tight
+		# an asm_native operand width ('output rcx:4 = p')
+		if (wfmt_is_ast_kind(parent, wlang_ast_inline_asm_width)): return wfmt_role_tight
 		if (wfmt_is_ast_kind(parent, wlang_ast_postfix_tail)): return wfmt_role_binop
 		return wfmt_role_colon
 	if (k == wlang_token_QUESTION):

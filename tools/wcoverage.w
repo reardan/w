@@ -32,7 +32,7 @@ uncovered). --modules <dir> (repeatable) replaces the set.
 
 Each root's closure comes from '<compiler> deps <root>' (default
 bin/wv2), run -j N at a time (default 4). A root that does not compile
-for the default target is retried with the x64 selector (the
+for x86 is retried with the x64 selector (the
 arch_only=x64 sources); one that compiles for neither (diagnostic
 fixtures, arm64/wasm-only sources) contributes nothing and is counted
 as skipped. A module is covered when some root's closure
@@ -183,7 +183,7 @@ int wcov_closures(list[char*] roots, set[char*] seen):
 	list[int] running_index = new list[int]
 	while ((next < pending.length) || (running.length > 0)):
 		while ((next < pending.length) && (running.length < wcov_jobs)):
-			char* arch = 0
+			char* arch = c"x86"
 			if (pending_x64[next]): arch = c"x64"
 			running.push(wcov_spawn(pending[next], arch))
 			running_index.push(next)
