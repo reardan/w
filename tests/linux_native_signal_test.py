@@ -8,6 +8,15 @@ import subprocess
 import tempfile
 import time
 
+
+def child_state(stat):
+    """The child's /proc state letter, or None once it has been reaped."""
+    try:
+        return stat.read_text().split()[2]
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
 root = Path.cwd()
 for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     with tempfile.TemporaryDirectory(prefix='native-signal-', dir=root / 'bin') as tmp:
@@ -30,9 +39,9 @@ for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             assert not lock.exists(), 'termination left its lock behind'
             stat = Path('/proc') / pidfile.read_text().strip() / 'stat'
             deadline = time.monotonic() + 5
-            while stat.exists() and stat.read_text().split()[2] != 'Z' and time.monotonic() < deadline:
+            while child_state(stat) not in (None, 'Z') and time.monotonic() < deadline:
                 time.sleep(.01)
-            assert not stat.exists() or stat.read_text().split()[2] == 'Z', 'child survived termination'
+            assert child_state(stat) in (None, 'Z'), 'child survived termination'
         finally:
             if process.poll() is None:
                 process.kill()
