@@ -1,4 +1,4 @@
-# The Unicode Bidirectional Algorithm (UAX #9, Unicode 15.0.0) in W, with
+# The Unicode Bidirectional Algorithm (UAX #9, Unicode 18.0.0) in W, with
 # no native dependency (issue #459). graphics/ui/bidi.w uses it whenever
 # FriBidi is unavailable; any program can call it directly.
 #

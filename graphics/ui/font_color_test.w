@@ -364,10 +364,12 @@ void test_emoji_presentation():
 	assert1(emoji_is_presentation(0x1f600))
 	assert1(emoji_is_presentation(0x231a))
 	assert1(emoji_is_presentation(0x1faf8))
+	# U+1FAF9..U+1FAFA are Emoji 18.0 additions, the table's last range.
+	assert1(emoji_is_presentation(0x1fafa))
 	assert1(emoji_is_presentation(0x1f3fd))
 	assert_equal(0, emoji_is_presentation(0x2764))
 	assert_equal(0, emoji_is_presentation('A'))
-	assert_equal(0, emoji_is_presentation(0x1faf9))
+	assert_equal(0, emoji_is_presentation(0x1fafb))
 	assert_equal(0, emoji_is_presentation(0x2319))
 	# Heavy black heart: text by default, emoji with VS16.
 	assert_equal(EMOJI_PRESENTATION_NONE, emoji_presentation_utf8(c"\xe2\x9d\xa4", 0, 3))
