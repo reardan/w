@@ -22,9 +22,14 @@ int main(int argc, int argv):
 	argparse_add_flag(parser, c"--require-all", c"fail if any case is unsupported")
 	argparse_add_flag(parser, c"--native-only", c"skip the upstream-harness pass")
 	argparse_add_flag(parser, c"--upstream-only", c"run only the upstream-harness pass")
+	argparse_add_option(parser, c"--shard", c"K/N", c"run only cases K, K+N, K+2N, ... of the manifest")
 	argparse_add_option(parser, c"--expect", c"KEY=N,...", c"pinned counts and evidence for the run's report")
 	arg_namespace* args = argparse_parse_or_exit(parser, argc, argv)
 	int status = 0
+	char* shard = argparse_get(args, c"shard")
+	if (shard != 0 && !t262_set_shard(shard)):
+		println2(strjoin(c"test262_conformance: invalid --shard (want K/N with 0 <= K < N): ", shard))
+		return 2
 	if (argparse_get_bool(args, c"upstream_only")):
 		# The upstream-harness pass alone, so the two passes can run as
 		# separate (parallel) wbuild targets: its ERROR count gates, its

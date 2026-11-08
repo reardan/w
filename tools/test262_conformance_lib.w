@@ -12,6 +12,10 @@ int t262_async_case
 char* t262_corpus
 list[char*] t262_harness
 set[char*] t262_builtins
+# --shard K/N: run only the manifest cases whose index is K modulo N, so one
+# long pass splits into wbuild targets that run in parallel (0 = all cases).
+int t262_shard_index
+int t262_shard_count
 type t262_executor = fn(char*, char*, char*, int, int) -> json_value*
 
 # Compiled patterns are cached per (flags, pattern): metadata parsing matches
@@ -237,11 +241,20 @@ json_value* t262_load(char* path):
 
 # Module tests run from a staging directory mirroring the upstream layout, with
 # every pinned sibling *_FIXTURE.js copied beside them for relative imports.
+# Folders of the current run whose sibling sources are already staged.
+set[char*] t262_staged
 char* t262_stage_module(char* directory, char* name):
 	char* folder = path_join(directory, path_dirname(name))
+	if (t262_staged == 0): t262_staged = new set[char*]
+	if (folder in t262_staged): return path_join(directory, name)
+	t262_staged.add(folder)
 	ht_mkdir(folder)
+	# Every sibling source, not only the _FIXTURE files: a fixture may import
+	# a test file back (instn-iee-err-circular_FIXTURE.js imports
+	# instn-iee-err-circular.js), which otherwise resolved only when that test
+	# had already run earlier in the same pass.
 	for char* other in t262_sources.keys():
-		if (strcmp(path_dirname(other), path_dirname(name)) == 0 && contains(other, c"_FIXTURE")): ht_write(path_join(directory, other), t262_sources[other], strlen(t262_sources[other]))
+		if (strcmp(path_dirname(other), path_dirname(name)) == 0): ht_write(path_join(directory, other), t262_sources[other], strlen(t262_sources[other]))
 	return path_join(directory, name)
 
 json_value* t262_execute(char* binary, char* path, char* mode, int timeout, int budget):
@@ -306,13 +319,17 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 		t262_builtins = new set[char*]
 		for char* builtin in split(c"eval Number isNaN"): t262_builtins.add(builtin)
 	char* directory = ht_temp()
+	t262_staged = new set[char*]
 	json_value* results = json_array()
 	json_value* changes = json_array()
 	json_value* counts = json_object()
 	for char* name in split(c"PASS FAIL UNSUPPORTED ERROR"): json_object_set(counts, name, json_int(0))
 	int passes = 0
 	int assertions = 0
+	int case_index = -1
 	for json_value* entry in jc_get(manifest, c"cases").array_values:
+		case_index = case_index + 1
+		if (t262_shard_count > 0 && case_index % t262_shard_count != t262_shard_index): continue
 		char* name = entry.string_value
 		char* source = t262_sources[name]
 		json_value* meta = t262_metadata(source)
@@ -387,6 +404,20 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 	json_object_set(report, c"results", results)
 	*status = ht_number(counts, c"FAIL") != 0 || ht_number(counts, c"ERROR") != 0 || changes.array_values.length != 0
 	return report
+
+# Parses "K/N" (0 <= K < N) into the shard globals; returns 0 when invalid.
+int t262_set_shard(char* spec):
+	list[char*] parts = split(spec, '/')
+	if (parts.length != 2 || strlen(parts[0]) == 0 || strlen(parts[1]) == 0): return 0
+	for char* part in parts:
+		for int i in range(strlen(part)):
+			if (part[i] < '0' || part[i] > '9'): return 0
+	int index = atoi(parts[0])
+	int count = atoi(parts[1])
+	if (count <= 0 || index >= count): return 0
+	t262_shard_index = index
+	t262_shard_count = count
+	return 1
 
 # Pinned run evidence for the gate targets: "KEY=VALUE,..." where a key
 # names a count (PASS FAIL UNSUPPORTED ERROR) or a report field

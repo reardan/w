@@ -18,6 +18,7 @@
 			"tests/wexec/direct_file/sample_test.w"
 		],
 		"no_umbrella": {
+			"javascript_test262_upstream": "one-process run of the upstream Test262 profile for local use; tests runs it as javascript_test262_upstream_0.._3",
 			"update": "promotes bin/wv3 to the local ./w seed; mutates the checkout",
 			"update_win": "promotes the win64 fixpoint to w.exe; mutates the checkout",
 			"update_android": "promotes the locally verified Android compiler to w_android; mutates the checkout",

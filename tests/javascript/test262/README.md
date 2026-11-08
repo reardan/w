@@ -15,7 +15,10 @@ report to `bin/test262-conformance.json`. The wbuild targets split the two
 profiles so they run in parallel: `javascript_test262` runs the native profile
 (`--native-only`) and `javascript_test262_upstream` the upstream-harness profile
 (`--upstream-only`, report in `bin/test262-upstream.json`); a bare
-`bin/test262_conformance` still runs both. Each target pins its profile's
+`bin/test262_conformance` still runs both. The `tests` umbrella runs the
+upstream profile as `javascript_test262_upstream_0` ... `_3` instead, each
+`--shard K/4` (manifest cases K, K+4, ...), because one process outgrew a CI
+shard's 30-minute job; their pinned counts sum to the full target's. Each target pins its profile's
 counts and execution evidence with `--expect KEY=N,...` (the four status
 counts, `execution_passes`, `assertions`, `variants`, `pass_rate`), so a
 change to any of them fails that target; update the directive in
