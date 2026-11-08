@@ -752,8 +752,11 @@ function that uses them.
   module is visible to an addon with an allowlist only when its file lies
   inside one of that addon's roots (W0439). The base session (the runtime
   and the preloaded modules) stays visible to all, minus the system
-  layer. On the command line nothing changes: the allowlist is the
-  `--import-root` list.
+  layer. On the command line the same rules apply with the
+  `--import-root` list as the allowlist and the auto-imported runtime as
+  the base session (`link_impl` seals it after the runtime closure), so
+  `tests/script_profile_foreign_error_fixture.w` pins W0439 without an
+  engine.
 - Tests: `addon_profile_test` (and its x64/arm64 twins: wrappers,
   `alias.member`, address-of, a local shadowing `open`, `debugger`, two
   roots with one addon restricted to the first), the

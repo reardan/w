@@ -125,11 +125,11 @@ void script_profile_reject(char* message):
 # import roots, as on the command line).
 void script_profile_roots_begin():
 	script_profile_roots_end()
+	if (script_profile_roots == 0): script_profile_roots = new list[char*]
 	script_profile_roots_active = 1
 
 
 void script_profile_roots_add(char* root):
-	if (script_profile_roots == 0): script_profile_roots = new list[char*]
 	script_profile_roots.push(strclone(root))
 
 
@@ -249,31 +249,38 @@ int script_profile_foreign_module(char* path):
 # the pure byte-swap helpers stay available. A name the runtime's system
 # layer declares is not visible either (script_profile_system_symbol),
 # nor one from a module outside this addon's own import roots.
+# Why the profile refuses a committed use of name: 1 a raw built-in, 2 a
+# system-layer runtime name, 3 a module outside the addon's roots; 0 fine.
+int script_profile_refusal(int t, char* name):
+	int file_index = sym_decl_file_index(t)
+	if (file_index < 0):
+		if (sym_is_asm_stub(t) == 0): return 0
+		if ((strcmp(name, c"swap_endian") == 0) || (strcmp(name, c"swap_endian16") == 0)): return 0
+		return 1
+	char* path = debug_file_name(file_index)
+	if ((path == 0) || (path[0] == 0)): return 0
+	# Names an addon declares itself (or the host's own entries) are its own.
+	if ((script_profile_trusted == 0) || ((path in script_profile_trusted) == 0)): return 0
+	if (script_profile_system_symbol(path, name)): return 2
+	if (script_profile_foreign_module(path) && (starts_with(name, c"__w_") == 0)): return 3
+	return 0
+
+
 void script_profile_identifier(char* name):
 	if (script_profile_mode == 0): return
 	int t = sym_lookup(name)
 	if (t < 0): return
-	int file_index = sym_decl_file_index(t)
-	if (file_index < 0):
-		if (sym_is_asm_stub(t) == 0): return
-		if ((strcmp(name, c"swap_endian") == 0) || (strcmp(name, c"swap_endian16") == 0)): return
-		if (script_profile_applies() == 0): return
+	int why = script_profile_refusal(t, name)
+	if ((why == 0) || (script_profile_applies() == 0)): return
+	if (why == 1):
 		diag_part(c"script profile: built-in '")
 		diag_part(name)
 		error(c"' is not allowed")
-		return
-	char* path = debug_file_name(file_index)
-	if ((path == 0) || (path[0] == 0)): return
-	# Names an addon declares itself (or the host's own entries) are its own.
-	if ((script_profile_trusted == 0) || ((path in script_profile_trusted) == 0)): return
-	if (script_profile_system_symbol(path, name)):
-		if (script_profile_applies() == 0): return
+	else if (why == 2):
 		diag_part(c"script profile: runtime function '")
 		diag_part(name)
 		error(c"' is not visible to addon code")
-		return
-	if (script_profile_foreign_module(path) && (starts_with(name, c"__w_") == 0)):
-		if (script_profile_applies() == 0): return
+	else:
 		diag_part(c"script profile: '")
 		diag_part(name)
 		error(c"' is declared in a module outside this addon's import roots")
