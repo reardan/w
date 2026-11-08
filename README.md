@@ -56,11 +56,11 @@ downloads the pinned seed if it is missing, and bootstraps everything else
 it needs from that seed (`rm -rf bin` resets the world).
 
 ```sh
-./wbuild build    # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
+./wbuild build    # bootstrap: ./w x64 w.w -> bin/wv2 -> x86 wv3 -> wv4 -> wv5
 ./wbuild verify   # self-host fixpoint: wv3 == wv4 == wv5 (key regression guard)
 ./wbuild tests    # full suite: verify, x64 fixpoint, lib/structure/grammar
                   # tests, warnings, REPL, debugger, dynamic linking, hello
-./wbuild update   # after verify: archive current seed, promote the bin/wv3 fixpoint to ./w
+./wbuild update   # after verify_x64: archive current seed, promote the bin/wv3_64 fixpoint to ./w
 ```
 
 Compile and run an arbitrary program:
@@ -208,7 +208,7 @@ stock x86-64 system.
 | Path | Contents |
 |---|---|
 | `SEEDS` | Pins {release tag, asset, sha256} for each bootstrap seed binary |
-| `w` | 32-bit static ELF seed binary (downloaded per `SEEDS`, gitignored) |
+| `w` | x86-64 static ELF seed binary (downloaded per `SEEDS`, gitignored) |
 | `w_darwin` | arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap (downloaded per `SEEDS`, gitignored) |
 | `w.w` | Thin compiler launcher; command dispatch and the reusable entry point live in `compiler/cli.w` |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
@@ -502,10 +502,10 @@ and qualification limits.
 
 ```
 ./wbuild ...                # downloads ./w per SEEDS if missing (sha256-verified)
-./w w.w        > bin/wv2    # seed compiles current sources
-bin/wv2 w.w -o bin/wv3      # wv2 recompiles the sources
-bin/wv3 w.w -o bin/wv4
-bin/wv4 w.w -o bin/wv5
+./w x64 w.w -o bin/wv2      # seed compiles current sources (64-bit wv2)
+bin/wv2 x86 w.w -o bin/wv3  # wv2 recompiles the sources (x86 chain;
+bin/wv3 x86 w.w -o bin/wv4  #   verify_x64 runs the x64 chain)
+bin/wv4 x86 w.w -o bin/wv5
 cmp wv3 wv4 && cmp wv4 wv5  # fixpoint: ./wbuild verify
 ```
 

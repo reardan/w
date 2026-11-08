@@ -96,8 +96,8 @@ case "${WBUILD_HOST:-}" in
 esac
 if [ "${WBUILD_HOST:-}" = linux-x64 ]; then
 	[ "$(uname -s)-$(uname -m)" = Linux-x86_64 ] || { echo "wbuild: linux-x64 host profile requires Linux x86-64" >&2; exit 2; }
-	# Provision once outside a sandbox that blocks the x86 seed. Subsequent
-	# refreshes use only the native compiler and executor, never shared bin/wv2.
+	# The pinned seed is the x86-64 compiler, so this profile only keeps its
+	# native compiler and executor apart from the shared bin/wv2 and bin/wexec.
 	if [ ! -x bin/wv2_native ]; then
 		ensure_seed w
 		./w x64 w.w -o "bin/wv2_native.stage.$$"
@@ -138,7 +138,7 @@ elif [ "$(uname -s)" = "Darwin" ]; then
 else
 	ensure_seed w
 	if [ ! -x bin/wexec ]; then
-		./w w.w -o "bin/wv2.stage.$$"
+		./w x64 w.w -o "bin/wv2.stage.$$"
 		mv -f "bin/wv2.stage.$$" bin/wv2
 		./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
 		mv -f "bin/wexec.stage.$$" bin/wexec
@@ -158,7 +158,7 @@ else
 	fi
 	if ! bootstrap_wexec --list >/dev/null 2>&1; then
 		echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
-		./w w.w -o "bin/wv2.stage.$$"
+		./w x64 w.w -o "bin/wv2.stage.$$"
 		mv -f "bin/wv2.stage.$$" bin/wv2
 		./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
 		mv -f "bin/wexec.stage.$$" bin/wexec

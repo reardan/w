@@ -115,12 +115,12 @@ void test_corpus_fixtures():
 
 
 void test_binary_reader_elf32():
-	asm_binary* binary = asm_binary_open(c"bin/wv2")
-	asserts(c"cannot open bin/wv2", cast(int, binary) != 0)
+	asm_binary* binary = asm_binary_open(c"bin/wv3")
+	asserts(c"cannot open bin/wv3", cast(int, binary) != 0)
 	assert_equal(ASM_ELF_CLASS32, binary.elf_class)
 	assert_equal(ASM_EM_386, binary.machine)
-	asserts(c"wv2 .text too small", binary.text_size > 100000)
-	asserts(c"wv2 has no symbols", binary.symbols.length > 100)
+	asserts(c"wv3 .text too small", binary.text_size > 100000)
+	asserts(c"wv3 has no symbols", binary.symbols.length > 100)
 
 	# main is a real function symbol whose range contains its own start.
 	int main_index = asm_binary_symbol_named(binary, c"main")

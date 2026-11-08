@@ -62,7 +62,9 @@ in CI with the workflow token.
 
 The bootstrap seeds (`w`, `w_darwin`, and `w.exe` on Windows) are not
 committed. `SEEDS` at the repo root pins a release tag, asset name, and
-sha256 for each; `wbuild` / `wbuild.cmd` download a missing seed from that
+sha256 for each (the Linux seed `w` is the `w-x86_64-linux` asset, so
+`bin/wv2` is a 64-bit compiler; `w-x86-linux` is still published for
+32-bit hosts); `wbuild` / `wbuild.cmd` download a missing seed from that
 release and refuse to run it on a hash mismatch. To promote a new seed
 (required before seed-compiled sources may use new language syntax):
 

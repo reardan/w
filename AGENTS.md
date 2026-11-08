@@ -5,7 +5,7 @@
 This repo is a **self-hosting compiler + toolchain for the "W" language** (a heavily
 extended fork of the `cc500` C compiler). There are **no long-running services** and
 **no package manager** — everything is driven by `./wbuild` and bootstrapped from the
-pinned 32-bit x86 ELF seed binary `./w`, which `./wbuild` downloads from GitHub
+pinned x86-64 Linux ELF seed binary `./w`, which `./wbuild` downloads from GitHub
 Releases per the sha256 pins in `SEEDS` when it is missing.
 
 ### Build / test / run
@@ -149,7 +149,7 @@ working in this repo.
   expected messages as `# expect_stderr:`-style directive lines in their own header
   comments, run by `bin/wfixture` (`tools/wfixture.w`); see the header of that tool
   for the directive syntax.
-- The seed `./w` is a **32-bit x86** statically-linked ELF; it runs on this x86_64 host
+- The seed `./w` is an **x86-64** statically-linked ELF (so `bin/wv2` is a 64-bit binary too); it runs on this x86_64 host
   without extra libc because it's static. It is not committed: `./wbuild` downloads it
   (sha256-verified) from the GitHub release pinned in `SEEDS`. Do not hand-edit it;
   `./wbuild update` (and `update_darwin` for the macOS seed `./w_darwin`) promotes a
