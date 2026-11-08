@@ -114,10 +114,24 @@ void mu_click(float x, float y):
 	mu_button(1)
 	mu_button(0)
 void mu_save(): mu_key(c"s", c"Control_L")
+# The file's bytes, or 0 while a save is replacing it: under wine the
+# replacing rename can leave the path briefly absent.
+char* mu_read_maybe(char* path):
+	wstream* input = stream_open_read(path)
+	if (input == 0): return 0
+	string_builder* data = string_new()
+	io_result result
+	int status = stream_read_all_checked(input, data, &result)
+	stream_close(input)
+	if (status != IO_OK): return 0
+	return data.data
 void mu_wait(char* expected, int mode, char* message):
 	int deadline = process_monotonic_ms() + mu_patience
 	while (process_monotonic_ms() < deadline):
-		char* actual = ht_read(mu_path).data
+		char* actual = mu_read_maybe(mu_path)
+		if (actual == 0):
+			process_sleep_ms(40)
+			continue
 		if (mode == 0 && strcmp(actual, expected) == 0): return
 		if (mode == 1 && strcmp(actual, expected) != 0): return
 		if (mode == 2 && contains(actual, expected)): return
@@ -179,9 +193,15 @@ void mu_quit(process* editor):
 	mu_window = 0
 
 # Canvas focus with nothing selected: Ctrl+D, then a click on empty canvas.
+# The editor handles a frame's keys before its pointer press, so a Tab
+# queued in the same frame as the click would select a node the click
+# then clears; wait for the click's frame to pass first (wine at 150%
+# draws a frame in about 100 ms).
 void mu_canvas():
 	mu_key(c"d", c"Control_L")
 	mu_click(1250.0, 700.0)
+	if (mu_wine): process_sleep_ms(400)
+	else: process_sleep_ms(100)
 
 void mu_write_external(char* text):
 	ht_write(mu_path, text, strlen(text))
