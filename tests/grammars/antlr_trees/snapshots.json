@@ -7412,5 +7412,1371 @@
  "tl/14": {
   "accepted": false,
   "tree": null
+ },
+ "z/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u2227"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaConjunctionExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "\u2227"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "c"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "SchemaConjunctionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "f"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "ApplicationExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "b"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "ApplicationExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "a"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "\u00d7"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u00d7"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "c"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "CartesianProductExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "CartesianProductExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "token": "\u00ac"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u2227"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaConjunctionExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "SchemaNegationExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "token": "\u2119"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u00d7"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "CartesianProductExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "PowersetExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "("
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": ","
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": ")"
+            }
+           ],
+           "context": "TupleExtensionExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "."
+          },
+          {
+           "token": "1"
+          }
+         ],
+         "context": "TupleSelectionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "a"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "\u2a1f"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u2227"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "c"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaConjunctionExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "SchemaCompositionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "["
+            },
+            {
+             "children": [
+              {
+               "token": "b"
+              }
+             ],
+             "context": "DeclNameContext",
+             "rule": "declName"
+            },
+            {
+             "token": "/"
+            },
+            {
+             "children": [
+              {
+               "token": "c"
+              }
+             ],
+             "context": "DeclNameContext",
+             "rule": "declName"
+            },
+            {
+             "token": "]"
+            }
+           ],
+           "context": "SchemaRenamingExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "."
+          },
+          {
+           "children": [
+            {
+             "token": "d"
+            }
+           ],
+           "context": "RefNameContext",
+           "rule": "refName"
+          }
+         ],
+         "context": "BindingSelectionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "."
+            },
+            {
+             "children": [
+              {
+               "token": "b"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "BindingSelectionExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "c"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "ApplicationExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "\u2200"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "children": [
+                    {
+                     "token": "a"
+                    }
+                   ],
+                   "context": "DeclNameContext",
+                   "rule": "declName"
+                  },
+                  {
+                   "token": ":"
+                  },
+                  {
+                   "children": [
+                    {
+                     "children": [
+                      {
+                       "token": "b"
+                      }
+                     ],
+                     "context": "RefNameContext",
+                     "rule": "refName"
+                    }
+                   ],
+                   "context": "ReferenceExpressionContext",
+                   "rule": "expression"
+                  }
+                 ],
+                 "context": "DeclarationContext",
+                 "rule": "declaration"
+                }
+               ],
+               "context": "DeclPartContext",
+               "rule": "declPart"
+              }
+             ],
+             "context": "SchemaTextContext",
+             "rule": "schemaText"
+            },
+            {
+             "token": "\u2981"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "c"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaUniversalQuantificationExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "\u2227"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "d"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "SchemaConjunctionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/11": {
+  "accepted": false,
+  "tree": null
+ },
+ "z/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "b"
+                  }
+                 ],
+                 "context": "RefNameContext",
+                 "rule": "refName"
+                }
+               ],
+               "context": "ReferenceExpressionContext",
+               "rule": "expression"
+              },
+              {
+               "token": "\u2227"
+              },
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "c"
+                  }
+                 ],
+                 "context": "RefNameContext",
+                 "rule": "refName"
+                }
+               ],
+               "context": "ReferenceExpressionContext",
+               "rule": "expression"
+              }
+             ],
+             "context": "SchemaConjunctionExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "ApplicationExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "d"
+              }
+             ],
+             "context": "RefNameContext",
+             "rule": "refName"
+            }
+           ],
+           "context": "ReferenceExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "ApplicationExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/13": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "token": "\u03b8"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u2032"
+            }
+           ],
+           "context": "SchemaDecorationExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "BindingConstructionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
+ },
+ "z/14": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "\u2500"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "DeclNameContext",
+         "rule": "declName"
+        },
+        {
+         "token": "=="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u2228"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "b"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaDisjunctionExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "\u2227"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "c"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "\u21d2"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "d"
+                }
+               ],
+               "context": "RefNameContext",
+               "rule": "refName"
+              }
+             ],
+             "context": "ReferenceExpressionContext",
+             "rule": "expression"
+            }
+           ],
+           "context": "SchemaImplicationExpressionContext",
+           "rule": "expression"
+          }
+         ],
+         "context": "SchemaConjunctionExpressionContext",
+         "rule": "expression"
+        }
+       ],
+       "context": "DeclNameExpressionContext",
+       "rule": "declNameExpression"
+      },
+      {
+       "token": "\u2514"
+      }
+     ],
+     "context": "HorizontalDefinitionParagraphContext",
+     "rule": "paragraph"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SpecificationContext",
+   "rule": "specification"
+  }
  }
 }

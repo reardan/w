@@ -47,7 +47,13 @@ this is a semantic-equivalence check for the pinned inputs, not a verdict check.
   whose left recursion is now lowered: `tl` (Unicode operators, empty
   proposition), `semver` (optional separators, labeled operands), `cayenne`
   (application by adjacency), `sapf` (postfix RPN with an ordinary middle
-  operand) and `peoplecode` (nested `<assoc=right>` options that ANTLR ignores).
+  operand), `peoplecode` (nested `<assoc=right>` options that ANTLR ignores) and
+  `z`, whose `expression` precedence alternatives carry the host predicate
+  `{ZSupport.isLeftAssociative(_input)}?`. W lowers that predicate as true; the
+  oracle compiles `ZSupport.java` (a case's `host_support`, hashed like the
+  grammars), which answers true as grammars-v4's support class does without its
+  operator pre-pass. Inputs stay on one line because the lexer's `shouldNL`
+  predicate decides which newlines are tokens.
   Their inputs were written for this suite.
 
 Every grammar and input byte is pinned in `manifest.json`; `snapshots.json`
@@ -77,7 +83,12 @@ cases and drops snapshots for inputs no longer in the manifest.
 `--corpus GV4 --sweep-case NAME ... --jar JAR` compares the trees for the pinned
 grammars-v4 example files that the coverage sweep selects for those cases
 (`sweep_baseline.json`). Nothing is committed from these runs; the corpus is not
-vendored. Measured on the 15 newly lowered grammars whose generated Java
+vendored. The oracle also compiles the grammar directory's `Java/` host support
+(base classes and predicate helpers), generating the directory's other grammars
+when that code needs them (Z's operator parser), and a case pinned with no
+entry rule starts at the first parser rule, as the sweep does. A rejected input
+logs W's diagnostics in its `.w.log`, which distinguishes a syntax error from
+an exhausted prediction budget. Measured on the 15 newly lowered grammars whose generated Java
 compiles without host support (alef, alloy, cayenne, clu, elixir, gql,
 hypertalk, peoplecode, plucid, refal, sapf, semver, spl, tl, vb6): **73 of 75
 example files produce identical trees or identical rejections**. The other two

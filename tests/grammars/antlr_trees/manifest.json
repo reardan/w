@@ -815,6 +815,83 @@
    "grammar_sha256": {
     "tests/grammars/antlr_left_recursion/upstream/peoplecode/PeopleCode.g4": "5f110ad58a772b92d7e8bf0aa6aacbe797941a22510c17a473dbec72e452aec3"
    }
+  },
+  {
+   "name": "z",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/z/ZLexer.g4",
+    "tests/grammars/antlr_left_recursion/upstream/z/ZParser.g4"
+   ],
+   "java_name": "Z",
+   "start": "specification",
+   "host_support": [
+    "tests/grammars/antlr_trees/ZSupport.java"
+   ],
+   "inputs": [
+    {
+     "id": "01",
+     "text": "\u2500 x == a \u2227 b \u2227 c \u2514"
+    },
+    {
+     "id": "02",
+     "text": "\u2500 x == f a b \u2514"
+    },
+    {
+     "id": "03",
+     "text": "\u2500 x == a \u00d7 b \u00d7 c \u2514"
+    },
+    {
+     "id": "04",
+     "text": "\u2500 x == \u00ac a \u2227 b \u2514"
+    },
+    {
+     "id": "05",
+     "text": "\u2500 x == \u2119 a \u00d7 b \u2514"
+    },
+    {
+     "id": "06",
+     "text": "\u2500 x == ( a , b ) . 1 \u2514"
+    },
+    {
+     "id": "07",
+     "text": "\u2500 x == a \u2a1f b \u2227 c \u2514"
+    },
+    {
+     "id": "08",
+     "text": "\u2500 x == a [ b / c ] . d \u2514"
+    },
+    {
+     "id": "09",
+     "text": "\u2500 x == a . b c \u2514"
+    },
+    {
+     "id": "10",
+     "text": "\u2500 x == \u2200 a : b \u2981 c \u2227 d \u2514"
+    },
+    {
+     "id": "11",
+     "text": "\u2500 x == a \u2227 \u2514"
+    },
+    {
+     "id": "12",
+     "text": "\u2500 x == a b \u2227 c d \u2514"
+    },
+    {
+     "id": "13",
+     "text": "\u2500 x == \u03b8 a \u2032 \u2514"
+    },
+    {
+     "id": "14",
+     "text": "\u2500 x == a \u2228 b \u2227 c \u21d2 d \u2514"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/z/ZLexer.g4": "e86672ff2b153e97e383edea7919e62b0aeb96000fa5abce8775b3b6534a5d1a",
+    "tests/grammars/antlr_left_recursion/upstream/z/ZParser.g4": "7d3151affb560786765d27b94d249ecc3d9d8c748476c1182b4373948d84ceb6"
+   },
+   "host_support_sha256": {
+    "tests/grammars/antlr_trees/ZSupport.java": "355227349c5ced2216f6c4d90d8d1f71ddfa2ea61a1a45f359312b08a7e833ff"
+   }
   }
  ]
 }
