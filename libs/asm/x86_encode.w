@@ -571,8 +571,10 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	# grp3 (not/neg/mul/imul/div/idiv r/m)  — single r/m operand form
 	int g3 = asm_x86_group_ext(3, m)
 	if (g3 >= 0 && count == 1):
+		asm_enc_opsize_prefix(b, insn.op1.size)
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g3, &insn.op1)
-		asm_buffer_byte(b, 0xf7)
+		if (insn.op1.size == 1): asm_buffer_byte(b, 0xf6)
+		else: asm_buffer_byte(b, 0xf7)
 		asm_enc_modrm(b, g3, &insn.op1, is64)
 		return b.length - start
 

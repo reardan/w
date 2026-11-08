@@ -136,5 +136,12 @@ int main():
 	att_is(c"movl $-14, %eax", c"B8 F2 FF FF FF")
 	att_is(c"addq $-200, %rax", c"48 05 38 FF FF FF")
 
+	# The one-operand group-3 forms at byte and word width.
+	att_is(c"notb %al", c"F6 D0")
+	att_is(c"negb (%rdi)", c"F6 1F")
+	att_is(c"notw %ax", c"66 F7 D0")
+	att_is(c"mulb %cl", c"F6 E1")
+	att_is(c"negl %eax", c"F7 D8")
+
 	println(c"asm_att_test passed")
 	return 0
