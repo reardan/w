@@ -1710,3 +1710,14 @@ garbage index, which surfaced only as a runtime "list index out of range"
 deep in module linking. Direction: diagnose a function whose name matches a
 struct in the same program (or at least warn at the ambiguous call site),
 and have `symbols --json` flag duplicate names across kinds.
+
+## A keyword as a local name reports the wrong token (2026-11-08, #913 widgets)
+
+`int32* map = cast(int32*, malloc(n))` in `tools/wmermaid_editor.w` failed
+`check` with "unknown type name: 'count'" pointing at a later line
+(`map[count] = i`): `map` is the built-in container type, so the
+declaration and every use parse as types, and the message names whatever
+follows. Direction: when a declaration's identifier is a reserved type name
+(`map`, `set`, `list`, `byte`), say so at that declaration ("'map' is a
+built-in type and cannot name a variable"), as CLAUDE.md already warns for
+`byte`.

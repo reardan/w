@@ -281,10 +281,22 @@ spreadsheet-style navigation need, and every bridge reads it through
   `ui_access_column_headers_of`, `ui_access_table_row_headers`).
 
 `ui_access_tree_same` and `ui_access_tree_clone` cover all of it, so a change in
-geometry, attributes or selections republishes. The widgets' own lists and
-tables stay single-selection: no widget yet publishes multiple selections, a
-multiselectable container, row headers or spans; applications building their
-own snapshot can.
+geometry, attributes or selections republishes. Two widgets publish the
+container depth (#913): `graphics.ui.widgets.listbox`, a list box with
+extended selection (Ctrl/Super+click, Shift+click, Shift+arrows, Ctrl+arrows
+and Space, Ctrl+A) published as a `UI_ACCESS_MULTISELECTABLE` list whose
+items take `UI_ACCESS_SELECT`, and `graphics.ui.widgets.table`, whose header
+row carries `UI_ACCESS_HEADER`, whose `row_header_col` cells are row headers
+and whose `ui_table_cell_span` cells and `header_spans` headers carry
+`row_span` / `col_span`. The widget context queues `UI_ACCESS_SELECT`
+requests (`ui_access_take_select`, up to 256 a frame, so a select-all over
+that many items arrives whole) and lets a focused container name its cursor
+item as the snapshot's focused node (`access_focus_owner` /
+`access_focus_child`). The Mermaid editor uses both: its node list mirrors
+the canvas selection and its compartment grid shows an ER entity's
+attributes (or a class's members, a requirement's properties) with the
+first column heading each row. Multiple text selections remain for
+applications building their own snapshot.
 
 ```
 ui_access_tree* fresh = ui_access_tree_new(4096, 65536)
@@ -501,6 +513,25 @@ and column extents, the cell at a covered slot, its span and header cells;
 and libatspi answering its queries over the peer-to-peer bus once it has the
 address. Not yet provided: spelling and other non-font attributes, and Orca
 runs over the new text depth.
+
+The #913 widgets were qualified against the same stack from the widgets
+themselves rather than a hand-built snapshot: `access_atspi_widgets_test`
+(opt-in; `tools/access_widgets_app.w`, which runs the list box and a grid
+table headless every frame, driven by `tools/access_atspi_widgets_check.py`)
+reads the list box's multiselectable state and selected children and drives
+`select_child`, `select_all`, `deselect_child` and `clear_selection` into the
+widget's flags, and reads the grid's size, spanning column header, row
+headers (one spanning two rows), extents, the cell at a covered slot, its
+span and header cells. `mermaid_editor_atspi_test` adds the editor's node
+list (keyboard Shift+Down and Ctrl+A, and the Selection interface, all
+reaching the canvas selection) and its ER compartment grid (column and row
+headers, picking a row picks the line the inspector edits). On Windows,
+`graphics_ui_widgets_uia_test` (tests_win64, under wine 9.0) reads the same
+widgets through UI Automation: Selection `CanSelectMultiple` and the
+selection array, SelectionItem `AddToSelection`, `RemoveFromSelection` and
+`Select` reaching the flags, and the Grid, GridItem, Table and TableItem
+patterns (row and column header items, spans, the header item control
+type).
 
 ## Windows UI Automation and MSAA
 
