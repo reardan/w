@@ -3,12 +3,12 @@
 # toString, the flag/source accessors and a RegExp constructor.
 # Matching follows ECMA-262 2020 sec-regexp-regular-expression-objects with
 # Annex B; it is bounded by the interpreter's step budget. Unicode property
-# escapes match only properties whose pinned data ships with the runtime
-# (Any, ASCII, ASCII_Hex_Digit, ID_Start, ID_Continue); others are rejected by
-# runtime preflight. Case-insensitive matching uses regexp_case.w.
+# escapes match the Unicode 12.1 tables in regexp_property.w, the version the
+# parser validates names against. Case-insensitive matching uses regexp_case.w.
 import libs.extras.javascript.runtime
 import libs.extras.javascript.regexp_syntax
 import libs.extras.javascript.regexp_case
+import libs.extras.javascript.regexp_property
 
 
 const int JS_RX_OP_CHAR = 1
@@ -74,24 +74,19 @@ void js_regexp_program_free(void* raw):
 	free(program)
 
 
-# Property items with runtime data, or 0 when the property is outside the
-# runtime subset. Codes: 1 Any, 2 ASCII, 3 ASCII_Hex_Digit, 4 ID_Start,
-# 5 ID_Continue; JS_RX_NEGATED is preserved.
+# Resolves a parsed property item (validation table word index) to its
+# runtime form: JS_RX_RUNTIME_PROPERTY + kind * 4096 + data id, keeping
+# JS_RX_NEGATED. Every validated property has data (regexp_property.w).
 int js_regexp_runtime_property(int item):
 	int negated = item & JS_RX_NEGATED
 	int code = item - JS_RX_PROPERTY - negated
 	int kind = code / 4096
 	int index = code % 4096
-	if (kind != JS_RX_PROPERTY_BINARY): return 0
-	char* table = js_regexp_binary_names()
-	int result = 0
-	if (index == js_regexp_table_index(table, c"Any")): result = 1
-	if (index == js_regexp_table_index(table, c"ASCII")): result = 2
-	if (index == js_regexp_table_index(table, c"ASCII_Hex_Digit") || index == js_regexp_table_index(table, c"AHex")): result = 3
-	if (index == js_regexp_table_index(table, c"ID_Start") || index == js_regexp_table_index(table, c"IDS")): result = 4
-	if (index == js_regexp_table_index(table, c"ID_Continue") || index == js_regexp_table_index(table, c"IDC")): result = 5
-	if (result == 0): return 0
-	return JS_RX_RUNTIME_PROPERTY + result + negated
+	int id = 0
+	if (kind == JS_RX_PROPERTY_GC): id = js_regexp_property_gc_id(index)
+	else if (kind == JS_RX_PROPERTY_BINARY): id = js_regexp_property_binary_id(index)
+	else: id = js_regexp_property_script_id(index)
+	return JS_RX_RUNTIME_PROPERTY + kind * 4096 + id + negated
 
 
 int js_regexp_canonicalize(int ch, int unicode):
@@ -207,10 +202,7 @@ void js_regexp_compile(js_regexp_program* program, js_regexp_node* node, int dir
 	else if (kind == JS_RX_CLASS):
 		for i in range(node.sets.length):
 			int item = node.sets[i]
-			if (item >= JS_RX_PROPERTY && item < JS_RX_RUNTIME_PROPERTY):
-				int resolved = js_regexp_runtime_property(item)
-				if (resolved == 0 && program.error == 0): program.error = c"Unicode property escape data outside the runtime subset"
-				node.sets[i] = resolved
+			if (item >= JS_RX_PROPERTY && item < JS_RX_RUNTIME_PROPERTY): node.sets[i] = js_regexp_runtime_property(item)
 		js_regexp_emit(program, JS_RX_OP_CLASS)
 		js_regexp_emit(program, program.classes.length)
 		program.classes.push(node)
@@ -328,12 +320,7 @@ int js_regexp_set_item(js_regexp_vm* vm, int item, int ch):
 	int negated = (item & JS_RX_NEGATED) != 0
 	int code = item - JS_RX_RUNTIME_PROPERTY
 	if (negated): code = code - JS_RX_NEGATED
-	int has = 0
-	if (code == 1): has = 1
-	if (code == 2): has = ch < 128
-	if (code == 3): has = js_hex(ch) >= 0
-	if (code == 4): has = js_unicode_id_start(ch)
-	if (code == 5): has = js_unicode_id_continue(ch)
+	int has = js_regexp_property_has(code / 4096, code % 4096, ch)
 	return has != negated
 
 
