@@ -126,7 +126,16 @@ stays seed-compilable, enforced by the `asm_seed_gate`.
 - **Done**: the AT&T front end (`libs/asm/att.w`) and the kernel
   instruction-set encoder growth (`libs/asm/x86_encode.w`), with
   byte-exact tests against the GNU assembler (`tests/asm_att_test.w`)
-  and seed-gate coverage. `verify` and `verify_x64` pass.
-- **Next**: the grammar statement and its inline emission with operand
-  binding and clobbers; the flag-output and `asm goto` paths; the
-  directive/section emitter; the fallback report.
+  and seed-gate coverage.
+- **Done**: the statement itself (`grammar/inline_asm_stmt.w`, the
+  `asm_native:` block), its inline emission with input/inout/output and
+  single flag-output operand binding, clobbers and the 1/2/4/8-byte
+  widths, in both front ends and the parser-generator grammar. A gcc
+  C-link test (`tests/native_asm_test.w`) checks each statement against
+  the same operation in C inline asm. `verify`, `verify_x64`,
+  `native_asm_test`, `parser_generator_w_test` and `wfmt_check` pass.
+- **Next**: templates with local numeric labels and internal branches;
+  the directive/section emitter (`.pushsection`, `.byte` records) and
+  relocations for symbol operands and external calls, through the object
+  writer (`code_generator/elf_object.w`); multiple flag outputs and
+  `asm goto`; the per-build fallback report.
