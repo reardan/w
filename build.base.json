@@ -19,7 +19,7 @@
 		],
 		"no_umbrella": {
 			"javascript_test262_upstream": "one-process run of the upstream Test262 profile for local use; tests runs it as javascript_test262_upstream_0.._3",
-			"update": "promotes bin/wv3 to the local ./w seed; mutates the checkout",
+			"update": "promotes bin/wv3_64 to the local ./w seed; mutates the checkout",
 			"update_win": "promotes the win64 fixpoint to w.exe; mutates the checkout",
 			"update_android": "promotes the locally verified Android compiler to w_android; mutates the checkout",
 			"wexec_android": "Termux-host executor bootstrap; requires a local Android seed",
@@ -174,10 +174,10 @@
 		},
 		{
 			"name": "wv2",
-			"inputs": ["w.w", "compiler/", "grammar/", "code_generator/", "lib/", "structures/", "libs/", "debugger/"],
+			"inputs": ["w.w", "compiler/", "grammar/", "code_generator/", "lib/", "structures/", "libs/", "debugger/", "SEEDS"],
 			"outputs": ["bin/wv2"],
 			"steps": [
-				{"cmd": ["./w", "w.w", "-o", "bin/wv2"], "atomic_output": "bin/wv2"}
+				{"cmd": ["./w", "x64", "w.w", "-o", "bin/wv2"], "atomic_output": "bin/wv2"}
 			]
 		},
 		{
@@ -254,10 +254,10 @@
 		},
 		{
 			"name": "update",
-			"deps": ["verify"],
+			"deps": ["verify_x64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "tools/promote_seed.w", "-o", "bin/promote_seed"]},
-				{"cmd": ["bin/promote_seed", "w", "bin/wv3"]}
+				{"cmd": ["bin/promote_seed", "w", "bin/wv3_64"]}
 			]
 		},
 		{

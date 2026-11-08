@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 W is a small, self-hosting compiled language (C-like semantics, Python-like
 tab-indented syntax). The compiler is written in W (`w.w` + its imports),
 compiles itself, and is bootstrapped from `./w` — a statically linked
-**32-bit x86 Linux ELF** seed binary that `./wbuild` downloads from the
+**x86-64 Linux ELF** seed binary that `./wbuild` downloads from the
 GitHub release pinned in `SEEDS` (sha256-verified; the seeds are not
 committed). It emits executables directly,
 with no assembler, linker, or libc dependency: x86/x86-64 Linux ELF
@@ -47,7 +47,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ## Commands
 
 ```sh
-./wbuild build       # bootstrap: ./w w.w -> bin/wv2 -> wv3 -> wv4 -> wv5
+./wbuild build       # bootstrap: ./w x64 w.w -> bin/wv2 (64-bit) -> x86 wv3 -> wv4 -> wv5
 ./wbuild verify      # self-host fixpoint (wv3==wv4==wv5) — REQUIRED gate for any compiler change
 ./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
 ./wbuild verify_arm64  # same for the ARM64 target
@@ -55,7 +55,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild profile_refresh  # regenerate profiles/*.wprof (self, self_x64, bench corpus) from instrumented runs; commit the result when hot code changed
 ./wbuild profile_check  # non-failing report: how much of each committed profile still matches the tree (bin/wprof stats); in tests
 ./wbuild tests       # full pre-merge suite
-./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
+./wbuild update      # ONLY after verify_x64: archives seed, promotes the bin/wv3_64 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
 ./wbuild wdbg_web    # browser debugger (bin/wdbg_web file.w prints an https URL)
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
@@ -73,7 +73,7 @@ default; `--streaming` selects the older streaming front end (same image;
 kept as a comparison oracle until it is retired), and `--ast-required`
 additionally rejects any expression fallback (`./wbuild ast_expression_suite`
 runs the whole suite that way; it is not in `tests`). The pinned seed
-predates the flip, so `./w w.w` (the bin/wv2 stage) still compiles
+predates the flip, so `./w x64 w.w` (the bin/wv2 stage) still compiles
 streaming; bin/wv2 onward compiles AST. On x86/x64, register promotion of
 hot locals is on by default under either front end (`--no-regs`/`-O0`
 turns it off) and `--profile-use=profiles/<name>.wprof` applies a committed

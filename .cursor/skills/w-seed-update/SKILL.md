@@ -5,13 +5,13 @@ description: The bootstrap-seed discipline — what the pinned seed is, when ./w
 
 # Seed updates and `./wbuild update` discipline
 
-The seed `./w` is a statically linked 32-bit x86 Linux ELF that
+The seed `./w` is a statically linked x86-64 Linux ELF that
 compiles the compiler's own sources. It is **not committed**: `SEEDS`
 at the repo root pins a release tag, asset name and sha256 for each
 seed (`w`, `w_darwin`, `w.exe`), and `./wbuild` downloads a missing
 seed from that GitHub release, refusing to run it on a hash mismatch.
 
-Bootstrap chain: the seed compiles `w.w` into `bin/wv2`; `./wbuild
+Bootstrap chain: the seed compiles `w.w` into a 64-bit `bin/wv2`; `./wbuild
 build` continues wv2 -> wv3 -> wv4 -> wv5 (those self-host stages
 compile with `--strict`, so any warning fails the build), and
 `./wbuild verify` asserts the fixpoint wv3 == wv4 == wv5.
@@ -19,11 +19,11 @@ compile with `--strict`, so any warning fails the build), and
 ## Local promotion: `./wbuild update`
 
 `./wbuild update` archives the current seed (`tools/promote_seed.w` -> `old/`)
-and promotes the `bin/wv3` fixpoint onto `./w` (`update_darwin` /
+and promotes the `bin/wv3_64` fixpoint onto `./w` (`update_darwin` /
 `update_win` do the same for the other seeds). Rules:
 
-- **Only after `./wbuild verify` passes.** The target depends on
-  `verify`, so a broken fixpoint cannot be promoted — never work
+- **Only after `./wbuild verify_x64` passes.** The target depends on
+  `verify_x64`, so a broken fixpoint cannot be promoted — never work
   around that ordering.
 - **Local only.** A promoted `./w` changes nothing for other checkouts
   or CI, which keep bootstrapping from the `SEEDS` pin. Afterwards

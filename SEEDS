@@ -4,6 +4,6 @@
 # tag so they compile the same sources. See docs/release.md.
 #
 # file      tag     asset                 sha256
-w           v0.3.0  w-x86-linux           b1e128a7a33c3cef4275b682cf2bacf0e2ef90890653863f55ea18a80aa51318
+w           v0.3.0  w-x86_64-linux        77bf8b5cb78db3db94e8d73ca3630bdac172532ddeb859aad400ab4df160274e
 w_darwin    v0.3.0  w-arm64-macos         8827faf7ee2bafd01c29dd40eeb896d3095171eab7d6f2ad4bdce11cc70cdbbb
 w.exe       v0.3.0  w-x86_64-windows.exe  9904496150005744a6e953400cdd7e18fe9a607b7b34cae4056c416f3983ff0f
