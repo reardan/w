@@ -27,6 +27,7 @@ extern int w_bump_counter(int add, int *address_ok);
 extern int w_probe(int *p, int64_t *fault_site);
 extern void w_misc_marker(void);
 extern int w_lock_add(int *p, int add);
+extern int w_statics(int a);
 
 /* Called from w_call_c's template; read by w_bump_counter's. */
 int c_counter = 40;
@@ -197,6 +198,9 @@ int main(void)
 	CHECK(w_lock_add(&la, 5) == 10 && la == 15, "lock; xadd");
 	CHECK(__stop_w_more - __start_w_more == 1, "w_more size");
 	CHECK((uintptr_t)__start_w_more + __start_w_more[0] == (uintptr_t)&c_triple, ".quad symbol - . (R_X86_64_PC64)");
+
+	/* Statics of the W unit named from a template. */
+	CHECK(w_statics(3) == 87, "template names W statics");
 
 	if (fails == 0) printf("native_asm driver: all checks passed\n");
 	return fails == 0 ? 0 : 1;

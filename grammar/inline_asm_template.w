@@ -494,7 +494,7 @@ void inasm_align(char* text, int i, int power):
 		# The object writer keeps a code piece's offset modulo 16.
 		if (a > 16): inasm_fail(c"code alignment above 16 bytes", text)
 		if (fill < 0): fill = 0x90
-		char* one = c"\x00"
+		char* one = cast(char*, malloc(1))
 		one[0] = fill
 		while ((codepos % a) != 0): emit(1, one)
 		return

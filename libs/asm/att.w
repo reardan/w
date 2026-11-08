@@ -159,6 +159,39 @@ int asm_att_symbol(asm_parse* p, asm_operand* op):
 	return v
 
 
+# A signed number (asm_att_ident stops at '-', so the sign is read by
+# hand).
+int asm_att_signed_number(asm_parse* p):
+	asm_att_skip_spaces(p)
+	int neg = 0
+	if (asm_att_peek(p) == '-'):
+		neg = 1
+		p.pos = p.pos + 1
+	int v = asm_parse_number(asm_att_ident(p))
+	if (neg): return 0 - v
+	return v
+
+
+# A constant displacement expression: numbers joined by `*`, `+` and `-`
+# (`0*8`, `2*8+4`, as checksum templates write them), `*` binding first.
+int asm_att_const_expr(asm_parse* p):
+	int total = 0
+	int term = asm_att_signed_number(p)
+	while (1 == 1):
+		asm_att_skip_spaces(p)
+		int c = asm_att_peek(p)
+		if (c == '*'):
+			p.pos = p.pos + 1
+			term = term * asm_att_signed_number(p)
+		else if ((c == '+') || (c == '-')):
+			p.pos = p.pos + 1
+			total = total + term
+			term = asm_att_signed_number(p)
+			if (c == '-'): term = 0 - term
+		else: return total + term
+	return total + term
+
+
 # A memory operand `disp(%base,%index,scale)` / `disp(%base)` /
 # `(%base)` / `disp`. The cursor is at the displacement or '('.
 void asm_att_mem(asm_parse* p, asm_operand* op):
@@ -176,16 +209,7 @@ void asm_att_mem(asm_parse* p, asm_operand* op):
 		op.disp = asm_att_symbol(p, op)
 		op.disp_size = 4
 	else if (asm_att_peek(p) == '-' || (asm_att_peek(p) >= '0' && asm_att_peek(p) <= '9')):
-		# A signed displacement; asm_att_ident stops at '-', so consume the
-		# sign by hand and read the magnitude.
-		int neg = 0
-		if (asm_att_peek(p) == '-'):
-			neg = 1
-			p.pos = p.pos + 1
-		char* tok = asm_att_ident(p)
-		int v = asm_parse_number(tok)
-		if (neg): v = 0 - v
-		op.disp = v
+		op.disp = asm_att_const_expr(p)
 	asm_att_skip_spaces(p)
 	if (asm_att_peek(p) != '('): return
 	p.pos = p.pos + 1
@@ -374,6 +398,15 @@ int asm_att_parse(char* line, int arch, asm_insn* insn):
 			if (asm_att_suffixable(base)):
 				mnem = base
 				mnem_size = sz
+	# `rep nop` is how GNU C spells pause (cpu_relax()): f3 90; and
+	# `rep bsf`/`rep bsr` (the kernel's __ffs) are the bytes of tzcnt /
+	# lzcnt, which a CPU without them runs as bsf / bsr.
+	if (strcmp(prefix, c"rep ") == 0):
+		char* plain = mnem
+		if (strcmp(mnem, c"nop") == 0): mnem = c"pause"
+		else if (strcmp(mnem, c"bsf") == 0): mnem = c"tzcnt"
+		else if (strcmp(mnem, c"bsr") == 0): mnem = c"lzcnt"
+		if (mnem != plain): prefix = c""
 	if (prefix[0] != 0): mnem = strjoin(prefix, mnem)
 	insn.mnemonic = mnem
 

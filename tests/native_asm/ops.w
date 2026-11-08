@@ -120,6 +120,7 @@ export int w_relabel():
 	asm_native:
 		output rax:4 = &out
 		"xorl %eax, %eax"
+		"rep; nop"
 		"jmp 1f"
 		"addl $100, %eax"
 		"1: incl %eax"
@@ -195,6 +196,8 @@ export int w_probe(int* p, int* fault_site):
 # symbol value (R_X86_64_32) and a PC-relative one to a C function.
 export void w_misc_marker():
 	asm_native:
+		".balign 8"
+		".p2align 4, 0x90"
 		"1: nop"
 		"2: nop; nop"
 		".pushsection w_misc,\"a\""
@@ -221,3 +224,23 @@ export int w_lock_add(int* p, int add):
 		".quad c_triple - ."
 		".previous"
 	return old
+
+# A template names the unit's own statics, as head64.c's rip_rel_ptr()
+# names next_early_pgt: they bind to the object's local symbols.
+static int w_private = 77
+
+static int w_add7(int x):
+	return x + 7
+
+export int w_statics(int a):
+	int out = 0
+	asm_native:
+		input rdi = a
+		output rax:4 = &out
+		clobber rbx
+		"movq %rsp, %rbx"
+		"andq $-16, %rsp"
+		"call w_add7"
+		"movq %rbx, %rsp"
+		"addl w_private(%rip), %eax"
+	return out
