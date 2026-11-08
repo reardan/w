@@ -9195,6 +9195,16 @@
       "path": "upstream/test/language/statements/class/subclass/default-constructor-spread-override.js",
       "upstream_path": "test/language/statements/class/subclass/default-constructor-spread-override.js",
       "sha256": "4e15b3eb84bc6b869246c6dd2dcd87edc178d58d26306682050e4060112bc1fb"
+    },
+    {
+      "path": "upstream/harness/doneprintHandle.js",
+      "upstream_path": "harness/doneprintHandle.js",
+      "sha256": "01282de15feb05d865dfc2cdfc68f59d8e760eb7d81a14ade3bc08cbc8520add"
+    },
+    {
+      "path": "upstream/harness/asyncHelpers.js",
+      "upstream_path": "harness/asyncHelpers.js",
+      "sha256": "9afd9a18e080f30b998fa3b9c3e2303fc85fb1ebae664a532a58d56d86d3bcc9"
     }
   ],
   "cases": [

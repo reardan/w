@@ -166,6 +166,137 @@ js_value* test262_test_property_escapes(void* context, list[js_value*] args):
 	if (ok != 1): return test262_failure(rt)
 	return rt.undefined_value
 
+# Asynchronous tests (flags: [async], reardan/w#906). The test signals its
+# outcome through $DONE: natively in the harness profile, and through the
+# pinned doneprintHandle.js, whose print calls the runner observes, in the
+# upstream profile. After the script, the runner drains the microtask queue
+# within the remaining step budget; the test passes when $DONE was called
+# exactly once without an error.
+int test262_async = 0
+int test262_done_calls = 0
+int test262_done_failed = 0
+js_value* test262_done_error = 0
+
+js_value* test262_done(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	test262_done_calls = test262_done_calls + 1
+	if (args.length > 0 && js_runtime_truth(args[0])):
+		test262_done_failed = 1
+		test262_done_error = args[0]
+	return rt.undefined_value
+
+int test262_text_starts(js_text* text, char* prefix):
+	if (text.units.length < strlen(prefix)): return 0
+	for i in range(strlen(prefix)):
+		if (text.units[i] != prefix[i]): return 0
+	return 1
+
+# doneprintHandle.js reports through print('Test262:AsyncTest...').
+js_value* test262_print(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	if (args.length > 0 && args[0].kind == 4):
+		if (test262_text_starts(args[0].text, c"Test262:AsyncTestComplete")): test262_done_calls = test262_done_calls + 1
+		else if (test262_text_starts(args[0].text, c"Test262:AsyncTestFailure:")):
+			test262_done_calls = test262_done_calls + 1
+			test262_done_failed = 1
+	return rt.undefined_value
+
+js_value* test262_error_object(js_runtime* rt):
+	js_value* error = js_runtime_alloc(rt, 5)
+	error.intrinsic_error_name = c"Test262Error"
+	return error
+
+js_value* test262_argument(js_runtime* rt, list[js_value*] args, int index):
+	if (index < args.length): return args[index]
+	return rt.undefined_value
+
+js_value* test262_then(js_runtime* rt, js_value* value, js_value* fulfilled, js_value* rejected):
+	js_value* then = js_runtime_get(rt, value, c"then")
+	if (rt.completion.status != 0): return rt.undefined_value
+	if (js_runtime_callable(then) == 0):
+		js_runtime_fail(rt, 2, c"value is not a thenable")
+		return rt.undefined_value
+	list[js_value*] args = new list[js_value*]
+	args.push(fulfilled)
+	args.push(rejected)
+	js_value* result = js_runtime_call_receiver(rt, then, value, args)
+	__w_list_free(cast(__w_list*, args))
+	return result
+
+# Native asyncHelpers.js overrides: asyncTest and assert.throwsAsync.
+js_value* test262_async_settled(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	list[js_value*] done = new list[js_value*]
+	if (context != 0): done.push(test262_argument(rt, args, 0))
+	test262_done(rt, done)
+	__w_list_free(cast(__w_list*, done))
+	return rt.undefined_value
+
+js_value* test262_async_test(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	js_value* callback = test262_argument(rt, args, 0)
+	list[js_value*] failure = new list[js_value*]
+	failure.push(test262_error_object(rt))
+	if (js_runtime_callable(callback) == 0):
+		test262_done(rt, failure)
+		return rt.undefined_value
+	list[js_value*] none = new list[js_value*]
+	js_value* result = js_runtime_call(rt, callback, none)
+	if (rt.completion.status == 0):
+		js_value* fulfilled = js_runtime_host_callable(rt, 0, test262_async_settled)
+		js_value* rejected = js_runtime_host_callable(rt, cast(void*, 1), test262_async_settled)
+		test262_then(rt, result, fulfilled, rejected)
+	if (rt.completion.status == 2):
+		failure[0] = rt.completion.value
+		rt.completion.status = 0
+		rt.completion.message = c""
+		rt.completion.value = rt.undefined_value
+		test262_done(rt, failure)
+	return rt.undefined_value
+
+# throwsAsync reactions: context is the reaction itself; parent is the
+# result promise and home_object the expected constructor.
+js_value* test262_throws_settled(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* self = cast(js_value*, context)
+	int ok = 0
+	js_value* thrown = test262_argument(rt, args, 0)
+	if (self.coroutine_state && js_runtime_object(thrown)):
+		js_value* constructor = js_runtime_get(rt, thrown, c"constructor")
+		if (rt.completion.status != 0): return rt.undefined_value
+		ok = constructor == self.home_object
+	if (ok): js_runtime_promise_settle(rt, self.parent, rt.undefined_value, 0)
+	else: js_runtime_promise_settle(rt, self.parent, test262_error_object(rt), 1)
+	return rt.undefined_value
+
+js_value* test262_throws_reaction(js_runtime* rt, js_value* promise, js_value* expected, int rejected):
+	js_value* reaction = js_runtime_host_callable(rt, 0, test262_throws_settled)
+	reaction.host_context = reaction
+	reaction.parent = promise
+	reaction.home_object = expected
+	reaction.coroutine_state = rejected
+	return reaction
+
+js_value* test262_throws_async(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	test262_assertions = test262_assertions + 1
+	js_value* expected = test262_argument(rt, args, 0)
+	js_value* callback = test262_argument(rt, args, 1)
+	js_value* promise = js_runtime_promise_new(rt)
+	if (js_runtime_callable(expected) == 0 || js_runtime_callable(callback) == 0):
+		js_runtime_promise_settle(rt, promise, test262_error_object(rt), 1)
+		return promise
+	list[js_value*] none = new list[js_value*]
+	js_value* result = js_runtime_call(rt, callback, none)
+	if (rt.completion.status == 0 && js_runtime_object(result)): test262_then(rt, result, test262_throws_reaction(rt, promise, expected, 0), test262_throws_reaction(rt, promise, expected, 1))
+	else if (rt.completion.status == 0): js_runtime_fail(rt, 2, c"result is not a thenable")
+	if (rt.completion.status == 2):
+		rt.completion.status = 0
+		rt.completion.message = c""
+		rt.completion.value = rt.undefined_value
+		js_runtime_promise_settle(rt, promise, test262_error_object(rt), 1)
+	return promise
+
 js_value* test262_callable(js_runtime* rt, js_host_function* callback):
 	js_value* value = js_runtime_alloc(rt, 9)
 	value.host = cast(int, callback)
@@ -177,10 +308,14 @@ void test262_install(js_runtime* rt):
 	js_runtime_set(rt, assertion, c"sameValue", test262_callable(rt, test262_same))
 	js_runtime_set(rt, assertion, c"notSameValue", test262_callable(rt, test262_not_same))
 	js_runtime_set(rt, assertion, c"throws", test262_callable(rt, test262_unsupported))
+	if (test262_async): js_runtime_set(rt, assertion, c"throwsAsync", test262_callable(rt, test262_throws_async))
 	js_runtime_set_host_hooks(rt, assertion, 0, test262_missing_helper, 0)
 	js_runtime_bind(rt, c"$DONOTEVALUATE", test262_do_not_evaluate)
 	js_runtime_bind(rt, c"$ERROR", test262_do_not_evaluate)
-	js_runtime_bind(rt, c"$DONE", test262_unsupported)
+	if (test262_async):
+		js_runtime_bind(rt, c"$DONE", test262_done)
+		js_runtime_bind(rt, c"asyncTest", test262_async_test)
+	else: js_runtime_bind(rt, c"$DONE", test262_unsupported)
 	js_runtime_bind(rt, c"print", test262_unsupported)
 	js_runtime_bind(rt, c"Test262Error", test262_unsupported)
 	js_runtime_bind(rt, c"compareArray", test262_unsupported)
@@ -356,6 +491,7 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	js_runtime* rt = js_runtime_new()
 	if (raw == 0 && test262_harness_files == 0): test262_install(rt)
 	if (raw == 0 && test262_harness_files != 0):
+		if (test262_async): js_runtime_bind(rt, c"print", test262_print)
 		result = test262_load_harness(rt, budget)
 		if (result != 0):
 			js_runtime_free(rt)
@@ -370,6 +506,19 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 		js_modules_evaluate(modules, specifier, absolute, budget)
 		completion = rt.completion
 	else: completion = js_runtime_eval(rt, source, strlen(source), budget)
+	int async_failed = 0
+	if (test262_async && completion.status == 0):
+		int steps = completion.steps
+		int remaining = budget - steps
+		if (remaining < 1): remaining = 1
+		completion = js_runtime_drain_microtasks(rt, remaining)
+		completion.steps = completion.steps + steps
+		if (completion.status == 0 && (test262_done_calls != 1 || test262_done_failed)):
+			async_failed = 1
+			completion.status = 2
+			completion.message = c"asynchronous test did not report completion through $DONE"
+			if (test262_done_failed && test262_done_error != 0): completion.value = test262_done_error
+			else: completion.value = rt.undefined_value
 	char* outcome = c"normal"
 	if (completion.status == 2): outcome = c"throw"
 	if (completion.status == 5): outcome = c"limit"
@@ -377,6 +526,7 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	if (completion.status != 0 && completion.status != 2 && completion.status != 5 && completion.status != 6): outcome = c"invalid_completion"
 	result = test262_result(c"execute", outcome)
 	json_object_set(result, c"assertions", json_int(test262_assertions))
+	if (async_failed): json_object_set(result, c"async", json_string(c"failed"))
 	if (completion.status == 2 && completion.value.intrinsic_error_name[0] != 0): json_object_set(result, c"error_type", json_string(completion.value.intrinsic_error_name))
 	else if (completion.status == 2 && test262_harness_files != 0):
 		char* harness_error = test262_harness_error(rt, completion.value)
@@ -392,7 +542,7 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 int main(int argc, int argv):
 	args_init(argc, argv)
 	if (argc < 5):
-		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|raw|upstream [HARNESS.js...]")
+		println(c"usage: test262_runtime_runner FILE script|module|async BUDGET harness|raw|upstream [HARNESS.js...]")
 		return 2
 	char* profile = args_get(4)
 	if (strcmp(profile, c"raw") != 0 && strcmp(profile, c"harness") != 0 && strcmp(profile, c"upstream") != 0): return 2
@@ -401,6 +551,9 @@ int main(int argc, int argv):
 		for i in range(5, argc): test262_harness_files.push(args_get(i))
 	else if (argc != 5): return 2
 	char* goal = args_get(2)
+	if (strcmp(goal, c"async") == 0):
+		test262_async = 1
+		goal = c"script"
 	if (strcmp(goal, c"script") != 0 && strcmp(goal, c"module") != 0): return 2
 	int budget = 0
 	char* raw_budget = args_get(3)
@@ -410,7 +563,7 @@ int main(int argc, int argv):
 	if (budget <= 0 || budget > 10000000): return 2
 	char* source = file_read_text(args_get(1))
 	if (source == 0): return 2
-	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(args_get(4), c"raw") == 0)
+	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(profile, c"raw") == 0)
 	char* output = json_stringify(result)
 	println(output)
 	free(output)
