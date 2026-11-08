@@ -74,13 +74,13 @@ int main():
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 3300
-		int unsupported = 250
+		int passes = 3440
+		int unsupported = 317
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 3302
-			unsupported = 248
+			passes = 3442
+			unsupported = 315
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")
