@@ -38,6 +38,11 @@ import code_generator.ffi
 
 
 void ast_extern_object(int binding, int size, char* name);
+void extern_object_import(int sym, int address, int size, char* name);
+void extern_unsized_array(int sym, int element_type, char* name);
+# The linked symbol name of the latest extern declaration (its weak
+# binding is an attribute, grammar/object_attributes.w).
+char* extern_last_name
 void ast_extern_function(int binding, int return_type, char* name, char* import_name, int count, char* classes, int return_class, int variadic);
 
 
@@ -68,6 +73,12 @@ int extern_statement():
 		# value; the library's own references rebind to this copy (symbol
 		# interposition), so it behaves like a normal W global.
 		if (accept(c"(") == 0):
+			# 'extern T[] name': a C array of unknown length
+			# (code_generator/linkage_ast.w)
+			if (type_is_slice(type_unqualified(ret_type))):
+				extern_unsized_array(sym, type_get_element_type(type_unqualified(ret_type)), name)
+				extern_last_name = name
+				return 1
 			# The arm64 backends never emitted the copy space to a
 			# loader-writable home; the data-segment branch below could
 			# lift this, but stays unproven there (no arm64 loader in CI).
@@ -78,7 +89,11 @@ int extern_statement():
 			if (target_isa == 2): error(c"extern data objects are not supported on the wasm target")
 			save_int(table + sym + 10, 1)   /* symtype: object */
 			int size = type_get_size(ret_type)
-			if (size < 1): error(c"extern data object needs a sized type")
+			# In an object a zero-size type (an empty record, one the unit
+			# never completes) is fine: only its address is used, and the
+			# import gets a byte of placeholder (extern_object_import).
+			if ((size < 1) && ((elf_object == 0) || (data_split == 0))): error(c"extern data object needs a sized type")
+			if (size < 0): size = 0
 			# W^X split (data_split): the loader's COPY relocation writes
 			# the library's initial value into this space, so it must live
 			# in the RW data segment — in the code stream it would target
@@ -90,14 +105,14 @@ int extern_statement():
 				int copy_vaddr = emit_data_zeros(size)
 				sym_define_global_at(sym, copy_vaddr)
 				save_int(table + sym + 14, size)
-				dyn_add_import_data(name, copy_vaddr, size, 0)
+				extern_object_import(sym, copy_vaddr, size, name)
 			else:
 				while ((codepos % word_size) != 0): emit_int8(0)
 				sym_define_global(sym)
 				save_int(table + sym + 14, size)
 				dyn_add_import_data(name, code_offset + codepos, size, 0)
 				emit_zeros(size)
-			free(name)
+			extern_last_name = name
 			return 1
 
 		# Parse the parameter list for arity/type checks and the ABI shim's
@@ -124,8 +139,7 @@ int extern_statement():
 			int ptype_class = ffi_type_class(ptype)
 			if ((ptype_class == 2) && (word_size != 8)): error(c"float64 requires the x64 target")
 			param_classes[param_count - 1] = ptype_class
-			if (param_count <= sym_max_param_slots):
-				save_int(table + sym + 22 + (param_count << 2), ptype)
+			sym_record_param_type(sym, param_count, ptype)
 			# Skip the optional parameter name
 			if (peek(c")") == 0): get_token()
 			accept(c",")
@@ -178,15 +192,15 @@ int extern_statement():
 			# argument classes (see parse_variadic_call_suffix).
 			be_align_code()
 			sym_define_global(sym)
-			emit_ffi_shim(param_count, param_classes, ret_class, got_vaddr)
+			c_abi_emit_extern_shim(sym, param_count, param_classes, ret_class, got_vaddr)
 			# Every import records its slot: the variadic call path loads
 			# through it, and tools/wllvm_emit.w finds the import by it.
 			sym_set_got_vaddr(sym, got_vaddr)
 			if (is_variadic): sym_set_variadic(sym, param_count)
 
 		free(param_classes)
-		if (import_name != name): free(import_name)
-		free(name)
+		if (import_name != name): free(name)
+		extern_last_name = import_name
 		return 1
 
 	return 0

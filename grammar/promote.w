@@ -208,6 +208,28 @@ void gpu_host_access_check(int type):
 		error(c"cannot dereference a gpu pointer in host code; copy the data with gpu_memcpy_from, or cast() to a host pointer for managed memory")
 
 
+# Arms code_generator/x86.w's seg_override for the one load or store of
+# a segment-space lvalue (promote, assign_store). The lvalue's offset is
+# in eax (or the popped ebx): a stack slot or a register-resident local
+# would be addressed relative to the segment base, so seg_storage_check
+# (grammar/type_name.w) rejects segment-qualified locals and parameters.
+void seg_access_begin(int type):
+	if (ci_is_bit_field_access(type_strip_seg(type))): error(c"bit-fields in a segment address space are not supported")
+	seg_override = type_seg_prefix(type)
+
+
+# The type of field `field` of a struct lvalue typed `record`: in the
+# record's segment address space when it has one (bit-fields and W
+# buffers excepted: they keep their plain records, and a buffer field's
+# descriptor is never read through the segment).
+int seg_member_type(int record, int field):
+	if (type_seg_prefix(record) == 0): return field
+	if (ci_is_bit_field_access(field) || type_is_buffer(type_unqualified(field))): return field
+	int kind = type_kind_seg_gs
+	if (type_seg_prefix(record) == 0x64): kind = type_kind_seg_fs
+	return type_get_seg(field, kind)
+
+
 # An integer address cannot implicitly become a pointer.
 int integer_pointer_conversion(int want, int got):
 	want = type_unqualified(want)
@@ -365,6 +387,17 @@ int promote(int type):
 		int loaded = promote(type_strip_gpu(type))
 		ptx_global_access = 0
 		return loaded
+	# A segment-space lvalue (compiler/type_table.w, '__seg_gs T'): eax
+	# holds its offset in the segment; the one load gets the override
+	# prefix (code_generator/x86.w, seg_override)
+	if (type_seg_prefix(type)):
+		# a struct keeps its address: its fields are segment lvalues
+		# themselves (postfix_expr.w's member access)
+		if (type_num_args(type) > 0): return type
+		seg_access_begin(type)
+		int seg_loaded = promote(type_strip_seg(type))
+		seg_override = 0
+		return seg_loaded
 	if (type == 3): /* constant: already a value */
 		return type
 	if (type == 4): /* function: its address is its value */

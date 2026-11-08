@@ -68,6 +68,15 @@ int elf_static /* W x64 compiled static library */
 int elf_object /* --emit=obj: x64 ELF ET_REL object (implies elf_static) */
 int elf_object_text_start /* code offset where an object's .text begins */
 int freestanding_mode /* --freestanding: no auto-imported W runtime */
+int kernel_codegen /* --kernel-codegen: kernel-context code (no SSE/x87; docs/projects/object_files.md) */
+int stack_usage_mode /* --stack-usage: write <output>.su (code_generator/stack_usage.w) */
+int stack_usage_active /* 1 while a function body is emitted under --stack-usage */
+# stack_usage_sample (code_generator/stack_usage.w), installed when a body
+# starts, so modules that import only this emitter need not link it.
+type stack_usage_sample_callback = fn() -> void
+int stack_usage_sample_hook
+int object_alias_pending /* '@alias' declarations whose target is not defined yet (elf_object.w) */
+int c_abi_mode /* --c-abi: System V entries and function pointers (code_generator/c_abi.w) */
 int elf_shared /* ELF shared object with explicit native exports */
 char* elf_soname /* Android shared object basename, set before finish */
 int elf_pie   /* ELF PIE; mandatory for Android */
@@ -273,6 +282,7 @@ void regalloc_guard():
 
 void emit(int n, char* s):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (stack_usage_active): (cast(stack_usage_sample_callback*, stack_usage_sample_hook))()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
@@ -287,6 +297,7 @@ void emit_string(char* s):
 
 void emit_i(int v, int n):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (stack_usage_active): (cast(stack_usage_sample_callback*, stack_usage_sample_hook))()
 	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
@@ -363,6 +374,22 @@ void rebase_note(int vaddr):
 		rebase_table_size = x
 	save_i(rebase_table + rebase_count * 8, vaddr, 8)
 	rebase_count = rebase_count + 1
+
+
+# Globals whose storage was reserved while their record type had no
+# fields yet (a C tentative definition ahead of the struct body): their
+# vaddrs, and every address slot written with one of them, so the
+# record can move to storage of its completed size and the slots follow
+# it (incomplete_global_complete, grammar/program.w).
+list[int] incomplete_global_addresses
+list[int] incomplete_global_slots
+
+
+void incomplete_global_note_slot(int pos, int v):
+	for i in range(incomplete_global_addresses.length):
+		if (incomplete_global_addresses[i] == v):
+			incomplete_global_slots.push(pos)
+			return
 
 
 # Static libraries retain every address slot that can cross from text to
