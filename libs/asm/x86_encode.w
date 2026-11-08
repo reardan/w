@@ -429,6 +429,12 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 		asm_buffer_byte(b, 0x58 + (insn.op1.reg & 7))
 		return b.length - start
+	# pop r/m (0x8f /0): 64-bit in x64, 32-bit in x86, like push r/m.
+	if (strcmp(m, c"pop") == 0 & insn.op1.kind == ASM_OP_MEM):
+		asm_enc_rex(b, is64, 0, 0, &insn.op1)
+		asm_buffer_byte(b, 0x8f)
+		asm_enc_modrm(b, 0, &insn.op1, is64)
+		return b.length - start
 
 	# inc/dec register: x86 has a one-byte short form (0x40/0x48+reg); x64
 	# reuses those bytes for REX, so it must use the grp5 (0xff /0 /1) form.

@@ -28,6 +28,7 @@ extern int w_probe(int *p, int64_t *fault_site);
 extern void w_misc_marker(void);
 extern int w_lock_add(int *p, int add);
 extern int w_statics(int a);
+extern int w_pop_mem(int x);
 
 /* Called from w_call_c's template; read by w_bump_counter's. */
 int c_counter = 40;
@@ -201,6 +202,7 @@ int main(void)
 
 	/* Statics of the W unit named from a template. */
 	CHECK(w_statics(3) == 87, "template names W statics");
+	CHECK(w_pop_mem(41) == 42, "pop to memory");
 
 	if (fails == 0) printf("native_asm driver: all checks passed\n");
 	return fails == 0 ? 0 : 1;

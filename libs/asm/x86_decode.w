@@ -786,6 +786,15 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# pop r/m (0x8f /0), 64-bit by default in x64 like push r/m.
+	if (op == 0x8f):
+		int modrm = asm_x86_u8(d)
+		if (((modrm >> 3) & 7) != 0): return asm_x86_unknown(insn, bytes)
+		insn.mnemonic = c"pop"
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, asm_x86_stack_opsize(d))
+		insn.length = d.pos - start
+		return insn.length
+
 	# grp5 (0xff): inc/dec/call/jmp/push r/m32
 	if (op == 0xff):
 		int modrm = asm_x86_u8(d)

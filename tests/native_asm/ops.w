@@ -244,3 +244,15 @@ export int w_statics(int a):
 		"movq %rbx, %rsp"
 		"addl w_private(%rip), %eax"
 	return out
+
+# pop to memory (0x8f /0), as the kernel's crash_setup_regs() (kexec.h)
+# pops pushed flags into pt_regs (`pushfq; popq %0`).
+export int w_pop_mem(int x):
+	int64 slot = 0
+	asm_native:
+		input rax = x
+		input rcx = &slot
+		"pushq %rax"
+		"popq (%rcx)"
+		"addq $1, (%rcx)"
+	return cast(int, slot)
