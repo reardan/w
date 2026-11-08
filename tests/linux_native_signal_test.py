@@ -8,6 +8,16 @@ import subprocess
 import tempfile
 import time
 
+
+def child_gone(stat):
+    """The child is reaped (no /proc entry) or a zombie. The entry can
+    vanish between an exists() check and the read, so read once."""
+    try:
+        return stat.read_text().split()[2] == 'Z'
+    except FileNotFoundError:
+        return True
+
+
 root = Path.cwd()
 for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
     with tempfile.TemporaryDirectory(prefix='native-signal-', dir=root / 'bin') as tmp:
@@ -30,9 +40,9 @@ for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             assert not lock.exists(), 'termination left its lock behind'
             stat = Path('/proc') / pidfile.read_text().strip() / 'stat'
             deadline = time.monotonic() + 5
-            while stat.exists() and stat.read_text().split()[2] != 'Z' and time.monotonic() < deadline:
+            while not child_gone(stat) and time.monotonic() < deadline:
                 time.sleep(.01)
-            assert not stat.exists() or stat.read_text().split()[2] == 'Z', 'child survived termination'
+            assert child_gone(stat), 'child survived termination'
         finally:
             if process.poll() is None:
                 process.kill()
