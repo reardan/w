@@ -147,6 +147,16 @@ struct ui_context:
 	int32 access_selection_id
 	int32 access_selection_anchor
 	int32 access_selection_active
+	# Item selection requests (UI_ACCESS_SELECT) for multi-selection
+	# containers: the item's id and its UI_ACCESS_SELECT_* mode.
+	int32[256] access_selects
+	int32[256] access_select_modes
+	int32 access_select_count
+	# A focused container (a list) names the item assistive technology
+	# should treat as focused, its cursor; ui_end publishes it as the
+	# snapshot's focused node while access_focus_owner holds focus.
+	int32 access_focus_owner
+	int32 access_focus_child
 	# Clipboard (docs/projects/ui_clipboard.md). A text widget's copy or
 	# cut leaves its text in clip_out until the next ui_begin_window hands
 	# it to the platform; a paste names the widget waiting for text in
