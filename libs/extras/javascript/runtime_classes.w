@@ -236,71 +236,106 @@ js_node* js_runtime_class_constructor(js_node* node):
 # ClassDefinitionEvaluation. The class scope holds the immutable inner name,
 # uninitialized while heritage and computed keys evaluate. A declaration
 # also initializes its outer lexical binding and has an empty completion.
+js_value* js_runtime_class_save(js_runtime* rt, js_node* node, int phase, js_value* scope, js_value* prototype, js_value* constructor, int member):
+	js_value* saved = js_frame_save(rt, node, phase)
+	if (saved == 0): return 0
+	saved.parent = scope
+	js_frame_put(saved, prototype)
+	js_frame_put(saved, constructor)
+	js_frame_set_int(saved, 0, member)
+	return saved
+
+
+# In a generator the heritage (frame phase 0) and computed member keys
+# (phase 1, member index in int slot 0) may suspend; the frame keeps the
+# class scope and the prototype and constructor built so far.
 js_value* js_runtime_class_named(js_runtime* rt, js_node* node, js_value* env, char* function_name):
-	js_value* scope = js_runtime_environment(rt, env)
-	if (rt.completion.status != 0): return rt.undefined_value
-	scope.strict = 1
+	js_value* frame = js_frame_resume(rt, node)
+	int phase = 0
+	int first_member = 1
+	js_value* scope = 0
+	js_value* prototype = rt.undefined_value
+	js_value* constructor = rt.undefined_value
+	if (frame != 0):
+		phase = frame.array_length
+		scope = frame.parent
+		prototype = js_frame_get(frame, 0)
+		constructor = js_frame_get(frame, 1)
+		first_member = js_frame_int(frame, 0)
+	else:
+		scope = js_runtime_environment(rt, env)
+		if (rt.completion.status != 0): return rt.undefined_value
+		scope.strict = 1
 	js_text* name = js_runtime_key(node.text)
 	js_value* inner = 0
 	if (name.units.length > 0):
-		js_runtime_put(rt, scope, name, rt.undefined_value)
-		inner = js_runtime_property(scope, name)
-		if (inner != 0):
-			inner.initialized = 0
-			inner.immutable = 1
-			inner.lexical_binding = 1
-	js_value* prototype_parent = 0
-	js_value* constructor_parent = rt.function_prototype
-	int derived = 0
-	if (js_kind(node.children[0], c"empty") == 0):
-		derived = 1
-		js_value* heritage = js_runtime_eval_node(rt, node.children[0], scope)
-		if (rt.completion.status == 0 && heritage.kind != 1):
-			if (js_runtime_is_constructor(rt, heritage) == 0): js_runtime_fail(rt, 2, c"class heritage is not a constructor")
-			else:
-				js_text* key = js_runtime_key(c"prototype")
-				js_value* parent = js_runtime_member_read(rt, heritage, key)
-				js_text_free(key)
-				if (rt.completion.status == 0 && parent.kind != 1):
-					if (js_runtime_is_object(parent)): prototype_parent = parent
-					else: js_runtime_fail(rt, 2, c"class heritage prototype is not an object or null")
-				constructor_parent = heritage
-	js_value* prototype = rt.undefined_value
-	js_value* constructor = rt.undefined_value
+		if (frame == 0):
+			js_runtime_put(rt, scope, name, rt.undefined_value)
+			inner = js_runtime_property(scope, name)
+			if (inner != 0):
+				inner.initialized = 0
+				inner.immutable = 1
+				inner.lexical_binding = 1
+		else: inner = js_runtime_property(scope, name)
 	js_node* definition = js_runtime_class_constructor(node)
-	if (rt.completion.status == 0): prototype = js_runtime_alloc(rt, 5)
+	if (phase == 0):
+		js_value* prototype_parent = 0
+		js_value* constructor_parent = rt.function_prototype
+		int derived = 0
+		if (js_kind(node.children[0], c"empty") == 0):
+			derived = 1
+			js_value* heritage = js_runtime_eval_node(rt, node.children[0], scope)
+			if (js_runtime_class_save(rt, node, 0, scope, 0, 0, 1) != 0):
+				js_text_free(name)
+				return rt.undefined_value
+			if (rt.completion.status == 0 && heritage.kind != 1):
+				if (js_runtime_is_constructor(rt, heritage) == 0): js_runtime_fail(rt, 2, c"class heritage is not a constructor")
+				else:
+					js_text* key = js_runtime_key(c"prototype")
+					js_value* parent = js_runtime_member_read(rt, heritage, key)
+					js_text_free(key)
+					if (rt.completion.status == 0 && parent.kind != 1):
+						if (js_runtime_is_object(parent)): prototype_parent = parent
+						else: js_runtime_fail(rt, 2, c"class heritage prototype is not an object or null")
+					constructor_parent = heritage
+		if (rt.completion.status == 0): prototype = js_runtime_alloc(rt, 5)
+		if (rt.completion.status == 0):
+			prototype.prototype = prototype_parent
+			if (definition != 0): constructor = js_runtime_function(rt, definition.children[1], scope)
+			else: constructor = js_runtime_alloc(rt, 7)
+		if (rt.completion.status == 0):
+			int length = 0
+			if (definition != 0): length = definition.children[1].children[0].children.length
+			else:
+				constructor.code = node
+				constructor.parent = scope
+			constructor.strict = 1
+			constructor.class_kind = 1 + derived
+			constructor.home_object = prototype
+			constructor.prototype = constructor_parent
+			js_text* key = js_runtime_key(c"length")
+			js_runtime_define_data(rt, constructor, key, js_runtime_number(rt, cast(float64, length)), 0, 0, 1)
+			js_text_free(key)
+			js_text* label = js_runtime_key(function_name)
+			js_runtime_set_name(rt, constructor, c"", label)
+			js_text_free(label)
+			key = js_runtime_key(c"prototype")
+			js_runtime_define_data(rt, constructor, key, prototype, 0, 0, 0)
+			js_text_free(key)
+			key = js_runtime_key(c"constructor")
+			js_runtime_define_data(rt, prototype, key, constructor, 1, 0, 1)
+			js_text_free(key)
 	if (rt.completion.status == 0):
-		prototype.prototype = prototype_parent
-		if (definition != 0): constructor = js_runtime_function(rt, definition.children[1], scope)
-		else: constructor = js_runtime_alloc(rt, 7)
-	if (rt.completion.status == 0):
-		int length = 0
-		if (definition != 0): length = definition.children[1].children[0].children.length
-		else:
-			constructor.code = node
-			constructor.parent = scope
-		constructor.strict = 1
-		constructor.class_kind = 1 + derived
-		constructor.home_object = prototype
-		constructor.prototype = constructor_parent
-		js_text* key = js_runtime_key(c"length")
-		js_runtime_define_data(rt, constructor, key, js_runtime_number(rt, cast(float64, length)), 0, 0, 1)
-		js_text_free(key)
-		js_text* label = js_runtime_key(function_name)
-		js_runtime_set_name(rt, constructor, c"", label)
-		js_text_free(label)
-		key = js_runtime_key(c"prototype")
-		js_runtime_define_data(rt, constructor, key, prototype, 0, 0, 0)
-		js_text_free(key)
-		key = js_runtime_key(c"constructor")
-		js_runtime_define_data(rt, prototype, key, constructor, 1, 0, 1)
-		js_text_free(key)
-		for i in range(1, node.children.length):
+		for i in range(first_member, node.children.length):
 			js_node* member = node.children[i]
 			if (member == definition): continue
 			js_value* target = prototype
 			if (js_kind(member, c"static_method")): target = constructor
-			if (js_runtime_class_member(rt, member, target, scope) == 0): break
+			int defined = js_runtime_class_member(rt, member, target, scope)
+			if (js_runtime_class_save(rt, node, 1, scope, prototype, constructor, i) != 0):
+				js_text_free(name)
+				return rt.undefined_value
+			if (defined == 0): break
 	if (rt.completion.status == 0 && inner != 0):
 		inner.value = constructor
 		inner.initialized = 1

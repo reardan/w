@@ -71,6 +71,8 @@ void test_resumable_constructs():
 	co_true(rt, c"function* tc() { var log = ''; try { log += yield 1; throw 'x'; } catch (e) { log += e; log += yield 2; } finally { log += yield 3; } return log; } var i = tc(); i.next(); i.next('a'); i.next('b'); i.next('c').value === 'axbc';")
 	co_true(rt, c"function* decl() { var a = yield 1, b = a + (yield 2); let c = yield 3; return a + b + c; } var i = decl(); i.next(); i.next(1); i.next(2); i.next(3).value === 7;")
 	co_true(rt, c"var obj = { *m() { yield this.k; }, k: 8, async am() { return 1; } }; obj.m().next().value === 8 && obj.m.name === 'm' && typeof obj.am().then === 'function';")
+	co_true(rt, c"function B() {} function* cls() { class C extends (yield 'heritage', B) { [yield 'key']() { return 1; } static get [yield 'static']() { return 2; } } return new C().m() + C.st + (new C() instanceof B ? 4 : 0); } var i = cls(); i.next(); i.next(B); i.next('m'); i.next('st').value === 7;")
+	co_true(rt, c"function B() {} function* g() { class C extends (B) { [yield 'k']() { return 3; } } var o = { *extends() { yield 4; } }; return new C().m() + o.extends().next().value; } var i = g(); i.next(); i.next('m').value === 7;")
 	# yield* delegates next/throw/return and passes results through.
 	co_true(rt, c"function* inner() { var x = yield 1; return x * 2; } function* outer() { var r = yield* inner(); yield r; } var i = outer(); i.next(); i.next(21).value === 42;")
 	co_true(rt, c"var result = { value: 5, done: false }; var iterable = { [Symbol.iterator]() { return { next() { return result; } }; } }; function* d() { yield* iterable; } d().next() === result;")

@@ -185,7 +185,7 @@ int js_coroutine_async_generator_code(js_value* env):
 # suspends. Structural children (declarators, catch, case, spread, property
 # parts and template text) are resumed by their parent construct.
 int js_coroutine_resumable(js_node* node):
-	char* kinds = c"yield await block variable declarator expression_statement return throw label if conditional while do_while for for_of for_await_of try catch switch case default binary unary assignment member computed_member call construct array object spread property computed_property computed_key template"
+	char* kinds = c"yield await block variable declarator expression_statement return throw label if conditional while do_while for for_of for_await_of try catch switch case default binary unary assignment member computed_member call construct array object spread property computed_property computed_key template class class_expression method static_method"
 	int found = 0
 	int start = 0
 	int length = strlen(node.kind)
