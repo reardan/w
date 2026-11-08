@@ -240,7 +240,7 @@ export function createInput({ canvas, editor, state, pushEvent,
   // and hands a paste's text to W's read without a permission prompt;
   // navigator.clipboard (asynchronous, permission-gated) is only the
   // fallback for reads and writes outside those events.
-  const clip = { inEvent: false, written: null, rich: null, pasted: null, memo: '' };
+  const clip = { inEvent: false, written: null, rich: null, pasted: null, memo: '', direct: null };
   // The rich flavors (text/html, image/png) go through navigator.clipboard.write
   // as one ClipboardItem; clipboardData cannot carry an image in Chromium.
   // Inside a copy event the call still runs in the user's gesture.
@@ -255,6 +255,16 @@ export function createInput({ canvas, editor, state, pushEvent,
   };
   const clipEvent = e => {
     const data = e.clipboardData;
+    // A copy this page started itself (execCommand below): fill it in, no
+    // W frame (one is already running).
+    if (clip.direct && e.type !== 'paste') {
+      if (!data) return;
+      data.setData('text/plain', clip.direct.text);
+      if (clip.direct.rich?.html) data.setData('text/html', clip.direct.rich.html);
+      e.preventDefault();
+      clip.direct.used = true;
+      return;
+    }
     if (e.type === 'paste') {
       const text = data?.getData('text/plain') ?? '';
       e.preventDefault();
@@ -279,10 +289,28 @@ export function createInput({ canvas, editor, state, pushEvent,
     }
   };
   for (const type of ['copy', 'cut', 'paste']) doc.addEventListener?.(type, clipEvent);
+  // Outside a copy event, a W frame still runs inside a user gesture when a
+  // click or key started it (pointerup and keydown flush synchronously).
+  // There document.execCommand('copy') works without the clipboard-write
+  // permission navigator.clipboard needs (headless Chromium denies it), by
+  // firing a copy event this page answers; elsewhere it returns false and
+  // the asynchronous API is the fallback.
+  const execCopy = (text, rich) => {
+    if (typeof doc?.execCommand !== 'function') return false;
+    clip.direct = { text, rich, used: false };
+    let done = false;
+    try { done = doc.execCommand('copy'); } catch { done = false; }
+    const used = clip.direct.used;
+    clip.direct = null;
+    return done && used;
+  };
   const clipboardWrite = (text, rich = null) => {
     clip.memo = text;
     if (clip.inEvent) { clip.written = text; clip.rich = rich; return; }
-    if ((rich?.html || rich?.png) && writeItem(text, rich)) return;
+    const copied = execCopy(text, rich);
+    if (rich?.png && writeItem(text, rich)) return;
+    if (copied) return;
+    if (rich?.html && writeItem(text, rich)) return;
     nav?.clipboard?.writeText?.(text)?.catch?.(err => log(`clipboard write refused: ${err}`));
   };
   // A string, or a Promise of one; '' when the browser refuses.

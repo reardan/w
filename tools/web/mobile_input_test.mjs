@@ -547,4 +547,30 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   bare.clipboardWrite('only text', { html: '<b>x</b>', png });
   assert.deepEqual(texts, ['only text']);
 }
-console.log('mobile_input_test OK (38 scenarios)');
+// Outside an event, a write inside a gesture goes through execCommand('copy'),
+// whose copy event the page answers without running another W frame.
+{
+  const writes = [];
+  const canvas = new Target(), editor = new Target(), doc = new Target();
+  canvas.doc = editor.doc = doc;
+  let frames = 0;
+  const set = {};
+  doc.execCommand = command => {
+    assert.equal(command, 'copy');
+    doc.fire('copy', { type: 'copy', clipboardData: { setData(type, text) { set[type] = text; } } });
+    return true;
+  };
+  const input = createInput({ canvas, editor, document: doc, window: new Target(),
+    navigator: { clipboard: { writeText: async t => { writes.push(t); } } },
+    state: { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 }, pushEvent: () => {},
+    flushFrame: () => { frames++; } });
+  input.clipboardWrite('from a click', { html: '<i>c</i>', png: null });
+  assert.deepEqual(set, { 'text/plain': 'from a click', 'text/html': '<i>c</i>' });
+  assert.equal(frames, 0, 'the page-started copy event runs no W frame');
+  assert.deepEqual(writes, [], 'no navigator.clipboard write when execCommand worked');
+  // Without a gesture execCommand reports false: the async API takes over.
+  doc.execCommand = () => false;
+  input.clipboardWrite('from a frame');
+  assert.deepEqual(writes, ['from a frame']);
+}
+console.log('mobile_input_test OK (39 scenarios)');
