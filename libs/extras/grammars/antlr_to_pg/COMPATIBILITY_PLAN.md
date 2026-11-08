@@ -34,8 +34,10 @@ matrix, original-cohort comparison, and per-grammar remaining causes live in
 | Dependencies | Declaration-ordered imports, root overrides, diamond deduplication, token-vocabulary identity handling, and explicit missing-import/host-semantic refusals |
 | Runtime promotion | Offline snapshots plus a separately pinned live Java oracle, 24 grammar families / 170 inputs, deterministic mutation cases, lossless source reconstruction, and documented legacy mismatches |
 
-The chosen parser is bounded continuation search, not ALL(*). It has no DFA cache
-and can take exponential work up to its execution budget. Its normalized W AST
+The chosen parser is bounded continuation search, not ALL(*). A one-token
+prediction cache per decision and a failure cache keyed by rule, position and
+continuation (#914) remove only doomed work; it can still take exponential work
+up to its execution budget, and the sweep bounds each pinned example's work. Its normalized W AST
 exposes source provenance and labels; ANTLR context/listener API identity remains
 outside scope. Foreign host actions, predicates, superclass semantics, arbitrary
 indirect/hidden left recursion, and incomplete upstream definitions remain named

@@ -90,7 +90,8 @@ entry rule starts at the first parser rule, as the sweep does. A rejected input
 logs W's diagnostics in its `.w.log`, which distinguishes a syntax error from
 an exhausted prediction budget. Measured on the 15 newly lowered grammars whose generated Java
 compiles without host support (alef, alloy, cayenne, clu, elixir, gql,
-hypertalk, peoplecode, plucid, refal, sapf, semver, spl, tl, vb6): **73 of 75
-example files produce identical trees or identical rejections**. The other two
-(elixir `block.ex`, hypertalk `Script.txt`) exceed W's one-million-step
-prediction budget, an explicit resource failure rather than a different tree.
+hypertalk, peoplecode, plucid, refal, sapf, semver, spl, tl, vb6): **all 75
+example files produce identical trees or identical rejections**. Elixir
+`block.ex` and hypertalk `Script.txt` used to exceed W's one-million-step
+prediction budget; since #914's prediction caches they parse in 61,281 and
+96,838 steps.
