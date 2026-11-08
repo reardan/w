@@ -120,6 +120,7 @@ export int w_relabel():
 	asm_native:
 		output rax:4 = &out
 		"xorl %eax, %eax"
+		"rep; nop"
 		"jmp 1f"
 		"addl $100, %eax"
 		"1: incl %eax"
@@ -221,3 +222,23 @@ export int w_lock_add(int* p, int add):
 		".quad c_triple - ."
 		".previous"
 	return old
+
+# A template names the unit's own statics, as head64.c's rip_rel_ptr()
+# names next_early_pgt: they bind to the object's local symbols.
+static int w_private = 77
+
+static int w_add7(int x):
+	return x + 7
+
+export int w_statics(int a):
+	int out = 0
+	asm_native:
+		input rdi = a
+		output rax:4 = &out
+		clobber rbx
+		"movq %rsp, %rbx"
+		"andq $-16, %rsp"
+		"call w_add7"
+		"movq %rbx, %rsp"
+		"addl w_private(%rip), %eax"
+	return out

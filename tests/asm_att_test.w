@@ -73,6 +73,11 @@ int main():
 	att_is(c"movq 8(%rdi), %rax", c"48 8B 47 08")
 	att_is(c"leaq (%rdi,%rsi,4), %rax", c"48 8D 04 B7")
 	att_is(c"movq -16(%rbp), %rax", c"48 8B 45 F0")
+	# Constant displacement expressions (csum-partial_64's `2*8(%rcx)`).
+	att_is(c"addq 0*8(%rcx),%rax", c"48 03 01")
+	att_is(c"adcq 3*8(%rcx),%rax", c"48 13 41 18")
+	att_is(c"movq 2*8+4(%rdi), %rax", c"48 8B 47 14")
+	att_is(c"movq 32-8(%rdi), %rax", c"48 8B 47 18")
 
 	# Bit tests and scans.
 	att_is(c"btq %rcx, %rax", c"48 0F A3 C8")
@@ -104,6 +109,11 @@ int main():
 	att_is(c"wbinvd", c"0F 09")
 	att_is(c"hlt", c"F4")
 	att_is(c"nop", c"90")
+	att_is(c"pause", c"F3 90")
+	att_is(c"rep nop", c"F3 90")
+	att_is(c"rep bsf %rcx,%rax", c"F3 48 0F BC C1")
+	att_is(c"rep bsfl %ecx, %eax", c"F3 0F BC C1")
+	att_is(c"rep bsr %rcx,%rax", c"F3 48 0F BD C1")
 
 	# Flag setters and conditional set (not suffix-split).
 	att_is(c"sete %al", c"0F 94 C0")

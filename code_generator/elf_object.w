@@ -952,13 +952,18 @@ void object_layout():
 			object_asm_out[i] = index
 
 
-# The global (or undefined) symbol named name, appended as an undefined
-# global when the object has none yet. Symbols from first_global on are
-# the global ones.
+# The symbol a template's name binds to, as the assembler binds it: a
+# global (or undefined) symbol of that name, else a local definition
+# (a C static of the unit), else a new undefined global. Symbols from
+# first_global on are the global ones; index 0 and the section symbols
+# have no name.
 int object_global_symbol_named(char* name, int first_global):
 	for i in range(first_global, object_symbol_count):
 		int name_off = load_int32(object_symtab.bytes + i * 24)
 		if (strcmp(object_strtab.bytes + name_off, name) == 0): return i
+	for i in range(1, first_global):
+		int name_off = load_int32(object_symtab.bytes + i * 24)
+		if ((name_off != 0) && (strcmp(object_strtab.bytes + name_off, name) == 0)): return i
 	return object_symbol(name, 1, 0, 0, 0, 0)
 
 
