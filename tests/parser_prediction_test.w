@@ -191,6 +191,38 @@ void prediction_lookahead():
 	pg_diagnostics_free(diagnostics)
 
 
+# Twenty adjacent ambiguous pairs before a missing B: every split of the
+# a's reaches the same later (rule, position, continuation) states, so after
+# the first exhausted call each one fails at once instead of re-running
+# the rest of the sequence (Fibonacci many paths without the cache).
+void prediction_failure_cache():
+	string_builder* rules = string_from(c"rule start =")
+	for i in range(20): string_append(rules, c" pair")
+	string_append(rules, c" B EOF\nrule pair = A | A A\n")
+	pg_grammar* grammar = prediction_grammar(rules.data)
+	pg_prediction_program* program = pg_prediction_build(grammar)
+	pg_token_stream* stream = prediction_tokens(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac")
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	assert1(pg_prediction_parse(program, 0, stream, diagnostics) == 0)
+	# Without the failure cache this rejection exceeds the 1,000,000-step
+	# budget; with it, 847 steps.
+	assert1(program.steps < 1000)
+	assert_equal(0, stream.resource_failed)
+	assert_equal(0, diagnostics.items.length)
+	pg_token_stream_free(stream)
+	stream = prediction_tokens(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaab")
+	pg_ast_node* root = pg_prediction_parse(program, 0, stream, diagnostics)
+	assert1(root != 0)
+	assert1(program.steps < 1000)
+	assert_equal(1, pg_ast_get_metadata(root.children[0], c"pg_alternative", -1))
+	pg_ast_free(root)
+	pg_token_stream_free(stream)
+	pg_prediction_free(program)
+	pg_grammar_free(grammar)
+	pg_diagnostics_free(diagnostics)
+	string_free(rules)
+
+
 void prediction_metadata():
 	char* source = c"parser metadata\nmode antlr\nliteral A \"a\"\nstart start\nrule start = item EOF\nrule item = A\nnode_meta item \"1\" \"origin\" \"7\"\nterm_meta item \"1\" \"1\" \"argument\" \"1\"\n"
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
@@ -253,5 +285,6 @@ int main():
 	prediction_linear()
 	prediction_memo_replay()
 	prediction_lookahead()
+	prediction_failure_cache()
 	println(c"continuation prediction, priority, rollback and bounded failure passed")
 	return 0

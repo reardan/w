@@ -2,10 +2,11 @@
 # repetitions are explored with the complete caller continuation. AST nodes are
 # allocated only after a successful derivation, never during speculation.
 # This is bounded depth-first configuration execution with memoized rule
-# calls (see pg_prediction_record) and a one-token prediction cache per
-# decision (see pg_prediction_predict), not an ALL(*) simulator: the cache
-# only removes alternatives that cannot succeed, so the selected derivation
-# is always the one unfiltered depth-first search selects.
+# calls and a failure cache keyed by rule, position and continuation (see
+# pg_prediction_record), plus a one-token prediction cache per decision (see
+# pg_prediction_predict). It is not an ALL(*) simulator: both caches only
+# remove work that cannot succeed, so the selected derivation is always the
+# one unfiltered depth-first search selects.
 import libs.extras.parser_generator.runtime
 
 
@@ -253,6 +254,16 @@ pg_ast_node* pg_prediction_replay(pg_prediction_program* program, list[int] even
 # selected derivation is therefore exactly the one plain depth-first search
 # selects; only repeated work disappears. Events form a persistent chain so
 # a replay splices a recorded segment in O(1).
+#
+# Whether a call can still lead to acceptance depends only on the callee,
+# its token position and its whole continuation (the return stack), which is
+# interned as (return instruction, caller continuation) so equal stacks share
+# one id. Once backtracking exhausts a call, that (rule, position,
+# continuation) is known to fail and is kept in the record's `failed` set; a
+# later identical call, reached through a different derivation of the input
+# before it, fails at once. That repeated work dominates the search of an
+# input that is ultimately rejected. Everything pruned would have failed, so
+# the selected derivation is still the plain depth-first one.
 struct pg_prediction_record:
 	int depth
 	int start
@@ -260,6 +271,7 @@ struct pg_prediction_record:
 	list[int] ends
 	list[int] tails
 	map[int, int] seen
+	map[int, int] failed
 
 
 struct pg_prediction_state:
@@ -273,6 +285,12 @@ struct pg_prediction_state:
 	list[pg_prediction_record*] records
 	list[int] open
 	map[int, map[int, int]] memo
+	list[int] frame_continuations
+	map[int, map[int, int]] continuations
+	int continuation_count
+	list[int] pending_record
+	list[int] pending_continuation
+	list[int] pending_depth
 
 
 pg_prediction_state* pg_prediction_state_new():
@@ -287,6 +305,12 @@ pg_prediction_state* pg_prediction_state_new():
 	state.records = new list[pg_prediction_record*]
 	state.open = new list[int]
 	state.memo = new map[int, map[int, int]]
+	state.frame_continuations = new list[int]
+	state.continuations = new map[int, map[int, int]]
+	state.continuation_count = 1
+	state.pending_record = new list[int]
+	state.pending_continuation = new list[int]
+	state.pending_depth = new list[int]
 	return state
 
 
@@ -296,6 +320,7 @@ void pg_prediction_state_free(pg_prediction_state* state):
 		__w_list_free(cast(__w_list*, record.ends))
 		__w_list_free(cast(__w_list*, record.tails))
 		__w_map_free(cast(__w_hash_table*, record.seen))
+		__w_map_free(cast(__w_hash_table*, record.failed))
 		free(record)
 	for int position in state.memo.keys(): __w_map_free(cast(__w_hash_table*, state.memo[position]))
 	__w_map_free(cast(__w_hash_table*, state.memo))
@@ -308,6 +333,12 @@ void pg_prediction_state_free(pg_prediction_state* state):
 	__w_list_free(cast(__w_list*, state.branches))
 	__w_list_free(cast(__w_list*, state.records))
 	__w_list_free(cast(__w_list*, state.open))
+	for int caller in state.continuations.keys(): __w_map_free(cast(__w_hash_table*, state.continuations[caller]))
+	__w_map_free(cast(__w_hash_table*, state.continuations))
+	__w_list_free(cast(__w_list*, state.frame_continuations))
+	__w_list_free(cast(__w_list*, state.pending_record))
+	__w_list_free(cast(__w_list*, state.pending_continuation))
+	__w_list_free(cast(__w_list*, state.pending_depth))
 	free(state)
 
 
@@ -365,6 +396,7 @@ int pg_prediction_remember(pg_prediction_state* state, int callee, int position,
 	record.ends = new list[int]
 	record.tails = new list[int]
 	record.seen = new map[int, int]
+	record.failed = new map[int, int]
 	int index = state.records.length
 	state.records.push(record)
 	if (!(position in state.memo)): state.memo[position] = new map[int, int]
@@ -381,6 +413,29 @@ void pg_prediction_close(pg_prediction_state* state):
 		if (record.depth <= state.branches.length): return
 		record.complete = 1
 		state.open.pop()
+
+
+# The interned identity of a call's whole continuation: return to `pc`, then
+# continue as `caller` (0 is the entry's own end-of-input check).
+int pg_prediction_continuation(pg_prediction_state* state, int caller, int pc):
+	if (!(caller in state.continuations)): state.continuations[caller] = new map[int, int]
+	map[int, int] known = state.continuations[caller]
+	if (pc in known): return known[pc]
+	int id = state.continuation_count
+	state.continuation_count = id + 1
+	known[pc] = id
+	return id
+
+
+# Backtracking to a branch older than a call means every derivation of the
+# callee failed with that continuation: remember it in the call's record.
+void pg_prediction_fail_calls(pg_prediction_state* state):
+	while (state.pending_depth.length > 0):
+		if (state.pending_depth[state.pending_depth.length - 1] <= state.branches.length): return
+		state.pending_depth.pop()
+		int continuation = state.pending_continuation.pop()
+		pg_prediction_record* record = state.records[state.pending_record.pop()]
+		record.failed[continuation] = 1
 
 
 # The caller chooses an explicit work budget. Each step allocates a bounded
@@ -411,6 +466,7 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 			if (branches.length == 0): break
 			pg_prediction_branch* branch = branches.pop()
 			pg_prediction_close(state)
+			pg_prediction_fail_calls(state)
 			frame = branch.frame
 			tail = branch.events
 			if (branch.record < 0):
@@ -483,7 +539,18 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 				if (pg_prediction_viable(program, pc, pg_token_stream_get(stream, position).kind) == 0):
 					fail = 1
 					continue
+			int caller = 0
+			if (frame >= 0): caller = state.frame_continuations[frame / 2]
+			int continuation = pg_prediction_continuation(state, caller, op.next)
 			int known = pg_prediction_lookup(state, op.value, position)
+			if ((known >= 0) && (continuation in state.records[known].failed)):
+				fail = 1
+				continue
+			int owner = known
+			if (owner < 0): owner = pg_prediction_remember(state, op.value, position, tail)
+			state.pending_record.push(owner)
+			state.pending_continuation.push(continuation)
+			state.pending_depth.push(branches.length)
 			if ((known >= 0) && state.records[known].complete):
 				pg_prediction_record* record = state.records[known]
 				if (record.ends.length == 0):
@@ -506,12 +573,13 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 			# A call re-entered while its first exploration is still open
 			# (only possible through an empty derivation) runs unmemoized.
 			int created = -1
-			if (known < 0): created = pg_prediction_remember(state, op.value, position, tail)
+			if (known < 0): created = owner
 			int previous = frame
 			frame = frames.length
 			frames.push(op.next)
 			frames.push(previous)
 			state.frame_records.push(created)
+			state.frame_continuations.push(continuation)
 			pc = op.value
 			continue
 		if (op.kind == 3):
