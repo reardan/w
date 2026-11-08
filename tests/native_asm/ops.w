@@ -196,6 +196,8 @@ export int w_probe(int* p, int* fault_site):
 # symbol value (R_X86_64_32) and a PC-relative one to a C function.
 export void w_misc_marker():
 	asm_native:
+		".balign 8"
+		".p2align 4, 0x90"
 		"1: nop"
 		"2: nop; nop"
 		".pushsection w_misc,\"a\""
