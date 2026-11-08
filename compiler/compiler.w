@@ -880,6 +880,8 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--emit=obj") == 0): return 1
 	if (strcmp(arg, c"--freestanding") == 0): return 1
 	if (strcmp(arg, c"--kernel-codegen") == 0): return 1
+	if (strcmp(arg, c"--function-return=thunk-extern") == 0): return 1
+	if (strcmp(arg, c"--indirect-branch=thunk-extern") == 0): return 1
 	if (strcmp(arg, c"--stack-usage") == 0): return 1
 	if (strcmp(arg, c"--c-abi") == 0): return 1
 	if (starts_with(arg, c"--link=")): return 1
@@ -1396,6 +1398,19 @@ void finish_on_demand_imports():
 # has no entry point (elf_all.w, static_library_write), so lib.lib's
 # _main -> main call is unreachable and a library such as an Android app
 # (exported callbacks) defines none.
+# --kernel-codegen objects (code_generator/x64_asm.w): the built-in asm
+# stubs, after the last function, when code calls or takes one that
+# nothing else defined.
+void x64_runtime_emit_if_used():
+	int used = 0
+	int i = 0
+	while (x64_runtime_stub_name(i) != 0):
+		int t = sym_lookup(x64_runtime_stub_name(i))
+		if ((t >= 0) && (table[t + 1] == 'U') && ((sym_value_at(t) != code_offset) || (sym_rel_chain(t) != 0))): used = 1
+		i = i + 1
+	if (used): define_asm_functions_x64()
+
+
 void undefined_function_check():
 	int failures = 0
 	int t = 0
@@ -1650,6 +1665,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
 		else if (strcmp(*flag_arg, c"--kernel-codegen") == 0): kernel_codegen = 1
+		else if (strcmp(*flag_arg, c"--function-return=thunk-extern") == 0): return_thunk_mode = 1
+		else if (strcmp(*flag_arg, c"--indirect-branch=thunk-extern") == 0): indirect_thunk_mode = 1
 		else if (strcmp(*flag_arg, c"--stack-usage") == 0): stack_usage_mode = 1
 		else if (strcmp(*flag_arg, c"--c-abi") == 0): c_abi_mode = 1
 		else if (strcmp(*flag_arg, c"--shared") == 0):
@@ -1746,6 +1763,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
 	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
 	if (kernel_codegen && (freestanding_mode == 0)): target_option_error(c"--kernel-codegen requires --emit=obj --freestanding")
+	if ((return_thunk_mode || indirect_thunk_mode) && (c_abi_mode == 0)): target_option_error(c"thunk-extern returns and indirect branches require --emit=obj --freestanding --c-abi")
 	if (stack_usage_mode && (target_isa != 0)): target_option_error(c"--stack-usage requires an x86 or x64 target")
 	# --c-abi: the W runtime's own callbacks keep W's convention, so it
 	# is for freestanding objects only; a value use of a function name
@@ -1957,6 +1975,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# only the program's entry file imports. Linking the whole program
 	# is where the missing body becomes a real error.
 	if (check_mode == 0):
+		if (elf_object && kernel_codegen): x64_runtime_emit_if_used()
 		undefined_function_check()
 		global_address_finish()
 

@@ -2886,6 +2886,10 @@ void imul_eax_int32(int v):
 int emitted_call_count
 
 
+void emit_x64_call_register(int reg);   /* below */
+void emit_x64_ret();
+
+
 void call_eax():
 	if (target_isa == 3): error(c"gpu code cannot call functions")
 	else:
@@ -2909,7 +2913,8 @@ void call_eax():
 		# their homes (R3); nothing is emitted when no loop owns any.
 		inline_real_calls = inline_real_calls + 1
 		regalloc_call_spill()
-		emit(2, c"\xff\xd0") /* call *%eax */
+		if (word_size == 8): emit_x64_call_register(0) /* call *%rax */
+		else: emit(2, c"\xff\xd0") /* call *%eax */
 		regalloc_call_reload()
 
 
@@ -4659,7 +4664,38 @@ void ret():
 	else:
 		if (ers_count != 0): ers_assert_none()
 		wgrind_function_return()
+		emit_x64_ret()
+
+
+# A return in x86/x64 code: 'ret', or under --function-return=thunk-extern
+# 'jmp __x86_return_thunk' (an object's PLT32 jump; elf_object.w reads
+# the e9 cell against the import slot), which a kernel patches.
+int static_link_import_slot(char* name);   /* code_generator/static_link.w */
+void emit_x64_ret():
+	if (return_thunk_mode == 0):
 		emit(1, c"\xc3") /* ret */
+		return
+	int slot = static_link_import_slot(c"__x86_return_thunk")
+	emit_int8(0xe9)
+	static_note_address(codepos)
+	emit_int32(slot - code_offset - codepos - 4)
+
+
+# call through register reg (0 rax .. 15 r15): 'call reg', or under
+# --indirect-branch=thunk-extern 'call __x86_indirect_thunk_<reg>'.
+void emit_x64_call_register(int reg):
+	if (indirect_thunk_mode == 0):
+		if (reg >= 8): emit_int8(0x41)
+		emit_int8(0xff)
+		emit_int8(0xd0 | (reg & 7))
+		return
+	char* name = c"__x86_indirect_thunk_rax"
+	if (reg == 11): name = c"__x86_indirect_thunk_r11"
+	else if (reg != 0): error(c"internal error: no indirect thunk for this register")
+	int slot = static_link_import_slot(name)
+	emit_int8(0xe8)
+	static_note_address(codepos)
+	emit_int32(slot - code_offset - codepos - 4)
 
 # Framed arm64 return: x28 = x29 drops the body's words, the pair pop
 # restores the caller's x29 and the return address and leaves x28 as it

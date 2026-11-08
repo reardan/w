@@ -66,6 +66,27 @@ int const_checked(int v, int overflowed):
 	return v
 
 
+# Where enum constant t's int32 lives: in the code stream on the native
+# targets, in the data segment on wasm and in an object's .rodata
+# (enum_declaration.w).
+char* enum_constant_bytes(int t):
+	int addr = sym_value_at(t)
+	if ((target_isa == 2) || elf_object): return data + (addr - data_offset)
+	return code + addr - code_offset
+
+
+# An object's enum constant: its int32 in .rodata (elf_object.w); returns
+# the vaddr.
+int object_rodata_bytes(char* bytes, int n);
+
+int enum_rodata_value(int value):
+	char* bytes = cast(char*, malloc(4))
+	save_int32(bytes, value)
+	int vaddr = object_rodata_bytes(bytes, 4)
+	free(bytes)
+	return vaddr
+
+
 # The int32 stored at a defined enum constant's or const global's
 # address (the enum declaration and write_global_initial_value put
 # them there), or error when the symbol is neither.
@@ -75,11 +96,7 @@ int const_symbol_value(int t):
 	if (is_object):
 		int type = load_int(table + t + 6)
 		int addr = sym_value_at(t)
-		if (sym_is_enum_constant(t)):
-			# in the code stream on the native targets, in the data
-			# segment on wasm (enum_declaration.w)
-			if (target_isa == 2): return load_int32(data + (addr - data_offset))
-			return load_int32(code + addr - code_offset)
+		if (sym_is_enum_constant(t)): return load_int32(enum_constant_bytes(t))
 		int t_real = type_unqualified(type)
 		if (type_is_const(type) && (value_class(t_real) == VC_INT)):
 			char* p = code + addr - code_offset
@@ -122,7 +139,7 @@ void const_global_note(int t, int start):
 	int t_real = type_unqualified(type)
 	char* p = 0
 	if (sym_is_enum_constant(t)):
-		p = code + sym_value_at(t) - code_offset
+		p = enum_constant_bytes(t)
 		t_real = type
 	else:
 		if (type_is_const(type) == 0): return

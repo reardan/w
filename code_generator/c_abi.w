@@ -27,6 +27,9 @@ import code_generator.code_emitter
 import code_generator.ffi
 import code_generator.static_link
 
+void emit_x64_ret();   /* code_generator/x86.w */
+void emit_x64_call_register(int reg);
+
 int object_file_is_root(int file_index);   /* code_generator/elf_object.w */
 void sse_kernel_reject();   /* code_generator/sse.w */
 void stack_usage_c_abi_adapter(int symbol, int words);   /* code_generator/stack_usage.w */
@@ -58,6 +61,8 @@ list[int] c_abi_extern_slots
 # object writer to place it with its function (elf_object.w).
 list[int] c_abi_adapter_starts
 list[int] c_abi_adapter_ends
+# The code offset of the shared ud2 trap (c_abi_emit_adapters), or -1.
+int c_abi_trap_pos
 # Globals and functions marked 'static': local symbols in an object.
 map[int, int] object_static_symbols
 # 'extern T[] name' pointer cells (linkage_ast.w): W globals that are
@@ -486,11 +491,11 @@ void c_abi_plan(int n, int* types):
 	c_plan_total_words = after
 
 
-# <op> [rbp+disp32] with a ModRM reg field: the rbp-relative encodings.
+# <op> [rbp+disp32] with a ModRM reg field: the rbp-relative encodings
+# (rsp-relative in a frameless kernel C call, ffi.w).
 void c_abi_rbp_op(int bytes, char* opcode, int reg, int disp):
 	emit(bytes, opcode)
-	emit_int8(0x85 | ((reg & 7) << 3))
-	emit_int32(disp)
+	emit_x64_c_frame_operand(0x85 | ((reg & 7) << 3), disp)
 
 
 # Load register slot (0..5 System V argument registers, 16 + k xmm k)
@@ -511,15 +516,14 @@ int c_abi_emit_call(int n, int* types, int ret_type, int got_vaddr, int arg_base
 	c_abi_plan_result(ret_type)
 	c_abi_plan(n, types)
 	int hidden = arg_base + c_plan_total_words * 8
-	emit_x64_c_frame_begin()
-	if ((c_plan_stack_words & 1) == 1): emit(4, c"\x48\x83\xec\x08")   # sub rsp,8
+	emit_x64_c_frame_begin_for(arg_base)
+	emit_x64_c_frame_align(c_plan_stack_words)
 	int i = n - 1
 	while (i >= 0):
 		if (c_plan_stack[i] >= 0):
 			int k = c_plan_words[i] - 1
 			while (k >= 0):
-				emit(2, c"\xff\xb5")   # push qword [rbp+disp32]
-				emit_int32(arg_base + (c_plan_after[i] + k) * 8)
+				emit_x64_c_frame_push(arg_base + (c_plan_after[i] + k) * 8)
 				k = k - 1
 		i = i - 1
 	for j in range(n):
@@ -530,11 +534,8 @@ int c_abi_emit_call(int n, int* types, int ret_type, int got_vaddr, int arg_base
 	if (c_plan_ret == 2): emit_x64_load_gp_reg(0, hidden)   # rdi: the result buffer
 	emit(1, c"\xb8")   # mov eax,imm32: xmm registers used
 	emit_int32(c_plan_sse)
-	if (got_vaddr == 0): emit(3, c"\x41\xff\xd3")   # call r11
-	else:
-		emit(2, c"\xff\x15")   # call qword ptr [rip+disp32]
-		static_note_address(codepos)
-		emit_int32(got_vaddr - code_offset - codepos - 4)
+	if (got_vaddr == 0): emit_x64_call_register(11)   # call r11
+	else: emit_x64_call_import_slot(got_vaddr)
 	int ret_class = 0
 	if (c_plan_ret == 1):
 		emit_x64_load_gp_reg(3, hidden)   # rcx: the W result buffer
@@ -579,12 +580,12 @@ void c_abi_emit_extern_shim(int sym, int n, char* classes, int ret_class, int go
 		free(cast(void*, types))
 		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
 		if (extend): c_abi_extend_rax(ret_type)
-		emit(1, c"\xc3")   # ret
+		emit_x64_ret()
 		if (stack_usage_mode): stack_usage_shim(n)
 		return
 	int words = c_abi_emit_call(n, types, ret_type, got_vaddr, 16)
 	if (extend): c_abi_extend_rax(ret_type)
-	emit(1, c"\xc3")   # ret
+	emit_x64_ret()
 	if (stack_usage_mode): stack_usage_shim(words)
 	free(cast(void*, types))
 
@@ -782,7 +783,7 @@ void c_abi_emit_adapter(int t, int entry):
 	if (ret_class != 0): sse_kernel_reject()
 	if (ret_class == 1): emit(4, c"\x66\x0f\x6e\xc0")   # movd xmm0,eax
 	if (ret_class == 2): emit(5, c"\x66\x48\x0f\x6e\xc0")   # movq xmm0,rax
-	emit_int8(0xc3)
+	emit_x64_ret()
 	c_abi_plan_free()
 	free(cast(void*, types))
 
@@ -800,6 +801,7 @@ void c_abi_emit_adapters():
 			error3(c"--c-abi cannot take the address of '", sym_record_name(t), c"': it has no System V entry")
 		c_abi_check_signature(t)
 	int trap = 0
+	c_abi_trap_pos = -1
 	for k in range(c_abi_stub_syms.length):
 		int t = c_abi_stub_syms[k]
 		int pos = c_abi_stub_positions[k]
@@ -811,6 +813,7 @@ void c_abi_emit_adapters():
 		else:
 			if (trap == 0):
 				trap = code_offset + codepos
+				c_abi_trap_pos = codepos
 				emit(2, c"\x0f\x0b")   # ud2
 			adapter = trap
 		c_abi_adapter_starts.push(adapter_start)
