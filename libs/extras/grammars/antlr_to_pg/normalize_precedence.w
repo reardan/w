@@ -31,9 +31,16 @@ import libs.extras.grammars.antlr_to_pg.precedence_plan
 int g_at_precedence_plan_limit = 1000000
 
 
-# Only ANTLR associativity options are inert for lowering: the plan applies the
-# outer one and ANTLR ignores nested ones. Other options, actions, predicates
-# and nongreedy decisions keep the rule refused.
+# ANTLR associativity options are inert for lowering: the plan applies the
+# outer one and ANTLR ignores nested ones. Host predicates are lowered as if
+# they held (the pinned walker treats them as epsilon, and ANTLR evaluates the
+# rewritten `{precpred}? {p}?` pair at the same decision): each one stays on
+# the lowered alternative, so the final audit still reports it as an ignored
+# AT_HOST_SITE and translator-strict mode still refuses the grammar. Other
+# options, actions and nongreedy decisions keep the rule refused.
+int at_plan_predicate_site(at_site* site): return strcmp(site.kind, c"predicate") == 0
+
+
 int at_plan_assoc_site(at_site* site):
 	if (strcmp(site.kind, c"element option") != 0): return 0
 	string_builder* compact = string_new()
@@ -51,7 +58,7 @@ int at_plan_assoc_site(at_site* site):
 int at_plan_sites_inert(list[at_site*] sites):
 	if (sites == 0): return 1
 	for at_site* site in sites:
-		if (at_plan_assoc_site(site) == 0): return 0
+		if ((at_plan_assoc_site(site) == 0) && (at_plan_predicate_site(site) == 0)): return 0
 	return 1
 
 
@@ -89,6 +96,25 @@ int at_plan_admitted(at_lr_plan* plan, list[at_lr_alternative*] operators, int b
 	return count
 
 
+# An operator tail drops the leading recursive operand, so its predicates
+# move one atom left. The sites are copied; the source alternative is shared.
+list[at_site*] at_plan_tail_predicates(at_alt* source):
+	list[at_site*] sites = new list[at_site*]
+	if (source.sites == 0): return sites
+	for at_site* site in source.sites:
+		if (at_plan_predicate_site(site) == 0): continue
+		at_site* moved = new at_site()
+		moved.kind = site.kind
+		moved.raw = site.raw
+		moved.first = site.first
+		moved.last = site.last
+		moved.resolved = site.resolved
+		moved.position = site.position - 1
+		if (moved.position < 0): moved.position = 0
+		sites.push(moved)
+	return sites
+
+
 char* at_plan_target(at_rule* primary, list[at_rule*] tiers, int admitted):
 	if (admitted == 0): return primary.name
 	return tiers[admitted - 1].name
@@ -114,7 +140,7 @@ int at_normalize_prediction_plan(at_rule* rule, list[at_rule*] rules):
 			# Only the consumed outer associativity option may sit on an operator.
 			if (alt.sites != 0):
 				for at_site* site in alt.sites:
-					if (site != item.associativity_site): return at_normalization_guard(rule, c"prediction_plan", index, c"alternative_options")
+					if ((site != item.associativity_site) && (at_plan_predicate_site(site) == 0)): return at_normalization_guard(rule, c"prediction_plan", index, c"alternative_options")
 			operators.push(item)
 			continue
 		if (item.kind == 2):
@@ -173,6 +199,10 @@ int at_normalize_prediction_plan(at_rule* rule, list[at_rule*] rules):
 				at_source_copy(tail, source)
 				tail.source_lhs_label = source.elements[0].label
 				tail.tree_role = 2
+				# Every tier from i == j repeats this tail; the predicates are
+				# recorded once, on the tier that first admits the operator.
+				if (i == j): tail.sites = at_plan_tail_predicates(source)
+				else: tail.sites = new list[at_site*]
 				tail.elements = new list[at_element*]
 				int last = source.elements.length - 1
 				for e in range(1, source.elements.length):

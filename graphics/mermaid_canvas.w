@@ -2,6 +2,8 @@
 import graphics.mermaid
 import libs.extras.mermaid.canvas
 import graphics.ui.widgets.textarea
+import graphics.ui.render_soft
+import graphics.image.png
 
 void mm_canvas_render(ui_renderer* r, mm_canvas* c, mm_editor* e, ui_rect viewport, int focused):
 	mm_ui_render(r, e.scene, viewport, c.zoom, c.pan_x, c.pan_y)
@@ -59,3 +61,42 @@ void mm_canvas_source_sync(ui_textarea_state* area, char* source):
 	if (offset > area.buf.length): offset = area.buf.length
 	ui_textarea_set_caret(area, ui_grapheme_floor(area.buf.data, offset))
 	area.caret_goal_col = area.caret_col
+
+
+# Largest side of a copied diagram image, in pixels.
+const int mm_png_max_side = 4096
+
+# The scene rasterized at 1:1 on white and encoded as a PNG (the caller
+# frees the builder), or 0 without a scene. The same drawing the canvas
+# shows, through the CPU rasterizer, so it needs no GL context.
+string_builder* mm_scene_png(mm_scene* scene):
+	if (scene == 0 || scene.width <= 0 || scene.height <= 0): return 0
+	int w = scene.width
+	int h = scene.height
+	if (w > mm_png_max_side): w = mm_png_max_side
+	if (h > mm_png_max_side): h = mm_png_max_side
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_begin(&r, w, h)
+	mm_ui_render(&r, scene, ui_rect_new(0.0, 0.0, cast(float32, w), cast(float32, h)), 1.0, 0.0, 0.0)
+	ui_render_end(&r)
+	char* rgba = ui_render_software(&r, w, h, ui_gray(1.0))
+	string_builder* png = png_encode_rgba(w, h, rgba)
+	free(rgba)
+	ui_render_destroy(&r)
+	return png
+
+# Copy the diagram for other applications (issue #910): the Mermaid source
+# as text, the SVG as HTML and the picture as a PNG, so a chat, document
+# or image editor each paste the form they take. Returns 0 while the
+# source has a syntax error (no scene).
+int mm_canvas_copy(ui_context* ctx, mm_editor* e):
+	if (e.scene == 0): return 0
+	char* svg = mm_svg(e.scene)
+	string_builder* png = mm_scene_png(e.scene)
+	if (png == 0): ui_clipboard_copy_rich(ctx, e.document.source, svg, cast(char*, 0), 0)
+	else:
+		ui_clipboard_copy_rich(ctx, e.document.source, svg, png.data, png.length)
+		string_free(png)
+	free(svg)
+	return 1

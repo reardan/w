@@ -1725,3 +1725,35 @@ the vendored `tools/unicode/12.1.0/*.txt` inputs of
 reading targets declared `data=` directories. Direction: have `wtest why`
 suggest a `data=` directive when a changed non-`.w` file appears verbatim in a
 target's step command or in a script that step runs.
+
+## A keyword as a local name reports the wrong token (2026-11-08, #913 widgets)
+
+`int32* map = cast(int32*, malloc(n))` in `tools/wmermaid_editor.w` failed
+`check` with "unknown type name: 'count'" pointing at a later line
+(`map[count] = i`): `map` is the built-in container type, so the
+declaration and every use parse as types, and the message names whatever
+follows. Direction: when a declaration's identifier is a reserved type name
+(`map`, `set`, `list`, `byte`), say so at that declaration ("'map' is a
+built-in type and cannot name a variable"), as CLAUDE.md already warns for
+`byte`.
+
+## `&int32_field` passed as `int*` compiles silently (2026-11-08, #910)
+
+`ui_word_bounds(text, n, at, &st.unit_start, &st.unit_end)` with
+`int32 unit_start, unit_end` fields and `int* start, int* end`
+parameters was clean under `check`, `check --lint` and `--strict`, but on
+x64 each 8-byte store spilled into the next field, and the last one into
+whatever the caller had next on the stack: the headless test crashed later
+in an unrelated call with a mangled `ctx` pointer. Direction: warn when a
+pointer to a narrower integer is passed (or assigned) where a pointer to a
+wider one is expected; the widths are known at the call site.
+
+## `string` as a local name gives an unrelated parse error (2026-11-08, #902)
+
+`js_value* string = ...; string.host_construct = 1` fails `check` with
+"';' expected, found 'host_construct'" at the member access, because
+`string` is treated as a type name at statement position (like `byte`, which
+CLAUDE.md warns about). The declaration itself is accepted, so the error
+points away from the cause. Direction: reject (or warn on) declaring a local
+whose name is a built-in type name, and mention the type-name reading in the
+statement-position parse error.

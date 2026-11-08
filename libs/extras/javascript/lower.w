@@ -451,11 +451,21 @@ js_node* js_lower_for_each(pg_ast_node* node, pg_ast_node* header, pg_ast_node* 
 	if (js_cst_child(node, c"KW_AWAIT") != 0): kind = c"for_await_of"
 	char* declaration = c""
 	pg_ast_node* target = binding.children[0]
-	if (binding.children.length == 2):
+	if (binding.children.length >= 2):
 		declaration = binding.children[0].first_token.text
 		target = binding.children[1]
 	js_node* result = js_node_new(kind, declaration)
-	if (js_lower_add(result, target, diagnostics) == 0 || js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[node.children.length - 1], diagnostics) == 0):
+	# Annex B.3.6 `for (var x = init in o)`: default_pattern(x, init).
+	if (binding.children.length == 3):
+		js_node* initialized = js_node_new(c"default_pattern", c"")
+		js_node_add(result, initialized)
+		if (js_lower_add(initialized, target, diagnostics) == 0 || js_lower_add(initialized, binding.children[2].children[1], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+	else if (js_lower_add(result, target, diagnostics) == 0):
+		js_node_free(result)
+		return 0
+	if (js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[node.children.length - 1], diagnostics) == 0):
 		js_node_free(result)
 		return 0
 	return result

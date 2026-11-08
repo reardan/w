@@ -131,7 +131,7 @@ which is semantically equivalent. Node shapes are documented in
 | `case` / `default` | empty | test then statements / statements |
 | `with` | empty | object, body |
 | `debugger` | empty | none |
-| `for_in`, `for_of`, `for_await_of` | `var`, `let`, `const` or empty (assignment target) | binding or target, expression, body |
+| `for_in`, `for_of`, `for_await_of` | `var`, `let`, `const` or empty (assignment target) | binding or target (`for_in(var)` may bind `default_pattern(identifier, initializer)`, Annex B.3.6), expression, body |
 | `catch` | empty | binding pattern, block (destructured parameter) |
 | `import` | specifier | optional default `identifier`, then `import_namespace` (identifier) or `import_named` (`import_specifier(imported)` = local identifier) |
 | `export` | empty | declaration |
@@ -265,7 +265,8 @@ The initial semantic subset is deliberately explicit:
 - Cooked templates normalize raw CR/CRLF, decode escapes into UTF-16, and
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
-  Substitutions execute once in source order; object conversion remains unsupported.
+  Substitutions execute once in source order; objects convert with ToString
+  (ToPrimitive with `Symbol.toPrimitive`, then `toString`/`valueOf`).
 - `= += -= *= /= &= |= ^= <<= >>= >>>=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
   labelled/unlabelled break/continue, return, throw, try/catch/finally and
   `switch` (strict-equality matching, one clause scope, fallthrough, default
@@ -278,7 +279,22 @@ The initial semantic subset is deliberately explicit:
   (`name`, `message`, `constructor`; `Error.prototype.toString`), and
   engine-issued errors inherit the same prototypes, so `e.constructor ===
   TypeError` holds. Only engine-issued errors carry the host intrinsic brand.
-  `String(value)` converts primitives.
+  `String(value)` converts any value (a symbol gives its descriptive string)
+  and `new String(value)` creates a String wrapper.
+- Symbols (reardan/w#902): `Symbol([description])`, the ES2020 well-known
+  symbols, `description`/`toString`, symbol-keyed properties, `typeof`.
+  Object literals accept computed keys and `get`/`set` accessors; computed
+  member keys use ToPropertyKey. `Function.prototype.call`/`apply` exist,
+  and for-of and spread use the iterator protocol for objects with
+  `Symbol.iterator` (closing the iterator on early exit). The runtime installs
+  no `Object.prototype`: a minimal `Object` (`Object(value)`,
+  `defineProperty`, `getOwnPropertyDescriptor`, `getPrototypeOf`) and
+  `Array.isArray` are provided, and an object whose prototype chain has no
+  `toString` converts as `Object.prototype.toString` (or, for arrays,
+  `Array.prototype.join`) would. Function source text is not retained, so
+  converting a function to a string reports unsupported.
+- String.prototype `match`, `matchAll`, `replace`, `search` and `split`
+  (see "String and RegExp Symbol methods" below).
 - RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
   or RegExp arguments create objects with own `lastIndex` and the shared
   `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
@@ -286,9 +302,9 @@ The initial semantic subset is deliberately explicit:
 
 Unsupported syntax is rejected before execution, including module declarations
 through the script API, classes, generators/async, tagged templates, `in`,
-String.prototype RegExp methods (`match`, `replace`, `search`, `split`), prototype-literal `__proto__`, loose equality and additional numeric
-operators. Custom iterators, implicit operator coercions and exotic property-key
-conversions remain outside this subset. Destructuring assignment, computed binding
+prototype-literal `__proto__`, loose equality and additional numeric
+operators. Implicit operator coercions (`+`, relational and unary operators on
+non-numbers) remain outside this subset. Destructuring assignment, computed binding
 keys and catch patterns remain unsupported. Global `this`, sloppy receiver
 substitution/boxing, `super` and ordinary functions' implicit `arguments` object
 are not implemented; accessing these receiver/arguments features reports
@@ -442,7 +458,7 @@ comments and formatting.
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
-  javascript_runtime_test javascript_runtime_invoke_test javascript_runtime_promises_test javascript_browser_runtime_test \
+  javascript_runtime_test javascript_runtime_string_regexp_test javascript_runtime_invoke_test javascript_runtime_promises_test javascript_browser_runtime_test \
   javascript_runtime_objects_test javascript_runtime_environments_test \
   javascript_standards_early_test javascript_conformance javascript_test262
 ./wbuild javascript_compatibility
@@ -453,13 +469,16 @@ tools/mac/run_javascript_tests.sh
 The ordinary test targets require no Node installation. The explicit compatibility
 target requires Node v20.19.3 and fails visibly if it is missing or differs. It
 runs pinned Test262 syntax variants (respecting test metadata), a pinned real
-source fixture, bounded growth cases, and controlled execution comparisons. Twenty-one additional cases compare actual W runtime
+source fixture, bounded growth cases, and controlled execution comparisons. Thirty-one additional cases compare actual W runtime
 completion values with fresh Node realms, covering arrows, per-iteration capture,
 Unicode iteration, template cooking/number spelling, abrupt completions, TDZ and
 RegExp matching (captures, lookaround, Annex B escapes, case folding, `u` mode,
 `lastIndex`, the constructor and `\p{...}` property escapes in and outside
-classes, with and without `u`; their characters have the same properties in
-Unicode 12.1 and Node's Unicode).
+classes, with and without `u`, on characters whose properties are the same in
+Unicode 12.1 and Node's Unicode) and the String/RegExp Symbol methods
+(`match`, `matchAll`, `replace` substitutions and replacers, `search`, `split`,
+Symbol dispatch, coercion order, sticky/global `lastIndex`, user `exec` and
+species).
 It also executes the actual builder and transformer, checks their output with
 both parsers, and compares original/transformed behavior and untouched bytes.
 `bin/javascript-compatibility.json` records results. This small corpus is a
@@ -491,9 +510,7 @@ parameters, duplicate module export names, missing local exports, chained labels
 complete RegExp pattern validation (below), contextual `yield`/`await`,
 cross-module export resolution and the Annex B syntax described in
 [Static semantics, modules and Annex B](#static-semantics-modules-and-annex-b).
-Remaining static-semantics work is narrow: the Annex B.3.6 `for (var x = 1 in o)`
-initializer, `if (x) let` followed by a line break (parsed as a declaration
-instead of an expression statement), and syntax newer than ES2020 (numeric
+Remaining static-semantics work is narrow: syntax newer than ES2020 (numeric
 separators, string export names, import attributes), which Node accepts. Label
 names have their own contextual checks, so
 strict `eval`/`arguments` labels are valid while generator `yield`, async `await`,
@@ -518,8 +535,20 @@ passes when its version pin is bypassed under v22.
   `var yield`, `function f(await)`, `yield => 1` and `() => yield` inside a
   generator parse in sloppy code. A FunctionDeclaration's name follows the
   enclosing context (`function* yield() {}` is valid sloppy code), a
-  FunctionExpression's its own (`(function* yield() {})` is not). Each
-  `yield`/`await` token costs a backward scan to its enclosing function.
+  FunctionExpression's its own (`(function* yield() {})` is not). The scan
+  to the enclosing function is memoized per token in the stream
+  (`pg_token_stream_memo_get`/`_set`, dropped when rollback rescans a
+  token), so n contextual keywords cost O(n) overall; template `${` counts
+  as a bracket and template text is never one.
+- **`[~In]` and `let` substatements (reardan/w#903).** `js_relational_in`
+  rejects a relational `in` at the top level of a for head's first clause,
+  which gives both `for (var x = a in b;;)` its early error and Annex B.3.6
+  `for (var x = 1 in o)` its parse; the initializer is valid only for a
+  sloppy `var` name with `in` and lowers to `for_in(var)` over
+  `default_pattern(identifier, initializer)`. In a single-statement position
+  (if/else/loop/with bodies and labels) `let` followed by a line break is an
+  identifier expression statement, as in Node: `if (x) let\ny` is
+  `if (x) let; y;`.
 - **Early errors added:** duplicate `__proto__: value` in object literals (not
   in assignment patterns), `let` as a let/const bound name, comma expressions
   after `for (... of`, `for (let.x of ...)`, labelled functions as if/loop/with
@@ -612,9 +641,8 @@ completion. A greedy quantifier over a single character, class or `.` runs as
 one `REPEAT` instruction that charges a step per character and gives characters
 back from a single backtracking record, so `^\p{L}+$` over a long input needs
 constant stack. Counted quantifiers over larger atoms expand to a bounded
-program; patterns that exceed it are unsupported. String coercion of
-non-primitive inputs and the String.prototype RegExp methods remain outside the
-runtime subset.
+program; patterns that exceed it are unsupported. Patterns, flags, inputs and
+`lastIndex` convert with ToString/ToLength (`new RegExp(1)`, `r.lastIndex = '1'`).
 
 Unicode property escapes (reardan/w#901) match every property the parser
 accepts: General_Category values and groups, Script, Script_Extensions and the
@@ -660,6 +688,40 @@ predicts exactly this split. The
 `strings/` files need the `v` flag. The native Test262 profile overrides
 `regExpUtils.js`'s `buildString`/`testPropertyEscapes` (see the
 [Test262 profile](../../tests/javascript/test262/README.md)).
+
+### String and RegExp Symbol methods
+
+`regexp_methods.w` implements ES2020 sec-string.prototype.match through
+sec-regexp.prototype-@@split (reardan/w#902):
+
+- `String.prototype.match`, `matchAll`, `replace`, `search` and `split` call
+  the argument's `Symbol.match`/`matchAll`/`replace`/`search`/`split` method
+  whenever the argument is not undefined or null (so a user object can supply
+  its own); otherwise they coerce it and create a RegExp (`matchAll` with
+  `g`). `replace` and `split` with a non-RegExp separator use string search.
+- `RegExp.prototype[Symbol.match/matchAll/replace/search/split]` read
+  `global`, `unicode`, `flags`, `lastIndex` and `exec` through ordinary
+  property access and call `exec` when it is callable (RegExpExec), so they
+  work on RegExp-like objects. Global and sticky matching follow the `lastIndex`
+  rules, empty matches advance by code point with `u`, `search` restores
+  `lastIndex`, and `split` and `matchAll` copy the RegExp through
+  `constructor[Symbol.species]` (`RegExp[Symbol.species]` is a getter returning
+  `this`). `matchAll` returns a RegExp String Iterator.
+- `replace` implements GetSubstitution: `$$`, `$&`, `` $` ``, `$'`, `$n`/`$nn`
+  (two digits when they name a group) and `$<name>`. Function replacers get
+  the match, captures, position, input and (when present) the groups object.
+- `RegExp.prototype.test`, `toString` and the `flags` getter are generic, and
+  `RegExp(pattern)` returns a RegExp-like pattern whose `constructor` is
+  `RegExp` unchanged (IsRegExp honours `Symbol.match`).
+- Budget: each exec, loop iteration and copied or substituted code unit is
+  charged to the evaluation step budget, in addition to the matcher's own
+  instruction charges; results obey the instance's string length limit.
+
+The ES2020 algorithms are followed where later editions differ, so a few
+behaviours differ from Node v20 and the current Test262: `matchAll` accepts a
+non-global RegExp, `Symbol.match`/`replace` read `global`/`unicode` rather than
+`flags`, and String methods look up `Symbol.*` methods on primitive arguments.
+Those Test262 files are not pinned.
 
 Generic infrastructure and restrictions are documented in
 [ParserGenerator](parser_generator.md): stateful mode is opt-in, lexer guards and

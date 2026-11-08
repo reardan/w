@@ -93,6 +93,11 @@ extern void gfx_host_clipboard_write(char* text, int length)
 extern void gfx_host_clipboard_read()
 extern int gfx_host_clipboard_read_poll()
 extern void gfx_host_clipboard_read_copy(char* out)
+# A copy with rich flavors: UTF-8 HTML[0..html_length) and PNG
+# bytes[0..png_length) beside the text (a length of 0: no such flavor).
+# The page sets text/html on the copy event's clipboardData and writes
+# the image through navigator.clipboard.write's ClipboardItem.
+extern void gfx_host_clipboard_write_rich(char* text, int length, char* html, int html_length, char* png, int png_length)
 
 
 void gfx_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id):
@@ -111,12 +116,34 @@ int gfx_clipboard_set(gfx_window* win, char* text):
 	return 1
 
 
+int gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length):
+	if (win == 0): return gfx_clipboard_local_set_rich(text, html, png, png_length)
+	gfx_clipboard_store_own_rich(&win.clip, text, html, png, png_length)
+	gfx_host_clipboard_write_rich(win.clip.owned, win.clip.owned_length, win.clip.html, win.clip.html_length, win.clip.png, win.clip.png_length)
+	return 1
+
+
 void gfx_clipboard_request(gfx_window* win):
 	if (win == 0):
 		gfx_clipboard_local_request()
 		return
 	gfx_clipboard_store_begin(&win.clip, GFX_CLIPBOARD_REQUESTED)
 	gfx_host_clipboard_read()
+
+
+# The browser has no PRIMARY selection a page can reach (Firefox's
+# middle-click paste on Linux is for its own text fields): the page keeps
+# an in-process one, so selecting and middle-clicking works inside W.
+int gfx_primary_set(gfx_window* win, char* text):
+	return gfx_primary_local_set(text)
+
+
+void gfx_primary_request(gfx_window* win):
+	gfx_primary_local_request()
+
+
+char* gfx_primary_take(gfx_window* win):
+	return gfx_primary_local_take()
 
 
 char* gfx_clipboard_take(gfx_window* win):

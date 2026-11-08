@@ -66,8 +66,12 @@ js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index):
 		js_value* item = js_runtime_string(rt, text)
 		js_text_free(text)
 		return item
-	js_runtime_fail(rt, 6, c"iteration requires array or string")
-	return 0
+	# Other values use the iterator protocol; *index holds the open iterator.
+	if (*index == 0):
+		js_value* iterator = js_runtime_iterator_open(rt, value)
+		if (iterator == 0): return 0
+		*index = cast(int, iterator)
+	return js_runtime_iterator_step(rt, cast(js_value*, *index))
 
 void js_runtime_array_append(js_runtime* rt, js_value* array, js_value* value):
 	char* index = itoa(array.array_length)

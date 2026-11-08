@@ -4,7 +4,9 @@ Design note, 2026-08-09. Written during round 2 of issue #441
 (`docs/projects/ui_widgets.md` §9) and deliberately **not** implemented
 there — this records the shape so the editor project can pick it up
 without re-deriving it. Implemented in 2026-11 by issue #850; §6 records
-what landed and where it departs from this design.
+what landed and where it departs from this design, and §7 the
+follow-ups of issue #910 (multi-click selection, `PRIMARY`, rich content
+and the real-browser checks).
 
 Clipboard has been an explicit non-goal twice: `ui_widgets.md` §7 named
 it as round 1's, and §9.5 names it again for round 2. The reason has
@@ -130,12 +132,14 @@ Steps 1-3 are what the editor actually needs; 4 and 5 are the
 ## 5. Non-goals
 
 - **Rich content.** Text only, `text/plain;charset=utf-8`. No images,
-  no HTML flavors, no file lists.
+  no HTML flavors, no file lists. (Superseded by #910: §7 offers HTML
+  and PNG beside the text. Pasting rich content into W, and file lists,
+  remain out of scope.)
 - **Clipboard history** and multiple named registers. Editor features
   built on top of this, not part of the seam.
 - **The X11 `PRIMARY` selection** (middle-click paste). A separate
   atom on the same machinery; worth adding once `CLIPBOARD` works,
-  not before.
+  not before. (Done in #910, §7.)
 - **INCR transfers.** X11's chunked protocol for large selections. A
   first version can refuse anything past a fixed size rather than
   implement it, provided it refuses *visibly*.
@@ -207,5 +211,101 @@ between two X clients, over INCR both ways, and with `xclip`. The
 `mermaid_editor_wine_test` drives the editor with real XTest keys.
 `web_mobile_input_test` covers the browser host.
 
-**Still open:** native runs on Windows and macOS (checklist step 2.10),
-double-click word selection, `PRIMARY`, and rich content.
+**Still open after #850:** native runs on Windows and macOS (checklist
+step 2.10); double-click word selection, `PRIMARY`, rich content and the
+real-browser checks went to #910 (§7).
+
+## 7. Multi-click, PRIMARY, rich content, real browsers (#910, 2026-11)
+
+**Click counts.** A `MOUSE_DOWN` carries its click count in mods bits
+8..11 (`gfx_event_clicks`, `gfx_mods_with_clicks` in
+`graphics/event.w`), so the 5-int event ABI and the JS hosts' queue are
+unchanged and a backend that does not count reads as single clicks. The
+backend counts, because the UI layer reads no clock and the platform
+knows its double-click setting: X11 runs `gfx_click_tracker` over
+`ButtonPress` server times (500 ms, 4 px; X has no setting), Win32 over
+`GetMessageTime` against `GetDoubleClickTime` and `SM_CXDOUBLECLK`, Cocoa
+reads `[NSEvent clickCount]`, and the web page counts pointerdowns itself
+(500 ms, 4 CSS px, 16 for touch), since `pointerdown.detail` is 0 by
+the Pointer Events spec. `ui_feed_event` keeps the count in
+`ctx.input.clicks` and hands widgets the modifier bits alone.
+
+**Word and line selection.** `lib/unicode_text.w` gained UAX #29 word
+boundaries (`ut_word_break`, `ut_word_next`, `ut_word_at`) from the
+committed Unicode 18.0.0 `WordBreakProperty.txt`; `tests/word_break_test.w`
+passes every case of `WordBreakTest.txt`. In `ui_textbox` and
+`ui_textarea` a double-click selects the word segment under the pointer
+(`ui_text_hit_from_x` picks the glyph under it rather than the nearest
+boundary), a triple-click the line (the textarea's logical line with its
+line break), and a drag after either extends by whole words or lines,
+the anchor at whichever end the pointer moved away from. A run of
+spaces, a punctuation mark and `snake_case` or `3.14` are one segment
+each, as UAX #29 has them.
+
+**PRIMARY.** The seam gained `gfx_primary_set`, `gfx_primary_request`
+and `gfx_primary_take`, the same contract as the clipboard trio. Text
+widgets publish every change to a non-empty selection
+(`ui_primary_publish`, pumped like a copy) and a middle-click
+(`ctx.input.mouse_middle_pressed`) moves the caret to the pointer and
+pastes it there (`ui_primary_paste_request`; Ctrl+V still reads
+`CLIPBOARD`). X11 owns and serves the real `PRIMARY` through its own
+paste property, claiming the server once per run of changes and dropping
+the claim on `SelectionClear`. Win32, Cocoa and the browser have no
+system `PRIMARY`; they keep an in-process one (`gfx_primary_local`), so
+select-then-middle-click works inside the program.
+
+**Rich content.** `gfx_clipboard_set_rich(win, text, html, png,
+png_length)` and `ui_clipboard_copy_rich` offer HTML and a PNG beside
+the text; pasting into W still reads the text. The store keeps the
+flavors with the owned text and a plain copy drops them. X11 adds
+`text/html` and `image/png` to `TARGETS` (INCR applies to them too);
+Win32 writes the registered "HTML Format" (CF_HTML, built by
+`gfx_clipboard_cf_html`) and "PNG" formats; Cocoa `public.html` and
+`public.png`; the web page puts `text/html` on `clipboardData` and an
+image in one `ClipboardItem`. The Mermaid editor's Copy button and
+Ctrl+C on the canvas copy the diagram: the Mermaid source as text, the
+SVG as HTML, and a PNG rasterized by the CPU renderer (`mm_scene_png`,
+`graphics/mermaid_canvas.w`).
+
+**Real browsers.** `tools/web/run_browser_clipboard.mjs`
+(`web_clipboard_browser_test`) drives `graphics/ui/clipboard_demo_web.w`
+in Playwright's headless browsers. Headless Chromium 1243 (Playwright
+1.63), observed:
+
+| Path | Permission granted | No permission |
+|---|---|---|
+| Ctrl+C/X after a double- or triple-click (`copy`/`cut` event) | works | works |
+| Ctrl+V (`paste` event) | works | works |
+| copy from a button, outside the event | works | `navigator.clipboard.writeText` is refused ("Write permission denied"); `execCommand('copy')` inside the click's gesture works |
+| paste from a button (`navigator.clipboard.readText`) | works | refused ("Read permission denied"); W gets `""` and stops waiting |
+| rich copy (`text/html` + `image/png`) | works, in and outside the copy event | not checked (`navigator.clipboard.read` needs the permission to inspect it) |
+| middle-click after a double-click | pastes the page's PRIMARY | same |
+
+The no-permission write row is why the page now tries
+`document.execCommand('copy')` before `navigator.clipboard` for a copy
+outside the copy event: it needs only the user gesture a click or key
+already gives, and the page answers that copy event itself.
+
+**Tests.** `graphics_ui_selection_test` (in `tests`, headless):
+click counts, the click tracker, word/line selection and dragging by
+them in both widgets, PRIMARY publishing and middle-click paste, rich
+copies through the pump, CF_HTML offsets. `mermaid_canvas_render_test`:
+the diagram copy's three flavors, the PNG decoded. Under Xvfb,
+`graphics_clipboard_x11_test` adds PRIMARY between two clients and with
+`xclip`, `SelectionClear`, the rich targets read back byte for byte, and
+`xdotool` single/double/triple clicks arriving with counts 1, 2, 3; the
+`selection` workflow of `mermaid_editor_ui_test` double- and
+triple-clicks in the real editor, reads `PRIMARY` from another client,
+middle-click-pastes another client's `PRIMARY`, and checks the canvas
+copy's `image/png` and `text/html` over X11. `web_mobile_input_test`
+covers the page's click counting, rich writes and the execCommand path
+in Node.
+
+**Not checked here:** Firefox and Safari. Playwright's Firefox build
+could not be installed in the container (its download host is blocked
+and Ubuntu's `firefox` package is a snap); `run_browser_clipboard.mjs
+chromium firefox webkit` runs all three where they are installed, and
+Firefox gets the `dom.events.testing.asyncClipboard` preference so
+`readText` does not wait on its paste prompt. Safari needs a Mac (macOS
+qualification), as do native runs of the Cocoa click counts and
+pasteboard flavors, and the Win32 ones need Windows.

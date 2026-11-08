@@ -78,10 +78,11 @@ void test_regexp_limits():
 	js_runtime* rt = js_runtime_new()
 	# Every validated property escape has data (runtime_regexp_property_test.w).
 	assert_equal(0, regexp_status(rt, c"/\\p{Lu}/u; /\\p{Script=Greek}/u; new RegExp('\\\\p{Lu}', 'u');", 1000))
-	assert_equal(6, regexp_status(rt, c"new RegExp(1);", 1000))
-	assert_equal(6, regexp_status(rt, c"new RegExp('a', 1);", 1000))
-	assert_equal(6, regexp_status(rt, c"const r = /a/g; r.lastIndex = 'x'; r.test('a');", 1000))
-	assert_equal(6, regexp_status(rt, c"/a/.test({});", 1000))
+	# Patterns, flags, lastIndex and inputs convert with ToString/ToLength.
+	assert_equal(0, regexp_status(rt, c"new RegExp(1);", 1000))
+	assert_equal(2, regexp_status(rt, c"new RegExp('a', 1);", 1000))
+	assert_equal(0, regexp_status(rt, c"const r = /a/g; r.lastIndex = 'x'; r.test('a');", 1000))
+	assert_equal(0, regexp_status(rt, c"/a/.test({});", 1000))
 	assert_equal(6, regexp_status(rt, c"new RegExp('(?:ab){0,300000}');", 100000))
 	# Catastrophic backtracking stops at the step budget.
 	assert_equal(5, regexp_status(rt, c"/(a*)*b/.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');", 50000))

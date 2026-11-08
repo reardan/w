@@ -62,5 +62,21 @@ char* gfx_clipboard_take(gfx_window* win):
 	return gfx_clipboard_local_take()
 
 
+int gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length):
+	return gfx_clipboard_local_set_rich(text, html, png, png_length)
+
+
+int gfx_primary_set(gfx_window* win, char* text):
+	return gfx_primary_local_set(text)
+
+
+void gfx_primary_request(gfx_window* win):
+	gfx_primary_local_request()
+
+
+char* gfx_primary_take(gfx_window* win):
+	return gfx_primary_local_take()
+
+
 void gfx_window_destroy(gfx_window* win):
 	return

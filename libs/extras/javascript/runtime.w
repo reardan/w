@@ -14,7 +14,8 @@ import lib.fmath64
 
 
 # kind: undefined=0, null=1, boolean=2, number=3, string=4,
-# object=5, array=6, callable=7, environment=8, host-callable=9, bounded BigInt=10.
+# object=5, array=6, callable=7, environment=8, host-callable=9, bounded BigInt=10,
+# symbol=11 (runtime_symbols.w).
 struct js_value:
 	void* owner
 	int kind
@@ -66,6 +67,9 @@ struct js_value:
 	int bigint_unsigned
 	# Owned compiled RegExp (regexp_runtime.w js_regexp_program), or 0.
 	void* regexp
+	# Built-in object brand and state (regexp_methods.w): String wrappers and
+	# RegExp String Iterators; 0 for every other value.
+	int builtin_state
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -126,6 +130,17 @@ struct js_runtime:
 	# Annex B.3.3/B.3.4 function declarations (runtime_annexb.w).
 	list[js_node*] annexb_functions
 	list[js_node*] annexb_clause_functions
+	# Symbols, Function.prototype and String/RegExp intrinsics
+	# (runtime_symbols.w, regexp_methods.w). symbols holds the well-known
+	# symbols by id - 1; new_target is the host constructor being constructed.
+	js_value* function_prototype
+	js_value* symbol_prototype
+	list[js_value*] symbols
+	int symbol_next
+	js_value* new_target
+	js_value* string_constructor
+	js_value* regexp_constructor
+	js_value* regexp_iterator_prototype
 
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
@@ -155,6 +170,13 @@ js_value* js_runtime_binary_construct(js_runtime* rt, int kind, list[js_value*] 
 void js_runtime_install_promises(js_runtime* rt);
 js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args);
 void js_runtime_install_regexp(js_runtime* rt);
+void js_runtime_install_symbols(js_runtime* rt);
+void js_runtime_install_regexp_methods(js_runtime* rt);
+js_text* js_runtime_to_text(js_runtime* rt, js_value* value);
+js_text* js_runtime_property_key(js_runtime* rt, js_value* value);
+js_value* js_runtime_iterator_open(js_runtime* rt, js_value* value);
+js_value* js_runtime_iterator_step(js_runtime* rt, js_value* iterator);
+void js_runtime_iterator_close(js_runtime* rt, js_value* iterator);
 void js_regexp_program_free(void* program);
 js_value* js_regexp_literal_value(js_runtime* rt, char* text);
 int js_regexp_runtime_supported(char* text);
@@ -206,6 +228,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.initialized = 1
 	value.prototype = 0
 	if (kind == 6): value.prototype = rt.array_prototype
+	if (kind == 7 || kind == 9): value.prototype = rt.function_prototype
 	value.getter = 0
 	value.setter = 0
 	value.accessor = 0
@@ -237,6 +260,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.bigint_bits = 0
 	value.bigint_unsigned = 0
 	value.regexp = 0
+	value.builtin_state = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -373,6 +397,14 @@ js_runtime* js_runtime_new():
 	rt.error_prototypes = new list[js_value*]
 	rt.annexb_functions = 0
 	rt.annexb_clause_functions = 0
+	rt.function_prototype = 0
+	rt.symbol_prototype = 0
+	rt.symbols = new list[js_value*]
+	rt.symbol_next = 0
+	rt.new_target = 0
+	rt.string_constructor = 0
+	rt.regexp_constructor = 0
+	rt.regexp_iterator_prototype = 0
 	rt.heap = new list[js_value*]
 	rt.roots = new list[js_value*]
 	rt.scripts = new list[js_node*]
@@ -398,6 +430,8 @@ js_runtime* js_runtime_new():
 	rt.global = js_runtime_alloc(rt, 8)
 	rt.global.variable_scope = 1
 	rt.completion.value = rt.undefined_value
+	# Created first so every callable inherits Function.prototype.
+	rt.function_prototype = js_runtime_alloc(rt, 5)
 	js_runtime_set(rt, rt.global, c"undefined", rt.undefined_value)
 	js_runtime_set(rt, rt.global, c"NaN", js_runtime_number(rt, float64_from_bits((0x7ff << 52) | 1)))
 	js_runtime_set(rt, rt.global, c"Infinity", js_runtime_number(rt, float64_from_bits(0x7ff << 52)))
@@ -411,6 +445,8 @@ js_runtime* js_runtime_new():
 	js_runtime_install_bigint(rt)
 	js_runtime_install_regexp(rt)
 	js_runtime_install_constructors(rt)
+	js_runtime_install_symbols(rt)
+	js_runtime_install_regexp_methods(rt)
 	return rt
 
 
@@ -438,6 +474,8 @@ void js_runtime_value_free(js_value* value):
 	if (value.reactions != 0): __w_list_free(cast(__w_list*, value.reactions))
 	if (value.regexp != 0): js_regexp_program_free(value.regexp)
 	js_text_free(value.text)
+	# Symbols own their description text.
+	js_text_free(value.key)
 	for i in range(value.properties.length):
 		js_value* property = value.properties[i]
 		js_text_free(property.key)
@@ -463,6 +501,12 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.array_prototype)
 	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.regexp_prototype)
+	js_runtime_mark(pending, rt.function_prototype)
+	js_runtime_mark(pending, rt.symbol_prototype)
+	for i in range(rt.symbols.length): js_runtime_mark(pending, rt.symbols[i])
+	js_runtime_mark(pending, rt.string_constructor)
+	js_runtime_mark(pending, rt.regexp_constructor)
+	js_runtime_mark(pending, rt.regexp_iterator_prototype)
 	for i in range(rt.error_prototypes.length): js_runtime_mark(pending, rt.error_prototypes[i])
 	js_runtime_mark(pending, rt.global)
 	js_runtime_mark(pending, rt.undefined_value)
@@ -503,6 +547,7 @@ void js_runtime_free(js_runtime* rt):
 	for i in range(rt.scripts.length): js_node_free(rt.scripts[i])
 	__w_list_free(cast(__w_list*, rt.microtasks))
 	__w_list_free(cast(__w_list*, rt.error_prototypes))
+	__w_list_free(cast(__w_list*, rt.symbols))
 	__w_list_free(cast(__w_list*, rt.heap))
 	__w_list_free(cast(__w_list*, rt.roots))
 	__w_list_free(cast(__w_list*, rt.scripts))
@@ -696,21 +741,13 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	return rt.undefined_value
 
 
-# Property-key conversion is explicit: strings and nonnegative bounded integer
-# indices only. Ordinary object ToPrimitive hooks are outside this subset.
+# ToPropertyKey (runtime_symbols.w): strings, symbols, and the ToString of
+# every other value, including ToPrimitive on objects.
 js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"member")): return js_runtime_key(node.children[1].text)
 	js_value* key = js_runtime_eval_node(rt, node.children[1], env)
-	if (key.kind == 4): return js_text_clone(key.text)
-	if (key.kind == 3 && key.number >= -4294967295.0 && key.number <= 4294967295.0):
-		int index = cast(int, key.number)
-		if (cast(float64, index) == key.number):
-			char* spelling = itoa(index)
-			js_text* text = js_runtime_key(spelling)
-			free(spelling)
-			return text
-	js_runtime_fail(rt, 6, c"unsupported computed property key")
-	return 0
+	if (rt.completion.status != 0): return 0
+	return js_runtime_property_key(rt, key)
 
 
 int js_runtime_array_index(js_text* key):
@@ -893,11 +930,21 @@ js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key)
 			js_text_free(unit)
 			return value
 		return js_runtime_read_receiver(rt, rt.string_prototype, key, object)
+	if (object.kind == 11 && rt.symbol_prototype != 0): return js_runtime_read_receiver(rt, rt.symbol_prototype, key, object)
 	if (object.kind == 2 || object.kind == 3 || object.kind == 10): return rt.undefined_value
 	if (object.kind < 5 || object.kind > 9):
 		js_runtime_fail(rt, 2, c"property receiver is not an object")
 		return rt.undefined_value
 	if (object.kind == 7): js_runtime_function_prototype(rt, object, key)
+	# String wrapper objects expose their code units as read-only indices.
+	if (object.builtin_state == 1):
+		int unit_index = js_runtime_array_index(key)
+		if (unit_index >= 0 && unit_index < object.text.units.length):
+			js_text* unit = js_text_new()
+			unit.units.push(object.text.units[unit_index])
+			js_value* value = js_runtime_string(rt, unit)
+			js_text_free(unit)
+			return value
 	return js_runtime_read_receiver(rt, object, key, object)
 
 
@@ -1059,14 +1106,20 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 	if (rt.completion.status != 0): return rt.undefined_value
 	js_value* iterable = js_runtime_eval_node(rt, node.children[1], initial)
 	if (rt.completion.status != 0): return rt.undefined_value
+	# Other objects use the iterator protocol (runtime_symbols.w); an abrupt
+	# exit from the body closes the iterator.
+	js_value* iterator = 0
 	if (iterable.kind != 4 && iterable.kind != 6):
-		js_runtime_fail(rt, 6, c"for-of supports arrays and strings only")
-		return rt.undefined_value
+		iterator = js_runtime_iterator_open(rt, iterable)
+		if (iterator == 0): return rt.undefined_value
 	int index = 0
 	js_value* result = rt.undefined_value
 	while (rt.completion.status == 0):
 		js_value* value = rt.undefined_value
-		if (iterable.kind == 6):
+		if (iterator != 0):
+			value = js_runtime_iterator_step(rt, iterator)
+			if (value == 0): break
+		else if (iterable.kind == 6):
 			if (index >= iterable.array_length): break
 			char* key = itoa(index)
 			value = js_runtime_get(rt, iterable, key)
@@ -1088,15 +1141,19 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 		js_value* scope = js_runtime_environment(rt, env)
 		js_runtime_pattern_declare(rt, pattern, scope, 1, strcmp(node.text, c"const") == 0)
 		js_runtime_pattern_bind(rt, pattern, value, scope)
-		if (rt.completion.status != 0): break
+		if (rt.completion.status != 0):
+			if (rt.completion.status != 5 && iterator != 0): js_runtime_iterator_close(rt, iterator)
+			break
 		js_value* body_value = js_runtime_eval_node(rt, node.children[2], scope)
 		if (rt.empty == 0): result = body_value
 		if (rt.completion.status == 3 && rt.jump_target == 0):
 			rt.completion.status = 0
+			if (iterator != 0): js_runtime_iterator_close(rt, iterator)
 			break
 		if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
 			rt.completion.status = 0
 			rt.jump_target = 0
+		if (rt.completion.status != 0 && rt.completion.status != 5 && iterator != 0): js_runtime_iterator_close(rt, iterator)
 	rt.empty = 0
 	return result
 
@@ -1230,9 +1287,7 @@ js_text* js_runtime_primitive_text(js_runtime* rt, js_value* value):
 		if (js_runtime_truth(value)): raw = c"true"
 	if (value.kind == 3): raw = js_runtime_number_text(value.number)
 	if (value.kind == 10): raw = js_bigint_text(value)
-	if (value.kind > 4 && value.kind != 10):
-		js_runtime_fail(rt, 6, c"object string conversion is outside the runtime subset")
-		return 0
+	if (value.kind > 4 && value.kind != 10): return js_runtime_to_text(rt, value)
 	js_text* result = js_runtime_key(raw)
 	if (value.kind == 3 || value.kind == 10): free(raw)
 	return result
@@ -1285,6 +1340,24 @@ js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
 	if (rt.completion.status == 0): result = js_runtime_string(rt, joined)
 	js_text_free(joined)
 	return result
+
+
+# [[Construct]] for ordinary functions and the host constructors. A host
+# constructor sees new_target (itself for `new C`) in rt.new_target, which distinguishes new String(x)
+# from String(x); nested host calls restore the outer target.
+js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] arguments, js_value* new_target):
+	if (callable == rt.promise_constructor): return js_runtime_promise_construct(rt, arguments)
+	if (callable.binary_constructor != 0): return js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
+	if (callable.host_construct):
+		js_value* saved = rt.new_target
+		rt.new_target = new_target
+		js_value* result = js_runtime_call_receiver(rt, callable, rt.undefined_value, arguments)
+		rt.new_target = saved
+		return result
+	if (js_runtime_constructible(callable)): return js_runtime_construct_ordinary(rt, callable, arguments)
+	if (callable.kind == 7 || js_runtime_object(callable) == 0): js_runtime_fail(rt, 2, c"value is not a constructor")
+	else: js_runtime_fail(rt, 6, c"unsupported native constructor")
+	return rt.undefined_value
 
 
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
@@ -1351,7 +1424,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_value* scope = env
 			while (scope != 0):
 				if (scope.this_value != 0):
-					if (scope.strict == 0 && scope.this_value.kind < 5):
+					if (scope.strict == 0 && js_runtime_object(scope.this_value) == 0 && scope.this_value.kind != 8):
 						js_runtime_fail(rt, 6, c"sloppy receiver conversion is outside the runtime subset")
 						return rt.undefined_value
 					return scope.this_value
@@ -1463,6 +1536,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			else if (value.kind == 3): name = c"number"
 			else if (value.kind == 4): name = c"string"
 			else if (value.kind == 10): name = c"bigint"
+			else if (value.kind == 11): name = c"symbol"
 			else if (value.kind == 7 || value.kind == 9): name = c"function"
 			js_text* text = js_runtime_key(name)
 			js_value* result = js_runtime_string(rt, text)
@@ -1521,8 +1595,34 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				value = js_runtime_eval_node(rt, node.children[i], env)
 			else:
 				js_node* property = node.children[i]
-				key = js_runtime_key(property.text)
-				if (js_kind(property, c"property_shorthand")):
+				if (js_kind(property, c"computed_property") || (js_kind(property, c"method") && js_kind(property.children[0], c"computed_key"))):
+					js_node* expression = property.children[0]
+					if (js_kind(property, c"method")): expression = expression.children[0]
+					js_value* name = js_runtime_eval_node(rt, expression, env)
+					if (rt.completion.status != 0): break
+					key = js_runtime_property_key(rt, name)
+					if (key == 0): break
+				else if (js_kind(property, c"method")): key = js_runtime_key(property.children[0].text)
+				else: key = js_runtime_key(property.text)
+				if (js_kind(property, c"method")):
+					# Object literal get/set accessors: enumerable, configurable,
+					# merged with an existing accessor of the same key.
+					js_value* routine = js_runtime_eval_node(rt, property.children[1], env)
+					if (rt.completion.status == 0):
+						js_value* existing = js_runtime_property(object, key)
+						js_value* getter = 0
+						js_value* setter = 0
+						if (existing != 0 && existing.accessor):
+							getter = existing.getter
+							setter = existing.setter
+						if (strcmp(property.text, c"get") == 0): getter = routine
+						else: setter = routine
+						js_runtime_delete(rt, object, key)
+						js_runtime_define_accessor(rt, object, key, getter, setter, 1, 1)
+					js_text_free(key)
+					continue
+				if (js_kind(property, c"computed_property")): value = js_runtime_eval_node(rt, property.children[1], env)
+				else if (js_kind(property, c"property_shorthand")):
 					js_value* binding = js_runtime_binding(env, property.text)
 					if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 					else: value = js_runtime_binding_value(rt, binding)
@@ -1548,13 +1648,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_arguments(rt, node, env, arguments)
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
-			if (js_kind(node, c"construct")):
-				if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
-				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
-				else if (callable.host_construct): result = js_runtime_call_receiver(rt, callable, rt.undefined_value, arguments)
-				else if (js_runtime_constructible(callable)): result = js_runtime_construct_ordinary(rt, callable, arguments)
-				else if (callable.kind == 7): js_runtime_fail(rt, 2, c"value is not a constructor")
-				else: js_runtime_fail(rt, 6, c"unsupported native constructor")
+			if (js_kind(node, c"construct")): result = js_runtime_construct(rt, callable, arguments, callable)
 			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
@@ -1583,6 +1677,9 @@ int js_runtime_supported(js_node* node):
 	int supported = js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
 	if (supported == 0): supported = js_kind(node, c"switch") || js_kind(node, c"case") || js_kind(node, c"default")
+	if (supported == 0): supported = js_kind(node, c"computed_property") || js_kind(node, c"property_key") || js_kind(node, c"computed_key")
+	# Object literal accessors (get/set over an ordinary function expression).
+	if (supported == 0 && js_kind(node, c"method") && (strcmp(node.text, c"get") == 0 || strcmp(node.text, c"set") == 0)): supported = js_kind(node.children[1], c"function_expression")
 	if (supported == 0 && js_kind(node, c"regex")): supported = js_regexp_runtime_supported(node.text)
 	if (supported == 0): return 0
 	# Lowered shapes the evaluator does not model: var/assignment-target
@@ -1709,7 +1806,10 @@ import libs.extras.javascript.runtime_collections
 
 import libs.extras.javascript.bigint
 
+import libs.extras.javascript.runtime_symbols
+
 import libs.extras.javascript.regexp_runtime
 
 import libs.extras.javascript.runtime_constructors
 import libs.extras.javascript.runtime_annexb
+import libs.extras.javascript.regexp_methods

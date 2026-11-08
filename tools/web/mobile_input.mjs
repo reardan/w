@@ -7,6 +7,22 @@ const modsOf = e => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) |
 const navOf = { ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4,
   ArrowUp: 5, ArrowDown: 6, PageUp: 7, PageDown: 8, Delete: 9 };
 const controlOf = { Backspace: 8, Tab: 9, Enter: 13, Escape: 27 };
+// Presses in a row ride in a MOUSE_DOWN's mods bits 8..11 (graphics/event.w
+// gfx_mods_with_clicks). pointerdown's detail is 0 by the Pointer Events
+// spec, so the page counts: same button, within the interval and the slop.
+export const CLICK_INTERVAL_MS = 500;
+export function clickCounter() {
+  let last = null;
+  return e => {
+    const slop = e.pointerType === 'touch' ? 16 : 4;
+    const same = last && last.button === e.button &&
+      e.timeStamp - last.time >= 0 && e.timeStamp - last.time <= CLICK_INTERVAL_MS &&
+      Math.abs(e.clientX - last.x) <= slop && Math.abs(e.clientY - last.y) <= slop;
+    last = { button: e.button, time: e.timeStamp, x: e.clientX, y: e.clientY,
+      count: same ? last.count + 1 : 1 };
+    return Math.min(last.count, 15);
+  };
+}
 const SENTINEL = '\u200b';
 
 export function createInput({ canvas, editor, state, pushEvent,
@@ -22,6 +38,7 @@ export function createInput({ canvas, editor, state, pushEvent,
   let discardComposition = false;
   let pointerMode = 0;
   let scrollRemainder = 0;
+  const countClicks = clickCounter();
   const emit = (kind, code = 0, e = {}) =>
     pushEvent(kind, code, state.mouseX, state.mouseY, modsOf(e));
   const preedit = (text, end = false) => {
@@ -95,7 +112,9 @@ export function createInput({ canvas, editor, state, pushEvent,
     // The pending word belongs to the field the user typed it in: commit it
     // there in its own frame, before W sees the press that moves focus.
     if (endComposition(true)) flushFrame();
-    emit(EVENT.DOWN, e.button + 1, e);
+    // A single press keeps bits 8..11 clear (read as one click).
+    const clicks = countClicks(e);
+    pushEvent(EVENT.DOWN, e.button + 1, state.mouseX, state.mouseY, modsOf(e) | (clicks > 1 ? clicks << 8 : 0));
     // iOS requires focus within the trusted event stack. Process the W
     // click now so only a field that actually acquired focus opens the IME.
     // Touch waits until release: a swipe over a field must not open it.
@@ -221,9 +240,31 @@ export function createInput({ canvas, editor, state, pushEvent,
   // and hands a paste's text to W's read without a permission prompt;
   // navigator.clipboard (asynchronous, permission-gated) is only the
   // fallback for reads and writes outside those events.
-  const clip = { inEvent: false, written: null, pasted: null, memo: '' };
+  const clip = { inEvent: false, written: null, rich: null, pasted: null, memo: '', direct: null };
+  // The rich flavors (text/html, image/png) go through navigator.clipboard.write
+  // as one ClipboardItem; clipboardData cannot carry an image in Chromium.
+  // Inside a copy event the call still runs in the user's gesture.
+  const writeItem = (text, rich) => {
+    const Item = win?.ClipboardItem ?? globalThis.ClipboardItem;
+    if (!Item || !nav?.clipboard?.write) return false;
+    const parts = { 'text/plain': new Blob([text], { type: 'text/plain' }) };
+    if (rich?.html) parts['text/html'] = new Blob([rich.html], { type: 'text/html' });
+    if (rich?.png) parts['image/png'] = new Blob([rich.png], { type: 'image/png' });
+    nav.clipboard.write([new Item(parts)]).catch(err => log(`clipboard write refused: ${err}`));
+    return true;
+  };
   const clipEvent = e => {
     const data = e.clipboardData;
+    // A copy this page started itself (execCommand below): fill it in, no
+    // W frame (one is already running).
+    if (clip.direct && e.type !== 'paste') {
+      if (!data) return;
+      data.setData('text/plain', clip.direct.text);
+      if (clip.direct.rich?.html) data.setData('text/html', clip.direct.rich.html);
+      e.preventDefault();
+      clip.direct.used = true;
+      return;
+    }
     if (e.type === 'paste') {
       const text = data?.getData('text/plain') ?? '';
       e.preventDefault();
@@ -237,17 +278,39 @@ export function createInput({ canvas, editor, state, pushEvent,
       return;
     }
     clip.written = null;
+    clip.rich = null;
     clip.inEvent = true;
     try { flushFrame(); } finally { clip.inEvent = false; }
     if (clip.written !== null && data) {
       data.setData('text/plain', clip.written);
+      if (clip.rich?.html) data.setData('text/html', clip.rich.html);
       e.preventDefault();
+      if (clip.rich?.png) writeItem(clip.written, clip.rich);
     }
   };
   for (const type of ['copy', 'cut', 'paste']) doc.addEventListener?.(type, clipEvent);
-  const clipboardWrite = text => {
+  // Outside a copy event, a W frame still runs inside a user gesture when a
+  // click or key started it (pointerup and keydown flush synchronously).
+  // There document.execCommand('copy') works without the clipboard-write
+  // permission navigator.clipboard needs (headless Chromium denies it), by
+  // firing a copy event this page answers; elsewhere it returns false and
+  // the asynchronous API is the fallback.
+  const execCopy = (text, rich) => {
+    if (typeof doc?.execCommand !== 'function') return false;
+    clip.direct = { text, rich, used: false };
+    let done = false;
+    try { done = doc.execCommand('copy'); } catch { done = false; }
+    const used = clip.direct.used;
+    clip.direct = null;
+    return done && used;
+  };
+  const clipboardWrite = (text, rich = null) => {
     clip.memo = text;
-    if (clip.inEvent) { clip.written = text; return; }
+    if (clip.inEvent) { clip.written = text; clip.rich = rich; return; }
+    const copied = execCopy(text, rich);
+    if (rich?.png && writeItem(text, rich)) return;
+    if (copied) return;
+    if (rich?.html && writeItem(text, rich)) return;
     nav?.clipboard?.writeText?.(text)?.catch?.(err => log(`clipboard write refused: ${err}`));
   };
   // A string, or a Promise of one; '' when the browser refuses.
