@@ -338,7 +338,8 @@ int kc_terminator(char* text):
 
 
 # Why an instruction is not kernel-safe, or 0: SSE/AVX/MMX/x87 state, or
-# memory below %rsp.
+# memory below %rsp (a lea only computes an address: '&p' in p's own
+# initializer names the word p's value is pushed to next).
 char* kc_insn_problem(char* text):
 	if (contains(text, c"%xmm") || contains(text, c"%ymm") || contains(text, c"%zmm")): return c"SSE/AVX register"
 	if (contains(text, c"%mm") || contains(text, c"%st")): return c"MMX/x87 register"
@@ -346,7 +347,7 @@ char* kc_insn_problem(char* text):
 	if (starts_with(text, c"ldmxcsr") || starts_with(text, c"stmxcsr") || starts_with(text, c"emms")): return c"FPU state"
 	if (starts_with(text, c"xsave") || starts_with(text, c"xrstor") || starts_with(text, c"vzero")): return c"FPU state"
 	int at = index_of(text, c"(%rsp)")
-	if (at > 0):
+	if ((at > 0) && (starts_with(text, c"lea") == 0)):
 		int k = at - 1
 		while ((k > 0) && (text[k] != ' ') && (text[k] != ',') && (text[k] != '-')): k = k - 1
 		if (text[k] == '-'): return c"memory below %rsp"
