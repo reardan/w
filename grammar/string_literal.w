@@ -226,6 +226,9 @@ int raw_asm_literal():
 	return 1
 
 
+int object_rodata_bytes(char* bytes, int n);   /* code_generator/elf_object.w */
+
+
 # A64: the string bytes stay inline in text (branched over, padded so the
 # branch target stays 4-byte aligned), but the {data_ptr,len} descriptor
 # lives in the RW data segment: its data_ptr cell holds an absolute vaddr
@@ -274,11 +277,15 @@ void emit_utf8_string_descriptor(int i):
 		return
 	if ((word_size == 8) && data_split):
 		# A PIE cannot rebase pointer cells in RX text. Keep only the
-		# literal bytes there; put the descriptor in writable data.
-		emit_int8(233) /* jmp over bytes */
-		emit_int32(i + 1)
-		int data_address = code_offset + codepos
-		emit(i + 1, token)
+		# literal bytes there; put the descriptor in writable data. An
+		# object keeps the bytes in .rodata instead (elf_object.w).
+		int data_address = 0
+		if (elf_object): data_address = object_rodata_bytes(token, i + 1)
+		else:
+			emit_int8(233) /* jmp over bytes */
+			emit_int32(i + 1)
+			data_address = code_offset + codepos
+			emit(i + 1, token)
 		int desc = emit_data_zeros(2 * word_size)
 		save_i(data + desc - data_offset, data_address, word_size)
 		save_i(data + desc - data_offset + word_size, i, word_size)
@@ -337,6 +344,12 @@ void be_emit_inline_cstr(int len, char* s):
 		return
 	if (target_isa == 1):
 		arm64_emit_cstr(len, s)
+		return
+	if (elf_object):
+		# An object's literal bytes live in .rodata (elf_object.w).
+		int vaddr = object_rodata_bytes(s, len + 1)
+		be_addr_slot_emit()
+		be_addr_slot_write(codepos - 4, vaddr)
 		return
 	call_relative32(len + 1)
 	emit(len + 1, s)

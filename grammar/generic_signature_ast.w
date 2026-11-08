@@ -106,7 +106,7 @@ int generic_signature_qualifier():
 generic_type_ast* generic_type_ast_capture_at(int depth, int* brackets, int with_suffix):
 	if (depth > 32): return 0
 	if (is_ident_start_byte(token[0]) == 0): return 0
-	if (peek(c"const") || peek(c"gpu")): return 0
+	if (peek(c"const") || peek(c"gpu") || peek(c"__seg_gs") || peek(c"__seg_fs")): return 0
 	int safety = generic_signature_qualifier()
 	if (safety):
 		generic_type_ast_advance(brackets)

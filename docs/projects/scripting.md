@@ -656,9 +656,9 @@ on both front ends; the texts are frozen by the fixtures and have codes:
 | `unsafe:` blocks | `script profile: unsafe blocks are not allowed` | W0423 |
 | `cast(T, x)` with a pointer or function-pointer `T` | `script profile: cast to a pointer type is not allowed` | W0424 |
 | an import outside the import roots | `script profile: import 'lib.file' is not in an import root` | W0425 |
-| naming a runtime system-layer function or global (P2b, below) | `script profile: runtime function 'open' is not visible to addon code` | W0426 |
-| the `debugger` statement (`int3`, which the fault window does not catch) | `script profile: debugger statements are not allowed` | W0427 |
-| naming a module compiled after the engine's base session from outside the addon's own allowlist | `script profile: 'ap_beta_value' is declared in a module outside this addon's import roots` | W0428 |
+| naming a runtime system-layer function or global (P2b, below) | `script profile: runtime function 'open' is not visible to addon code` | W0437 |
+| the `debugger` statement (`int3`, which the fault window does not catch) | `script profile: debugger statements are not allowed` | W0438 |
+| naming a module compiled after the engine's base session from outside the addon's own allowlist | `script profile: 'ap_beta_value' is declared in a module outside this addon's import roots` | W0439 |
 
 A built-in is matched by what the name resolves to, so a local named
 `bind` or `connect` is fine; only a use that reaches the compiler's stub
@@ -705,7 +705,7 @@ function that uses them.
   any address it can compute from a pointer it holds. Memory safety is
   P3's job.
 - **Denial of service.** Runaway loops and deep recursion (G5) are not
-  refused (`debugger` is, W0427).
+  refused (`debugger` is, W0438).
 - **The flat namespace stays flat.** P2b hides the system layer and
   other allowlists' modules by name, but an addon still shares one
   global namespace with the host's binds, the other addons' own
@@ -720,7 +720,7 @@ function that uses them.
   system calls. `script_profile_identifier` (both identifier paths, and
   `alias.member` in `import_alias_member`) resolves the name and reads
   the declaring file of the symbol it reaches; a symbol a trusted runtime
-  file declares is refused (W0426) when that file is in the system
+  file declares is refused (W0437) when that file is in the system
   layer: anything under `lib/__arch__/`, `lib/arm64/` or `lib/darwin/`
   (the syscall wrappers: `open`, `write`, `unlink`, `mmap`, `kill`,
   `exit`, sockets, ...), `lib/linux.w`, `lib/syscalls_linux_x86.w`,
@@ -750,7 +750,7 @@ function that uses them.
   modules are also tracked by when they were opened: after `engine_init`
   seals the base session (`script_profile_seal`), every newly opened
   module is visible to an addon with an allowlist only when its file lies
-  inside one of that addon's roots (W0428). The base session (the runtime
+  inside one of that addon's roots (W0439). The base session (the runtime
   and the preloaded modules) stays visible to all, minus the system
   layer. On the command line nothing changes: the allowlist is the
   `--import-root` list.

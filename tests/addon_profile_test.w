@@ -6,9 +6,9 @@
 # small directories the test writes, so an addon import of any other
 # module the session has not compiled is refused (W0425); modules the
 # engine preloaded stay importable. P2b: the runtime's syscall wrappers
-# are not visible to addon code (W0426), debugger is refused (W0427), and
+# are not visible to addon code (W0437), debugger is refused (W0438), and
 # an addon with its own allowlist (engine_addon_roots) neither imports
-# from nor names modules outside it (W0425, W0428).
+# from nor names modules outside it (W0425, W0439).
 import lib.testing
 import repl.embed
 

@@ -67,6 +67,57 @@ int gpu_qualifier_ahead():
 	return is_type
 
 
+# Only globals and externs live in a segment address space: 'what' (a
+# local variable, a parameter, a field) may point into one but not be
+# in one itself.
+void seg_storage_check(int type, char* what):
+	if (type_seg_prefix(type) == 0): return
+	diag_part(what)
+	error(c" cannot live in a segment address space; declare a __seg_gs/__seg_fs global or use a pointer")
+
+
+# The segment address-space qualifier ahead ('__seg_gs T', '__seg_fs
+# T', compiler/type_table.w's segment records): its record kind, or 0.
+# A type or symbol spelled the same keeps its meaning.
+int seg_qualifier_ahead():
+	int kind = 0
+	if (peek(c"__seg_gs")): kind = type_kind_seg_gs
+	if (peek(c"__seg_fs")): kind = type_kind_seg_fs
+	if (kind == 0): return 0
+	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
+	return kind
+
+
+void seg_buffer_error():
+	error(c"a segment address space holds scalars, pointers and structs, not W arrays, slices, strings or containers")
+
+
+# '__seg_gs T' / '__seg_gs(T)' after the qualifier token: the segment
+# record over the base type (the parenthesized form takes a whole type,
+# pointers included: '__seg_gs(task*)' is a task* object in the gs
+# space). Then type_name's stars build pointers over that record.
+int seg_qualified_type(int kind):
+	if (target_isa != 0):
+		error(c"segment address spaces (__seg_gs, __seg_fs) need the x86 or x64 target")
+	get_token()
+	int target = 0
+	if (accept(c"(")):
+		target = type_name()
+		expect(c")")
+	else:
+		int is_const = accept(c"const")
+		target = type_lookup(token)
+		if (target < 0):
+			type_suggest_names(token)
+			error3(c"unknown type name: '", token, c"'")
+		get_token()
+		if (is_const): target = type_push_const(target)
+	if (type_is_buffer(type_unqualified(target)) || (type_get_kind(target) == type_kind_map) || (type_get_kind(target) == type_kind_set) || (type_get_kind(target) == type_kind_list)):
+		seg_buffer_error()
+	pointer_indirection = 0
+	return type_get_seg(target, kind)
+
+
 # Contextual checked-pointer qualifiers preserve ordinary identifiers with
 # these spellings. A qualifier is recognized only before a known type.
 int safe_qualifier_ahead():
@@ -112,13 +163,19 @@ int type_name():
 			expect(c"]")
 	pointer_indirection = 0
 	if (accept(c"const")): is_const = 1
-	if (gpu_qualifier_ahead()):
+	int seg_kind = seg_qualifier_ahead()
+	if (seg_kind):
+		type = seg_qualified_type(seg_kind)
+		if (is_const): type = type_get_seg(type_push_const(type_strip_seg(type)), seg_kind)
+		is_const = 0
+	else if (gpu_qualifier_ahead()):
 		get_token()
 		is_gpu = 1
 		if (accept(c"const")): is_const = 1
 	if (freestanding_mode && (peek(c"map") | peek(c"set") | peek(c"list")) && (nextc == '[')):
 		error3(c"'", token, c"' types need the W container runtime, which --freestanding excludes")
-	if (peek(c"map") & (nextc == '[')):
+	if (seg_kind): pass
+	else if (peek(c"map") & (nextc == '[')):
 		get_token()
 		expect(c"[")
 		int key_type = type_name()
@@ -197,6 +254,7 @@ int type_name():
 		type = pointer_type
 
 	type = type_name_array_suffix(type)
+	if (seg_kind && type_is_buffer(type)): seg_buffer_error()
 	if (safe_kind):
 		if (type_safe_entrypoint == 0): error(c"checked pointers are not supported by in-process sessions")
 		if (ast_retain_mode == 0): error(c"checked pointers require the retained frontend")

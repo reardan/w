@@ -72,6 +72,7 @@ import grammar.enum_declaration
 import grammar.import_statement
 import grammar.c_import_statement
 import grammar.extern_statement
+import grammar.object_attributes
 import grammar.generator_decl
 import grammar.kernel_decl
 import grammar.protobuf_builtin

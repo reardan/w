@@ -346,6 +346,19 @@ void direct_callee_materialize():
 	else: generic_inst_emit_callee(id)
 
 
+# The same for a value use of the name (no call follows): under --c-abi
+# a function's value is its System V entry (code_generator/c_abi.w).
+void direct_callee_materialize_value():
+	if (c_abi_mode == 0):
+		direct_callee_materialize()
+		return
+	int kind = direct_callee_kind
+	int id = direct_callee_id
+	direct_callee_kind = 0
+	if (kind != 1): error(c"--c-abi does not support taking the address of a generic function yet")
+	c_abi_function_value(id, direct_callee_name(id))
+
+
 # Turn the current note into the record of the call based at s.
 void direct_callee_to_record(int s):
 	int kind = direct_callee_kind
@@ -373,7 +386,8 @@ int rt_call_begin(char* fn):
 		direct_call_record(s, 1, t)
 		return s
 	if (t < 0): sym_not_found_error(fn)
-	sym_emit_value(t, fn)
+	if (c_abi_calls_through_symbol(t)): c_abi_function_value(t, fn)
+	else: sym_emit_value(t, fn)
 	push_slot()
 	direct_call_record(s, 0, 0)
 	return s
