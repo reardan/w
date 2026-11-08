@@ -77,6 +77,24 @@ char* lowering_render(at_rule* rule):
 	return out.data
 
 
+void lowering_predicates_into(string_builder* out, char* rule, list[at_alt*] alts):
+	for i, alt in alts:
+		if (alt.sites != 0):
+			for at_site* site in alt.sites:
+				if (strcmp(site.kind, c"predicate") != 0): continue
+				if (out.length > 0): string_append_char(out, ' ')
+				string_append(out, cstr(f"{rule}:{i}:{site.position}:{site.raw}"))
+		for at_element* element in alt.elements:
+			if (element.kind == 3): lowering_predicates_into(out, rule, element.group_alts)
+
+
+# Every predicate site left on the rules, as rule:alternative:position:text.
+char* lowering_predicates(list[at_rule*] rules):
+	string_builder* out = string_new()
+	for at_rule* rule in rules: lowering_predicates_into(out, rule.name, rule.alts)
+	return out.data
+
+
 void lowering_accept(char* source, list[char*] expected):
 	list[at_rule*] rules = lowering_rules(source)
 	int count = rules.length
@@ -111,10 +129,22 @@ int main():
 	nullable.push(c"e_bp0 e_primary ( fold: , ID )*")
 	nullable.push(c"e_bp1 e_primary ( fold: , ID | fold: ;? ID )*")
 	lowering_accept(c"grammar G; e: e ',' ID | e ';'? ID | ; ID: [a-z]+;", nullable)
+	# Host predicates (Z's `expression`) lower as if they held. Each one stays
+	# on exactly one lowered alternative, shifted past the dropped left
+	# operand, so the audit still reports it once as an ignored host site.
+	list[char*] predicated = new list[char*]
+	predicated.push(c"e e_bp1")
+	predicated.push(c"e_primary ID")
+	predicated.push(c"e_bp0 e_primary ( fold: I e_primary )*")
+	predicated.push(c"e_bp1 e_primary ( fold: I e_primary | fold: I e_bp1 )*")
+	char* z_shape = c"grammar G; e: e {left(_input)}? I e | <assoc=right> e I e | {p()}? ID; I: '~'; ID: [a-z]+;"
+	lowering_accept(z_shape, predicated)
+	list[at_rule*] rules = lowering_rules(z_shape)
+	assert_equal(1, at_normalize_prediction_plan(rules[0], rules))
+	assert_strings_equal(c"e_primary:0:0:{p()}? e_bp0:0:0:{left(_input)}?", lowering_predicates(rules))
 	# Refusals keep the original graph.
 	lowering_refuse(c"grammar G; e: '(' e ')' | ID; ID: [a-z]+;", c"not_direct_recursive")
 	lowering_refuse(c"grammar G; e: e {host();} '+' e | ID; ID: [a-z]+;", c"element_semantics")
-	lowering_refuse(c"grammar G; e: e '+' e | {p()}? ID; ID: [a-z]+;", c"element_semantics")
 	lowering_refuse(c"grammar G; e: e '+'*? e | ID; ID: [a-z]+;", c"element_semantics")
 	lowering_refuse(c"grammar G; e: <assoc=middle> e '+' e | ID; ID: [a-z]+;", c"alternative_options")
 	lowering_refuse(c"grammar G; e: e '!'? | ID; ID: [a-z]+;", c"nullable_operator_tail")

@@ -1526,7 +1526,7 @@
     },
     {
       "path": "current_refusals.json",
-      "sha256": "0e4fcb8b92a65de2531bbc6189c5f48cdac3d74e067ae7530cff5fa7728a06c1"
+      "sha256": "f85ad548bbfbe6237c4c3ccfd1d76b00e6c0e98f2df1ac425a9a3bdbf0bc373f"
     },
     {
       "path": "original_graph.json",

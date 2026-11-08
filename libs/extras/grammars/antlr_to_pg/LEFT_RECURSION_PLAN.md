@@ -7,10 +7,10 @@ normalized rules. Measure grammar compilation and runtime compatibility separate
 
 Status: Wave 0 diagnostics, analysis interfaces, and pinned reference evidence are
 implemented, and so are the nonnullable and nullable lowerings (deliveries 2 and
-3, see [Implementation status](#implementation-status) below): **24 of the 25
-inventoried rules are lowered** and 20 of the 21 grammars now translate in exact
-mode. Z's `expression` remains refused because its precedence alternatives
-contain host predicates. See the
+3, see [Implementation status](#implementation-status) below): **all 25
+inventoried rules are lowered** and all 21 grammars now translate in exact
+permissive mode. Z's `expression`, whose precedence alternatives carry host
+predicates, lowers with the predicates treated as true (#915). See the
 [Wave 0 fixtures and commands](../../../../tests/grammars/antlr_left_recursion/README.md).
 This follows [PR #708](https://github.com/reardan/w/pull/708)
 and the [compatibility capability ledger](COMPATIBILITY_PLAN.md). The planning PR
@@ -52,7 +52,15 @@ binding; the lowering keeps the existing helper layout (`R_primary`, one
   matching the analyzer's transformed decision order.
 - The outer `<assoc>` option of an operator is consumed; nested and misplaced
   associativity options stay attached (ANTLR ignores them) and are still reported
-  as host sites. Actions, predicates, other options and nongreedy decisions refuse.
+  as host sites. Other options, actions and nongreedy decisions refuse.
+- Host predicates (`{p}?`) in primaries and operators are lowered as if they
+  held, the assumption permissive mode makes for every other predicate; ANTLR
+  evaluates the rewritten `{precpred}? {p}?` pair at the same loop decision.
+  Each predicate stays on one lowered alternative (an operator tail's moves past
+  the dropped left operand, on the tier that first admits the operator), so the
+  final audit still reports it once as an ignored `AT_HOST_SITE`: translator
+  strict mode refuses the grammar for that host dependency, not for left
+  recursion, and the sweep reports permissive verdicts as unverified.
 
 Safety proofs replace the older shape restrictions instead of weakening them:
 every loop tail must consume a token (a constrained operand consumes only when
@@ -72,14 +80,17 @@ Evidence:
 
 - `tests/antlr_to_pg_precedence_lowering_test.w` pins the lowered helper layout
   for adjacent, optional-separator, mixed suffix/binary/prefix/right-associative
-  and nullable-primary rules, and every refusal reason above.
+  and nullable-primary rules, a Z-shaped predicated rule (with the position of
+  each retained predicate), and every refusal reason above.
 - `bin/antlr_left_recursion_refusals` now records each inventoried rule as
-  lowered or refused; `current_refusals.json` holds 24 lowered rules and Z's
-  `expression` refusal (`element_semantics` at its predicated alternative 24).
+  lowered or refused; `current_refusals.json` holds all 25 lowered rules and
+  no left-recursion refusal. Z translates in exact permissive mode; exact strict
+  refuses it for its host predicates and `@members` (`AT_HOST_SITE`,
+  `AT_DECLARATION`).
 - The [parse-tree differential](../../../../tests/grammars/antlr_trees/README.md)
   compares complete W parse trees with ANTLR 4.13.2 trees for the Wave 0
-  fixtures, two new fixtures and five pinned upstream grammars (149 inputs, 123
-  accepted by ANTLR, all identical). A live run over the sweep's pinned example
+  fixtures, two new fixtures and six pinned upstream grammars (163 inputs, 136
+  accepted by ANTLR, all identical), including 14 Z expressions. A live run over the sweep's pinned example
   files of the 15 grammars whose Java compiles without host support produced
   identical trees for 73 of 75 files; the other two exceed the
   one-million-step prediction budget.
@@ -93,8 +104,7 @@ Evidence:
 - The negative Wave 0 fixtures (direct, mutual and nullable-adjacent cycles,
   attached options) are still refused.
 
-Not done: host predicates inside precedence alternatives (Z), a DFA or other
-prediction cache for highly ambiguous adjacency (HyperTalk's `chunk chunk`
+Not done: a DFA or other prediction cache for highly ambiguous adjacency (HyperTalk's `chunk chunk`
 exceeds the budget on one pinned example), and numeric per-fixture performance
 bounds.
 

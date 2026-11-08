@@ -76,7 +76,7 @@ grammars describe the two formats involved, run through
 - [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the implementation plan and
   capability ledger for the exact lexer and imported parser prediction engines.
 - [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the left-recursion lowering
-  plan and its implementation status (24 of the 25 inventoried rules lowered).
+  plan and its implementation status (all 25 inventoried rules lowered).
 
 ## Why w, not a scripting language
 
