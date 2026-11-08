@@ -1086,6 +1086,8 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			if (c_variadic >= 0):
 				int s = stack_pos
 				char* classes = cast(char*, malloc(extern_max_params))
+				int* outer_record_types = c_variadic_record_types
+				c_variadic_record_types = cast(int*, malloc(extern_max_params * __word_size__))
 				int arg = tree.left[id]
 				int count = 0
 				while (arg >= 0):
@@ -1096,6 +1098,8 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 					arg = tree.next_arg[arg]
 				c_variadic_call_emit(sym, count, classes, declared_return)
 				free(classes)
+				free(cast(char*, c_variadic_record_types))
+				c_variadic_record_types = outer_record_types
 				pop_to(s)
 				last_call_return_type = declared_return
 				last_call_end = codepos

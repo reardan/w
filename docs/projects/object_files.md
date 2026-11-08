@@ -213,6 +213,10 @@ symbol bindings and the diagnostics.
   C-variadic definition like a variadic `extern`: the C convention
   inline (`al` = the vector registers used), through its System V
   entry. The syntax needs `--c-abi` (`w check` accepts it anywhere).
+  A struct or union argument of a C-variadic call, among the fixed
+  parameters or in the variadic tail, is classified like any System V
+  record argument (registers or stack eightbytes; x64 System V only,
+  other targets reject it).
 - **Restrictions.** `--c-abi` requires `--freestanding` (the W runtime's
   own callbacks keep W's convention) and rejects `--no-direct-calls`
   (a function name's value use must stay distinguishable from a callee).

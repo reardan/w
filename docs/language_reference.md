@@ -138,7 +138,7 @@ at runtime.
 |---|---|
 | Store into a narrower integer (assignment, initialisation, argument, field) | Truncates to the destination width. A bare literal outside the 1- or 2-byte type's signed and unsigned range is an error; use `char c = cast(char, 300)` to store 44 explicitly. Computed values still truncate silently. **(#532)** |
 | Load of a narrower integer | Sign-extends signed types (`char`, `byte`, `intN`) and zero-extends unsigned ones. |
-| `cast(T, e)` to an integer type, used as a value | **Changes only the static type; no truncation or extension.** `cast(uint8, -1) + 0 == -1` and `cast(char, 255) + 0 == 255`. The value is narrowed only when it is stored. See [Known divergences](#known-divergences). |
+| `cast(T, e)` to an integer type, used as a value | Truncates to T's width and sign- or zero-extends, as C does, when T is narrower than the word: `cast(uint8, -1) + 0 == 255`, `cast(char, 255) + 0 == -1`, and on a 64-bit word `cast(uint32, -1)` is 4294967295. A cast to a word-sized type changes only the static type. |
 | Integer to `bool` | A constant is normalised to 0/1 (`bool b = 5` holds 1). A non-constant `int` (`bool b = n`) currently crashes the produced program (#525); write `n != 0`. |
 | float to int | Truncates toward zero (`int i = 3.9` is 3). Out-of-range results are target-specific ([float.md](projects/float.md), "Known MVP semantic differences"). |
 
@@ -419,7 +419,7 @@ records what happens today.
 | 1 | README's language snapshot lists "relational (with chaining)", but comparisons do not chain: `3 > 2 > 1` is 0. | README wording to be fixed. |
 | 2 | `-2147483648` is +2147483648 on 64-bit targets, and decimal literals from 2147483648 to 4294967295 wrap negative with no warning (hex literals warn). | Typed literals are planned (type_system_p0 milestone 1). |
 | 3 | Numeric literal tokens accept trailing letters and `_`, and the decimal decoder treats them as digits: `1_000` is 57000, `0o17` is 6317, `12abc` is 17451 and `0b1_0` is 98. Hex skips non-hex characters, so `0x7FFF_FFFF` happens to work. | Should be a lexical error. |
-| 4 | `cast(T, e)` to a narrower integer type does not truncate or extend the value in a register (`cast(uint8, -1) + 0 == -1`). type_system_p0 milestone 2 says numeric casts define truncation and sign extension. | |
+| 4 | (Fixed) `cast(T, e)` to a narrower integer type used not to truncate or extend the value in a register (`cast(uint8, -1) + 0 == -1`), so `x < cast(uint32, -1)` was false for a `uint32 x` on x64. It now narrows as C does (`tests/cast_narrow_test.w`). | Fixed |
 | 5 | `cast(T*, p)` removes `const` silently; type_system_p0 milestone 2 says it must not. | |
 | 6 | `T*` → `const T*` warns; type_system_p0 milestone 6 says it is implicit. | |
 | 7 | `int` → `enum` only warns; type_system_p0 milestone 10 says it needs a cast. Enumerators are global names, not `color.red`. | #532 |

@@ -886,7 +886,9 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
-		if ((generator || (c_variadic >= 0)) && (type_num_args(type_real(got)) > 0)): return -1
+		# a record in a C-variadic call: x64 System V only (push_c_variadic_argument)
+		int c_variadic_records = (target_isa == 0) && (word_size == 8) && (target_os != 2)
+		if ((generator || ((c_variadic >= 0) && (c_variadic_records == 0))) && (type_num_args(type_real(got)) > 0)): return -1
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		if ((param >= 0) && (ast_expression_argument_compatible(tree, param, arg) == 0)):

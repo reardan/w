@@ -35,6 +35,8 @@ extern big c_make_big(int seed)
 extern int c_sum_records(pair p, small s, big g, tiny t, int k)
 extern int c_vsum(int n, c_va_list* ap)
 extern int c_printf_like(int n, ...)
+extern int c_tagged_vsum(pair p, int n, ...)
+extern int c_vrecord_tail(int n, ...)
 extern int32[] c_numbers
 extern uint8[] c_bytes
 
@@ -144,3 +146,21 @@ int w_numbers(int i):
 
 uint8* w_bytes_at(int i):
 	return &c_bytes[i]
+
+
+# Records by value in a C-variadic call: among the fixed parameters
+# (an INTEGER pair in two registers, then the variadic words) and in the
+# variadic tail (a register pair, a MEMORY big on the stack, a small).
+int w_vrecord_calls():
+	pair p
+	p.a = 1
+	p.b = 2
+	big g
+	g.a = 3
+	g.b = 4
+	g.c = 5
+	g.d = 6
+	small s
+	s.x = 7
+	s.y = 8
+	return c_tagged_vsum(p, 2, 10, 20) + 1000 * c_vrecord_tail(9, p, g, s)

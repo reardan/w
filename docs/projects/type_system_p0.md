@@ -12,7 +12,7 @@ listed under its
 |---|---|
 | 0 Baseline fixtures | Done (`type_system_p0_test` and the `type_system_*` fixture targets). |
 | 1 Metadata helpers, typed literals | Partly done. The `int` wildcard is gone. **Not implemented:** typed literals and general range analysis. Literals retain the 32-bit `constant` pseudo-type; out-of-range bare literals such as `char c = 300` are errors. |
-| 2 `cast(T, x)` | Done, with two gaps: an integer cast does not truncate or extend a value in a register (`cast(uint8, -1)` is still -1 until it is stored), and a cast can remove `const`. |
+| 2 `cast(T, x)` | Done, with one gap: a cast can remove `const`. An integer cast to a type narrower than the word truncates and sign- or zero-extends the value (`cast(uint8, -1)` is 255; `tests/cast_narrow_test.w`). |
 | 3 `bool` | Done. A non-constant `int` to `bool` conversion crashes (#525). |
 | 4 Precise call return types | Done. |
 | 5 Struct return by value | Done. |

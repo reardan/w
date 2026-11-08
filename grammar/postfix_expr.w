@@ -417,9 +417,17 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 # follow the declared parameter types; the variadic tail gets the C
 # default argument promotions (float32 widens to float64). Returns the
 # argument's ABI class (see ffi_type_class).
+# A struct or union argument (fixed or in the variadic tail) is pushed as
+# its words and classified at the call (x64 System V only): its class is
+# 3, its type goes to c_variadic_record_types (code_generator/c_abi.w).
 int push_c_variadic_argument(int callee_sym, char* callee_name, int passed_args, int fixed_args, int arg_type):
 	if (type_num_args(type_real(arg_type)) > 0):
-		error(c"struct arguments are not supported in variadic C calls")
+		if ((target_isa != 0) || (word_size != 8) || (target_os == 2) || (c_variadic_record_types == 0)):
+			error(c"struct arguments are not supported in variadic C calls")
+		if (passed_args < fixed_args): check_call_argument(callee_sym, -1, callee_name, passed_args, arg_type)
+		push_call_argument_compact(arg_type, 0)
+		c_variadic_record_types[passed_args] = type_unqualified(arg_type)
+		return 3
 	if (passed_args < fixed_args):
 		check_call_argument(callee_sym, -1, callee_name, passed_args, arg_type)
 		int param_type = sym_param_type(callee_sym, passed_args)
@@ -458,6 +466,8 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 # they select xmm registers and set al).
 int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int declared_return, int fixed_args):
 	char* arg_classes = cast(char*, malloc(extern_max_params))
+	int* outer_record_types = c_variadic_record_types
+	c_variadic_record_types = cast(int*, malloc(extern_max_params * __word_size__))
 	int passed_args = 0
 	if (accept(c")") == 0):
 		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
@@ -477,6 +487,8 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 
 	c_variadic_call_emit(callee_sym, passed_args, arg_classes, declared_return)
 	free(arg_classes)
+	free(cast(char*, c_variadic_record_types))
+	c_variadic_record_types = outer_record_types
 	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
