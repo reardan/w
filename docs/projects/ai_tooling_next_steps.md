@@ -1757,3 +1757,22 @@ CLAUDE.md warns about). The declaration itself is accepted, so the error
 points away from the cause. Direction: reject (or warn on) declaring a local
 whose name is a built-in type name, and mention the type-name reading in the
 statement-position parse error.
+
+## `wtest changed` over-selects when roots import generated sources (2026-11-08, #914)
+
+For a one-file change to `libs/extras/parser_generator/prediction.w`, `git
+diff --name-only HEAD | bin/wtest changed` printed 99 targets, including
+every `javascript_*` test and `javascript_test262`, with the warning that
+`bin/wv2 deps` failed for 180 roots and they fell back to literal matching.
+The failing roots import a generated file that a fresh worktree has not
+built yet (`libs/extras/javascript/parser.w` imports
+`bin/generated_javascript_parser.w`, written by a `step=` of the
+`javascript_parser` target that declares no outputs and is not part of the
+`generated` umbrella), so their real closures were unknown and every literal
+mention of the parser-generator tree selected them. Separately, diffing
+against a moving integration branch (`git diff origin/<branch>`) silently
+adds the files other merged work changed, which is easy to mistake for one's
+own diff. Direction: declare such generated parsers as target outputs (or
+tag them `generated`) so a fresh worktree can resolve them, let `deps`
+report a missing generated import instead of failing the whole root, and
+print which of the changed paths caused each fallback selection.
