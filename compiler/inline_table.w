@@ -60,7 +60,7 @@ reference for tests/regalloc_diff_test.w). The default stays tiny
 because the capture and the re-parse of the larger budgets cost the
 self-compile 8-15% of its instructions for a few percent on the
 corpus (§8 of the plan); under the default a capture is abandoned as
-soon as the body passes the tiny caps, and the record of a body that
+soon as the body passes the tiny byte cap, and the record of a body that
 cannot be inlined is dropped again, so the default costs the
 self-compile about what it saves.
 
@@ -119,7 +119,7 @@ const int inline_max_tokens = 160
 # whose whole definition, prologue and epilogue included, fits in
 # inline_budget_tiny bytes is about as long as the push/call/pop
 # sequence it replaces. A capture under the default stops paying as
-# soon as the body passes either tiny cap, so the self-compile pays for
+# soon as the body passes the tiny byte cap, so the self-compile pays for
 # the records of tiny bodies only.
 # A straight-line site runs once per call of its caller: copying even a
 # tiny body there cost the self-compile more (re-parsing the body at
@@ -143,7 +143,7 @@ struct inline_record:
 	int column         # column_number at that token
 	char* text         # the body's bytes, offset..end, plus a newline
 	int length         # bytes in text
-	int tokens         # body token count
+	int tokens         # body token count (inline_text_tokens over text)
 	int code_bytes     # bytes the body's code took in the definition
 	int ok             # 1 when the body may be inlined
 	int has_calls      # the body emitted a call instruction that returns
@@ -645,6 +645,71 @@ int inline_trim_tail(char* text, int length):
 	return end
 
 
+# 1 when c continues a two-byte operator that starts with p
+# (inline_text_tokens: '==', '<=', '&&', '<<', '+=', '->', '++', ...).
+int inline_op_pair(int p, int c):
+	if (c == '='):
+		return (p == '=') || (p == '!') || (p == '<') || (p == '>') || (p == '+') || (p == '-') || (p == '*') || (p == '/') || (p == '%') || (p == '&') || (p == '|') || (p == '^') || (p == ':')
+	if ((c == p) && ((c == '&') || (c == '|') || (c == '<') || (c == '>') || (c == '+') || (c == '-') || (c == '*') || (c == '.'))): return 1
+	return (p == '-') && (c == '>')
+
+
+# The offset just past the string or character literal whose opening
+# quote is at text[i] (or the end of its line, for an unterminated one).
+int inline_text_literal_end(char* text, int length, int i):
+	int quote = text[i]
+	i = i + 1
+	while ((i < length) && (text[i] != quote) && (text[i] != 10)):
+		if (text[i] == 92): i = i + 1
+		i = i + 1
+	return i + 1
+
+
+# The number of tokens in a body copy (text, length bytes), counted by a
+# byte-level lexer over the copy itself: identifiers and numbers, string
+# and character literals (with an optional one-letter prefix), and
+# operators (maximal munch over the pairs above, plus '<<=', '>>=' and
+# '...') are one token each; whitespace and comments are none. It is
+# close to the tokenizer's count but need not equal it: what matters is
+# that it depends on the source bytes alone. token_serial's delta over
+# the body does not: the streaming grammar re-lexes what it looks ahead
+# at (a generic call's inferred arguments, a declaration probe) and the
+# AST front end rewinds the serial to its recorded tokens, so the two
+# front ends measured the same body differently and --profile-use's hot
+# budget, which inlines bodies that call, came out different
+# (reardan/w#886; tests/inline_front_end_test.w).
+int inline_text_tokens(char* text, int length):
+	int count = 0
+	int i = 0
+	while (i < length):
+		int c = text[i] & 255
+		if ((c == ' ') || (c == 9) || (c == 10) || (c == 13)):
+			i = i + 1
+		else if (c == '#'):
+			while ((i < length) && (text[i] != 10)): i = i + 1
+		else if ((c == '/') && (i + 1 < length) && (text[i + 1] == '*')):
+			i = i + 2
+			while ((i + 1 < length) && ((text[i] != '*') || (text[i + 1] != '/'))): i = i + 1
+			i = i + 2
+		else if ((c == '"') || (c == 39)):
+			i = inline_text_literal_end(text, length, i)
+			count = count + 1
+		else if (inline_is_ident_byte(c)):
+			int start = i
+			while ((i < length) && inline_is_ident_byte(text[i] & 255)): i = i + 1
+			# c"..." and the other one-letter prefixes: one token
+			if ((i == start + 1) && (i < length) && (text[i] == '"')): i = inline_text_literal_end(text, length, i)
+			count = count + 1
+		else:
+			i = i + 1
+			if ((i < length) && inline_op_pair(c, text[i] & 255)):
+				i = i + 1
+				if ((i < length) && (text[i] == '=') && ((c == '<') || (c == '>'))): i = i + 1
+				else if ((i < length) && (c == '.') && (text[i] == '.')): i = i + 1
+			count = count + 1
+	return count
+
+
 # The body has been parsed; the current token is the first one after it
 # (its offset ends the span). Decides whether the record is usable.
 void inline_body_end():
@@ -660,7 +725,6 @@ void inline_body_end():
 	if (inline_loop_count != inline_capture_loops): rec.ok = 0
 	if (inline_hazard_count != inline_capture_hazards): rec.ok = 0
 	if (warning_count != inline_capture_warnings): rec.ok = 0
-	if (rec.tokens > inline_capture_tokens_cap): rec.ok = 0
 	if (rec.code_bytes > inline_capture_bytes_cap): rec.ok = 0
 	if (rec.offset < 0): rec.ok = 0
 	# A body that never completes (error(), a trap: grammar/type_check.w
@@ -681,6 +745,9 @@ void inline_body_end():
 			else:
 				rec.text = text
 				rec.length = inline_trim_tail(text, length)
+				# The token count every budget reads, from the bytes alone
+				rec.tokens = inline_text_tokens(text, rec.length)
+				if (rec.tokens > inline_capture_tokens_cap): rec.ok = 0
 	if (rec.ok):
 		char** names = rec.param_names
 		for i in range(rec.param_count):
@@ -715,9 +782,11 @@ void inline_note_lookup(char* s, int found):
 		if ((scope == 'L') || (scope == 'A')): return;
 	inline_record* rec = inline_scratch
 	# The capture stops paying as soon as the body cannot inline any
-	# more: past the token cap or the largest budget, or holding a
-	# loop or a hazard (inline_body_end repeats these checks)
-	if ((token_serial - inline_capture_tokens > inline_capture_tokens_cap) || (codepos - inline_capture_codepos > inline_capture_bytes_cap) || (inline_loop_count != inline_capture_loops) || (inline_hazard_count != inline_capture_hazards)):
+	# more: past the largest budget, or holding a loop or a hazard
+	# (inline_body_end repeats these checks, and applies the token cap)
+	# (bytes, not token_serial: the serial is not front-end neutral, see
+	# inline_text_tokens; codepos only grows while the body compiles)
+	if ((codepos - inline_capture_codepos > inline_capture_bytes_cap) || (inline_loop_count != inline_capture_loops) || (inline_hazard_count != inline_capture_hazards)):
 		inline_capture_active = 0
 		rec.ok = 0
 		return;
@@ -746,7 +815,12 @@ void inline_note_lookup(char* s, int found):
 		for i in range(n):
 			if ((syms[i] < 0) && (lens[i] == key)):
 				if (strcmp(names[i], s) == 0): return;
-	if (n > inline_capture_tokens_cap): return;
+	# More names than the arrays hold: the body cannot be checked at a
+	# call site, so it is not kept
+	if (n >= inline_max_tokens):
+		inline_capture_active = 0
+		rec.ok = 0
+		return;
 	if (rec.free_text_used + len + 1 > rec.free_text_size):
 		int size = rec.free_text_size * 2
 		if (size < 256): size = 256
