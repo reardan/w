@@ -10,8 +10,10 @@ list[char*] sw_stages(): return ht_command(c"translate generate compile strict")
 list[char*] sw_build_stages(): return ht_command(c"translate generate compile compiler_strict examples")
 # Each example runs in its own process with this ceiling (or the stage
 # timeout, if smaller); a hung parser is a measured failure, not an
-# infrastructure error.
-int sw_example_timeout_ms = 10000
+# infrastructure error. It is only a hang guard, generous enough for a
+# loaded machine: performance is gated by the deterministic per-example
+# work bounds instead (sw_compare_work).
+int sw_example_timeout_ms = 30000
 json_value* sw_configurations(int extended = 0):
 	json_value* configurations = json_parse(c"{\"default_permissive\":[],\"default_strict\":[\"--strict\"],\"stateful_permissive\":[\"--stateful\"],\"stateful_strict\":[\"--strict\",\"--stateful\"]}")
 	if (extended):
