@@ -60,6 +60,7 @@ const int ATSPI_ROLE_PANEL = 39
 const int ATSPI_ROLE_PROGRESS_BAR = 42
 const int ATSPI_ROLE_PUSH_BUTTON = 43
 const int ATSPI_ROLE_RADIO_BUTTON = 44
+const int ATSPI_ROLE_SLIDER = 51
 const int ATSPI_ROLE_TABLE = 55
 const int ATSPI_ROLE_TABLE_CELL = 56
 const int ATSPI_ROLE_TABLE_COLUMN_HEADER = 57
@@ -284,6 +285,7 @@ int ui_atspi_role(ui_access_node* n):
 	if (r == UI_ACCESS_TAB): return ATSPI_ROLE_PAGE_TAB
 	if (r == UI_ACCESS_PROGRESS): return ATSPI_ROLE_PROGRESS_BAR
 	if (r == UI_ACCESS_DIALOG): return ATSPI_ROLE_DIALOG
+	if (r == UI_ACCESS_SLIDER): return ATSPI_ROLE_SLIDER
 	return ATSPI_ROLE_PANEL
 
 
@@ -311,6 +313,7 @@ char* ui_atspi_role_name(int role):
 	if (role == ATSPI_ROLE_PAGE_TAB): return c"page tab"
 	if (role == ATSPI_ROLE_PROGRESS_BAR): return c"progress bar"
 	if (role == ATSPI_ROLE_DIALOG): return c"dialog"
+	if (role == ATSPI_ROLE_SLIDER): return c"slider"
 	if (role == ATSPI_ROLE_APPLICATION): return c"application"
 	return c"panel"
 
@@ -488,7 +491,13 @@ int ui_atspi_caret(ui_access_node* n):
 
 
 int ui_atspi_has_value(ui_access_node* n):
-	return (n != 0) && (n.role == UI_ACCESS_PROGRESS)
+	return (n != 0) && ((n.role == UI_ACCESS_PROGRESS) || (n.role == UI_ACCESS_SLIDER) || n.has_range)
+
+
+# Whether an assistive technology may set n's value (#911): a slider
+# that takes UI_ACCESS_SET_VALUE.
+int ui_atspi_range_writable(ui_access_node* n):
+	return (n.role == UI_ACCESS_SLIDER) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0) && !ui_access_inert(n)
 
 
 # Action i of a node: ACTIVATE first, then TOGGLE, or 0.
@@ -654,6 +663,20 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 			dbus_put_sig(out, c"s")
 			ui_atspi_put_text(out, &n.value)
 			return 1
+		# The published range (ui_access_set_range); a progress bar
+		# without one reads 0..100 from its text.
+		if (n.has_range):
+			float32 f = 0.0
+			int known = 1
+			if (strcmp(prop, c"MinimumValue") == 0): f = n.range_min
+			else if (strcmp(prop, c"MaximumValue") == 0): f = n.range_max
+			else if (strcmp(prop, c"MinimumIncrement") == 0): f = n.range_step
+			else if (strcmp(prop, c"CurrentValue") == 0): f = n.range_now
+			else: known = 0
+			if (!known): return 0
+			dbus_put_sig(out, c"d")
+			dbus_put_double_f32(out, f)
+			return 1
 		int v = 0 - 1
 		if (strcmp(prop, c"MinimumValue") == 0): v = 0
 		if (strcmp(prop, c"MaximumValue") == 0): v = 100
@@ -803,6 +826,16 @@ int ui_atspi_unknown(ui_atspi_bridge* b, dbus_message* m):
 	return dbus_error_reply(b.bus, m, c"org.freedesktop.DBus.Error.UnknownMethod", c"not supported by the W accessibility bridge")
 
 
+# Queue a slider's new value v as UI_ACCESS_SET_VALUE text (#911); 0
+# when the node takes none or v lies outside its range.
+int ui_atspi_set_value(ui_atspi_bridge* b, ui_access_node* n, float32 v):
+	if ((n == 0) || !ui_atspi_range_writable(n)): return 0
+	if (n.has_range && ((v < n.range_min) || (v > n.range_max))): return 0
+	char[40] text
+	int length = ui_access_number_format(&text[0], v)
+	return ui_atspi_enqueue(b, n, UI_ACCESS_SET_VALUE, &text[0], length)
+
+
 int ui_atspi_call_properties(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
@@ -874,8 +907,49 @@ int ui_atspi_call_properties(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 			b.app_id = dbus_read_i32(&r)
 			dbus_body(b.bus)
 			return dbus_reply(b.bus, m, c"")
+		if ((n != 0) && (r.failed == 0) && ui_atspi_iface_is(iface, c"org.a11y.atspi.Value") && (strcmp(prop, c"CurrentValue") == 0) && (strcmp(sig, c"d") == 0) && ui_atspi_range_writable(n)):
+			float32 v = dbus_read_double_f32(&r)
+			if (r.failed || !ui_atspi_set_value(b, n, v)):
+				return dbus_error_reply(b.bus, m, c"org.freedesktop.DBus.Error.InvalidArgs", c"value out of range")
+			dbus_body(b.bus)
+			return dbus_reply(b.bus, m, c"")
 		return dbus_error_reply(b.bus, m, c"org.freedesktop.DBus.Error.PropertyReadOnly", c"read-only")
 	return ui_atspi_unknown(b, m)
+
+
+# AT-SPI's AtspiRelationType for a model relation kind (forward, or
+# negative for the reverse ui_access_related derives); 0 for none.
+int ui_atspi_relation_type(int kind):
+	if (kind == UI_ACCESS_REL_LABELLED_BY): return 2
+	if (kind == UI_ACCESS_REL_LABEL_FOR): return 1
+	if (kind == UI_ACCESS_REL_CONTROLLER_FOR): return 3
+	if (kind == UI_ACCESS_REL_CONTROLLED_BY): return 4
+	if (kind == UI_ACCESS_REL_MEMBER_OF): return 5
+	if (kind == UI_ACCESS_REL_DESCRIBED_BY): return 18
+	if (kind == UI_ACCESS_REL_DESCRIPTION_FOR): return 17
+	return 0
+
+
+# n's relation set, a(ua(so)): each kind with its targets (#911).
+void ui_atspi_put_relations(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n):
+	int mark = dbus_array_begin(out, 8)
+	if (n != 0):
+		int kind = 0
+		int kinds = ui_access_relation_kinds(b.published, n, 0, &kind)
+		for i in range(kinds):
+			ui_access_relation_kinds(b.published, n, i, &kind)
+			int type = ui_atspi_relation_type(kind)
+			if (type != 0):
+				dbus_put_struct(out)
+				dbus_put_u32(out, type)
+				int inner = dbus_array_begin(out, 8)
+				ui_access_node* t = 0
+				int count = ui_access_related(b.published, n, kind, 0, &t)
+				for k in range(count):
+					ui_access_related(b.published, n, kind, k, &t)
+					ui_atspi_put_ref(b, out, t.id)
+				dbus_array_end(out, inner, 8)
+	dbus_array_end(out, mark, 8)
 
 
 int ui_atspi_accessible_member(dbus_message* m):
@@ -913,8 +987,7 @@ int ui_atspi_call_accessible(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 	if (ui_atspi_member(m, c"GetIndexInParent")):
 		return ui_atspi_reply_i32(b, m, ui_atspi_index_in_parent(n))
 	if (ui_atspi_member(m, c"GetRelationSet")):
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
+		ui_atspi_put_relations(b, out, n)
 		return dbus_reply(b.bus, m, c"a(ua(so))")
 	if (ui_atspi_member(m, c"GetRole")):
 		int role = ATSPI_ROLE_APPLICATION
@@ -1216,6 +1289,35 @@ void ui_atspi_put_attr_set(dbus_buf* out, ui_access_text_attrs* a):
 		dbus_put_string(out, &entry[0])
 
 
+# Whether character k lies inside rect under AT-SPI's clip types on
+# each axis: 0 any overlap, 1 not cut at the minimum edge, 2 not cut at
+# the maximum edge, 3 neither. A node without glyph boxes answers with
+# its bounds for every character.
+int ui_atspi_clip_axis(float32 lo, float32 size, float32 rlo, float32 rsize, int clip):
+	# A box that only touches the rectangle is outside; a zero-width
+	# one (a line break) is inside when its edge is.
+	if ((size > 0.0) && ((lo + size <= rlo) || (lo >= rlo + rsize))): return 0
+	if ((size <= 0.0) && ((lo < rlo) || (lo > rlo + rsize))): return 0
+	if (((clip & 1) != 0) && (lo < rlo)): return 0
+	if (((clip & 2) != 0) && (lo + size > rlo + rsize)): return 0
+	return 1
+
+
+int ui_atspi_char_bounded(ui_access_node* n, int k, ui_rect rect, int xclip, int yclip):
+	ui_rect box = n.bounds
+	if (ui_access_has_glyphs(n)): box = n.char_boxes[k]
+	return ui_atspi_clip_axis(box.x, box.w, rect.x, rect.w, xclip) && ui_atspi_clip_axis(box.y, box.h, rect.y, rect.h, yclip)
+
+
+# UI_ACCESS_SCROLL_TO's alignment for AT-SPI's AtspiScrollType: the
+# top and left edges align the range's start at the top, the bottom and
+# right ones its end at the bottom; anywhere scrolls the least.
+int ui_atspi_scroll_align(int type):
+	if ((type == 0) || (type == 2) || (type == 4)): return UI_ACCESS_SCROLL_TOP
+	if ((type == 1) || (type == 3) || (type == 5)): return UI_ACCESS_SCROLL_BOTTOM
+	return UI_ACCESS_SCROLL_ANYWHERE
+
+
 int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
@@ -1365,6 +1467,61 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, w)
 		dbus_put_i32(out, h)
 		return dbus_reply(b.bus, m, c"iiii")
+	# Scroll-aware geometry (#912): the runs of characters inside a
+	# rectangle, and scrolling a substring into view.
+	if (ui_atspi_member(m, c"GetBoundedRanges")):
+		int bx = dbus_read_i32(&r)
+		int by = dbus_read_i32(&r)
+		int bw = dbus_read_i32(&r)
+		int bh = dbus_read_i32(&r)
+		int coord = dbus_read_u32(&r)
+		int xclip = dbus_read_u32(&r)
+		int yclip = dbus_read_u32(&r)
+		if (r.failed): return ui_atspi_unknown(b, m)
+		float32 lx = 0.0
+		float32 ly = 0.0
+		ui_atspi_point_local(b, n, bx, by, coord, &lx, &ly)
+		ui_rect rect
+		rect.x = lx
+		rect.y = ly
+		rect.w = cast(float32, bw)
+		rect.h = cast(float32, bh)
+		int mark = dbus_array_begin(out, 8)
+		int start = 0 - 1
+		for k in range(count + 1):
+			int inside = (k < count) && ui_atspi_char_bounded(n, k, rect, xclip, yclip)
+			if (inside && (start < 0)): start = k
+			if (!inside && (start >= 0)):
+				dbus_put_struct(out)
+				dbus_put_i32(out, start)
+				dbus_put_i32(out, k)
+				ui_atspi_put_range(out, t, start, k)
+				dbus_put_sig(out, c"i")
+				dbus_put_i32(out, 0)
+				start = 0 - 1
+		dbus_array_end(out, mark, 8)
+		return dbus_reply(b.bus, m, c"a(iisv)")
+	if (ui_atspi_member(m, c"ScrollSubstringTo") || ui_atspi_member(m, c"ScrollSubstringToPoint")):
+		int start = dbus_read_i32(&r)
+		int end = dbus_read_i32(&r)
+		int type = dbus_read_u32(&r)
+		if (r.failed || (start < 0) || (end < start) || (end > count)): return ui_atspi_reply_bool(b, m, 0)
+		int align = ui_atspi_scroll_align(type)
+		if (ui_atspi_member(m, c"ScrollSubstringToPoint")):
+			# The bridge cannot scroll to an exact point: the range
+			# goes to the top when the point is in the upper half of
+			# the node, else to the bottom.
+			int px = dbus_read_i32(&r)
+			int py = dbus_read_i32(&r)
+			if (r.failed): return ui_atspi_reply_bool(b, m, 0)
+			float32 lx = 0.0
+			float32 ly = 0.0
+			ui_atspi_point_local(b, n, px, py, type, &lx, &ly)
+			align = UI_ACCESS_SCROLL_TOP
+			if (ly > n.bounds.y + n.bounds.h / 2.0): align = UI_ACCESS_SCROLL_BOTTOM
+		char[48] payload
+		int length = ui_access_scroll_format(&payload[0], start, end, align)
+		return ui_atspi_reply_bool(b, m, ui_atspi_enqueue(b, n, UI_ACCESS_SCROLL_TO, &payload[0], length))
 	if (ui_atspi_member(m, c"GetOffsetAtPoint")):
 		int px = dbus_read_i32(&r)
 		int py = dbus_read_i32(&r)
@@ -1436,7 +1593,12 @@ int ui_atspi_call_editable(ui_atspi_bridge* b, dbus_message* m, ui_access_node* 
 
 
 int ui_atspi_call_value(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
-	if (ui_atspi_member(m, c"SetCurrentValue")): return ui_atspi_reply_bool(b, m, 0)
+	if (ui_atspi_member(m, c"SetCurrentValue")):
+		dbus_reader r
+		dbus_message_reader(m, &r)
+		float32 v = dbus_read_double_f32(&r)
+		if (r.failed): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_set_value(b, n, v))
 	return ui_atspi_unknown(b, m)
 
 

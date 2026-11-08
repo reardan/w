@@ -283,23 +283,58 @@ void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
 
 # Read a native preedit snapshot without inserting it into the document.
 # Committed results remain owned by DefWindowProcW -> WM_CHAR, so every
-# commit takes exactly one path through the UTF-16 decoder.
+# commit takes exactly one path through the UTF-16 decoder. BEGIN
+# carries the conversion target (#912): the clause GCS_COMPATTR marks
+# ATTR_TARGET_CONVERTED or ATTR_TARGET_NOTCONVERTED, its start in y and
+# its length in code (code points), or with no such clause the
+# GCS_CURSORPOS caret in y and 0.
 void gfx_win32_preedit(gfx_window* win):
 	int im = ImmGetContext(win.hwnd)
 	if (im == 0): return
 	int length = cast(int32, ImmGetCompositionStringW(im, 8, cast(char*, 0), 0))
-	gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, 0, win.text_focus, 0, 0)
-	if (length > 0):
-		char* bytes = cast(char*, malloc(length))
-		int count = cast(int32, ImmGetCompositionStringW(im, 8, bytes, length))
-		if (count > length): count = length
-		int32 high = 0
-		int at = 0
-		while (at + 1 < count):
-			int cp = gfx_utf16_input(&high, (bytes[at] & 255) | ((bytes[at + 1] & 255) << 8))
-			if (cp >= 0): gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_TEXT, cp, win.text_focus, 0, 0)
-			at = at + 2
-		free(bytes)
+	if (length <= 0):
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, 0, win.text_focus, 0, 0)
+		ImmReleaseContext(win.hwnd, im)
+		return
+	char* bytes = cast(char*, malloc(length))
+	int count = cast(int32, ImmGetCompositionStringW(im, 8, bytes, length))
+	if (count > length): count = length
+	if (count < 0): count = 0
+	int units = count / 2
+	char* attrs = cast(char*, malloc(units + 1))
+	for i in range(units + 1): attrs[i] = 0
+	int attr_count = cast(int32, ImmGetCompositionStringW(im, 16, attrs, units))
+	if ((attr_count < 0) || (attr_count > units)): attr_count = 0
+	int cursor_unit = cast(int32, ImmGetCompositionStringW(im, 128, cast(char*, 0), 0))
+	int* points = cast(int*, malloc((units + 1) * sizeof(int)))
+	int scalars = 0
+	int cursor = 0 - 1
+	int target = 0 - 1
+	int target_end = 0 - 1
+	int32 high = 0
+	for u in range(units):
+		if (u == cursor_unit): cursor = scalars
+		int a = 0
+		if (u < attr_count): a = attrs[u] & 255
+		int cp = gfx_utf16_input(&high, (bytes[u * 2] & 255) | ((bytes[u * 2 + 1] & 255) << 8))
+		if (cp >= 0):
+			# A surrogate pair's attribute is its first unit's.
+			if ((a == 1) || (a == 3)):
+				if (target < 0): target = scalars
+				target_end = scalars + 1
+			points[scalars] = cp
+			scalars = scalars + 1
+	if (cursor < 0): cursor = scalars
+	int at = cursor
+	int target_length = 0
+	if (target >= 0):
+		at = target
+		target_length = target_end - target
+	gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, target_length, win.text_focus, at, 0)
+	for k in range(scalars): gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_TEXT, points[k], win.text_focus, 0, 0)
+	free(cast(char*, points))
+	free(attrs)
+	free(bytes)
 	ImmReleaseContext(win.hwnd, im)
 
 

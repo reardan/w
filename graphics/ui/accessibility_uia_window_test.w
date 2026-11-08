@@ -47,7 +47,6 @@ extern int GetModuleFileNameA(int module, char* buffer, int size)
 c_lib "oleaut32.dll"
 extern int SafeArrayGetElement(int array, int32* index, char* value)
 extern int SafeArrayGetUBound(int array, int dim, int32* bound)
-extern int SafeArrayDestroy(int array)
 extern int VariantClear(char* value)
 
 

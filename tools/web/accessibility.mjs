@@ -2,7 +2,7 @@
 // or dependencies. The application paints focus and republishes after actions.
 const roles = ['', 'document', 'group', '', 'heading', 'link', 'button',
   'checkbox', 'textbox', 'img', 'list', 'listitem', 'table', 'row', 'cell',
-  'radio', 'switch', 'combobox', 'tablist', 'tab', 'progressbar', 'dialog'];
+  'radio', 'switch', 'combobox', 'tablist', 'tab', 'progressbar', 'dialog', 'slider'];
 // Toggle when the node supports it (checkboxes, switches), else activate.
 const pressAction = n => (n.actions & 8) ? 8 : 1;
 const encoder = new TextEncoder();
@@ -127,7 +127,7 @@ export function createAccessibility({ document, container, canvas = null }) {
       if (el.textContent !== text) el.textContent = text;
     }
     attr(el, 'aria-label', n.role !== 3 && n.text[0] ? n.text[0] : null);
-    attr(el, 'aria-valuetext', n.role === 20 && n.text[1] ? n.text[1] : null);
+    attr(el, 'aria-valuetext', (n.role === 20 || n.role === 22) && n.text[1] ? n.text[1] : null);
     attr(el, 'aria-modal', n.role === 21 ? 'true' : null);
     attr(el, 'aria-hidden', n.hidden ? 'true' : null);
     attr(el, 'aria-disabled', n.inert ? 'true' : null);

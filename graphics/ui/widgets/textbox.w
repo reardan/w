@@ -412,4 +412,5 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	if (ui_textbox_has_selection(st)): access_anchor = st.anchor
 	ui_access_set_caret(ctx, node, access_anchor, st.caret)
 	ui_textbox_access_layout(ctx, node, st, r)
+	if (ui_text_preedit_showing(ctx, id)): ui_access_publish_preedit(ctx, node, st.caret, text_x + cast(float32, ui_text_prefix_width(&st.text[0], st.caret, scale)), ty, cast(float32, ui_text_height(scale)))
 	return submitted

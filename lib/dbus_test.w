@@ -58,6 +58,32 @@ void test_doubles_from_integers():
 	dbus_buf_free(&b)
 
 
+void test_doubles_from_float32():
+	dbus_buf b
+	dbus_buf_init(&b)
+	dbus_put_i32(&b, 7)
+	dbus_put_double_f32(&b, 7.5)
+	dbus_put_double_f32(&b, 0.0 - 0.125)
+	dbus_put_double_f32(&b, 0.0)
+	assert_equal(32, b.length)
+	# 7.5 = 0x401E000000000000, -0.125 = 0xBFC0000000000000.
+	assert_bytes(c"\x00\x00\x00\x00\x00\x00\x1e\x40", 8, &b.data[8])
+	assert_bytes(c"\x00\x00\x00\x00\x00\x00\xc0\xbf", 8, &b.data[16])
+	assert_bytes(c"\x00\x00\x00\x00\x00\x00\x00\x00", 8, &b.data[24])
+	dbus_put_double_int(&b, 3000000)
+	dbus_reader r
+	dbus_reader_init(&r, b.data, b.length)
+	assert_equal(7, dbus_read_i32(&r))
+	assert_equal(75, cast(int, dbus_read_double_f32(&r) * 10.0))
+	assert_equal(0 - 125, cast(int, dbus_read_double_f32(&r) * 1000.0))
+	assert_equal(0, cast(int, dbus_read_double_f32(&r)))
+	assert_equal(3000000, cast(int, dbus_read_double_f32(&r)))
+	assert_equal(0, r.failed)
+	dbus_read_double_f32(&r)
+	assert_equal(1, r.failed)
+	dbus_buf_free(&b)
+
+
 void test_signatures_and_skipping():
 	assert_equal(5, dbus_sig_next(c"a{sv}i", 0))
 	assert_equal(9, dbus_sig_next(c"(so(ii)s)", 0))

@@ -105,8 +105,10 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 		int saved_parent = ctx.access_parent
 		if (node != 0):
 			ctx.access_parent = id
-			ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_LIST, list_rect, c"")
+			ui_access_node* list = ui_access_widget(ctx, ui_access_aux_id(ctx), UI_ACCESS_LIST, list_rect, c"")
 			ctx.access_parent = ui_access_root_id + ctx.access_next_aux
+			# The combobox controls its open list (#911).
+			if (list != 0): ui_access_add_relation(ctx.access, id, UI_ACCESS_REL_CONTROLLER_FOR, list.id)
 		for i in range(item_count):
 			ui_rect row = ui_rect_new(list_rect.x, list_rect.y + row_h * cast(float32, i), list_rect.w, row_h)
 			if (node != 0):
