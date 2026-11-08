@@ -1123,6 +1123,12 @@ void js_coroutine_link(js_runtime* rt, js_value* function_prototype, js_value* i
 	js_text_free(key)
 
 
+js_value* js_runtime_function_constructor(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_runtime_fail(rt, 6, c"the Function constructor (dynamic code) is outside the runtime subset")
+	return rt.undefined_value
+
+
 void js_runtime_install_coroutines(js_runtime* rt):
 	if (rt.function_prototype == 0 || rt.symbol_prototype == 0): return
 	js_value* self = js_runtime_host_callable(rt, 0, js_symbol_iterator_self)
@@ -1159,3 +1165,16 @@ void js_runtime_install_coroutines(js_runtime* rt):
 	key = js_runtime_key(c"constructor")
 	js_runtime_define_data(rt, rt.promise_prototype, key, rt.promise_constructor, 1, 0, 1)
 	js_text_free(key)
+	# %Function%, so `f instanceof Function` holds for every function kind;
+	# building functions from source text (CreateDynamicFunction) is outside
+	# the subset.
+	js_value* function_constructor = js_runtime_host_callable(rt, 0, js_runtime_function_constructor)
+	if (function_constructor == rt.undefined_value): return
+	function_constructor.host_construct = 1
+	key = js_runtime_key(c"prototype")
+	js_runtime_define_data(rt, function_constructor, key, rt.function_prototype, 0, 0, 0)
+	js_text_free(key)
+	key = js_runtime_key(c"constructor")
+	js_runtime_define_data(rt, rt.function_prototype, key, function_constructor, 1, 0, 1)
+	js_text_free(key)
+	js_runtime_set(rt, rt.global, c"Function", function_constructor)

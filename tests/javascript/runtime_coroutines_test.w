@@ -73,6 +73,8 @@ void test_resumable_constructs():
 	co_true(rt, c"var obj = { *m() { yield this.k; }, k: 8, async am() { return 1; } }; obj.m().next().value === 8 && obj.m.name === 'm' && typeof obj.am().then === 'function';")
 	co_true(rt, c"function B() {} function* cls() { class C extends (yield 'heritage', B) { [yield 'key']() { return 1; } static get [yield 'static']() { return 2; } } return new C().m() + C.st + (new C() instanceof B ? 4 : 0); } var i = cls(); i.next(); i.next(B); i.next('m'); i.next('st').value === 7;")
 	co_true(rt, c"function B() {} function* g() { class C extends (B) { [yield 'k']() { return 3; } } var o = { *extends() { yield 4; } }; return new C().m() + o.extends().next().value; } var i = g(); i.next(); i.next('m').value === 7;")
+	co_true(rt, c"async function await() { return 1; } await instanceof Function && (function* () {}) instanceof Function && (async () => 1) instanceof Function && Function.prototype.constructor === Function;")
+	co_status(rt, c"Function('return 1');", 6)
 	# Array binding patterns use the iterator protocol and close what they leave open.
 	co_true(rt, c"function* g() { yield 1; yield 2; yield 3; } var [a, , ...r] = g(); var closed = 0; var o = {}; o[Symbol.iterator] = function () { return { next: function () { return {value: 5, done: false}; }, return: function () { closed = closed + 1; return {}; } }; }; var [x] = o; var [] = o; a === 1 && r.length === 1 && r[0] === 3 && x === 5 && closed === 2;")
 	co_true(rt, c"var saved = Array.prototype[Symbol.iterator]; Array.prototype[Symbol.iterator] = function* () { yield 7; }; var [p, q] = [1, 2]; Array.prototype[Symbol.iterator] = saved; p === 7 && q === undefined;")
