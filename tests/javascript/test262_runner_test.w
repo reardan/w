@@ -1,4 +1,5 @@
 # wbuild: tool=tools/test262_conformance.w tool=tools/test262_runtime_runner.w
+# wbuild: timeout=3600000
 import tools.test262_conformance_lib
 
 char* tc_directory
@@ -44,10 +45,10 @@ void tc_upstream():
 	t262_upstream = 1
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3066,\"FAIL\":0,\"UNSUPPORTED\":484,\"ERROR\":0}")), c"upstream-harness counts changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":7088,\"FAIL\":0,\"UNSUPPORTED\":527,\"ERROR\":0}")), c"upstream-harness counts changed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"86.36%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 1993 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	tc_eq(c"93.07%", ht_text(report, c"pass_rate"))
+	ht_require(ht_number(report, c"execution_passes") == 5255 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -67,8 +68,8 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3301,\"FAIL\":0,\"UNSUPPORTED\":249,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 2228 && ht_number(report, c"assertions") == 9368 && ht_number(report, c"variants") == 3550 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":6636,\"FAIL\":0,\"UNSUPPORTED\":979,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 4803 && ht_number(report, c"assertions") == 19880 && ht_number(report, c"variants") == 7615 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
@@ -146,7 +147,17 @@ int main():
 	for i in range(4):
 		modes = t262_variants(tc_meta(strjoin(strjoin(c"flags: [", flags[i]), c"]")))
 		ht_require(modes.length == 1 && strcmp(modes[0], expected[i]) == 0, c"flag variants changed")
-	for char* fields in ht_split(c"flags: [module]|flags: [async]|flags: [unknownFlag]|includes:\n  - compareArray.js|features: [BigInt]", '|'): ht_require(t262_unsupported(tc_meta(fields)) != 0, c"unsupported metadata accepted")
+	for char* fields in ht_split(c"flags: [module]|flags: [async, module]|flags: [unknownFlag]|includes:\n  - compareArray.js|features: [BigInt]", '|'): ht_require(t262_unsupported(tc_meta(fields)) != 0, c"unsupported metadata accepted")
+	# Asynchronous scripts (#906) drain microtasks and report through $DONE.
+	ht_require(t262_unsupported(tc_meta(c"flags: [async]\nincludes: [asyncHelpers.js]\nfeatures: [async-functions, async-iteration]")) == 0, c"async script metadata rejected")
+	t262_upstream = 1
+	ht_require(t262_unsupported(tc_meta(c"flags: [async]")) == 0, c"upstream async script without doneprintHandle.js")
+	ht_require(t262_unsupported(tc_meta(c"flags: [async]\nincludes: [asyncHelpers.js]")) != 0, c"upstream asyncHelpers.js accepted without Object.prototype")
+	t262_upstream = 0
+	t262_async_case = 1
+	for char* source in ht_split(c"$DONE();|Promise.resolve(1).then(function(v) { assert.sameValue(v, 1); }).then($DONE, $DONE);|asyncTest(async function() { assert.sameValue(await Promise.resolve(2), 2); });|asyncTest(async function() { await assert.throwsAsync(TypeError, async function() { null.x; }); });|async function* g() { yield 1; } (async function() { for await (const x of g()) assert.sameValue(x, 1); })().then($DONE, $DONE);", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
+	for char* source in ht_split(c"$DONE('async failure');|Promise.reject(1).then($DONE, $DONE);|asyncTest(async function() { await assert.throwsAsync(TypeError, async function() {}); });|var pending = new Promise(function() {});", '|'): tc_eq(c"throw", ht_text(tc_execute(source), c"outcome"))
+	t262_async_case = 0
 	# Native regExpUtils.js helpers (#901): every symbol must match; the
 	# upstream profile needs the include pinned, and it is not.
 	json_value* utils = tc_meta(c"includes: [regExpUtils.js]")

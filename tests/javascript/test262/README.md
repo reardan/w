@@ -18,13 +18,13 @@ profiles so they run in parallel: `javascript_test262` runs the native profile
 `bin/test262_conformance` still runs both. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 1811 upstream test files (plus module fixtures) expanded
-into 3550 variants. The native profile reports **3301 PASS, 0 FAIL, 249
-UNSUPPORTED, 0 ERROR**; 2228 passes reach runtime execution and the rest verify
+The corpus contains 3872 upstream test files (plus module fixtures) expanded
+into 7615 variants. The native profile reports **6636 PASS, 0 FAIL, 979
+UNSUPPORTED, 0 ERROR**; 4803 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **3066 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (86.36%)**; the 452
+reports **7088 PASS, 0 FAIL, 527 UNSUPPORTED, 0 ERROR (93.07%)**; the 452
 property-escape variants (below) are UNSUPPORTED there because
-`regExpUtils.js` is not pinned. The positive cases execute 9368 assertions
+`regExpUtils.js` is not pinned. The positive cases execute 19880 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
@@ -53,13 +53,52 @@ and syntax), and the class early errors, including the `gen-method*/` and
 `async-method*/` negatives.
 They were selected by running all 8426 class tests of the pinned revision;
 the rest are left out because they need class fields, private names, static
-blocks, generator/async methods, `propertyHelper.js`/`compareArray.js`, or
+blocks, `propertyHelper.js`/`compareArray.js`, or
 built-ins outside the bounded realm (`Object.prototype`, `Function.prototype.bind`,
 `eval`, primitive wrapper and Array/Date/Map/... subclassing), or hit
-non-class gaps (generator execution for `yield` in computed keys, numeric
-separators, separate parameter scopes). The `class`, `computed-property-names`,
+non-class gaps (numeric separators, separate parameter scopes). Generator
+and async methods, and the `yield` computed-key tests, joined with #906
+(next section). The `class`, `computed-property-names`,
 `new.target`, `default-parameters`, `rest-parameters`, `arrow-function` and
 `destructuring-binding` feature tags are enabled for them.
+
+### Generators and async functions (reardan/w#906)
+
+2061 of the files pin the generator, async function and async generator
+subsets that pass in at least one profile with no FAIL in either:
+`test/language/{statements,expressions}/{generators,async-function,
+async-generator,async-arrow-function,yield,await}/`, `for-await-of/`,
+generator/async/async-generator methods of classes and object literals
+(`class/{gen-method,async-method,async-gen-method}*/`,
+`object/method-definition/`, the `yield` computed-key `cpn-*` and
+`accessor-name-*-computed-yield-expr` class tests) and
+`test/built-ins/{GeneratorPrototype,AsyncGeneratorPrototype,
+AsyncFromSyncIteratorPrototype,AsyncFunction}/`. They were selected by
+running all 5626 such candidate files of the pinned revision in both
+profiles. The generated destructuring families repeat the same `.case`
+files for every function template, so only one template of each is pinned:
+`statements/generators/dstr/`, `statements/async-generator/dstr/`, class
+`gen-meth-*` (non-static) under `statements/class/dstr/` and for-await-of's
+`async-gen-dstr-let-*`; their other templates (expression forms, static and
+async methods, `var`/`const` heads) pass the same way but would only add run
+time.
+
+982 of the files are `flags: [async]` tests. The runner runs them with the
+`async` goal: after the script it drains the microtask queue within the
+remaining step budget, and a test passes only when `$DONE` was called
+without an error. The native profile binds `$DONE`, `asyncTest` and
+`assert.throwsAsync` (`asyncHelpers.js`) natively; the upstream profile
+evaluates the pinned `doneprintHandle.js`, whose `print` the runner
+observes (`Test262:AsyncTestComplete` / `Test262:AsyncTestFailure:`).
+`asyncHelpers.js` is vendored but reported UNSUPPORTED in the upstream
+profile: it starts with `Object.prototype.hasOwnProperty.call(globalThis,
+...)`, and the bounded realm has neither intrinsic. The `async-functions`,
+`generators`, `async-iteration` and `Symbol.asyncIterator` feature tags are
+enabled. Not pinned: tests needing `Object.prototype`/`Object.create`,
+`Function.prototype.bind`, `Promise.all`/other combinators, `propertyHelper.js`
+or `compareArray.js` beyond the native subset, the `arguments` object,
+implicit coercion, array holes, `var`/assignment-target `for-await` heads,
+destructuring assignment, `eval`, separate parameter scopes and class fields.
 
 ### String and RegExp Symbol methods (reardan/w#902)
 
