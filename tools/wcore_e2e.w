@@ -244,7 +244,7 @@ int main(int argc, char** argv):
 
 	RLIMIT_OK = raise_core_limit()
 
-	run_case(c"32-bit core", c"bin/wcore_fixture32", c"eip", c"bin/wv2")
+	run_case(c"32-bit core", c"bin/wcore_fixture32", c"eip", c"bin/wcore_e2e")
 	run_case(c"64-bit core", c"bin/wcore_fixture64", c"rip", c"bin/wcore")
 
 	if (FAILED != 0): return 1
