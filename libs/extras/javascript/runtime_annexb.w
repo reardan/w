@@ -73,7 +73,7 @@ void js_annexb_qualify(js_annexb_scan* scan, js_node* function, list[char*] oute
 
 
 void js_annexb_visit(js_annexb_scan* scan, js_node* node, list[char*] outer):
-	if (js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return
+	if (js_runtime_function_node(node)): return
 	int count = outer.length
 	if (js_kind(node, c"block")):
 		# Siblings may repeat a sloppy block function name (B.3.3.4); only

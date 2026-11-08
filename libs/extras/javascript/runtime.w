@@ -80,6 +80,15 @@ struct js_value:
 	# Built-in object brand and state (regexp_methods.w): String wrappers and
 	# RegExp String Iterators; 0 for every other value.
 	int builtin_state
+	# Coroutines (runtime_coroutines.w). Generator and async generator objects
+	# reference their activation record (kind 12) through coroutine. A record
+	# keeps the function environment in parent, the function node in code,
+	# its suspended evaluation frames (kind 12, innermost first) in reactions
+	# and, for async generators, pending requests in coroutine_queue.
+	js_value* coroutine
+	int coroutine_state
+	int coroutine_kind
+	list[js_value*] coroutine_queue
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -151,6 +160,23 @@ struct js_runtime:
 	js_value* string_constructor
 	js_value* regexp_constructor
 	js_value* regexp_iterator_prototype
+	# Coroutines (runtime_coroutines.w): the running activation record, the
+	# resumption being delivered while resuming re-enters saved frames, and
+	# the kind of the pending suspension (status 7).
+	js_value* coroutine
+	int resuming
+	int resume_mode
+	js_value* resume_value
+	int suspend_kind
+	js_value* iterator_prototype
+	js_value* async_iterator_prototype
+	js_value* generator_prototype
+	js_value* async_generator_prototype
+	js_value* generator_function_prototype
+	js_value* async_function_prototype
+	js_value* async_generator_function_prototype
+	js_value* async_from_sync_prototype
+	js_value* list_iterator_prototype
 
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
@@ -215,6 +241,32 @@ js_value* js_runtime_super_call(js_runtime* rt, js_node* node, js_value* env);
 js_value* js_runtime_new_target(js_runtime* rt, js_value* env);
 js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] arguments, js_value* new_target);
 int js_runtime_class_supported(js_node* node);
+void js_runtime_install_coroutines(js_runtime* rt);
+void js_runtime_mark_coroutine_roots(js_runtime* rt, list[js_value*] pending);
+js_value* js_frame_resume(js_runtime* rt, js_node* node);
+js_value* js_frame_save(js_runtime* rt, js_node* node, int phase);
+js_value* js_frame_get(js_value* frame, int index);
+void js_frame_put(js_value* frame, js_value* value);
+int js_frame_int(js_value* frame, int slot);
+void js_frame_set_int(js_value* frame, int slot, int value);
+int js_runtime_function_node(js_node* node);
+int js_runtime_function_declaration(js_node* node);
+int js_runtime_arrow_node(js_node* node);
+int js_coroutine_kind_of(js_node* node);
+void js_runtime_coroutine_function(js_runtime* rt, js_value* callable);
+void js_runtime_coroutine_method_name(js_runtime* rt, js_value* callable, js_text* key);
+js_value* js_coroutine_call(js_runtime* rt, js_value* callable, js_value* env);
+js_value* js_coroutine_yield(js_runtime* rt, js_node* node, js_value* env);
+js_value* js_coroutine_await_node(js_runtime* rt, js_node* node, js_value* env);
+void js_coroutine_await(js_runtime* rt, js_value* value);
+js_value* js_coroutine_received(js_runtime* rt);
+int js_coroutine_async_generator_code(js_value* env);
+js_value* js_coroutine_async_iterator(js_runtime* rt, js_value* value);
+js_value* js_coroutine_iterator_next(js_runtime* rt, js_value* record, js_value* argument);
+js_value* js_coroutine_close_begin(js_runtime* rt, js_value* record);
+void js_coroutine_close_finish(js_runtime* rt, js_value* closing);
+int js_coroutine_supported(js_node* node);
+js_value* js_runtime_in(js_runtime* rt, js_value* key, js_value* object);
 
 
 void js_runtime_fail(js_runtime* rt, int status, char* message):
@@ -284,6 +336,10 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.this_scope = 0
 	value.class_kind = 0
 	value.builtin_state = 0
+	value.coroutine = 0
+	value.coroutine_state = 0
+	value.coroutine_kind = 0
+	value.coroutine_queue = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -429,6 +485,20 @@ js_runtime* js_runtime_new():
 	rt.string_constructor = 0
 	rt.regexp_constructor = 0
 	rt.regexp_iterator_prototype = 0
+	rt.coroutine = 0
+	rt.resuming = 0
+	rt.resume_mode = 0
+	rt.resume_value = 0
+	rt.suspend_kind = 0
+	rt.iterator_prototype = 0
+	rt.async_iterator_prototype = 0
+	rt.generator_prototype = 0
+	rt.async_generator_prototype = 0
+	rt.generator_function_prototype = 0
+	rt.async_function_prototype = 0
+	rt.async_generator_function_prototype = 0
+	rt.async_from_sync_prototype = 0
+	rt.list_iterator_prototype = 0
 	rt.heap = new list[js_value*]
 	rt.roots = new list[js_value*]
 	rt.scripts = new list[js_node*]
@@ -471,6 +541,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_constructors(rt)
 	js_runtime_install_symbols(rt)
 	js_runtime_install_regexp_methods(rt)
+	js_runtime_install_coroutines(rt)
 	return rt
 
 
@@ -496,6 +567,7 @@ void js_runtime_value_free(js_value* value):
 		rt.binary_bytes_used = rt.binary_bytes_used - value.binary_length
 		free(value.binary_bytes)
 	if (value.reactions != 0): __w_list_free(cast(__w_list*, value.reactions))
+	if (value.coroutine_queue != 0): __w_list_free(cast(__w_list*, value.coroutine_queue))
 	if (value.regexp != 0): js_regexp_program_free(value.regexp)
 	js_text_free(value.text)
 	# Symbols own their description text.
@@ -535,6 +607,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.global)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
+	js_runtime_mark_coroutine_roots(rt, pending)
 	for i in range(rt.roots.length): js_runtime_mark(pending, rt.roots[i])
 	while (pending.length > 0):
 		js_value* value = pending.pop()
@@ -550,6 +623,9 @@ int js_runtime_collect(js_runtime* rt):
 		js_runtime_mark(pending, value.home_object)
 		js_runtime_mark(pending, value.function_object)
 		js_runtime_mark(pending, value.new_target)
+		js_runtime_mark(pending, value.coroutine)
+		if (value.coroutine_queue != 0):
+			for i in range(value.coroutine_queue.length): js_runtime_mark(pending, value.coroutine_queue[i])
 		for i in range(value.properties.length):
 			js_runtime_mark(pending, value.properties[i].value)
 			js_runtime_mark(pending, value.properties[i].getter)
@@ -618,7 +694,7 @@ js_value* js_runtime_binding(js_value* env, char* name):
 		if (property != 0):
 			js_text_free(key)
 			return property
-		if (strcmp(name, c"arguments") == 0 && env.code != 0 && js_kind(env.code, c"arrow") == 0):
+		if (strcmp(name, c"arguments") == 0 && env.code != 0 && js_runtime_arrow_node(env.code) == 0):
 			js_text_free(key)
 			js_runtime_fail(cast(js_runtime*, env.owner), 6, c"implicit arguments object is outside the runtime subset")
 			return 0
@@ -651,6 +727,7 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	callable.code = node
 	callable.parent = env
 	callable.strict = env.strict || js_runtime_strict_body(node.children[1])
+	js_runtime_coroutine_function(rt, callable)
 	js_text* name = js_runtime_key(node.text)
 	js_value* name_value = js_runtime_string(rt, name)
 	js_text_free(name)
@@ -663,7 +740,7 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	name = js_runtime_key(c"length")
 	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, length)), 0, 0, 1)
 	js_text_free(name)
-	if (js_kind(node, c"function_expression") && strlen(node.text) > 0):
+	if ((js_kind(node, c"function_expression") || js_kind(node, c"generator_function_expression") || js_kind(node, c"async_function_expression") || js_kind(node, c"async_generator_function_expression")) && strlen(node.text) > 0):
 		callable.parent = js_runtime_environment(rt, env)
 		js_runtime_set(rt, callable.parent, node.text, callable)
 		js_value* binding = js_runtime_binding(callable.parent, node.text)
@@ -677,7 +754,7 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 # It crosses statement blocks but never descends into nested functions.
 void js_runtime_var_declare(js_runtime* rt, js_node* node, js_value* env, int install):
 	if (rt.completion.status != 0): return
-	if (js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return
+	if (js_runtime_function_node(node)): return
 	if (js_kind(node, c"variable")):
 		if (strcmp(node.text, c"var") != 0): return
 		for i in range(node.children.length):
@@ -711,7 +788,7 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 			js_runtime_pattern_declare(rt, name, env, 0, 0)
 			js_node_free(name)
 			if (rt.completion.status != 0): return
-		else if (js_kind(statement, c"function")):
+		else if (js_runtime_function_declaration(statement)):
 			js_text* key = js_runtime_key(statement.text)
 			js_value* binding = js_runtime_property(env, key)
 			int duplicate = binding != 0 && (env.variable_scope == 0 || binding.lexical_binding)
@@ -729,7 +806,7 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 			js_node* name = js_identifier(statement.text)
 			js_runtime_pattern_declare(rt, name, env, 1, 0)
 			js_node_free(name)
-		else if (js_kind(statement, c"function")):
+		else if (js_runtime_function_declaration(statement)):
 			js_text* key = js_runtime_key(statement.text)
 			js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
 			js_value* binding = js_runtime_property(env, key)
@@ -1053,9 +1130,15 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	js_value* old = rt.undefined_value
 	int update = js_kind(node, c"assignment") == 0
 	int read = update || strcmp(node.text, c"=") != 0
+	# Frame phases: 0 member object, 1 computed key, 2 right-hand side. A
+	# resumed assignment keeps the object, the old value and the key.
+	js_value* frame = js_frame_resume(rt, node)
+	int phase = 0
+	if (frame != 0): phase = frame.array_length
 	if (js_kind(target, c"identifier")):
 		binding = js_runtime_binding(env, target.text)
 		if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+		else if (phase == 2): old = js_frame_get(frame, 1)
 		else: old = js_runtime_binding_value(rt, binding)
 	else if (js_kind(target, c"call")):
 		# Annex B web-compat call target (sloppy only; strict is an early
@@ -1068,9 +1151,20 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		key = js_runtime_member_key(rt, target, env)
 		if (rt.completion.status == 0 && object == 0): js_runtime_fail(rt, 2, c"super base is null")
 		if (read && rt.completion.status == 0): old = js_runtime_read_receiver(rt, object, key, receiver)
+	else if (phase == 2):
+		object = js_frame_get(frame, 0)
+		old = js_frame_get(frame, 1)
+		key = js_text_clone(frame.text)
 	else:
-		object = js_runtime_eval_node(rt, target.children[0], env)
+		if (phase == 0):
+			object = js_runtime_eval_node(rt, target.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
+		else: object = js_frame_get(frame, 0)
 		key = js_runtime_member_key(rt, target, env)
+		js_value* keyed = js_frame_save(rt, node, 1)
+		if (keyed != 0):
+			js_frame_put(keyed, object)
+			return rt.undefined_value
 		if (read): old = js_runtime_member_read(rt, object, key)
 	js_value* value = rt.undefined_value
 	if (rt.completion.status == 0):
@@ -1081,6 +1175,12 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		else:
 			if (binding != 0 && read == 0): value = js_runtime_named_eval(rt, node.children[1], env, target.text)
 			else: value = js_runtime_eval_node(rt, node.children[1], env)
+			js_value* assigning = js_frame_save(rt, node, 2)
+			if (assigning != 0):
+				js_frame_put(assigning, object)
+				js_frame_put(assigning, old)
+				assigning.text = key
+				return rt.undefined_value
 			if (read && rt.completion.status == 0):
 				char* op = strclone(node.text)
 				op[strlen(op) - 1] = 0
@@ -1101,6 +1201,27 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 
 
 js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args, js_value* new_target, js_value** frame);
+
+
+# Evaluates call arguments from child index start. Returns the index of the
+# argument whose evaluation suspended (a generator resumes there), else 0.
+int js_runtime_arguments_from(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments, int start):
+	for i in range(start, node.children.length):
+		if (rt.completion.status != 0): break
+		js_node* child = node.children[i]
+		if (js_kind(child, c"spread")):
+			js_value* value = js_runtime_eval_node(rt, child.children[0], env)
+			if (rt.completion.status == 7): return i
+			int index = 0
+			while (js_runtime_compat_step(rt)):
+				js_value* next = js_runtime_iter_next(rt, value, &index)
+				if (next == 0): break
+				arguments.push(next)
+		else:
+			js_value* value = js_runtime_eval_node(rt, child, env)
+			if (rt.completion.status == 7): return i
+			arguments.push(value)
+	return 0
 
 
 js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args):
@@ -1131,7 +1252,7 @@ js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* rec
 	js_value* env = js_runtime_environment(rt, callable.parent)
 	if (frame != 0): *frame = env
 	if (env != rt.undefined_value):
-		if (js_kind(callable.code, c"arrow") == 0):
+		if (js_runtime_arrow_node(callable.code) == 0):
 			env.this_value = receiver
 			env.this_scope = 1
 			env.function_object = callable
@@ -1150,12 +1271,14 @@ js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* rec
 			for j in range(i, args.length): js_runtime_array_append(rt, argument, args[j])
 		else if (i < args.length): argument = args[i]
 		js_runtime_pattern_bind(rt, parameter, argument, env)
+	# Generators and async functions evaluate their body as a coroutine.
+	if (js_coroutine_kind_of(callable.code) != 0): return js_coroutine_call(rt, callable, env)
 	js_node* body = callable.code.children[1]
 	js_runtime_label* saved_label = rt.label
 	rt.label = 0
 	js_value* result = js_runtime_eval_node(rt, body, env)
 	rt.label = saved_label
-	if (js_kind(callable.code, c"arrow") && js_kind(body, c"block") == 0): return result
+	if (js_runtime_arrow_node(callable.code) && js_kind(body, c"block") == 0): return result
 	if (rt.completion.status == 1):
 		rt.completion.status = 0
 		return rt.completion.value
@@ -1164,61 +1287,125 @@ js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* rec
 
 # Arrays use a live length and strings yield Unicode code points (including
 # lone surrogate code units). Every iteration has a fresh lexical binding.
+# for await (async functions) awaits each next() result and the close.
+js_value* js_runtime_for_of_save(js_runtime* rt, js_node* node, int phase, js_value* initial, js_value* iterable, js_value* iterator, js_value* scope, int index, js_value* closing):
+	js_value* saved = js_frame_save(rt, node, phase)
+	if (saved == 0): return 0
+	js_frame_put(saved, initial)
+	js_frame_put(saved, iterable)
+	js_frame_put(saved, iterator)
+	js_frame_put(saved, scope)
+	js_frame_put(saved, closing)
+	js_frame_set_int(saved, 0, index)
+	return saved
+
+
 js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 	js_node* pattern = node.children[0]
-	js_value* initial = js_runtime_environment(rt, env)
-	js_runtime_pattern_declare(rt, pattern, initial, 1, 0)
-	if (rt.completion.status != 0): return rt.undefined_value
-	js_value* iterable = js_runtime_eval_node(rt, node.children[1], initial)
-	if (rt.completion.status != 0): return rt.undefined_value
-	# Other objects use the iterator protocol (runtime_symbols.w); an abrupt
-	# exit from the body closes the iterator.
+	int is_async = js_kind(node, c"for_await_of")
+	# Frame phases: 0 iterable expression, 1 body, 2 awaiting a next()
+	# result, 3 awaiting an iterator close (for await only).
+	js_value* frame = js_frame_resume(rt, node)
+	int phase = 0
+	js_value* initial = 0
+	js_value* iterable = 0
 	js_value* iterator = 0
-	if (iterable.kind != 4 && iterable.kind != 6):
-		iterator = js_runtime_iterator_open(rt, iterable)
-		if (iterator == 0): return rt.undefined_value
+	js_value* scope = 0
 	int index = 0
+	if (frame != 0):
+		phase = frame.array_length
+		initial = js_frame_get(frame, 0)
+		iterable = js_frame_get(frame, 1)
+		iterator = js_frame_get(frame, 2)
+		scope = js_frame_get(frame, 3)
+		index = js_frame_int(frame, 0)
+	else:
+		initial = js_runtime_environment(rt, env)
+		js_runtime_pattern_declare(rt, pattern, initial, 1, 0)
+		if (rt.completion.status != 0): return rt.undefined_value
+	if (phase == 0):
+		iterable = js_runtime_eval_node(rt, node.children[1], initial)
+		if (js_runtime_for_of_save(rt, node, 0, initial, 0, 0, 0, 0, 0) != 0 || rt.completion.status != 0): return rt.undefined_value
+		# Other objects use the iterator protocol (runtime_symbols.w); an abrupt
+		# exit from the body closes the iterator.
+		if (is_async):
+			iterator = js_coroutine_async_iterator(rt, iterable)
+			if (iterator == 0): return rt.undefined_value
+		else if (iterable.kind != 4 && iterable.kind != 6):
+			iterator = js_runtime_iterator_open(rt, iterable)
+			if (iterator == 0): return rt.undefined_value
 	js_value* result = rt.undefined_value
-	while (rt.completion.status == 0):
-		js_value* value = rt.undefined_value
-		if (iterator != 0):
-			value = js_runtime_iterator_step(rt, iterator)
-			if (value == 0): break
-		else if (iterable.kind == 6):
-			if (index >= iterable.array_length): break
-			char* key = itoa(index)
-			value = js_runtime_get(rt, iterable, key)
-			free(key)
-			index = index + 1
-		else:
-			if (index >= iterable.text.units.length): break
-			js_text* text = js_text_new()
-			int unit = iterable.text.units[index]
-			text.units.push(unit)
-			index = index + 1
-			if (unit >= 55296 && unit <= 56319 && index < iterable.text.units.length):
-				int low = iterable.text.units[index]
-				if (low >= 56320 && low <= 57343):
-					text.units.push(low)
-					index = index + 1
-			value = js_runtime_string(rt, text)
-			js_text_free(text)
-		js_value* scope = js_runtime_environment(rt, env)
-		js_runtime_pattern_declare(rt, pattern, scope, 1, strcmp(node.text, c"const") == 0)
-		js_runtime_pattern_bind(rt, pattern, value, scope)
-		if (rt.completion.status != 0):
-			if (rt.completion.status != 5 && iterator != 0): js_runtime_iterator_close(rt, iterator)
+	while (rt.completion.status == 0 || phase == 3):
+		if (phase == 3):
+			js_coroutine_close_finish(rt, js_frame_get(frame, 4))
 			break
+		if (phase != 1):
+			js_value* value = rt.undefined_value
+			if (is_async):
+				js_value* step = 0
+				if (phase == 2): step = js_coroutine_received(rt)
+				else:
+					step = js_coroutine_iterator_next(rt, iterator, 0)
+					if (rt.completion.status == 0): js_coroutine_await(rt, step)
+					if (js_runtime_for_of_save(rt, node, 2, initial, iterable, iterator, 0, 0, 0) != 0): return rt.undefined_value
+				if (rt.completion.status != 0): break
+				if (js_runtime_object(step) == 0):
+					js_runtime_fail(rt, 2, c"iterator result is not an object")
+					break
+				js_value* done = js_runtime_get(rt, step, c"done")
+				if (rt.completion.status != 0 || js_runtime_truth(done)): break
+				value = js_runtime_get(rt, step, c"value")
+				if (rt.completion.status != 0): break
+			else if (iterator != 0):
+				value = js_runtime_iterator_step(rt, iterator)
+				if (value == 0): break
+			else if (iterable.kind == 6):
+				if (index >= iterable.array_length): break
+				char* key = itoa(index)
+				value = js_runtime_get(rt, iterable, key)
+				free(key)
+				index = index + 1
+			else:
+				if (index >= iterable.text.units.length): break
+				js_text* text = js_text_new()
+				int unit = iterable.text.units[index]
+				text.units.push(unit)
+				index = index + 1
+				if (unit >= 55296 && unit <= 56319 && index < iterable.text.units.length):
+					int low = iterable.text.units[index]
+					if (low >= 56320 && low <= 57343):
+						text.units.push(low)
+						index = index + 1
+				value = js_runtime_string(rt, text)
+				js_text_free(text)
+			scope = js_runtime_environment(rt, env)
+			js_runtime_pattern_declare(rt, pattern, scope, 1, strcmp(node.text, c"const") == 0)
+			js_runtime_pattern_bind(rt, pattern, value, scope)
+			if (rt.completion.status != 0):
+				if (rt.completion.status < 5 && iterator != 0):
+					if (is_async):
+						js_value* closing = js_coroutine_close_begin(rt, iterator)
+						if (closing != 0 && js_runtime_for_of_save(rt, node, 3, initial, iterable, iterator, scope, index, closing) != 0): return rt.undefined_value
+					else: js_runtime_iterator_close(rt, iterator)
+				break
+		phase = 0
 		js_value* body_value = js_runtime_eval_node(rt, node.children[2], scope)
+		if (js_runtime_for_of_save(rt, node, 1, initial, iterable, iterator, scope, index, 0) != 0): return rt.undefined_value
 		if (rt.empty == 0): result = body_value
+		int exiting = 0
 		if (rt.completion.status == 3 && rt.jump_target == 0):
 			rt.completion.status = 0
-			if (iterator != 0): js_runtime_iterator_close(rt, iterator)
-			break
+			exiting = 1
 		if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
 			rt.completion.status = 0
 			rt.jump_target = 0
-		if (rt.completion.status != 0 && rt.completion.status != 5 && iterator != 0): js_runtime_iterator_close(rt, iterator)
+		if (rt.completion.status != 0 && rt.completion.status < 5): exiting = 1
+		if (exiting && iterator != 0):
+			if (is_async):
+				js_value* closing = js_coroutine_close_begin(rt, iterator)
+				if (closing != 0 && js_runtime_for_of_save(rt, node, 3, initial, iterable, iterator, scope, index, closing) != 0): return rt.undefined_value
+			else: js_runtime_iterator_close(rt, iterator)
+		if (exiting): break
 	rt.empty = 0
 	return result
 
@@ -1238,6 +1425,16 @@ js_value* js_runtime_iteration(js_runtime* rt, js_value* scope):
 	return next
 
 
+js_value* js_runtime_loop_save(js_runtime* rt, js_node* node, int phase, js_value* scope, int first):
+	js_value* saved = js_frame_save(rt, node, phase)
+	if (saved == 0): return 0
+	saved.parent = scope
+	js_frame_set_int(saved, 0, first)
+	return saved
+
+
+# Frame phases (generators): 0 for initializer, 1 condition, 2 body, 3 for
+# update. The frame keeps the iteration scope and the do-while first flag.
 js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 	int is_for = js_kind(node, c"for")
 	int is_do = js_kind(node, c"do_while")
@@ -1245,40 +1442,54 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 	js_node* body = node.children[1]
 	js_value* scope = env
 	int lexical = 0
+	int first = 1
+	js_value* frame = js_frame_resume(rt, node)
+	int phase = 0
+	if (frame != 0):
+		phase = frame.array_length
+		scope = frame.parent
+		first = js_frame_int(frame, 0)
 	if (is_for):
 		condition = node.children[1]
 		body = node.children[3]
 		js_node* init = node.children[0]
-		if (js_kind(init, c"variable") && strcmp(init.text, c"var") != 0):
-			lexical = strcmp(init.text, c"let") == 0
-			scope = js_runtime_environment(rt, env)
-			# A temporary borrowed wrapper drives the ordinary TDZ declaration pass.
-			js_node* wrapper = js_node_new(c"block", c"")
-			js_node_add(wrapper, init)
-			js_runtime_declare(rt, wrapper, scope)
-			wrapper.children.pop()
-			js_node_free(wrapper)
-		js_runtime_eval_node(rt, init, scope)
-		if (lexical && rt.completion.status == 0): scope = js_runtime_iteration(rt, scope)
-	int first = 1
+		lexical = js_kind(init, c"variable") && strcmp(init.text, c"let") == 0
+		if (phase == 0):
+			if (frame == 0 && js_kind(init, c"variable") && strcmp(init.text, c"var") != 0):
+				scope = js_runtime_environment(rt, env)
+				# A temporary borrowed wrapper drives the ordinary TDZ declaration pass.
+				js_node* wrapper = js_node_new(c"block", c"")
+				js_node_add(wrapper, init)
+				js_runtime_declare(rt, wrapper, scope)
+				wrapper.children.pop()
+				js_node_free(wrapper)
+			js_runtime_eval_node(rt, init, scope)
+			if (js_runtime_loop_save(rt, node, 0, scope, first) != 0): return rt.undefined_value
+			if (lexical && rt.completion.status == 0): scope = js_runtime_iteration(rt, scope)
+			phase = 1
 	js_value* result = rt.undefined_value
 	while (rt.completion.status == 0):
-		if ((is_do == 0 || first == 0) && js_kind(condition, c"empty") == 0):
-			js_value* test = js_runtime_eval_node(rt, condition, scope)
-			if (rt.completion.status != 0 || js_runtime_truth(test) == 0): break
-		first = 0
-		js_value* body_value = js_runtime_eval_node(rt, body, scope)
-		if (rt.empty == 0): result = body_value
-		if (rt.completion.status == 3 && rt.jump_target == 0):
-			rt.completion.status = 0
-			break
-		if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
-			rt.completion.status = 0
-			rt.jump_target = 0
-		if (rt.completion.status != 0): break
+		if (phase != 3):
+			if (phase <= 1 && (is_do == 0 || first == 0) && js_kind(condition, c"empty") == 0):
+				js_value* test = js_runtime_eval_node(rt, condition, scope)
+				if (js_runtime_loop_save(rt, node, 1, scope, first) != 0): return rt.undefined_value
+				if (rt.completion.status != 0 || js_runtime_truth(test) == 0): break
+			first = 0
+			js_value* body_value = js_runtime_eval_node(rt, body, scope)
+			if (js_runtime_loop_save(rt, node, 2, scope, first) != 0): return rt.undefined_value
+			if (rt.empty == 0): result = body_value
+			if (rt.completion.status == 3 && rt.jump_target == 0):
+				rt.completion.status = 0
+				break
+			if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
+				rt.completion.status = 0
+				rt.jump_target = 0
+			if (rt.completion.status != 0): break
 		if (is_for):
-			if (lexical): scope = js_runtime_iteration(rt, scope)
+			if (lexical && phase != 3): scope = js_runtime_iteration(rt, scope)
 			js_runtime_eval_node(rt, node.children[2], scope)
+			if (js_runtime_loop_save(rt, node, 3, scope, first) != 0): return rt.undefined_value
+		phase = 0
 	rt.empty = 0
 	return result
 
@@ -1387,13 +1598,24 @@ js_text* js_runtime_template_text(char* raw):
 
 
 js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
-	js_text* joined = js_text_new()
-	for i in range(node.children.length):
+	# A resumed template keeps its joined prefix (frame text) and part index.
+	js_value* frame = js_frame_resume(rt, node)
+	js_text* joined = 0
+	int start = 0
+	if (frame != 0):
+		joined = js_text_clone(frame.text)
+		start = frame.array_length
+	else: joined = js_text_new()
+	for i in range(start, node.children.length):
 		js_node* part = node.children[i]
 		js_text* text = 0
 		if (js_kind(part, c"template_text")): text = js_runtime_template_text(part.text)
 		else:
 			js_value* value = js_runtime_eval_node(rt, part, env)
+			js_value* saved = js_frame_save(rt, node, i)
+			if (saved != 0):
+				saved.text = joined
+				return rt.undefined_value
 			if (rt.completion.status == 0): text = js_runtime_primitive_text(rt, value)
 		if (text == 0): js_runtime_fail(rt, 6, c"unsupported template conversion")
 		else if (text.units.length > rt.max_properties - joined.units.length): js_runtime_fail(rt, 5, c"JavaScript string length limit")
@@ -1422,24 +1644,54 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			rt.jump_target = 0
 		return value
 	if (js_kind(node, c"try")):
-		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
+		# Frame phases (generators): 0 try block, 1 catch block (scope in
+		# parent), 2 finally block with the completion it will restore.
+		js_value* frame = js_frame_resume(rt, node)
+		int phase = 0
+		if (frame != 0): phase = frame.array_length
+		js_value* value = rt.undefined_value
 		js_node* handler = node.children[1]
-		if (rt.completion.status == 2 && js_kind(handler, c"catch")):
-			js_value* exception = rt.completion.value
-			rt.completion.status = 0
-			rt.completion.message = c""
-			js_value* scope = js_runtime_environment(rt, env)
-			if (strlen(handler.text) != 0): js_runtime_set(rt, scope, handler.text, exception)
+		if (phase == 0):
+			value = js_runtime_eval_node(rt, node.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
+		if (phase == 1 || (phase == 0 && rt.completion.status == 2 && js_kind(handler, c"catch"))):
+			js_value* scope = 0
+			if (phase == 1): scope = frame.parent
+			else:
+				js_value* exception = rt.completion.value
+				rt.completion.status = 0
+				rt.completion.message = c""
+				scope = js_runtime_environment(rt, env)
+				if (strlen(handler.text) != 0): js_runtime_set(rt, scope, handler.text, exception)
 			value = js_runtime_eval_node(rt, handler.children[0], scope)
-		# Resource/unsupported failures are terminal, not catchable exceptions.
-		if (rt.completion.status < 5 && js_kind(node.children[2], c"empty") == 0):
+			js_value* caught = js_frame_save(rt, node, 1)
+			if (caught != 0):
+				caught.parent = scope
+				return rt.undefined_value
+		# Resource/unsupported failures and suspensions are terminal here,
+		# not catchable exceptions.
+		if ((phase == 2 || rt.completion.status < 5) && js_kind(node.children[2], c"empty") == 0):
 			int saved_status = rt.completion.status
 			js_value* saved_value = rt.completion.value
 			char* saved_message = rt.completion.message
 			js_node* saved_target = rt.jump_target
+			if (phase == 2):
+				saved_status = js_frame_int(frame, 0)
+				saved_value = js_frame_get(frame, 0)
+				saved_message = cast(char*, js_frame_int(frame, 1))
+				saved_target = cast(js_node*, js_frame_int(frame, 2))
+				value = js_frame_get(frame, 1)
 			rt.jump_target = 0
 			rt.completion.status = 0
 			js_value* final_value = js_runtime_eval_node(rt, node.children[2], env)
+			js_value* finishing = js_frame_save(rt, node, 2)
+			if (finishing != 0):
+				js_frame_set_int(finishing, 0, saved_status)
+				js_frame_set_int(finishing, 1, cast(int, saved_message))
+				js_frame_set_int(finishing, 2, cast(int, saved_target))
+				js_frame_put(finishing, saved_value)
+				js_frame_put(finishing, value)
+				return rt.undefined_value
 			if (rt.completion.status == 0):
 				rt.completion.status = saved_status
 				rt.completion.value = saved_value
@@ -1489,7 +1741,12 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 			return rt.undefined_value
 		return js_runtime_binding_value(rt, property)
-	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return js_runtime_function(rt, node, env)
+	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow") || js_kind(node, c"async_arrow") || js_kind(node, c"generator_function_expression") || js_kind(node, c"async_function_expression") || js_kind(node, c"async_generator_function_expression")): return js_runtime_function(rt, node, env)
+	if (js_kind(node, c"yield")): return js_coroutine_yield(rt, node, env)
+	if (js_kind(node, c"await")): return js_coroutine_await_node(rt, node, env)
+	if (js_kind(node, c"generator_function") || js_kind(node, c"async_function") || js_kind(node, c"async_generator_function")):
+		rt.empty = 1
+		return rt.undefined_value
 	if (js_kind(node, c"class") || js_kind(node, c"class_expression")): return js_runtime_class(rt, node, env)
 	if (js_kind(node, c"new_target")): return js_runtime_new_target(rt, env)
 	if (js_kind(node, c"function")):
@@ -1497,30 +1754,45 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"program") || js_kind(node, c"block")):
+		# A resumed block keeps its scope and statement index (frame phase).
+		js_value* frame = js_frame_resume(rt, node)
 		js_value* scope = env
-		if (js_kind(node, c"program")): scope.strict = js_runtime_strict_body(node)
-		if (js_kind(node, c"block") && (env.code == 0 || env.code.children[1] != node)): scope = js_runtime_environment(rt, env)
-		if (scope.variable_scope): js_runtime_var_declare(rt, node, scope, 0)
-		if (rt.completion.status == 0): js_runtime_declare(rt, node, scope)
-		if (rt.completion.status == 0 && scope.variable_scope): js_runtime_var_declare(rt, node, scope, 1)
-		if (rt.completion.status == 0 && scope.variable_scope): js_annexb_declare(rt, node, scope)
+		int start = 0
+		if (frame != 0):
+			scope = frame.parent
+			start = frame.array_length
+		else:
+			if (js_kind(node, c"program")): scope.strict = js_runtime_strict_body(node)
+			if (js_kind(node, c"block") && (env.code == 0 || env.code.children[1] != node)): scope = js_runtime_environment(rt, env)
+			if (scope.variable_scope): js_runtime_var_declare(rt, node, scope, 0)
+			if (rt.completion.status == 0): js_runtime_declare(rt, node, scope)
+			if (rt.completion.status == 0 && scope.variable_scope): js_runtime_var_declare(rt, node, scope, 1)
+			if (rt.completion.status == 0 && scope.variable_scope): js_annexb_declare(rt, node, scope)
 		js_value* result = rt.undefined_value
 		int empty = 1
-		for i in range(count):
+		for i in range(start, count):
 			if (rt.completion.status != 0): break
 			js_value* value = js_runtime_eval_node(rt, node.children[i], scope)
+			js_value* saved = js_frame_save(rt, node, i)
+			if (saved != 0):
+				saved.parent = scope
+				return rt.undefined_value
 			if (rt.empty == 0):
 				result = value
 				empty = 0
 		rt.empty = empty
 		return result
 	if (js_kind(node, c"variable")):
-		for i in range(count):
+		js_value* frame = js_frame_resume(rt, node)
+		int start = 0
+		if (frame != 0): start = frame.array_length
+		for i in range(start, count):
 			js_node* declaration = node.children[i]
 			if (strcmp(node.text, c"var") == 0 && declaration.children.length == 1): continue
 			js_value* value = rt.undefined_value
 			if (declaration.children.length == 2 && js_kind(declaration.children[0], c"identifier")): value = js_runtime_named_eval(rt, declaration.children[1], env, declaration.children[0].text)
 			else if (declaration.children.length == 2): value = js_runtime_eval_node(rt, declaration.children[1], env)
+			if (js_frame_save(rt, node, i) != 0): return rt.undefined_value
 			if (rt.completion.status != 0): break
 			js_runtime_pattern_bind(rt, declaration.children[0], value, env)
 		rt.empty = 1
@@ -1530,8 +1802,16 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		rt.empty = 0
 		return value
 	if (js_kind(node, c"return") || js_kind(node, c"throw")):
+		# return in an async generator awaits its operand (frame phase 1).
+		js_value* frame = js_frame_resume(rt, node)
 		js_value* value = rt.undefined_value
-		if (count > 0): value = js_runtime_eval_node(rt, node.children[0], env)
+		if (frame != 0 && frame.array_length == 1): value = js_coroutine_received(rt)
+		else:
+			if (count > 0): value = js_runtime_eval_node(rt, node.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
+			if (rt.completion.status == 0 && count > 0 && js_kind(node, c"return") && js_coroutine_async_generator_code(env)):
+				js_coroutine_await(rt, value)
+				if (js_frame_save(rt, node, 1) != 0): return rt.undefined_value
 		if (rt.completion.status == 0):
 			rt.completion.status = 1
 			if (js_kind(node, c"throw")):
@@ -1554,25 +1834,43 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"if") || js_kind(node, c"conditional")):
-		js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
-		if (rt.completion.status != 0): return rt.undefined_value
+		# Frame phase: 0 condition, 1 consequent, 2 alternative.
+		js_value* frame = js_frame_resume(rt, node)
+		int branch = 0
+		if (frame != 0): branch = frame.array_length
+		if (branch == 0):
+			js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0 || rt.completion.status != 0): return rt.undefined_value
+			branch = 3
+			if (js_runtime_truth(condition)): branch = 1
+			else if (count == 3): branch = 2
 		js_value* value = rt.undefined_value
-		if (js_runtime_truth(condition)): value = js_runtime_eval_node(rt, node.children[1], env)
-		else if (count == 3): value = js_runtime_eval_node(rt, node.children[2], env)
+		if (branch == 1 || branch == 2): value = js_runtime_eval_node(rt, node.children[branch], env)
+		if (js_frame_save(rt, node, branch) != 0): return rt.undefined_value
 		rt.empty = 0
 		return value
-	if (js_kind(node, c"for_of")): return js_runtime_for_of(rt, node, env)
+	if (js_kind(node, c"for_of") || js_kind(node, c"for_await_of")): return js_runtime_for_of(rt, node, env)
 	if (js_kind(node, c"switch")): return js_runtime_switch(rt, node, env)
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
 	if (js_kind(node, c"binary")):
-		js_value* left = js_runtime_eval_node(rt, node.children[0], env)
-		if (rt.completion.status != 0): return rt.undefined_value
-		if (strcmp(node.text, c"&&") == 0 && js_runtime_truth(left) == 0): return left
-		if (strcmp(node.text, c"||") == 0 && js_runtime_truth(left)): return left
-		if (strcmp(node.text, c"??") == 0 && left.kind != 0 && left.kind != 1): return left
+		# Frame phase 1 resumes the right operand with the saved left value.
+		js_value* frame = js_frame_resume(rt, node)
+		js_value* left = 0
+		if (frame != 0 && frame.array_length == 1): left = js_frame_get(frame, 0)
+		else:
+			left = js_runtime_eval_node(rt, node.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0 || rt.completion.status != 0): return rt.undefined_value
+			if (strcmp(node.text, c"&&") == 0 && js_runtime_truth(left) == 0): return left
+			if (strcmp(node.text, c"||") == 0 && js_runtime_truth(left)): return left
+			if (strcmp(node.text, c"??") == 0 && left.kind != 0 && left.kind != 1): return left
 		js_value* right = js_runtime_eval_node(rt, node.children[1], env)
+		js_value* saved = js_frame_save(rt, node, 1)
+		if (saved != 0):
+			js_frame_put(saved, left)
+			return rt.undefined_value
 		if (rt.completion.status != 0): return rt.undefined_value
+		if (strcmp(node.text, c"in") == 0): return js_runtime_in(rt, left, right)
 		if (strcmp(node.text, c"&&") == 0 || strcmp(node.text, c"||") == 0 || strcmp(node.text, c"??") == 0 || strcmp(node.text, c",") == 0): return right
 		if (strcmp(node.text, c"instanceof") == 0): return js_runtime_instanceof(rt, left, right)
 		return js_runtime_binary(rt, node.text, left, right)
@@ -1615,19 +1913,44 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (js_kind(node.children[0], c"super")):
 			js_value* this_value = rt.undefined_value
 			return js_runtime_super_member(rt, node, env, &this_value)
-		js_value* object = js_runtime_eval_node(rt, node.children[0], env)
+		# Frame phase 1 resumes a computed key with the saved object.
+		js_value* frame = js_frame_resume(rt, node)
+		js_value* object = 0
+		if (frame != 0 && frame.array_length == 1): object = js_frame_get(frame, 0)
+		else:
+			object = js_runtime_eval_node(rt, node.children[0], env)
+			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
 		js_text* key = js_runtime_member_key(rt, node, env)
+		js_value* saved = js_frame_save(rt, node, 1)
+		if (saved != 0):
+			js_frame_put(saved, object)
+			return rt.undefined_value
 		js_value* value = js_runtime_member_read(rt, object, key)
 		js_text_free(key)
 		return value
 	if (js_kind(node, c"array") || js_kind(node, c"object")):
 		int kind = 5
 		if (js_kind(node, c"array")): kind = 6
-		js_value* object = js_runtime_alloc(rt, kind)
-		for i in range(count):
+		# A resumed literal keeps the partially built object (frame slot 0), the
+		# element index (phase) and, after a computed key, the key (frame text).
+		js_value* frame = js_frame_resume(rt, node)
+		js_value* object = 0
+		int start = 0
+		js_text* resumed_key = 0
+		if (frame != 0):
+			object = js_frame_get(frame, 0)
+			start = frame.array_length
+			if (frame.text != 0): resumed_key = js_text_clone(frame.text)
+		else: object = js_runtime_alloc(rt, kind)
+		for i in range(start, count):
 			if (rt.completion.status != 0): break
 			if (js_kind(node.children[i], c"spread")):
 				js_value* spread = js_runtime_eval_node(rt, node.children[i].children[0], env)
+				js_value* spreading = js_frame_save(rt, node, i)
+				if (spreading != 0):
+					js_frame_put(spreading, object)
+					return rt.undefined_value
+				if (rt.completion.status != 0): break
 				if (kind == 6):
 					int index = 0
 					while (js_runtime_compat_step(rt)):
@@ -1649,17 +1972,40 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				key = js_runtime_key(index)
 				free(index)
 				value = js_runtime_eval_node(rt, node.children[i], env)
+				js_value* element = js_frame_save(rt, node, i)
+				if (element != 0):
+					js_frame_put(element, object)
+					js_text_free(key)
+					return rt.undefined_value
 			else:
 				js_node* property = node.children[i]
-				if (js_kind(property, c"computed_property") || (js_kind(property, c"method") && js_kind(property.children[0], c"computed_key"))):
+				if (resumed_key != 0):
+					key = resumed_key
+					resumed_key = 0
+				else if (js_kind(property, c"computed_property") || (js_kind(property, c"method") && js_kind(property.children[0], c"computed_key"))):
 					js_node* expression = property.children[0]
 					if (js_kind(property, c"method")): expression = expression.children[0]
 					js_value* name = js_runtime_eval_node(rt, expression, env)
+					js_value* naming = js_frame_save(rt, node, i)
+					if (naming != 0):
+						js_frame_put(naming, object)
+						return rt.undefined_value
 					if (rt.completion.status != 0): break
 					key = js_runtime_property_key(rt, name)
 					if (key == 0): break
 				else if (js_kind(property, c"method")): key = js_runtime_key(property.children[0].text)
 				else: key = js_runtime_key(property.text)
+				if (js_kind(property, c"method") && strcmp(property.text, c"method") == 0):
+					# Generator and async methods: ordinary enumerable data
+					# properties whose [[HomeObject]] is the literal.
+					js_value* routine = js_runtime_eval_node(rt, property.children[1], env)
+					if (rt.completion.status == 0):
+						routine.home_object = object
+						js_runtime_coroutine_method_name(rt, routine, key)
+						js_runtime_delete(rt, object, key)
+						js_runtime_define_data(rt, object, key, routine, 1, 1, 1)
+					js_text_free(key)
+					continue
 				if (js_kind(property, c"method")):
 					# Object literal get/set accessors: enumerable, configurable,
 					# merged with an existing accessor of the same key.
@@ -1677,33 +2023,73 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 						js_runtime_define_accessor(rt, object, key, getter, setter, 1, 1)
 					js_text_free(key)
 					continue
-				if (js_kind(property, c"computed_property")): value = js_runtime_eval_node(rt, property.children[1], env)
+				if (js_kind(property, c"computed_property")):
+					value = js_runtime_eval_node(rt, property.children[1], env)
+					js_value* valuing = js_frame_save(rt, node, i)
+					if (valuing != 0):
+						js_frame_put(valuing, object)
+						valuing.text = key
+						return rt.undefined_value
 				else if (js_kind(property, c"property_shorthand")):
 					js_value* binding = js_runtime_binding(env, property.text)
 					if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 					else: value = js_runtime_binding_value(rt, binding)
-				else: value = js_runtime_eval_node(rt, property.children[0], env)
+				else:
+					value = js_runtime_eval_node(rt, property.children[0], env)
+					js_value* valuing = js_frame_save(rt, node, i)
+					if (valuing != 0):
+						js_frame_put(valuing, object)
+						js_text_free(key)
+						return rt.undefined_value
 			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
 			js_text_free(key)
+		js_text_free(resumed_key)
 		return object
 	if (js_kind(node, c"call") || js_kind(node, c"construct")):
+		# Frame phases: 0 callee (or member object), 1 computed callee key,
+		# 2 arguments from the child index in int slot 0. Slots hold the
+		# receiver, the callee and the arguments evaluated so far.
+		js_value* frame = js_frame_resume(rt, node)
+		int phase = 0
 		js_node* target = node.children[0]
 		js_value* receiver = rt.undefined_value
 		js_value* callable = rt.undefined_value
-		if (js_kind(target, c"super") && js_kind(node, c"call")): return js_runtime_super_call(rt, node, env)
-		if ((js_kind(target, c"member") || js_kind(target, c"computed_member")) && js_kind(target.children[0], c"super")): callable = js_runtime_super_member(rt, target, env, &receiver)
-		else if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
-			receiver = js_runtime_eval_node(rt, target.children[0], env)
-			if (rt.completion.status == 0):
-				js_text* key = js_runtime_member_key(rt, target, env)
-				callable = js_runtime_member_read(rt, receiver, key)
-				js_text_free(key)
-		else if (js_kind(target, c"optional_chain")):
-			int skipped = 0
-			callable = js_runtime_chain(rt, target.children[0], env, &skipped, &receiver)
-		else: callable = js_runtime_eval_node(rt, target, env)
 		list[js_value*] arguments = new list[js_value*]
-		js_runtime_arguments(rt, node, env, arguments)
+		int argument = 1
+		if (frame != 0):
+			phase = frame.array_length
+			receiver = js_frame_get(frame, 0)
+			callable = js_frame_get(frame, 1)
+			argument = js_frame_int(frame, 0)
+			for j in range(2, frame.reactions.length): arguments.push(frame.reactions[j])
+		if (js_kind(target, c"super") && js_kind(node, c"call")):
+			__w_list_free(cast(__w_list*, arguments))
+			return js_runtime_super_call(rt, node, env)
+		if (phase < 2):
+			if ((js_kind(target, c"member") || js_kind(target, c"computed_member")) && js_kind(target.children[0], c"super")): callable = js_runtime_super_member(rt, target, env, &receiver)
+			else if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
+				if (phase == 0): receiver = js_runtime_eval_node(rt, target.children[0], env)
+				if (rt.completion.status == 7): phase = 0
+				else if (rt.completion.status == 0):
+					js_text* key = js_runtime_member_key(rt, target, env)
+					phase = 1
+					if (rt.completion.status == 0): callable = js_runtime_member_read(rt, receiver, key)
+					js_text_free(key)
+			else if (js_kind(target, c"optional_chain")):
+				int skipped = 0
+				callable = js_runtime_chain(rt, target.children[0], env, &skipped, &receiver)
+			else: callable = js_runtime_eval_node(rt, target, env)
+		if (rt.completion.status == 0):
+			phase = 2
+			argument = js_runtime_arguments_from(rt, node, env, arguments, argument)
+		js_value* saved = js_frame_save(rt, node, phase)
+		if (saved != 0):
+			js_frame_set_int(saved, 0, argument)
+			js_frame_put(saved, receiver)
+			js_frame_put(saved, callable)
+			for j in range(arguments.length): js_frame_put(saved, arguments[j])
+			__w_list_free(cast(__w_list*, arguments))
+			return rt.undefined_value
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
 			if (js_kind(node, c"construct")): result = js_runtime_construct(rt, callable, arguments, callable)
@@ -1731,6 +2117,9 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # Nonzero while preflight is inside a class method body (arrows included),
 # where super has a [[HomeObject]]. Ordinary functions reset it.
 int js_runtime_super_allowed = 0
+# The coroutine kind of the function preflight is inside (runtime_coroutines.w):
+# yield needs a generator body, await and for await an async one.
+int js_runtime_coroutine_context = 0
 
 
 # Shape validity is established by lowering. Preflight rejects unsupported
@@ -1741,6 +2130,12 @@ int js_runtime_supported(js_node* node):
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
 	if (supported == 0): supported = js_kind(node, c"switch") || js_kind(node, c"case") || js_kind(node, c"default")
 	if (supported == 0): supported = js_kind(node, c"computed_property") || js_kind(node, c"property_key") || js_kind(node, c"computed_key")
+	# Generators, async functions/arrows and their methods (runtime_coroutines.w).
+	if (supported == 0 && js_kind(node, c"yield")): supported = js_runtime_coroutine_context == 1 || js_runtime_coroutine_context == 3
+	if (supported == 0 && (js_kind(node, c"await") || js_kind(node, c"for_await_of"))): supported = js_runtime_coroutine_context == 2 || js_runtime_coroutine_context == 3
+	if (supported == 0): supported = js_kind(node, c"async_arrow")
+	if (supported == 0 && js_coroutine_kind_of(node) != 0): supported = js_coroutine_supported(node)
+	if (supported == 0 && js_kind(node, c"method") && strcmp(node.text, c"method") == 0): supported = js_coroutine_kind_of(node.children[1]) != 0
 	# Object literal accessors (get/set over an ordinary function expression).
 	if (supported == 0 && js_kind(node, c"method") && (strcmp(node.text, c"get") == 0 || strcmp(node.text, c"set") == 0)): supported = js_kind(node.children[1], c"function_expression")
 	if (supported == 0 && js_kind(node, c"regex")): supported = js_regexp_runtime_supported(node.text)
@@ -1751,7 +2146,7 @@ int js_runtime_supported(js_node* node):
 	# Lowered shapes the evaluator does not model: var/assignment-target
 	# for-of heads, destructured catch parameters, array holes, destructuring
 	# assignment and cover-initialized shorthand properties.
-	if (js_kind(node, c"for_of") && strcmp(node.text, c"let") != 0 && strcmp(node.text, c"const") != 0): return 0
+	if ((js_kind(node, c"for_of") || js_kind(node, c"for_await_of")) && strcmp(node.text, c"let") != 0 && strcmp(node.text, c"const") != 0): return 0
 	if (js_kind(node, c"catch") && node.children.length != 1): return 0
 	if (js_kind(node, c"property_shorthand") && node.children.length != 0): return 0
 	if (js_kind(node, c"assignment") && js_kind(node.children[0], c"identifier") == 0 && js_kind(node.children[0], c"member") == 0 && js_kind(node.children[0], c"computed_member") == 0 && js_kind(node.children[0], c"call") == 0): return 0
@@ -1767,12 +2162,15 @@ int js_runtime_supported(js_node* node):
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0 && strcmp(op, c"instanceof") != 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0): return 0
 	int saved = js_runtime_super_allowed
-	if (js_kind(node, c"function") || js_kind(node, c"function_expression")): js_runtime_super_allowed = 0
+	int saved_context = js_runtime_coroutine_context
+	if (js_runtime_function_node(node) && js_runtime_arrow_node(node) == 0): js_runtime_super_allowed = 0
+	if (js_runtime_function_node(node)): js_runtime_coroutine_context = js_coroutine_kind_of(node)
 	for i in range(node.children.length):
 		if (supported && js_runtime_supported(node.children[i]) == 0): supported = 0
 	js_runtime_super_allowed = saved
+	js_runtime_coroutine_context = saved_context
 	return supported
 
 
@@ -1883,3 +2281,4 @@ import libs.extras.javascript.runtime_constructors
 import libs.extras.javascript.runtime_classes
 import libs.extras.javascript.runtime_annexb
 import libs.extras.javascript.regexp_methods
+import libs.extras.javascript.runtime_coroutines

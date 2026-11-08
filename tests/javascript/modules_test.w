@@ -122,7 +122,7 @@ void test_modules_rejections():
 	module_reject(c"import('dep');", 6)
 	module_reject(c"import 'de\\u0000p';", 6)
 	module_reject(c"await 1;", 6)
-	module_reject(c"import {x} from 'dep'; function* Unsupported() {}", 6)
+	module_reject(c"import {x} from 'dep'; with ({}) {}", 6)
 
 void test_modules_cached_failure():
 	module_fixture* fixture = module_fixture_new()

@@ -2,8 +2,9 @@
 Classes for the bounded interpreter (reardan/w#905): ClassDefinitionEvaluation,
 [[Construct]] for ordinary functions and base/derived class constructors,
 super(...) and super.x through a method's [[HomeObject]], new.target and the
-derived-constructor this TDZ. Class fields, private names, static blocks and
-generator/async methods are outside the subset (preflight rejects them).
+derived-constructor this TDZ. Class fields, private names and static blocks
+are outside the subset (preflight rejects them); generator and async methods
+run as coroutines (runtime_coroutines.w).
 The realm has no %Object.prototype% intrinsic, so a class without heritage
 has a null-prototype prototype object; constructors inherit %Function.prototype%
 (also for extends null).
@@ -29,11 +30,16 @@ int js_runtime_class_supported(js_node* node):
 			if (key.children.length != 1 || js_runtime_supported(key.children[0]) == 0): return 0
 		else if (js_kind(key, c"property_key") == 0): return 0
 		js_node* routine = member.children[1]
-		if (js_kind(routine, c"function_expression") == 0 || routine.children.length != 2): return 0
+		if (routine.children.length != 2): return 0
+		# Generator and async methods (runtime_coroutines.w).
+		if (js_kind(routine, c"function_expression") == 0 && (strcmp(member.text, c"method") != 0 || js_coroutine_kind_of(routine) == 0 || js_coroutine_supported(routine) == 0)): return 0
 		int saved = js_runtime_super_allowed
+		int saved_context = js_runtime_coroutine_context
 		js_runtime_super_allowed = 1
+		js_runtime_coroutine_context = js_coroutine_kind_of(routine)
 		int supported = js_runtime_supported(routine.children[0]) && js_runtime_supported(routine.children[1])
 		js_runtime_super_allowed = saved
+		js_runtime_coroutine_context = saved_context
 		if (supported == 0): return 0
 	return 1
 
@@ -330,7 +336,8 @@ js_value* js_runtime_named_eval(js_runtime* rt, js_node* node, js_value* env, ch
 		js_runtime_class_pending_name = 0
 		return value
 	js_value* value = js_runtime_eval_node(rt, node, env)
-	if (rt.completion.status == 0 && (js_kind(node, c"arrow") || (js_kind(node, c"function_expression") && strlen(node.text) == 0))):
+	int anonymous = strlen(node.text) == 0 && (js_kind(node, c"function_expression") || js_kind(node, c"generator_function_expression") || js_kind(node, c"async_function_expression") || js_kind(node, c"async_generator_function_expression"))
+	if (rt.completion.status == 0 && (js_runtime_arrow_node(node) || anonymous)):
 		js_text* label = js_runtime_key(name)
 		js_runtime_set_name(rt, value, c"", label)
 		js_text_free(label)
