@@ -76,6 +76,7 @@ import grammar.object_attributes
 import grammar.generator_decl
 import grammar.kernel_decl
 import grammar.protobuf_builtin
+import grammar.type_redefine
 import grammar.gpu_for
 import grammar.asm_function
 import grammar.program
