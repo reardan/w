@@ -20,6 +20,7 @@ import libs.asm.binary_reader
 import libs.asm.x86_decode
 import libs.asm.x86_encode
 import libs.asm.text
+import libs.asm.att
 import libs.asm.format
 import libs.asm.arm64_decode
 import libs.asm.arm64_format
@@ -53,6 +54,14 @@ int main():
 	asm_insn insn
 	assert_equal(4, asm_x86_decode(x86_code, 4, 0, 4, &insn))
 	assert_strings_equal(c"mov eax,[esp+0x10]", asm_format(&insn))
+
+	# AT&T front end (libs/asm/att.w): parse one line and encode it.
+	asm_insn att_insn
+	assert_equal(1, asm_att_parse(c"movq %rcx, %rax", ASM_ARCH_X64, &att_insn))
+	asm_buffer* att_b = asm_buffer_new()
+	assert_equal(3, asm_x86_encode(att_b, &att_insn))
+	assert_equal(0x48, att_b.data[0] & 255)
+	assert_equal(0x89, att_b.data[1] & 255)
 
 	# parse + encode round-trips back to the same bytes.
 	asm_insn parsed

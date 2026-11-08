@@ -151,6 +151,28 @@ int asm_enc_alu_base(char* m):
 int asm_enc_cc(char* suffix):
 	return asm_name_slot_find(asm_x86_cc_table(), 3, 16, suffix)
 
+# Like asm_enc_cc but also resolving the condition-code synonyms the GNU
+# assembler accepts, which an AT&T source uses interchangeably with the
+# canonical spellings (setc/jc for carry = below, setz for zero = equal,
+# setnae, setng, ...). The canonical table drives the decoder, so the
+# synonyms live here in the encode direction only.
+int asm_enc_cc_alias(char* suffix):
+	if (strcmp(suffix, c"c") == 0): return 2
+	if (strcmp(suffix, c"nae") == 0): return 2
+	if (strcmp(suffix, c"nc") == 0): return 3
+	if (strcmp(suffix, c"nb") == 0): return 3
+	if (strcmp(suffix, c"z") == 0): return 4
+	if (strcmp(suffix, c"nz") == 0): return 5
+	if (strcmp(suffix, c"na") == 0): return 6
+	if (strcmp(suffix, c"nbe") == 0): return 7
+	if (strcmp(suffix, c"pe") == 0): return 10
+	if (strcmp(suffix, c"po") == 0): return 11
+	if (strcmp(suffix, c"nge") == 0): return 12
+	if (strcmp(suffix, c"nl") == 0): return 13
+	if (strcmp(suffix, c"ng") == 0): return 14
+	if (strcmp(suffix, c"nle") == 0): return 15
+	return asm_enc_cc(suffix)
+
 
 # Shift-group /ext of m, or -1. sal (/6) decodes but is never emitted:
 # shl (/4) is its canonical encoding.
@@ -193,10 +215,93 @@ int asm_enc_dot_target(char* label);
 
 # Encode insn into b. Returns the number of bytes written, or -1 if the
 # mnemonic/operand shape is unsupported (caller can report).
+# Emit a two-byte 0f-prefixed opcode (0f <op>); returns 1.
+int asm_enc_two_byte(asm_buffer* b, int op):
+	asm_buffer_byte(b, 0x0f)
+	asm_buffer_byte(b, op)
+	return 1
+
+# Emit a 0f ae <modrm> fence (lfence/mfence/sfence); returns 1.
+int asm_enc_0f_ae(asm_buffer* b, int modrm):
+	asm_buffer_byte(b, 0x0f)
+	asm_buffer_byte(b, 0xae)
+	asm_buffer_byte(b, modrm)
+	return 1
+
+# Emit a 0f 01 <modrm> instruction (xgetbv/xsetbv/clac/stac/swapgs);
+# returns 1.
+int asm_enc_0f_01(asm_buffer* b, int modrm):
+	asm_buffer_byte(b, 0x0f)
+	asm_buffer_byte(b, 0x01)
+	asm_buffer_byte(b, modrm)
+	return 1
+
+# A single-byte opcode with no operand, or -1 when m is not one. Covers
+# the inline-asm one-byte instructions a kernel uses (flags, string-op
+# direction, interrupt enable, pause/hlt/nop).
+int asm_enc_one_byte(char* m):
+	if (strcmp(m, c"ret") == 0): return 0xc3
+	if (strcmp(m, c"leave") == 0): return 0xc9
+	if (strcmp(m, c"hlt") == 0): return 0xf4
+	if (strcmp(m, c"cli") == 0): return 0xfa
+	if (strcmp(m, c"sti") == 0): return 0xfb
+	if (strcmp(m, c"cld") == 0): return 0xfc
+	if (strcmp(m, c"std") == 0): return 0xfd
+	if (strcmp(m, c"clc") == 0): return 0xf8
+	if (strcmp(m, c"stc") == 0): return 0xf9
+	if (strcmp(m, c"cmc") == 0): return 0xf5
+	if (strcmp(m, c"pushfq") == 0 | strcmp(m, c"pushf") == 0): return 0x9c
+	if (strcmp(m, c"popfq") == 0 | strcmp(m, c"popf") == 0): return 0x9d
+	if (strcmp(m, c"sahf") == 0): return 0x9e
+	if (strcmp(m, c"lahf") == 0): return 0x9f
+	return -1
+
+# The base mnemonic of a 'lock'-prefixed instruction whose r/m-with-reg
+# or immediate form takes a 0xf0 prefix and is encoded here (ALU, the
+# bit tests, inc/dec, xchg, not/neg). cmpxchg and xadd are prefixed in
+# asm_x86_encode_0f, which runs before the generic path, so they are
+# excluded. Returns the base mnemonic, or 0 when m is not such a lock.
+char* asm_enc_lock_base(char* m):
+	if (m[0] != 'l'): return 0
+	if (m[1] != 'o'): return 0
+	if (m[2] != 'c'): return 0
+	if (m[3] != 'k'): return 0
+	if (m[4] != ' '): return 0
+	char* base = m + 5
+	if (strcmp(base, c"cmpxchg") == 0 | strcmp(base, c"xadd") == 0): return 0
+	if (asm_enc_alu_base(base) >= 0): return base
+	if (asm_x86_group_ext(8, base) >= 0): return base
+	if (strcmp(base, c"inc") == 0 | strcmp(base, c"dec") == 0): return base
+	if (strcmp(base, c"not") == 0 | strcmp(base, c"neg") == 0): return base
+	if (strcmp(base, c"xchg") == 0): return base
+	return 0
+
+
 int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	int start = b.length
 	char* m = insn.mnemonic
 	int is64 = asm_enc_is64(insn)
+
+	# One-byte opcodes with no operand (flags, interrupt enable, ...).
+	int ob = asm_enc_one_byte(m)
+	if (ob >= 0):
+		asm_buffer_byte(b, ob)
+		return b.length - start
+	if (strcmp(m, c"pause") == 0):
+		asm_buffer_byte(b, 0xf3)
+		asm_buffer_byte(b, 0x90)
+		return b.length - start
+
+	# A generic 'lock' prefix: emit 0xf0, then encode the base mnemonic.
+	# cmpxchg/xadd carry their own prefix in asm_x86_encode_0f below.
+	char* lock_base = asm_enc_lock_base(m)
+	if (lock_base != 0):
+		asm_buffer_byte(b, 0xf0)
+		insn.mnemonic = lock_base
+		int r = asm_x86_encode(b, insn)
+		insn.mnemonic = m
+		if (r <= 0): return 0 - 1
+		return b.length - start
 
 	# SSE scalar float
 	if (asm_enc_sse(b, insn)): return b.length - start
@@ -334,14 +439,14 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# Jcc rel8/rel32 (mnemonic j<cc>, label target)
 	if (m[0] == 'j' && insn.op1.kind == ASM_OP_LABEL):
-		int cc = asm_enc_cc(m + 1)
+		int cc = asm_enc_cc_alias(m + 1)
 		if (cc >= 0):
 			asm_enc_jcc(b, insn, cc)
 			return b.length - start
 
 	# setcc r/m8
 	if (m[0] == 's' && m[1] == 'e' && m[2] == 't'):
-		int cc = asm_enc_cc(m + 3)
+		int cc = asm_enc_cc_alias(m + 3)
 		if (cc >= 0):
 			asm_enc_rex(b, is64, 0, 0, &insn.op1)
 			asm_buffer_byte(b, 0x0f)
@@ -359,12 +464,25 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		asm_enc_modrm(b, insn.op1.reg, &insn.op2, is64)
 		return b.length - start
 
-	# xchg eax, r32
+	# xchg: the one-byte 0x90+reg form is only valid when one operand is
+	# (e)ax/rax and both are registers; a memory operand or two general
+	# registers use the r/m, r form (0x86 byte / 0x87 word+).
 	if (strcmp(m, c"xchg") == 0):
-		int r = insn.op1.reg
-		if (insn.op1.reg == 0): r = insn.op2.reg
-		asm_enc_rex_reg(b, is64, asm_enc_w(insn.op1.size), r)
-		asm_buffer_byte(b, 0x90 + (r & 7))
+		int reg_reg = (insn.op1.kind == ASM_OP_REG) & (insn.op2.kind == ASM_OP_REG)
+		int has_ax = reg_reg & ((insn.op1.reg == 0) | (insn.op2.reg == 0))
+		if (has_ax):
+			int r = insn.op1.reg
+			if (insn.op1.reg == 0): r = insn.op2.reg
+			asm_enc_rex_reg(b, is64, asm_enc_w(insn.op1.size), r)
+			asm_buffer_byte(b, 0x90 + (r & 7))
+			return b.length - start
+		# r/m, r — op2 is the register, op1 the r/m (reg or mem).
+		int opcode = 0x87
+		if (insn.op2.size == 1): opcode = 0x86
+		asm_enc_opsize_prefix(b, insn.op2.size)
+		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op2.reg, &insn.op1)
+		asm_buffer_byte(b, opcode)
+		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return b.length - start
 
 	# test r/m, r
@@ -375,6 +493,24 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op2.reg, &insn.op1)
 		asm_buffer_byte(b, opcode)
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
+		return b.length - start
+
+	# test r/m, imm (f6 /0 ib for byte, f7 /0 id otherwise). No sign-
+	# extended imm8 short form exists for test, so the immediate is always
+	# emitted at the operand width.
+	if (strcmp(m, c"test") == 0 & count == 2 & insn.op2.kind == ASM_OP_IMM):
+		int tsize = insn.op1.size
+		asm_enc_opsize_prefix(b, tsize)
+		asm_enc_rex(b, is64, asm_enc_w(tsize), 0, &insn.op1)
+		if (tsize == 1):
+			asm_buffer_byte(b, 0xf6)
+			asm_enc_modrm(b, 0, &insn.op1, is64)
+			asm_buffer_byte(b, insn.op2.imm & 255)
+		else:
+			asm_buffer_byte(b, 0xf7)
+			asm_enc_modrm(b, 0, &insn.op1, is64)
+			if (tsize == 2): asm_enc_imm(b, insn.op2.imm, 2)
+			else: asm_buffer_int32(b, insn.op2.imm)
 		return b.length - start
 
 	# grp2 shifts (r/m, cl or r/m, 1)
@@ -605,6 +741,57 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 	char* m = insn.mnemonic
 	int is64 = asm_enc_is64(insn)
+
+	# Fixed two-byte and three-byte opcodes with no operands, as a kernel's
+	# inline asm uses them (privileged and serializing instructions).
+	if (strcmp(m, c"cpuid") == 0): return asm_enc_two_byte(b, 0xa2)
+	if (strcmp(m, c"rdtsc") == 0): return asm_enc_two_byte(b, 0x31)
+	if (strcmp(m, c"rdtscp") == 0):
+		asm_buffer_byte(b, 0x0f)
+		asm_buffer_byte(b, 0x01)
+		asm_buffer_byte(b, 0xf9)
+		return 1
+	if (strcmp(m, c"rdpmc") == 0): return asm_enc_two_byte(b, 0x33)
+	if (strcmp(m, c"rdmsr") == 0): return asm_enc_two_byte(b, 0x32)
+	if (strcmp(m, c"wrmsr") == 0): return asm_enc_two_byte(b, 0x30)
+	if (strcmp(m, c"wbinvd") == 0): return asm_enc_two_byte(b, 0x09)
+	if (strcmp(m, c"invd") == 0): return asm_enc_two_byte(b, 0x08)
+	if (strcmp(m, c"ud2") == 0): return asm_enc_two_byte(b, 0x0b)
+	if (strcmp(m, c"lfence") == 0): return asm_enc_0f_ae(b, 0xe8)
+	if (strcmp(m, c"mfence") == 0): return asm_enc_0f_ae(b, 0xf0)
+	if (strcmp(m, c"sfence") == 0): return asm_enc_0f_ae(b, 0xf8)
+	if (strcmp(m, c"xgetbv") == 0): return asm_enc_0f_01(b, 0xd0)
+	if (strcmp(m, c"xsetbv") == 0): return asm_enc_0f_01(b, 0xd1)
+	if (strcmp(m, c"clac") == 0): return asm_enc_0f_01(b, 0xca)
+	if (strcmp(m, c"stac") == 0): return asm_enc_0f_01(b, 0xcb)
+	if (strcmp(m, c"swapgs") == 0): return asm_enc_0f_01(b, 0xf8)
+
+	# bsf / bsr / tzcnt / lzcnt / popcnt r, r/m (0f bc/bd; f3-prefixed forms)
+	if (((strcmp(m, c"bsf") == 0 | strcmp(m, c"bsr") == 0) | (strcmp(m, c"tzcnt") == 0 | strcmp(m, c"lzcnt") == 0)) | strcmp(m, c"popcnt") == 0):
+		int rep = 0
+		if (strcmp(m, c"tzcnt") == 0 | (strcmp(m, c"lzcnt") == 0 | strcmp(m, c"popcnt") == 0)): rep = 0xf3
+		int sop = 0xbc
+		if (strcmp(m, c"bsr") == 0 | strcmp(m, c"lzcnt") == 0): sop = 0xbd
+		if (strcmp(m, c"popcnt") == 0): sop = 0xb8
+		if (rep): asm_buffer_byte(b, rep)
+		asm_enc_opsize_prefix(b, insn.op1.size)
+		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), insn.op1.reg, &insn.op2)
+		asm_buffer_byte(b, 0x0f)
+		asm_buffer_byte(b, sop)
+		asm_enc_modrm(b, insn.op1.reg, &insn.op2, is64)
+		return 1
+
+	# bt / bts / btr / btc r/m, r (0f a3/ab/b3/bb /r); the [lock] prefix is
+	# emitted by the generic lock path before this is reached.
+	int bt_ext = asm_x86_group_ext(8, m)
+	if (((bt_ext >= 0) && (asm_insn_operand_count(insn) == 2)) && insn.op2.kind == ASM_OP_REG):
+		asm_enc_opsize_prefix(b, insn.op2.size)
+		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op2.reg, &insn.op1)
+		asm_buffer_byte(b, 0x0f)
+		asm_buffer_byte(b, 0xa3 + (bt_ext - 4) * 8)
+		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
+		return 1
+
 	# [lock] cmpxchg / xadd r/m, r (0f b1 /r, 0f c1 /r)
 	int locked = 0
 	if (strcmp(m, c"lock cmpxchg") == 0 | strcmp(m, c"lock xadd") == 0): locked = 1
