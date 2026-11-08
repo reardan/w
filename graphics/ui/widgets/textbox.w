@@ -234,8 +234,8 @@ void ui_textbox_access_layout(ui_context* ctx, ui_access_node* node, ui_textbox_
 # selects, Shift+click extends, a double-click selects the word under the
 # pointer (UAX #29 word boundaries) and a triple-click the whole line,
 # a drag after either extending by words or lines; every new selection
-# becomes the PRIMARY selection and a middle-click pastes it; the focused textbox consumes the
-# frame's CHAR/NAV queues — printable characters replace the selection
+# becomes the PRIMARY selection and a middle-click pastes it; the
+# focused textbox consumes the frame's CHAR/NAV queues — printable characters replace the selection
 # or insert at the caret as UTF-8, backspace/delete remove the selection
 # or a whole character, left/right step over whole characters, home/end
 # move, Shift with any of them extends the selection, Ctrl/Cmd+A selects
