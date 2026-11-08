@@ -14,8 +14,27 @@ list[char*] t262_harness
 set[char*] t262_builtins
 type t262_executor = fn(char*, char*, char*, int, int) -> json_value*
 
+# Compiled patterns are cached per (flags, pattern): metadata parsing matches
+# every header line, and recompiling (and leaking) a pattern per line grew the
+# 32-bit test262_runner_test past its heap once the corpus doubled (#906).
+map[char*, re_pattern*] t262_patterns
+
+re_pattern* t262_pattern(char* pattern, int flags):
+	if (t262_patterns == 0): t262_patterns = new map[char*, re_pattern*]
+	char* prefix = itoa(flags)
+	char* key = strjoin(prefix, pattern)
+	free(prefix)
+	re_pattern* compiled = 0
+	if (key in t262_patterns):
+		compiled = t262_patterns[key]
+		free(key)
+	else:
+		compiled = re_compile(pattern, flags)
+		t262_patterns[key] = compiled
+	return compiled
+
 re_result* t262_match(char* pattern, char* text, int flags = 0):
-	return re_fullmatch(re_compile(pattern, flags), text)
+	return re_fullmatch(t262_pattern(pattern, flags), text)
 
 int t262_has(json_value* array, char* value):
 	if (!jc_type(array, json_type_array())): return 0
@@ -41,7 +60,7 @@ int t262_doc(char* key):
 
 json_value* t262_metadata(char* source):
 	jc_error = 0
-	list[re_result*] blocks = re_finditer(re_compile(c"/\\*---(.*?)---\\*/", RE_DOTALL), source)
+	list[re_result*] blocks = re_finditer(t262_pattern(c"/\\*---(.*?)---\\*/", RE_DOTALL), source)
 	if (!jc_require(blocks.length == 1, c"exactly one Test262 metadata block required")): return 0
 	json_value* result = json_object()
 	char* key = 0
