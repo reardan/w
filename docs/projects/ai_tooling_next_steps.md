@@ -1817,3 +1817,33 @@ The runtime's locals share the type namespace of whatever program imports
 it. Direction: resolve a runtime module's identifiers in its own scope (or
 warn when a program type shadows a runtime local), and until then keep
 runtime locals to names no test is likely to declare as a type.
+
+## Millisecond `timeout=` is easy to mistake for seconds (2026-11-08, wdrive)
+
+Writing the `wdrive_xvfb_test` target, `# wbuild: step="..." timeout=180`
+meant three minutes but is 180 ms; the run failed with "command timed
+out after 180 ms", which at least named the unit. `tools/host_tools.w`'s
+`ht_run(..., timeout)` is milliseconds too and silently kills a child
+after 120 ms when given `120`. Direction: have `manifest_check` warn on a
+step `timeout=` below, say, 1000 (no real step finishes that fast on
+purpose), or accept an explicit unit suffix (`timeout=180s`).
+
+## `stream_close` also frees the stream (2026-11-08, wdrive)
+
+`graphics/ui/demo.w`'s `--screenshot` path called `stream_close(out)`
+then `stream_free(out)`, a double free that `lib/memory_freelist.w`
+aborts on (fixed alongside wdrive; the same pattern was copied into the
+first draft of `graphics/control.w`). The two names read as "close the
+fd" / "free the object". Direction: say "closes and frees" at every
+`stream_open_*` call site's docs, or make `stream_free` after
+`stream_close` a diagnosable misuse (a `--lint` rule pairing the two on
+the same local).
+
+## Driving native GUI programs (2026-11-08, wdrive)
+
+Agents can now drive native graphics programs with `bin/wdrive`
+(docs/projects/wdrive.md). Open items: run the Win32 (Winsock AF_UNIX)
+and Cocoa hooks for real (needs a Windows/macOS-capable driver, since
+wdrive spawns Xvfb and uses POSIX processes); a deterministic frame clock
+so animations can be stepped; and an agent tool wrapper over
+`wdrive serve` in the sibling repo.

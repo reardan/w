@@ -52,6 +52,7 @@ import graphics.input_queue
 import lib.mem
 import graphics.text_unicode
 import graphics.clipboard_store
+import graphics.control
 
 
 c_lib "user32.dll"
@@ -580,6 +581,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.context = context
 	ShowWindow(hwnd, 5)               /* SW_SHOW */
 	glViewport(0, 0, win.pixel_width, win.pixel_height)
+	gfx_control_open(title, c"win32")
 	return win
 
 
@@ -733,6 +735,40 @@ char* gfx_clipboard_take(gfx_window* win):
 
 # Drain pending window messages. Returns 1 while the window should stay
 # open.
+# graphics.control hooks (docs/projects/wdrive.md). Resize takes a
+# logical client size, grown to the window's outer rectangle at its
+# monitor's scale; WM_SIZE then updates width/height.
+int gfx_win32_control_resize(void* window, int width, int height):
+	gfx_window* win = cast(gfx_window*, window)
+	int32[4] rect
+	rect[0] = 0
+	rect[1] = 0
+	rect[2] = gfx_win32_physical(win, width)
+	rect[3] = gfx_win32_physical(win, height)
+	AdjustWindowRect(&rect[0], 282001408, 0)  /* WS_OVERLAPPEDWINDOW | WS_VISIBLE */
+	SetWindowPos(win.hwnd, 0, 0, 0, rect[2] - rect[0], rect[3] - rect[1], 22)  /* SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE */
+	return 1
+
+
+void gfx_win32_control_readback(int x, int y, int w, int h, char* out):
+	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out)
+
+
+void gfx_win32_control_target(gfx_window* win, gfx_control_target* t):
+	t.window = cast(void*, win)
+	t.queue = &win.input_queue
+	t.width = &win.width
+	t.height = &win.height
+	t.should_close = &win.should_close
+	t.mouse_x = &win.mouse_x
+	t.mouse_y = &win.mouse_y
+	t.mouse_buttons = &win.mouse_buttons
+	t.pixel_width = win.pixel_width
+	t.pixel_height = win.pixel_height
+	t.resize = gfx_win32_control_resize
+	t.readback = gfx_win32_control_readback
+
+
 int gfx_window_poll(gfx_window* win):
 	gfx_input_queue_begin(&win.input_queue)
 	char* msg = cast(char*, malloc(48))            /* MSG */
@@ -742,6 +778,10 @@ int gfx_window_poll(gfx_window* win):
 		TranslateMessage(msg)
 		DispatchMessageW(msg)
 	free(msg)
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_win32_control_target(win, &t)
+		gfx_control_poll(&t)
 	if (win.should_close): return 0
 	return 1
 
@@ -753,6 +793,10 @@ int gfx_window_next_event(gfx_window* win, gfx_event* out):
 
 
 void gfx_window_swap(gfx_window* win):
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_win32_control_target(win, &t)
+		gfx_control_swap(&t)
 	SwapBuffers(win.dc)
 
 

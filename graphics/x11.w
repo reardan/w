@@ -281,6 +281,7 @@ extern int XCreateWindow(int display, int parent, int x, int y, int width, int h
 extern int XDestroyWindow(int display, int window)
 extern int XMapWindow(int display, int window)
 extern int XStoreName(int display, int window, char* window_name)
+extern int XResizeWindow(int display, int window, int width, int height)
 extern int XSelectInput(int display, int window, int event_mask)
 extern int XPending(int display)
 extern int XNextEvent(int display, x_event* event)

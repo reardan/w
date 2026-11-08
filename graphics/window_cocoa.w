@@ -41,6 +41,7 @@ import graphics.gl
 import graphics.event
 import graphics.input_queue
 import graphics.clipboard_store
+import graphics.control
 
 
 # Hooks a text-input bridge installs (see the header comment); the
@@ -209,6 +210,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.text_bridge = 0
 	win.text_focus = 0
 	gfx_cocoa_active = win
+	gfx_control_open(title, c"cocoa")
 	return win
 
 
@@ -466,6 +468,27 @@ char* gfx_clipboard_take(gfx_window* win):
 	return gfx_clipboard_store_take(&win.clip)
 
 
+# graphics.control hooks (docs/projects/wdrive.md). The window is fixed
+# size (styleMask 7), so resize is unsupported here.
+void gfx_cocoa_control_readback(int x, int y, int w, int h, char* out):
+	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out)
+
+
+void gfx_cocoa_control_target(gfx_window* win, gfx_control_target* t):
+	t.window = cast(void*, win)
+	t.queue = &win.input_queue
+	t.width = &win.width
+	t.height = &win.height
+	t.should_close = &win.should_close
+	t.mouse_x = &win.mouse_x
+	t.mouse_y = &win.mouse_y
+	t.mouse_buttons = &win.mouse_buttons
+	t.pixel_width = 0
+	t.pixel_height = 0
+	t.resize = cast(gfx_control_resize_fn*, 0)
+	t.readback = gfx_cocoa_control_readback
+
+
 # Drain pending AppKit events. Returns 1 while the window should stay
 # open (0 once the red button closed it).
 int gfx_window_poll(gfx_window* win):
@@ -482,6 +505,10 @@ int gfx_window_poll(gfx_window* win):
 	# isVisible is a BOOL: only the low byte is defined.
 	if ((objc_msg0(win.window, win.sel_is_visible) & 0xff) == 0): win.should_close = 1
 	objc_autoreleasePoolPop(pool)
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_cocoa_control_target(win, &t)
+		gfx_control_poll(&t)
 	if (win.should_close): return 0
 	return 1
 
@@ -493,6 +520,10 @@ int gfx_window_next_event(gfx_window* win, gfx_event* out):
 
 
 void gfx_window_swap(gfx_window* win):
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_cocoa_control_target(win, &t)
+		gfx_control_swap(&t)
 	objc_msg0(win.glctx, win.sel_flush_buffer)
 
 

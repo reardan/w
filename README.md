@@ -585,6 +585,12 @@ seeds — is `docs/release.md`.
 
 ## Tooling for agents
 
+- Use `bin/wdrive run --steps '[...]' -- PROGRAM` (`./wbuild wdrive`) to
+  drive a native W graphics program: click, type, step frames, assert
+  pixels, take PNG screenshots and read the graphics.ui accessibility
+  tree, headless under a private Xvfb when there is no display.
+  `wdrive serve` keeps a session open over NDJSON on stdin/stdout. See
+  [the wdrive guide](docs/projects/wdrive.md).
 - Use `./bin/wv2 reduce bug.w -o minimal.w -- ./interesting.sh {}` to
   minimize a failing program. The predicate receives a candidate source path;
   exit 0 keeps a deletion. The reducer removes declarations, indentation
