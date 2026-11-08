@@ -530,6 +530,15 @@ int compile_relative_path(char* fn):
 	# the import roots (compiler/script_profile.w)
 	int profile_gated = script_profile_import_gate
 	script_profile_import_gate = 0
+	# An engine compiling an addon with its own allowlist: those roots
+	# replace the session's for a gated import, and come first for the
+	# imports of the trusted modules it pulls in
+	if (script_profile_roots_on()):
+		for root in script_profile_roots:
+			if (compile_joined(root, fn)): return 1
+		if (profile_gated):
+			script_profile_import_outside_roots(import_current_spelling)
+			return 0
 	# Explicit --import-root roots first, in order (block comment above)
 	if (import_root_count > 0):
 		if (deps_mode): import_root_note_shadows(fn)

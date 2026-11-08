@@ -18,6 +18,13 @@
 #       MAP_NORESERVE in the low 2 GB, so only touched pages cost memory).
 #       Faults in addon code run their handler on an alternate signal
 #       stack, so a stack overflow is recovered like a segfault.
+#   int engine_addon_roots(char* addon, char* roots)
+#       With engine_script: the ':'-separated import roots this addon's
+#       compiles may import from ("" for none), instead of engine_init's
+#       roots (scripting.md §5.2 P2b). It also hides modules compiled
+#       after engine_init from outside those roots (another addon's
+#       imports, the host's). Applies to the addon's next load and every
+#       reload. 1, or 0 when a root is not a directory.
 #   int engine_bind(char* name, char* signature, int address)
 #       Expose a host function to addons: declares name in the session as
 #       a pointer of the W function type signature ("fn(char*) -> void")
@@ -101,10 +108,19 @@ int engine_tid
 int engine_script_profile_requested
 
 
-# Add each ':'-separated root as an --import-root. 0 when one is not a
-# directory (import_root_add would exit the process).
-int engine_add_roots(char* roots):
-	if (roots == 0): return 1
+# The roots engine_init was given (cleaned absolute paths): every addon's
+# import allowlist unless engine_addon_roots gave it its own.
+list[char*] engine_default_roots
+# Per-addon allowlists set by engine_addon_roots, by addon name.
+list[char*] engine_root_addons
+list[list[char*]] engine_root_lists
+
+
+# The cleaned absolute paths of a ':'-separated root list, or 0 when one
+# is not a directory.
+list[char*] engine_parse_roots(char* roots):
+	list[char*] out = new list[char*]
+	if (roots == 0): return out
 	list[char*] parts = split(roots, ':')
 	int ok = 1
 	for part in parts:
@@ -118,10 +134,66 @@ int engine_add_roots(char* roots):
 				absolute = strjoin(prefix, part)
 				free(prefix)
 				free(cwd)
-			if (import_root_is_dir(absolute)): import_root_add(absolute)
+			if (import_root_is_dir(absolute)): out.push(import_root_clean(absolute))
 			else: ok = 0
 			free(absolute)
-	return ok
+	for part in parts: free(part)
+	list_free[char*](parts)
+	if (ok == 0):
+		for r in out: free(r)
+		list_free[char*](out)
+		return 0
+	return out
+
+
+# Add each ':'-separated root as an --import-root. 0 when one is not a
+# directory (import_root_add would exit the process).
+int engine_add_roots(char* roots):
+	list[char*] parsed = engine_parse_roots(roots)
+	if (parsed == 0): return 0
+	for r in parsed: import_root_add(r)
+	engine_default_roots = parsed
+	return 1
+
+
+# The allowlist an addon's compiles use (docs/projects/scripting.md §5.2).
+list[char*] engine_roots_for(char* addon):
+	if (engine_root_addons != 0):
+		for i in range(engine_root_addons.length):
+			if (strcmp(engine_root_addons[i], addon) == 0): return engine_root_lists[i]
+	return engine_default_roots
+
+
+int engine_addon_roots(char* addon, char* roots):
+	if ((engine_ready == 0) || (addon == 0)): return 0
+	list[char*] parsed = engine_parse_roots(roots)
+	if (parsed == 0): return 0
+	if (engine_root_addons == 0):
+		engine_root_addons = new list[char*]
+		engine_root_lists = new list[list[char*]]
+	for i in range(engine_root_addons.length):
+		if (strcmp(engine_root_addons[i], addon) == 0):
+			engine_root_lists[i] = parsed
+			return 1
+	engine_root_addons.push(strclone(addon))
+	engine_root_lists.push(parsed)
+	return 1
+
+
+# Profile an addon compile: script_profile_mode plus the addon's own
+# import allowlist; engine_profile_end undoes both.
+void engine_profile_begin(char* addon):
+	script_profile_mode = engine_script_profile_requested
+	if (script_profile_mode == 0): return;
+	script_profile_roots_begin()
+	list[char*] roots = engine_roots_for(addon)
+	if (roots != 0):
+		for r in roots: script_profile_roots_add(r)
+
+
+void engine_profile_end():
+	script_profile_mode = 0
+	script_profile_roots_end()
 
 
 # Map the alternate signal stack the fault handlers run on (per thread:
@@ -159,6 +231,9 @@ int engine_init_sized(char* roots, int flags, int buffer_bytes):
 	retained_semantic_mode = 1
 	repl_semantic_mode = 1
 	repl_init()
+	# Modules compiled from here on (addon and host imports) are visible
+	# to an addon only inside its own import roots (compiler/script_profile.w).
+	script_profile_seal()
 	# Faults are reported through engine_fault_text, not printed.
 	repl_fault_hook = cast(int, engine_fault_record)
 	engine_tid = repl_gettid()
@@ -391,9 +466,9 @@ engine_result engine_compile(engine_unit* u):
 	engine_diag_begin()
 	engine_fault_scope(cast(int, &u))
 	engine_loading = u
-	script_profile_mode = engine_script_profile_requested && (u.bind_address == 0)
+	if (u.bind_address == 0): engine_profile_begin(u.name)
 	repl_result r = repl_eval(u.text)
-	script_profile_mode = 0
+	engine_profile_end()
 	engine_fault_scope(0)
 	engine_diag_end(repl_staged_path, u.name)
 	u.table_end = table_pos
@@ -812,9 +887,9 @@ engine_result engine_reload(char* addon, char* text):
 	engine_generation* probe = engine_checkpoint()
 	repl_no_run = 1
 	engine_diag_begin()
-	script_profile_mode = engine_script_profile_requested
+	engine_profile_begin(addon)
 	repl_result checked = repl_eval(source)
-	script_profile_mode = 0
+	engine_profile_end()
 	engine_diag_end(repl_staged_path, addon)
 	repl_no_run = 0
 	engine_rollback(probe)

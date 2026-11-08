@@ -1112,3 +1112,6 @@ void diag_code_table():
 	diag_code_row(c"W0423", c"script profile: unsafe blocks are not allowed")
 	diag_code_row(c"W0424", c"script profile: cast to a pointer type is not allowed")
 	diag_code_row(c"W0425", c"script profile: import '@' is not in an import root")
+	diag_code_row(c"W0426", c"script profile: runtime function '@' is not visible to addon code")
+	diag_code_row(c"W0427", c"script profile: debugger statements are not allowed")
+	diag_code_row(c"W0428", c"script profile: '@' is declared in a module outside this addon's import roots")

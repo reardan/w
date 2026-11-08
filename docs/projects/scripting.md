@@ -345,7 +345,8 @@ A2 (macOS) uses the same API and A64 emitter, with native host support:
   holding only the curated modules (`tools/script_modules.txt`, built
   and checked by `bin/script_root`), passed to E1, wins over the upward
   search (`--import-root` precedence, `compilation_model.md` §7).
-- **P2 `--profile=script`** (M). **Done**, §5.2: a compiler flag (the
+- **P2 `--profile=script`** (M). **Done**, §5.2 (P2b, the runtime's
+  syscall wrappers and per-addon allowlists, done too): a compiler flag (the
   engine sets the global `script_profile_mode`) that rejects `asm`,
   `raw_asm`, the raw built-ins (`syscall*`, `thread_create`, ...),
   `c_lib`/`extern`/`c_import`, `unsafe:`, `cast` to pointer types and
@@ -602,6 +603,9 @@ on both front ends; the texts are frozen by the fixtures and have codes:
 | `unsafe:` blocks | `script profile: unsafe blocks are not allowed` | W0423 |
 | `cast(T, x)` with a pointer or function-pointer `T` | `script profile: cast to a pointer type is not allowed` | W0424 |
 | an import outside the import roots | `script profile: import 'lib.file' is not in an import root` | W0425 |
+| naming a runtime system-layer function or global (P2b, below) | `script profile: runtime function 'open' is not visible to addon code` | W0426 |
+| the `debugger` statement (`int3`, which the fault window does not catch) | `script profile: debugger statements are not allowed` | W0427 |
+| naming a module compiled after the engine's base session from outside the addon's own allowlist | `script profile: 'ap_beta_value' is declared in a module outside this addon's import roots` | W0428 |
 
 A built-in is matched by what the name resolves to, so a local named
 `bind` or `connect` is fine; only a use that reaches the compiler's stub
@@ -643,27 +647,67 @@ function that uses them.
 
 **Limits** (P2 is API gating, not a sandbox):
 
-- **The runtime's global namespace.** W has one flat namespace, and the
-  runtime every session compiles defines raw entry points: `lib/lib.w`
-  and `lib/linux.w` wrap system calls as ordinary W functions (`open`,
-  `write`, `unlink`, `mmap`, `exit`, `kill`, ...). The profile refuses
-  the stubs and the imports, but an addon can still call those wrappers
-  by name. Closing that needs a per-source visibility rule (a deny list
-  keyed by declaring file and name, or a split of `lib/lib.w` into a
-  pure prelude and a system layer the engine keeps out of the addon's
-  view). That is a follow-up (call it P2b); it matters for
-  community-addon trust, which P3 or the wasm tier supersede anyway.
 - **Raw pointers stay raw.** Pointer arithmetic, indexing and field
   access through `T*` are unchanged, so an addon can still read or write
   any address it can compute from a pointer it holds. Memory safety is
   P3's job.
-- **Denial of service.** Runaway loops, deep recursion (G5) and the
-  `debugger` statement (`int3`, which the fault window does not catch)
-  are not refused.
-- **The allowlist is the union of the roots** the session has when the
-  addon compiles. A host that adds a full `lib/` root for itself opens
-  it to addons too, so keep the curated root the only one, or add host
-  roots only around host compiles.
+- **Denial of service.** Runaway loops and deep recursion (G5) are not
+  refused (`debugger` is, W0427).
+- **The flat namespace stays flat.** P2b hides the system layer and
+  other allowlists' modules by name, but an addon still shares one
+  global namespace with the host's binds, the other addons' own
+  definitions and the pure runtime; it can call another addon's
+  functions and read its globals. Isolation between addons is P3's (or
+  the wasm tier's) job.
+
+**P2b: runtime visibility and per-addon allowlists.** Done (2026-11).
+
+- *System layer.* Every session compiles `lib/lib.w` and the container
+  runtime into the addon's namespace, and their ordinary W functions wrap
+  system calls. `script_profile_identifier` (both identifier paths, and
+  `alias.member` in `import_alias_member`) resolves the name and reads
+  the declaring file of the symbol it reaches; a symbol a trusted runtime
+  file declares is refused (W0426) when that file is in the system
+  layer: anything under `lib/__arch__/`, `lib/arm64/` or `lib/darwin/`
+  (the syscall wrappers: `open`, `write`, `unlink`, `mmap`, `kill`,
+  `exit`, sockets, ...), `lib/linux.w`, `lib/syscalls_linux_x86.w`,
+  `lib/win32_stubs.w`, `lib/not_android.w`, `lib/context_x86_64.w`,
+  `lib/stack_trace.w`, `lib/valgrind.w` and the allocator internals
+  (`lib/memory_freelist.w`, `lib/memory_debug.w`,
+  `lib/memory_provenance.w`, and every `lib/memory.w` name except
+  `malloc`, `free` and `realloc`), plus `lib/lib.w`'s file-descriptor
+  I/O, startup and exit names (`_main`, `exit`, `open_or_create`,
+  `file_size`, `write_string`, the `getchar*` readers, `print_write*`,
+  `putc`, `translate_syscall_failure`, ...). The deny list is keyed by
+  declaring file and name (`script_profile_system_symbol`), so the pure
+  runtime (strings, `print`/`println` to stdout and stderr, `itoa`,
+  lists, maps, f-strings, json) stays visible, a local may reuse a hidden
+  name, and the files match wherever they resolved (the checkout or the
+  curated root's copies). Taking the address (`cast(int, open)`) is a use
+  like a call.
+- *Per-addon allowlists.* `engine_addon_roots(addon, roots)` gives one
+  addon its own ':'-separated root list (`""`: nothing new may be
+  imported); an addon without one uses the roots `engine_init` was given,
+  not whatever import roots the host adds later. Around every compile of
+  an addon (load, the reload compile check, a reload replay) the engine
+  passes that list to the compiler (`script_profile_roots_begin`/`_add`/
+  `_end`): a gated import resolves only in those roots, and the imports
+  of the trusted modules it pulls in search them first. Since a module
+  another addon (or a host entry) already compiled is a no-op import,
+  modules are also tracked by when they were opened: after `engine_init`
+  seals the base session (`script_profile_seal`), every newly opened
+  module is visible to an addon with an allowlist only when its file lies
+  inside one of that addon's roots (W0428). The base session (the runtime
+  and the preloaded modules) stays visible to all, minus the system
+  layer. On the command line nothing changes: the allowlist is the
+  `--import-root` list.
+- Tests: `addon_profile_test` (and its x64/arm64 twins: wrappers,
+  `alias.member`, address-of, a local shadowing `open`, `debugger`, two
+  roots with one addon restricted to the first), the
+  `script_profile_runtime_error_fixture`/`_debugger_error_fixture`
+  fixtures in `script_profile_error_test` (both front ends via
+  `script_root_test`) and `script_profile_root_runtime_error_fixture`
+  (lib/lib.w compiled from the curated root).
 
 ### 5.3 P3: checked addons (not started)
 
