@@ -1757,3 +1757,16 @@ CLAUDE.md warns about). The declaration itself is accepted, so the error
 points away from the cause. Direction: reject (or warn on) declaring a local
 whose name is a built-in type name, and mention the type-name reading in the
 statement-position parse error.
+
+## Test262 candidate sweeps are slow and silent (2026-11-08, #906)
+
+Selecting which generator/async Test262 files to pin meant running
+`bin/test262_conformance --manifest <candidate>/manifest.json` over about
+5500 candidate files. Each run needs a hand-built manifest with sha256
+entries for every file, runs both profiles for every file, and prints
+nothing until the final JSON report, so a 1400-file chunk on a shared box
+took about 30 minutes with no way to tell how far it had got or to stop
+early on the first failure class. Direction: give `test262_conformance` a
+`--paths <dir|file...>` mode that runs unpinned files from a local Test262
+checkout without a manifest, a `--profile native|upstream` switch, and
+periodic progress on stderr (files done, counts so far).

@@ -134,8 +134,12 @@ char* t262_unsupported(json_value* meta):
 	list[char*] includes = new list[char*]
 	for json_value* item in jc_get(meta, c"includes").array_values:
 		# The native profile overrides regExpUtils.js's helpers in the runner;
-		# the upstream profile needs each include pinned.
-		if (t262_upstream && !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		# the upstream profile needs each include pinned. The pinned
+		# asyncHelpers.js starts with Object.prototype.hasOwnProperty.call(
+		# globalThis, ...), which the bounded realm lacks, so upstream reports
+		# it unsupported until those intrinsics exist (the native profile
+		# overrides asyncTest and assert.throwsAsync).
+		if (t262_upstream && (!(strjoin(c"upstream/harness/", item.string_value) in t262_sources) || jc_is(item, c"asyncHelpers.js"))): includes.push(item.string_value)
 		if (!t262_upstream && !jc_is(item, c"regExpUtils.js") && !jc_is(item, c"asyncHelpers.js")): includes.push(item.string_value)
 	# The upstream profile reports asynchronous results through doneprintHandle.js.
 	if (t262_upstream && t262_has(jc_get(meta, c"flags"), c"async") && !(c"upstream/harness/doneprintHandle.js" in t262_sources)): includes.push(c"doneprintHandle.js")
