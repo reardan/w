@@ -20,6 +20,10 @@
 #   IndicPositionalCategory.txt  Indic_Positional_Category, mapped to
 #                             HarfBuzz's Indic shaper categories and
 #                             positions (lib/ttf_indic.w)
+#   WordBreakProperty.txt     Word_Break, for UAX #29 word boundaries
+#                             (auxiliary/; WordBreakTest.txt beside it is
+#                             the conformance data lib/unicode_text_test.w
+#                             checks them against)
 #   extended_pictographic_hb.txt  HarfBuzz 15.0.0's Extended_Pictographic
 #                             (the same set as emoji-data.txt 18.0.0;
 #                             lib/ttf_shape.w)
@@ -86,6 +90,12 @@ char* gen_category_names():
 # Arabic form tags, numbered as lib/unicode_text.w's ut_form_* constants.
 char* gen_form_names():
 	return c"- <isolated> <final> <initial> <medial>"
+
+
+# Word_Break values in lib/unicode_text.w's ut_wb_* order; 0 is Other,
+# the @missing default.
+char* gen_word_break_names():
+	return c"Other CR LF Newline Extend ZWJ Regional_Indicator Format Katakana Hebrew_Letter ALetter Single_Quote Double_Quote MidNumLet MidLetter MidNum Numeric ExtendNumLet WSegSpace"
 
 
 # Joining_Type values in the order lib/unicode_text_data.w documents.
@@ -221,6 +231,26 @@ char* gen_load_property(char* path, char* name):
 		if ((f.length < 2) || (f[0][0] == 0) || (strcmp(f[1], name) != 0)): continue
 		gen_parse_range(f[0], &first, &last)
 		gen_fill(table, first, last, 1)
+	stream_close(src)
+	return table
+
+
+# An enumerated property from a "range ; Value" file, numbered by the
+# value's index in names; unlisted codepoints keep 0.
+char* gen_load_enumerated(char* path, char* names):
+	char* table = gen_table(0)
+	wstream* src = gen_open(path)
+	string_builder* line = string_new()
+	list[char*] f = new list[char*]
+	int first = 0
+	int last = 0
+	while (stream_read_line(src, line)):
+		gen_split(line.data, f)
+		if ((f.length < 2) || (f[0][0] == 0)): continue
+		int value = gen_name_index(names, f[1])
+		if (value <= 0): gen_fail(c"unknown property value", f[1])
+		gen_parse_range(f[0], &first, &last)
+		gen_fill(table, first, last, value)
 	stream_close(src)
 	return table
 
@@ -744,7 +774,8 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# Bidi values are unicode_bidi_* numbers (L=1 .. PDI=23); joining values")
 	stream_write_line(out, c"# are U=0 T=1 R=2 L=3 D=4 C=5; script values index utd_script_codes;")
 	stream_write_line(out, c"# category values are unicode_cat_* numbers (Cn=0 .. Co=29); Indic")
-	stream_write_line(out, c"# categories and positions are ut_icat_* and ut_ipos_* numbers.")
+	stream_write_line(out, c"# categories and positions are ut_icat_* and ut_ipos_* numbers; word break")
+	stream_write_line(out, c"# values are ut_wb_* numbers (Other=0 .. WSegSpace=18).")
 	gen_ranges(out, c"utd_bidi", bidi)
 	gen_ranges(out, c"utd_joining", joining)
 	gen_ranges(out, c"utd_script", scripts)
@@ -765,6 +796,7 @@ int main(int argc, int argv):
 	gen_pairs(out, c"utd_brackets", c"tools/unicode/BidiBrackets.txt", 1)
 	gen_pairs(out, c"utd_mirrors", c"tools/unicode/BidiMirroring.txt", 0)
 	gen_ranges(out, c"utd_ext_pict", gen_load_property(c"tools/unicode/extended_pictographic_hb.txt", c"Extended_Pictographic"))
+	gen_ranges(out, c"utd_word_break", gen_load_enumerated(c"tools/unicode/WordBreakProperty.txt", gen_word_break_names()))
 	stream_close(out)
 	print(f"generated {path}\n")
 	return 0
