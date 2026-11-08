@@ -17,7 +17,11 @@ characters insert as UTF-8, backspace and delete remove whole
 characters, return inserts a newline.
 Arrows, page up/down, home/end move the caret; with shift held they
 extend the selection from its anchor, and with ctrl held home/end go to
-the ends of the buffer. Dragging selects and Shift+click extends;
+the ends of the buffer. Dragging selects and Shift+click extends; a
+double-click selects the word under the pointer (UAX #29 boundaries)
+and a triple-click its line, a drag after either extending by words or
+lines. Every new selection becomes the PRIMARY selection, which a
+middle-click pastes at the pointer;
 Ctrl/Cmd+A selects all and Ctrl/Cmd+C/X/V copy, cut and paste through
 the context's clipboard (ui_clipboard_*; ui_begin_window connects it to
 the platform). A paste lands a frame or more after the keypress, when
@@ -51,6 +55,12 @@ struct ui_textarea_state:
 	int32 caret_goal_col
 	int32 sel_anchor       # byte offset the selection extends from, -1 = none
 	ui_scroll_state scroll
+	# What a drag extends by: 1 characters, 2 words (after a
+	# double-click), 3 lines (after a triple-click), with the word or
+	# line the press selected as byte offsets unit_start..unit_end.
+	int32 unit
+	int unit_start
+	int unit_end
 
 
 void ui_textarea_init(ui_textarea_state* st):
@@ -60,6 +70,9 @@ void ui_textarea_init(ui_textarea_state* st):
 	st.caret_goal_col = 0
 	st.sel_anchor = 0 - 1
 	ui_scroll_init(&st.scroll)
+	st.unit = 1
+	st.unit_start = 0
+	st.unit_end = 0
 
 
 void ui_textarea_free(ui_textarea_state* st):
@@ -260,6 +273,53 @@ void ui_textarea_caret_at(ui_textarea_state* st, int scale, float32 line_h, ui_r
 	st.caret_goal_col = st.caret_col
 
 
+# The byte offset of the character drawn under a point in the text view
+# (the line's end past its last glyph): what a double-click lands on.
+int ui_textarea_hit_at(ui_textarea_state* st, int scale, float32 line_h, ui_rect view, float32 px, float32 py):
+	ui_textarea_caret_at(st, scale, line_h, view, px, py)
+	int start = ui_text_buffer_line_start(&st.buf, st.caret_line)
+	int len = ui_text_buffer_line_length(&st.buf, st.caret_line)
+	int hit = ui_text_hit_from_x(&st.buf.data[start], scale, cast(int, px - view.x + st.scroll.offset_x))
+	if (hit < 0): hit = 0
+	if (hit > len): hit = len
+	return start + hit
+
+
+# The range a press of the given unit selects around byte offset at: the
+# word there for a double-click (UAX #29, within its line), the whole
+# line with its line break for a triple-click.
+void ui_textarea_unit_range(ui_textarea_state* st, int unit, int at, int* from, int* to):
+	int line = ui_text_buffer_offset_to_line(&st.buf, at)
+	int start = ui_text_buffer_line_start(&st.buf, line)
+	int len = ui_text_buffer_line_length(&st.buf, line)
+	if (unit >= 3):
+		from[0] = start
+		to[0] = start + len
+		if (line + 1 < st.buf.line_count): to[0] = start + len + 1
+		return
+	int s = 0
+	int e = 0
+	ui_word_bounds(&st.buf.data[start], len, at - start, &s, &e)
+	from[0] = start + s
+	to[0] = start + e
+
+
+# Extend the selection by words or lines from the press's unit to the
+# unit under offset at (a drag after a double- or triple-click).
+void ui_textarea_select_units(ui_textarea_state* st, int at):
+	int from = 0
+	int to = 0
+	ui_textarea_unit_range(st, st.unit, at, &from, &to)
+	if (from < st.unit_start):
+		st.sel_anchor = st.unit_end
+		ui_textarea_set_caret(st, from)
+	else:
+		st.sel_anchor = st.unit_start
+		if (to < st.unit_end): to = st.unit_end
+		ui_textarea_set_caret(st, to)
+	st.caret_goal_col = st.caret_col
+
+
 void ui_textarea_backspace(ui_textarea_state* st):
 	if (ui_textarea_delete_selection(st)):
 		st.caret_goal_col = st.caret_col
@@ -337,6 +397,11 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	if (ui_access_selection_request(ctx, id, &sel_anchor, &sel_active)):
 		ui_textarea_select(st, sel_anchor, sel_active)
 
+	# The selection before this frame's input, to publish PRIMARY when it
+	# changes.
+	int was_anchor = st.sel_anchor
+	int was_caret = ui_textarea_caret_offset(st)
+	int was_length = st.buf.length
 	# Focus follows the press, and the caret lands where it landed.
 	ui_rect view = ui_rect_new(area.x + pad, area.y + pad, area.w - pad * 2.0, area.h - pad * 2.0)
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
@@ -349,15 +414,41 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 			ctx.focus = id
 			ctx.active = id
 			if (extend): ui_textarea_anchor(st, 1)
-			ui_textarea_caret_at(st, scale, line_h, view, px, py)
-			if (extend == 0): st.sel_anchor = ui_textarea_caret_offset(st)
+			st.unit = 1
+			if ((extend == 0) && (ctx.input.clicks >= 2)):
+				# Double-click selects the word under the pointer,
+				# triple-click its line; a drag then extends by them.
+				st.unit = 2
+				if (ctx.input.clicks >= 3): st.unit = 3
+				int hit = ui_textarea_hit_at(st, scale, line_h, view, px, py)
+				ui_textarea_unit_range(st, st.unit, hit, &st.unit_start, &st.unit_end)
+				st.sel_anchor = st.unit_start
+				ui_textarea_set_caret(st, st.unit_end)
+				st.caret_goal_col = st.caret_col
+			else:
+				ui_textarea_caret_at(st, scale, line_h, view, px, py)
+				if (extend == 0): st.sel_anchor = ui_textarea_caret_offset(st)
 		else if (ctx.focus == id): ctx.focus = 0
 	else if (ctx.input.mouse_down && (ctx.active == id) && (ctx.focus == id) && (ctx.disabled == 0)):
 		# Drag selection: the caret follows the pointer (above or below
 		# the view it walks a line at a time, scrolling), the anchor stays.
 		ctx.pointer_mode = 1
-		ui_textarea_caret_at(st, scale, line_h, view, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
+		float32 mx = cast(float32, ctx.input.mouse_x)
+		float32 my = cast(float32, ctx.input.mouse_y)
+		if (st.unit >= 2): ui_textarea_select_units(st, ui_textarea_hit_at(st, scale, line_h, view, mx, my))
+		else: ui_textarea_caret_at(st, scale, line_h, view, mx, my)
 		ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
+	# Middle-click pastes the PRIMARY selection at the pointer (X11's
+	# convention; elsewhere the program's own last selection).
+	if (ctx.input.mouse_middle_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
+		float32 mx = cast(float32, ctx.input.middle_x)
+		float32 my = cast(float32, ctx.input.middle_y)
+		if (ui_pointer_inside(ctx, area, mx, my)):
+			ctx.input.mouse_middle_pressed = 0
+			ctx.focus = id
+			ui_textarea_caret_at(st, scale, line_h, view, mx, my)
+			st.sel_anchor = 0 - 1
+			ui_primary_paste_request(ctx, id)
 	# A click that selected nothing leaves no anchor behind once released.
 	if ((ctx.input.mouse_down == 0) && (st.sel_anchor >= 0) && (ui_textarea_has_selection(st) == 0)): st.sel_anchor = 0 - 1
 
@@ -407,6 +498,11 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 			free(pasted)
 			changed = 1
 			ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
+
+	# A new or changed selection becomes the PRIMARY selection.
+	if ((ctx.focus == id) && ui_textarea_has_selection(st) && ((st.sel_anchor != was_anchor) || (ui_textarea_caret_offset(st) != was_caret) || (st.buf.length != was_length))):
+		int from = ui_textarea_sel_start(st)
+		ui_primary_publish(ctx, &st.buf.data[from], ui_textarea_sel_end(st) - from)
 
 	# Keep the caret in view after typing or motion.
 	if ((ctx.focus == id) && ((ctx.char_count > 0) || (ctx.nav_count > 0) || ctx.input.mouse_pressed)):

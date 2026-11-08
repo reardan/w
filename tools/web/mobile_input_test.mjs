@@ -485,4 +485,66 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   plain.gfx_host_clipboard_read();
   assert.equal(plain.gfx_host_clipboard_read_poll(), text.length);
 }
-console.log('mobile_input_test OK (36 scenarios)');
+// Double and triple clicks: the page counts presses of one button inside
+// the interval and the slop (pointerdown's own detail is always 0).
+{
+  const h = setup();
+  const pressAt = (timeStamp, clientX, extra = {}) => {
+    h.canvas.fire('pointerdown', { pointerType: 'mouse', timeStamp, clientX, ...extra });
+    h.canvas.fire('pointerup', { pointerType: 'mouse', timeStamp, clientX, ...extra });
+    return h.events.filter(e => e.kind === EVENT.DOWN).at(-1).mods;
+  };
+  assert.equal(pressAt(1000, 30), 0, 'a single click carries no count');
+  assert.equal(pressAt(1200, 32), 2 << 8, 'double-click');
+  assert.equal(pressAt(1400, 31, { shiftKey: true }), (3 << 8) | 1, 'triple-click keeps the modifiers');
+  assert.equal(pressAt(2400, 31), 0, 'too slow starts over');
+  assert.equal(pressAt(2500, 50), 0, 'too far starts over');
+  assert.equal(pressAt(2600, 50, { button: 2 }), 0, 'another button starts over');
+}
+// Rich copies: inside the copy event, text/html goes on clipboardData and
+// an image goes out as one ClipboardItem (clipboardData cannot carry it);
+// outside the event the ClipboardItem path is the only one.
+{
+  const items = [];
+  class FakeItem { constructor(parts) { this.parts = parts; } }
+  const nav = { clipboard: { write: async list => { items.push(...list); }, writeText: async () => {} } };
+  const canvas = new Target(), editor = new Target(), doc = new Target(), win = new Target();
+  win.ClipboardItem = FakeItem;
+  canvas.doc = editor.doc = doc;
+  let onFrame = () => {};
+  const input = createInput({ canvas, editor, document: doc, window: win, navigator: nav,
+    state: { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 }, pushEvent: () => {},
+    flushFrame: () => onFrame() });
+  const set = {};
+  const data = { setData(type, text) { set[type] = text; } };
+  const png = new Uint8Array([137, 80, 78, 71]);
+  onFrame = () => input.clipboardWrite('graph LR', { html: '<b>g</b>', png });
+  assert.equal(doc.fire('copy', { type: 'copy', clipboardData: data }).prevented, true);
+  assert.deepEqual(set, { 'text/plain': 'graph LR', 'text/html': '<b>g</b>' });
+  assert.equal(items.length, 1, 'the image goes through navigator.clipboard.write');
+  assert.deepEqual(Object.keys(items[0].parts).sort(), ['image/png', 'text/html', 'text/plain']);
+  // HTML alone stays on clipboardData.
+  onFrame = () => input.clipboardWrite('t', { html: '<i>t</i>', png: null });
+  doc.fire('copy', { type: 'copy', clipboardData: data });
+  assert.equal(set['text/html'], '<i>t</i>');
+  assert.equal(items.length, 1);
+  // Outside an event, through the env import.
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const env = makeEnv({ memory: () => memory, gl: {}, host: { clipboardWrite: (t, r) => input.clipboardWrite(t, r) } });
+  const mem = new Uint8Array(memory.buffer);
+  const enc = new TextEncoder();
+  mem.set(enc.encode('src'), 100);
+  mem.set(enc.encode('<p>x</p>'), 200);
+  mem.set(png, 300);
+  env.gfx_host_clipboard_write_rich(100, 3, 200, 8, 300, 4);
+  assert.equal(items.length, 2);
+  assert.deepEqual(Object.keys(items[1].parts).sort(), ['image/png', 'text/html', 'text/plain']);
+  // Without ClipboardItem a rich write falls back to the text.
+  const texts = [];
+  const bare = createInput({ canvas: new Target(), editor: Object.assign(new Target(), { doc }), document: new Target(),
+    window: new Target(), navigator: { clipboard: { writeText: async t => { texts.push(t); } } },
+    state: { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 }, pushEvent: () => {} });
+  bare.clipboardWrite('only text', { html: '<b>x</b>', png });
+  assert.deepEqual(texts, ['only text']);
+}
+console.log('mobile_input_test OK (38 scenarios)');

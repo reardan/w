@@ -63,7 +63,17 @@ struct gfx_window:
 	int atom_plain_utf8
 	int atom_incr
 	int atom_property
+	int atom_html
+	int atom_png
 	gfx_x11_incr_send[4] incr_sends
+	# The PRIMARY selection: the latest selected text, served and read
+	# like CLIPBOARD through its own property; primary_claimed while the
+	# server still names this window its owner.
+	gfx_clipboard_store primary
+	int atom_primary_property
+	int32 primary_claimed
+	# Double- and triple-click counting from ButtonPress server times.
+	gfx_click_tracker clicks
 
 
 gfx_window* gfx_x11_active
@@ -98,6 +108,12 @@ void gfx_x11_clipboard_init(gfx_window* win):
 	win.atom_plain_utf8 = XInternAtom(d, c"text/plain;charset=utf-8", 0)
 	win.atom_incr = XInternAtom(d, c"INCR", 0)
 	win.atom_property = XInternAtom(d, c"W_CLIPBOARD", 0)
+	win.atom_html = XInternAtom(d, c"text/html", 0)
+	win.atom_png = XInternAtom(d, c"image/png", 0)
+	gfx_clipboard_store_init(&win.primary)
+	win.atom_primary_property = XInternAtom(d, c"W_PRIMARY", 0)
+	win.primary_claimed = 0
+	gfx_click_tracker_init(&win.clicks)
 	for i in range(4):
 		win.incr_sends[i].requestor = 0
 		win.incr_sends[i].data = 0
@@ -112,38 +128,84 @@ int gfx_x11_clipboard_chunk_size(gfx_window* win):
 	return limit
 
 
+# XA_PRIMARY: a predefined atom, like XA_STRING (31).
+const int gfx_x11_atom_primary = 1
+
+
+# The store and paste property behind a selection atom (CLIPBOARD or
+# PRIMARY), or 0 for any other selection.
+gfx_clipboard_store* gfx_x11_store(gfx_window* win, int selection):
+	if (selection == win.atom_clipboard): return &win.clip
+	if (selection == gfx_x11_atom_primary): return &win.primary
+	return cast(gfx_clipboard_store*, 0)
+
+
+int gfx_x11_property(gfx_window* win, int selection):
+	if (selection == gfx_x11_atom_primary): return win.atom_primary_property
+	return win.atom_property
+
+
+# Claim selection for what s now owns. Returns 1 when the server made
+# this window the owner.
+int gfx_x11_claim(gfx_window* win, int selection):
+	XSetSelectionOwner(win.display, selection, win.window, win.clip_time)
+	int owned = XGetSelectionOwner(win.display, selection) == win.window
+	XFlush(win.display)
+	return owned
+
+
 # Claim CLIPBOARD with a copy of text. Returns 1 when the server made
 # this window the owner.
 int gfx_clipboard_set(gfx_window* win, char* text):
 	if (win == 0): return gfx_clipboard_local_set(text)
 	gfx_clipboard_store_own(&win.clip, text, strlen(text))
-	XSetSelectionOwner(win.display, win.atom_clipboard, win.window, win.clip_time)
-	int owned = XGetSelectionOwner(win.display, win.atom_clipboard) == win.window
-	XFlush(win.display)
-	return owned
+	return gfx_x11_claim(win, win.atom_clipboard)
 
 
-# Ask the CLIPBOARD owner for its text as `target`.
-void gfx_x11_clipboard_convert(gfx_window* win, int target):
-	win.clip.target = target
-	XDeleteProperty(win.display, win.window, win.atom_property)
-	XConvertSelection(win.display, win.atom_clipboard, target, win.atom_property, win.window, win.clip_time)
+# Claim CLIPBOARD with text plus text/html and image/png flavors.
+int gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length):
+	if (win == 0): return gfx_clipboard_local_set_rich(text, html, png, png_length)
+	gfx_clipboard_store_own_rich(&win.clip, text, html, png, png_length)
+	return gfx_x11_claim(win, win.atom_clipboard)
+
+
+# Publish text as PRIMARY. A selection that keeps changing (a drag)
+# claims the server once and then only updates what it serves.
+int gfx_primary_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_primary_local_set(text)
+	gfx_clipboard_store_own(&win.primary, text, strlen(text))
+	if (win.primary_claimed == 0): win.primary_claimed = gfx_x11_claim(win, gfx_x11_atom_primary)
+	return win.primary_claimed
+
+
+# Ask the owner of selection for its text as `target`.
+void gfx_x11_convert(gfx_window* win, int selection, int target):
+	gfx_clipboard_store* s = gfx_x11_store(win, selection)
+	int property = gfx_x11_property(win, selection)
+	s.target = target
+	XDeleteProperty(win.display, win.window, property)
+	XConvertSelection(win.display, selection, target, property, win.window, win.clip_time)
 	XFlush(win.display)
+
+
+void gfx_x11_request(gfx_window* win, int selection):
+	gfx_clipboard_store* s = gfx_x11_store(win, selection)
+	int owner = XGetSelectionOwner(win.display, selection)
+	if (owner == win.window):
+		gfx_clipboard_store_echo(s)
+		return
+	if (owner == 0):
+		gfx_clipboard_store_deliver(s, c"", 0)
+		return
+	gfx_clipboard_store_begin(s, GFX_CLIPBOARD_REQUESTED)
+	gfx_x11_convert(win, selection, win.atom_utf8)
 
 
 void gfx_clipboard_request(gfx_window* win):
 	if (win == 0):
 		gfx_clipboard_local_request()
 		return
-	int owner = XGetSelectionOwner(win.display, win.atom_clipboard)
-	if (owner == win.window):
-		gfx_clipboard_store_deliver(&win.clip, win.clip.owned, win.clip.owned_length)
-		return
-	if (owner == 0):
-		gfx_clipboard_store_deliver(&win.clip, c"", 0)
-		return
-	gfx_clipboard_store_begin(&win.clip, GFX_CLIPBOARD_REQUESTED)
-	gfx_x11_clipboard_convert(win, win.atom_utf8)
+	gfx_x11_request(win, win.atom_clipboard)
 
 
 char* gfx_clipboard_take(gfx_window* win):
@@ -151,33 +213,47 @@ char* gfx_clipboard_take(gfx_window* win):
 	return gfx_clipboard_store_take(&win.clip)
 
 
+void gfx_primary_request(gfx_window* win):
+	if (win == 0):
+		gfx_primary_local_request()
+		return
+	gfx_x11_request(win, gfx_x11_atom_primary)
+
+
+char* gfx_primary_take(gfx_window* win):
+	if (win == 0): return gfx_primary_local_take()
+	return gfx_clipboard_store_take(&win.primary)
+
+
 # Append Latin-1 bytes (a STRING reply) as UTF-8.
-void gfx_x11_clipboard_append_latin1(gfx_window* win, char* data, int length):
+void gfx_x11_clipboard_append_latin1(gfx_clipboard_store* s, char* data, int length):
 	char[2] pair
 	for i in range(length):
 		int c = data[i] & 255
 		if (c < 128):
 			pair[0] = c
-			gfx_clipboard_store_append(&win.clip, &pair[0], 1)
+			gfx_clipboard_store_append(s, &pair[0], 1)
 		else:
 			pair[0] = 192 | (c >> 6)
 			pair[1] = 128 | (c & 63)
-			gfx_clipboard_store_append(&win.clip, &pair[0], 2)
+			gfx_clipboard_store_append(s, &pair[0], 2)
 
 
-# Read and delete this window's paste property. Returns its type (-1
-# for a format that is not text) and its item count in count[0]; the
-# bytes go to the store unless the type is INCR.
-int gfx_x11_clipboard_read(gfx_window* win, int* count):
+# Read and delete this window's paste property for selection. Returns
+# its type (-1 for a format that is not text) and its item count in
+# count[0]; the bytes go to the selection's store unless the type is
+# INCR.
+int gfx_x11_clipboard_read(gfx_window* win, int selection, int* count):
+	gfx_clipboard_store* s = gfx_x11_store(win, selection)
 	int actual_type = 0
 	int32 actual_format = 0
 	int nitems = 0
 	int after = 0
 	char* data = 0
-	if (XGetWindowProperty(win.display, win.window, win.atom_property, 0, 268435455, 1, 0, &actual_type, &actual_format, &nitems, &after, &data) != 0): return 0
+	if (XGetWindowProperty(win.display, win.window, gfx_x11_property(win, selection), 0, 268435455, 1, 0, &actual_type, &actual_format, &nitems, &after, &data) != 0): return 0
 	if ((actual_type != win.atom_incr) && (actual_format == 8) && (data != 0)):
-		if (actual_type == win.atom_string): gfx_x11_clipboard_append_latin1(win, data, nitems)
-		else: gfx_clipboard_store_append(&win.clip, data, nitems)
+		if (actual_type == win.atom_string): gfx_x11_clipboard_append_latin1(s, data, nitems)
+		else: gfx_clipboard_store_append(s, data, nitems)
 	if (data != 0): XFree(cast(int, data))
 	count[0] = nitems
 	if ((actual_type != win.atom_incr) && (actual_format != 8)): return 0 - 1
@@ -186,19 +262,20 @@ int gfx_x11_clipboard_read(gfx_window* win, int* count):
 
 # The owner answered our XConvertSelection.
 void gfx_x11_clipboard_notify(gfx_window* win, x_selection_event* e):
-	if ((win.clip.state != GFX_CLIPBOARD_REQUESTED) || (e.selection != win.atom_clipboard)): return
+	gfx_clipboard_store* s = gfx_x11_store(win, e.selection)
+	if ((s == 0) || (s.state != GFX_CLIPBOARD_REQUESTED)): return
 	if (e.property == 0):
 		# Refused: an owner without UTF8_STRING may still speak STRING.
-		if (win.clip.target == win.atom_utf8):
-			gfx_x11_clipboard_convert(win, win.atom_string)
+		if (s.target == win.atom_utf8):
+			gfx_x11_convert(win, e.selection, win.atom_string)
 			return
-		gfx_clipboard_store_arrive(&win.clip)
+		gfx_clipboard_store_arrive(s)
 		return
 	int count = 0
-	int kind = gfx_x11_clipboard_read(win, &count)
+	int kind = gfx_x11_clipboard_read(win, e.selection, &count)
 	# Reading with delete=True told an INCR owner to send the first chunk.
-	if (kind == win.atom_incr): win.clip.state = GFX_CLIPBOARD_INCR
-	else: gfx_clipboard_store_arrive(&win.clip)
+	if (kind == win.atom_incr): s.state = GFX_CLIPBOARD_INCR
+	else: gfx_clipboard_store_arrive(s)
 
 
 # Write the next chunk of an INCR transfer; the zero-length chunk ends
@@ -217,27 +294,46 @@ void gfx_x11_clipboard_incr_next(gfx_window* win, gfx_x11_incr_send* t):
 	XFlush(win.display)
 
 
-# Answer another client's SelectionRequest from the owned text.
+# Answer another client's SelectionRequest from the owned text (and,
+# for CLIPBOARD, the rich flavors copied with it).
 void gfx_x11_clipboard_serve(gfx_window* win, x_selection_request_event* r):
 	int property = r.property
 	if (property == 0): property = r.target
+	gfx_clipboard_store* s = gfx_x11_store(win, r.selection)
 	int text_target = (r.target == win.atom_utf8) || (r.target == win.atom_plain_utf8) || (r.target == win.atom_string) || (r.target == win.atom_text)
-	if ((r.selection != win.atom_clipboard) || (r.owner != win.window) || (win.clip.owned == 0)): property = 0
+	char* data = 0
+	int length = 0
+	if ((s != 0) && text_target):
+		data = s.owned
+		length = s.owned_length
+	else if ((s != 0) && (r.target == win.atom_html)):
+		data = s.html
+		length = s.html_length
+	else if ((s != 0) && (r.target == win.atom_png)):
+		data = s.png
+		length = s.png_length
+	if ((s == 0) || (r.owner != win.window) || (s.owned == 0)): property = 0
 	else if (r.target == win.atom_targets):
-		int[5] targets
+		int[7] targets
 		targets[0] = win.atom_targets
 		targets[1] = win.atom_utf8
 		targets[2] = win.atom_plain_utf8
 		targets[3] = win.atom_string
 		targets[4] = win.atom_text
+		int n = 5
+		if (s.html != 0):
+			targets[n] = win.atom_html
+			n = n + 1
+		if (s.png != 0):
+			targets[n] = win.atom_png
+			n = n + 1
 		# XA_ATOM = 4, format 32: an array of C longs.
-		XChangeProperty(win.display, r.requestor, property, 4, 32, 0, cast(char*, &targets[0]), 5)
-	else if (text_target):
+		XChangeProperty(win.display, r.requestor, property, 4, 32, 0, cast(char*, &targets[0]), n)
+	else if (data != 0):
 		int reply_type = r.target
 		if (r.target == win.atom_text): reply_type = win.atom_utf8
-		int length = win.clip.owned_length
 		if (length <= gfx_x11_clipboard_chunk_size(win)):
-			XChangeProperty(win.display, r.requestor, property, reply_type, 8, 0, win.clip.owned, length)
+			XChangeProperty(win.display, r.requestor, property, reply_type, 8, 0, data, length)
 		else:
 			# INCR (ICCCM §2.7.2): announce the size, then feed chunks as
 			# the requestor deletes the property.
@@ -253,7 +349,7 @@ void gfx_x11_clipboard_serve(gfx_window* win, x_selection_request_event* r):
 				t.offset = 0
 				t.length = length
 				t.data = cast(char*, malloc(length + 1))
-				mem_copy[char](t.data, win.clip.owned, length)
+				mem_copy[char](t.data, data, length)
 				XSelectInput(win.display, r.requestor, PropertyChangeMask)
 				int[1] size
 				size[0] = length
@@ -278,18 +374,23 @@ void gfx_x11_clipboard_event(gfx_window* win, x_event* event):
 	if (event_type == SelectionRequest): gfx_x11_clipboard_serve(win, &event.selection_request)
 	else if (event_type == SelectionNotify): gfx_x11_clipboard_notify(win, &event.selection)
 	else if (event_type == SelectionClear):
-		# Another client copied: our text is no longer the clipboard.
-		if (event.selection_clear.selection == win.atom_clipboard):
-			if (win.clip.owned != 0): free(win.clip.owned)
-			win.clip.owned = 0
-			win.clip.owned_length = 0
+		# Another client copied or selected: our text is no longer the
+		# clipboard (or PRIMARY).
+		int cleared = event.selection_clear.selection
+		gfx_clipboard_store* s = gfx_x11_store(win, cleared)
+		if (s != 0): gfx_clipboard_store_disown(s)
+		if (cleared == gfx_x11_atom_primary): win.primary_claimed = 0
 	else if (event_type == PropertyNotify):
 		x_property_event* p = &event.property
-		if ((p.window == win.window) && (p.atom == win.atom_property) && (p.state == 0) && (win.clip.state == GFX_CLIPBOARD_INCR)):
+		int selection = 0
+		if (p.atom == win.atom_property): selection = win.atom_clipboard
+		else if (p.atom == win.atom_primary_property): selection = gfx_x11_atom_primary
+		gfx_clipboard_store* s = gfx_x11_store(win, selection)
+		if ((p.window == win.window) && (s != 0) && (p.state == 0) && (s.state == GFX_CLIPBOARD_INCR)):
 			# A new INCR chunk; the zero-length one ends the transfer.
 			int count = 0
-			int kind = gfx_x11_clipboard_read(win, &count)
-			if ((kind <= 0) || (count == 0)): gfx_clipboard_store_arrive(&win.clip)
+			int kind = gfx_x11_clipboard_read(win, selection, &count)
+			if ((kind <= 0) || (count == 0)): gfx_clipboard_store_arrive(s)
 		else if (p.state == 1):
 			for i in range(4):
 				gfx_x11_incr_send* t = &win.incr_sends[i]
@@ -476,7 +577,9 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			# attributed to a stale position.
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
-			gfx_input_queue_push(&win.input_queue, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y, button_mods)
+			# X has no double-click setting; count presses by server time.
+			int clicks = gfx_click_tracker_press(&win.clicks, button, event.input.time, event.input.x, event.input.y, gfx_click_interval_ms, gfx_click_slop)
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y, gfx_mods_with_clicks(button_mods, clicks))
 		else if (button == 4):
 			# Wheel notches arrive as button 4 (up) / 5 (down) press+
 			# release pairs; one SCROLL per press, releases ignored.
@@ -530,6 +633,7 @@ void gfx_window_destroy(gfx_window* win):
 	for i in range(4):
 		if (win.incr_sends[i].data != 0): free(win.incr_sends[i].data)
 	gfx_clipboard_store_free(&win.clip)
+	gfx_clipboard_store_free(&win.primary)
 	glXMakeCurrent(win.display, 0, 0)
 	glXDestroyContext(win.display, win.context)
 	XDestroyWindow(win.display, win.window)

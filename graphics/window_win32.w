@@ -78,6 +78,10 @@ extern int CloseClipboard()
 extern int EmptyClipboard()
 extern int SetClipboardData(int format, int memory)
 extern int GetClipboardData(int format)
+extern int RegisterClipboardFormatA(char* name)
+extern int GetMessageTime()
+extern int GetDoubleClickTime()
+extern int GetSystemMetrics(int index)
 
 c_lib "kernel32.dll"
 extern int GlobalAlloc(int flags, int bytes)
@@ -125,6 +129,9 @@ struct gfx_window:
 	# Clipboard (graphics.clipboard_store); the Win32 clipboard is
 	# synchronous, so a request arrives before gfx_clipboard_take runs.
 	gfx_clipboard_store clip
+	# Double- and triple-click counting (GetMessageTime against the
+	# user's GetDoubleClickTime).
+	gfx_click_tracker clicks
 
 
 gfx_window* gfx_win32_active    /* the window the procedure reports into */
@@ -262,7 +269,11 @@ void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
 		# Keep receiving the release when it happens outside the window.
 		if (win.mouse_buttons == 0): SetCapture(win.hwnd)
 		win.mouse_buttons = win.mouse_buttons | bit
-		gfx_win32_push(win, GFX_EVENT_MOUSE_DOWN, button, gfx_win32_mods())
+		# SM_CXDOUBLECLK (36) is the whole rectangle a second click may
+		# land in, centred on the first.
+		int slop = GetSystemMetrics(36) / 2
+		int clicks = gfx_click_tracker_press(&win.clicks, button, GetMessageTime(), win.mouse_x, win.mouse_y, GetDoubleClickTime(), slop)
+		gfx_win32_push(win, GFX_EVENT_MOUSE_DOWN, button, gfx_mods_with_clicks(gfx_win32_mods(), clicks))
 	else:
 		# no bitwise-not operator: -1 - mask == ~mask
 		win.mouse_buttons = win.mouse_buttons & (0 - 1 - bit)
@@ -479,6 +490,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.text_focus = 0
 	gfx_input_queue_init(&win.input_queue)
 	gfx_clipboard_store_init(&win.clip)
+	gfx_click_tracker_init(&win.clicks)
 	gfx_win32_active = win
 
 	int use_default = 0 - 2147483648  /* CW_USEDEFAULT */
@@ -553,10 +565,30 @@ int gfx_win32_open_clipboard(gfx_window* win):
 	return 0
 
 
-int gfx_clipboard_set(gfx_window* win, char* text):
-	if (win == 0): return gfx_clipboard_local_set(text)
-	int length = strlen(text)
-	gfx_clipboard_store_own(&win.clip, text, length)
+# Hand bytes[0..length) to the open clipboard as format, NUL-padded
+# with pad zero bytes. Returns 1 when the clipboard took the block.
+int gfx_win32_clipboard_put(int format, char* bytes, int length, int pad):
+	int memory = GlobalAlloc(2, length + pad)            /* GMEM_MOVEABLE */
+	if (memory == 0): return 0
+	int ok = 0
+	char* dst = GlobalLock(memory)
+	if (dst != 0):
+		mem_copy[char](dst, bytes, length)
+		for i in range(pad): dst[length + i] = 0
+		GlobalUnlock(memory)
+		# On success the clipboard owns the block; free it only on
+		# failure.
+		if (SetClipboardData(format, memory) != 0): ok = 1
+	if (ok == 0): GlobalFree(memory)
+	return ok
+
+
+# Write what win.clip owns: CF_UNICODETEXT, plus the registered
+# "HTML Format" (CF_HTML, graphics.clipboard_store's gfx_clipboard_cf_html)
+# and "PNG" formats when the copy carried them.
+int gfx_win32_clipboard_publish(gfx_window* win):
+	char* text = win.clip.owned
+	int length = win.clip.owned_length
 	# LF -> CR LF, then UTF-16.
 	char* crlf = cast(char*, malloc(length * 2 + 1))
 	int n = 0
@@ -574,19 +606,42 @@ int gfx_clipboard_set(gfx_window* win, char* text):
 	int ok = 0
 	if (gfx_win32_open_clipboard(win)):
 		EmptyClipboard()
-		int memory = GlobalAlloc(2, (units + 1) * 2)            /* GMEM_MOVEABLE */
-		if (memory != 0):
-			char* dst = GlobalLock(memory)
-			if (dst != 0):
-				mem_copy[char](dst, wide, (units + 1) * 2)
-				GlobalUnlock(memory)
-				# On success the clipboard owns the block; free it only on
-				# failure.
-				if (SetClipboardData(gfx_win32_cf_unicodetext, memory) != 0): ok = 1
-			if (ok == 0): GlobalFree(memory)
+		ok = gfx_win32_clipboard_put(gfx_win32_cf_unicodetext, wide, units * 2, 2)
+		if (ok && (win.clip.html != 0)):
+			char* html = gfx_clipboard_cf_html(win.clip.html)
+			gfx_win32_clipboard_put(RegisterClipboardFormatA(c"HTML Format"), html, strlen(html), 1)
+			free(html)
+		if (ok && (win.clip.png != 0)):
+			gfx_win32_clipboard_put(RegisterClipboardFormatA(c"PNG"), win.clip.png, win.clip.png_length, 0)
 		CloseClipboard()
 	free(wide)
 	return ok
+
+
+int gfx_clipboard_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_clipboard_local_set(text)
+	gfx_clipboard_store_own(&win.clip, text, strlen(text))
+	return gfx_win32_clipboard_publish(win)
+
+
+int gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length):
+	if (win == 0): return gfx_clipboard_local_set_rich(text, html, png, png_length)
+	gfx_clipboard_store_own_rich(&win.clip, text, html, png, png_length)
+	return gfx_win32_clipboard_publish(win)
+
+
+# Windows has no PRIMARY selection; middle-click pastes the program's own
+# latest selection (graphics.clipboard_store's in-process PRIMARY).
+int gfx_primary_set(gfx_window* win, char* text):
+	return gfx_primary_local_set(text)
+
+
+void gfx_primary_request(gfx_window* win):
+	gfx_primary_local_request()
+
+
+char* gfx_primary_take(gfx_window* win):
+	return gfx_primary_local_take()
 
 
 # Decode NUL-terminated UTF-16 into the store as UTF-8.

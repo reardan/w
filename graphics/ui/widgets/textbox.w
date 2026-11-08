@@ -34,6 +34,12 @@ struct ui_textbox_state:
 	# the caret, -1 when nothing is selected. Out-of-range values (a
 	# state that skipped ui_textbox_init) read as no selection.
 	int32 anchor
+	# What a drag extends by: 1 characters, 2 words (after a
+	# double-click), 3 the whole line (after a triple-click), with the
+	# word or line the press selected in unit_start..unit_end.
+	int32 unit
+	int unit_start
+	int unit_end
 
 
 const int ui_textbox_capacity = 127
@@ -45,6 +51,9 @@ void ui_textbox_init(ui_textbox_state* st):
 	st.caret = 0
 	st.edited = 0
 	st.anchor = 0 - 1
+	st.unit = 1
+	st.unit_start = 0
+	st.unit_end = 0
 
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
@@ -174,6 +183,32 @@ void ui_textbox_delete_forward(ui_textbox_state* st):
 	st.length = st.length - n
 
 
+# The range a press of the given click count selects around byte offset
+# hit: the word there (ui_word_bounds) for a double-click, the whole line
+# for a triple-click.
+void ui_textbox_unit_range(ui_textbox_state* st, int unit, int hit, int* start, int* end):
+	if (unit >= 3):
+		start[0] = 0
+		end[0] = st.length
+	else: ui_word_bounds(&st.text[0], st.length, hit, start, end)
+
+
+# Select by words or lines from the press's unit_start..unit_end to the
+# unit under hit, the anchor at whichever end the pointer moved away
+# from (a drag after a double- or triple-click).
+void ui_textbox_select_units(ui_textbox_state* st, int hit):
+	int start = 0
+	int end = 0
+	ui_textbox_unit_range(st, st.unit, hit, &start, &end)
+	if (start < st.unit_start):
+		st.anchor = st.unit_end
+		st.caret = start
+	else:
+		st.anchor = st.unit_start
+		st.caret = end
+		if (st.caret < st.unit_end): st.caret = st.unit_end
+
+
 void ui_textbox_mark_edited(ui_textbox_state* st):
 	if (st.edited == 0): st.edited = 1
 
@@ -196,7 +231,10 @@ void ui_textbox_access_layout(ui_context* ctx, ui_access_node* node, ui_textbox_
 
 # Single-line text input over caller-owned state. Clicking focuses it
 # (the caret lands at the nearest glyph boundary to the click), dragging
-# selects, and Shift+click extends; the focused textbox consumes the
+# selects, Shift+click extends, a double-click selects the word under the
+# pointer (UAX #29 word boundaries) and a triple-click the whole line,
+# a drag after either extending by words or lines; every new selection
+# becomes the PRIMARY selection and a middle-click pastes it; the focused textbox consumes the
 # frame's CHAR/NAV queues — printable characters replace the selection
 # or insert at the caret as UTF-8, backspace/delete remove the selection
 # or a whole character, left/right step over whole characters, home/end
@@ -228,6 +266,11 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		st.anchor = ui_grapheme_floor(&st.text[0], ui_access_char_byte(&st.text[0], st.length, sel_anchor))
 
 	float32 text_x = r.x + cast(float32, ctx.theme.pad)
+	# The selection before this frame's input, to publish PRIMARY when it
+	# changes.
+	int was_anchor = st.anchor
+	int was_caret = st.caret
+	int was_length = st.length
 	# Focus follows the press: inside claims it, any other press drops
 	# it. Inert while another widget holds a popup open or inside a
 	# disabled scope.
@@ -241,15 +284,37 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			if (extend): ui_textbox_anchor(st, 1)
 			# Proportional caret: the nearest glyph boundary to the
 			# click.
-			st.caret = ui_text_caret_from_x(&st.text[0], scale, ctx.input.press_x - cast(int, text_x))
-			if (extend == 0): st.anchor = st.caret
+			int press_rel = ctx.input.press_x - cast(int, text_x)
+			st.caret = ui_text_caret_from_x(&st.text[0], scale, press_rel)
+			st.unit = 1
+			if ((extend == 0) && (ctx.input.clicks >= 2)):
+				# Double-click selects the word under the pointer,
+				# triple-click the line; a drag then extends by them.
+				st.unit = 2
+				if (ctx.input.clicks >= 3): st.unit = 3
+				ui_textbox_unit_range(st, st.unit, ui_text_hit_from_x(&st.text[0], scale, press_rel), &st.unit_start, &st.unit_end)
+				st.anchor = st.unit_start
+				st.caret = st.unit_end
+			else if (extend == 0): st.anchor = st.caret
 		else if (ctx.focus == id): ctx.focus = 0
 	else if (ctx.input.mouse_down && (ctx.active == id) && (ctx.focus == id) && (ctx.disabled == 0)):
 		# Drag selection: the caret follows the pointer, the anchor stays.
 		ctx.pointer_mode = 1
-		int dragged = ui_text_caret_from_x(&st.text[0], scale, ctx.input.mouse_x - cast(int, text_x))
-		if (dragged < 0): dragged = 0
-		st.caret = dragged
+		int drag_rel = ctx.input.mouse_x - cast(int, text_x)
+		if (st.unit >= 2): ui_textbox_select_units(st, ui_text_hit_from_x(&st.text[0], scale, drag_rel))
+		else:
+			int dragged = ui_text_caret_from_x(&st.text[0], scale, drag_rel)
+			if (dragged < 0): dragged = 0
+			st.caret = dragged
+	# Middle-click pastes the PRIMARY selection at the pointer (X11's
+	# convention; elsewhere the program's own last selection).
+	if (ctx.input.mouse_middle_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
+		if (ui_pointer_inside(ctx, r, cast(float32, ctx.input.middle_x), cast(float32, ctx.input.middle_y))):
+			ctx.input.mouse_middle_pressed = 0
+			ctx.focus = id
+			st.caret = ui_text_caret_from_x(&st.text[0], scale, ctx.input.middle_x - cast(int, text_x))
+			st.anchor = 0 - 1
+			ui_primary_paste_request(ctx, id)
 	# A click that selected nothing leaves no anchor behind once released.
 	if ((ctx.input.mouse_down == 0) && (ui_textbox_has_selection(st) == 0)): st.anchor = 0 - 1
 
@@ -305,6 +370,10 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			ui_textbox_insert_text(st, pasted)
 			ui_textbox_mark_edited(st)
 			free(pasted)
+	# A new or changed selection becomes the PRIMARY selection.
+	if ((ctx.focus == id) && ui_textbox_has_selection(st) && ((st.anchor != was_anchor) || (st.caret != was_caret) || (st.length != was_length))):
+		int from = ui_textbox_sel_start(st)
+		ui_primary_publish(ctx, &st.text[from], ui_textbox_sel_end(st) - from)
 	# Edited and no longer focused, however focus left (a press
 	# elsewhere, escape, another widget claiming it): the field is
 	# touched from here on.

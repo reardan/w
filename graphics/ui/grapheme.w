@@ -1,6 +1,7 @@
 # Grapheme byte boundaries shared by editable controls and caret hit testing.
 # The Unicode break tables live in lib.grapheme; offsets remain UTF-8 bytes.
 import lib.grapheme
+import lib.unicode_text
 
 
 int ui_grapheme_next_n(char* text, int length, int at):
@@ -50,3 +51,11 @@ int ui_grapheme_ceil(char* text, int at):
 		if (next <= i): return i
 		i = next
 	return i
+
+
+# The word segment (UAX #29, lib/unicode_text.w) of text[0..length) that
+# holds byte offset at, as start[0]..end[0]: what a double-click selects.
+void ui_word_bounds(char* text, int length, int at, int* start, int* end):
+	if (at < 0): at = 0
+	if (at > length): at = length
+	ut_word_at(text, length, at, start, end)

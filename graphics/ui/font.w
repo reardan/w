@@ -1191,6 +1191,15 @@ int ui_text_caret_from_x(char* s, int scale, int x_rel):
 	return ui_text_caret_from_x_strike(s, ui_font_strike_from_scale(scale), x_rel)
 
 
+# Byte offset of the grapheme drawn under the pixel offset x_rel, or the
+# string's length past its end: the character a double-click lands on,
+# where ui_text_caret_from_x is the boundary nearest to it.
+int ui_text_hit_from_x(char* s, int scale, int x_rel):
+	int caret = ui_text_caret_from_x(s, scale, x_rel)
+	if ((caret > 0) && (x_rel < ui_text_prefix_width(s, caret, scale))): return ui_grapheme_prev(s, caret)
+	return caret
+
+
 # Bytes of s (whole codepoints) whose glyphs fit in max_w pixels in
 # strike: how much of a string a fixed-width field can show.
 int ui_text_fit_strike(char* s, int strike, int max_w):
