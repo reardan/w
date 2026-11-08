@@ -289,7 +289,7 @@ int message_declaration():
 		char* existing = protobuf_message_info(type_index)
 		if (existing != 0): forward_declared = load_int(existing) < 0
 	if (type_index < 0): type_index = type_push_size(strclone(token), 0)
-	else if (forward_declared == 0): type_reset_for_redefinition(type_index, 0)
+	else if (forward_declared == 0): type_redefine(type_index, 0)
 	type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 	if (forward_declared == 0): sym_declare_global(token, type_index, 1)
 	get_token()

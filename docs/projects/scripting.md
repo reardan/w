@@ -222,13 +222,17 @@ the REPL and wdbg keep using `repl/core.w` directly and are unaffected.
   global; `engine_reload` stores it before the rollback and restores it
   after the reload through two bound functions and short helper entries
   (`to_json`/`from_json` compiled in the session, rolled back after they
-  run). Landing it exposed two rollback gaps the engine now closes: a
-  struct/union/enum redefinition resets its type record in place, which
-  a count-based type-table rollback does not undo (the engine saves and
-  restores the layouts a unit redefines), and the `to_json` descriptor
-  cache (`grammar/json_builtin.w`) kept entries pointing into released
-  code (pruned on every rollback, and dropped for a type about to be
-  redefined). The REPL's own rollback and `:reset` still have both gaps.
+  run). Landing it exposed two rollback gaps: a struct/union/enum
+  redefinition resets its type record in place, which a count-based
+  type-table rollback does not undo, and the `to_json` descriptor cache
+  (`grammar/json_builtin.w`) kept entries pointing into released code or
+  at the old layout. The engine first closed them with a text scan of
+  each unit; both are now closed in the compiler for every rollback, the
+  REPL's per-entry rollback and `:reset` included: `type_redefine`
+  (`grammar/type_redefine.w`) journals the layout before the in-place
+  reset and drops the type's cached descriptors, and `repl_state_restore`
+  undoes the journal (layout, enum constants, descriptors) back to the
+  checkpoint (`tests/repl_type_rollback_test.w`).
 
 ### Phase A: arm64 Linux, then macOS (G1) — the long pole for a Mac game
 

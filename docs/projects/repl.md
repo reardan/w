@@ -406,9 +406,13 @@ State that must survive a reload goes through saved variables
 heap, stored before the rollback and restored after the reload by member
 name, so a changed struct layout still loads.
 
-Two rollback gaps the engine closes but the REPL's per-entry rollback and
-`:reset` still have: a `struct`/`union`/`enum` redefinition resets its
-type record in place (`type_reset_for_redefinition`), which rolling the
-type table back by count does not undo, and the `to_json`/`from_json`
-descriptor cache (`grammar/json_builtin.w`) is never truncated, so it can
-hand out a descriptor for an old layout or from released code.
+Type redefinitions roll back with everything else, at the prompt, on
+`:reset` and in the engine: a `struct`/`union`/`enum`/`message`
+redefinition resets its type record in place, so `type_redefine`
+(`grammar/type_redefine.w`) journals the old layout first and
+`repl_state_restore` undoes the journal back to the checkpoint's length
+before it truncates the type table by count. The same journal puts an
+enum's constants (`enum_name`'s registry) back, and both the redefinition
+and its undo drop that type's `to_json`/`from_json` and protobuf
+descriptor-cache entries, so neither layout is ever encoded with the
+other's descriptor (`tests/repl_type_rollback_test.w`).

@@ -8,6 +8,10 @@ struct_declaration identifier :
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+# Defined in grammar/type_redefine.w (it needs the descriptor caches and the
+# enum registry, which compile later); the union, enum and message
+# declarations use it too.
+void type_redefine(int type_index, int size);
 
 
 int struct_declaration():
@@ -40,7 +44,7 @@ int struct_declaration():
 		# duplicate — see type_reset_for_redefinition.
 		type_index = type_lookup(token)
 		if (type_index < 0): type_index = type_push_size(strclone(token), 0)
-		else: type_reset_for_redefinition(type_index, 0)
+		else: type_redefine(type_index, 0)
 		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		current_symbol = sym_declare_global(token, type_index, 1)
 		# type_print_all()
