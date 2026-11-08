@@ -87,6 +87,52 @@ creates the window, registers WM_DELETE_WINDOW and makes a GL context
 current; `gfx_window_poll` drains the X event queue and tracks
 close/resize, last keycode, pointer position and button mask.
 
+Every native backend (X11, Win32, Cocoa) also links the control
+channel `graphics/control.w`: when `W_GFX_CONTROL` names a unix socket,
+a driver such as `bin/wdrive` can inject input into the window's event
+queue, step frames, read pixels, take PNG screenshots and read the
+graphics.ui accessibility tree, headless under Xvfb included. See
+[wdrive.md](wdrive.md).
+
+### Framebuffer objects (render-to-texture)
+
+Every binding exposes the GL 3.0 / ARB_framebuffer_object surface
+(core in WebGL2): `glGenFramebuffers`, `glDeleteFramebuffers`,
+`glBindFramebuffer`, `glFramebufferTexture2D`,
+`glCheckFramebufferStatus`, `glGenRenderbuffers`,
+`glDeleteRenderbuffers`, `glBindRenderbuffer`, `glRenderbufferStorage`
+and `glFramebufferRenderbuffer`, plus `glGetIntegerv` (to save and
+restore `GL_FRAMEBUFFER_BINDING`, `GL_VIEWPORT`, `GL_CURRENT_PROGRAM`,
+`GL_MAX_TEXTURE_SIZE`), `glIsEnabled` and `glUniform1fv`/`glUniform2fv`.
+They live in `graphics/gl_core.w` (so libGL.so.1, OpenGL.framework and
+the wasm `env` module all get them), as `wglGetProcAddress` wrappers in
+`graphics/gl_win32.w` (`glGetIntegerv`/`glIsEnabled` are GL 1.1 and
+bind directly), and in `tools/web/webgl_env.mjs`, whose handle table
+holds the WebGLFramebuffer/WebGLRenderbuffer objects and maps a bound
+object back to its id for `glGetIntegerv`. Enums
+(`GL_FRAMEBUFFER`, `GL_COLOR_ATTACHMENT0`, `GL_RENDERBUFFER`,
+`GL_DEPTH_COMPONENT16`, `GL_FRAMEBUFFER_COMPLETE`, ...) are in
+`graphics/gl.w`, beside three helpers:
+
+	int texture = gl_texture_rgba(width, height, 0, GL_NEAREST)   # RGBA8, clamped
+	int fbo = gl_framebuffer_for_texture(texture)  # 0 + stderr if incomplete; leaves it bound
+	glViewport(0, 0, width, height)                # the target's size, not the window's
+	# ... draw ...
+	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels)  # reads the bound FBO
+	glBindFramebuffer(GL_FRAMEBUFFER, 0)           # back to the window
+
+`gl_current_framebuffer()` reads the draw binding and
+`gl_is_enabled(cap)` masks `glIsEnabled`'s one-byte GLboolean (the rest
+of the C return register is undefined). A target can be any size up to
+`GL_MAX_TEXTURE_SIZE`, independent of the window — the effects library
+(docs/projects/effects.md) renders photos at full resolution behind a
+64x64 window.
+
+Two web-glue details: `glViewport`/`glScissor` scale by the device
+pixel ratio only while the default framebuffer is bound (an FBO is
+sized in texels), and `glGetIntegerv(GL_VIEWPORT)` undoes that scaling
+so a saved box restores exactly.
+
 ## The macOS backend (arm64_darwin)
 
 `graphics.cocoa` + `graphics.window_cocoa`, running as a native arm64
@@ -134,6 +180,16 @@ the triangle center and the clear-color corner. When no display is
 reachable it prints "graphics gl smoke SKIP" and passes, like
 `cuda_smoke` does for missing GPUs, so headless hosts stay green — a
 real failure (bad pixels, shader errors) still fails the target.
+
+`graphics_gl_fbo_test` (`tests_x64`, same SKIP convention) renders a
+`gl_FragCoord` gradient into a 256x128 texture-backed FBO with a depth
+renderbuffer — larger than its 64x48 window — checks texels with
+`glReadPixels` while the FBO is bound (including (200, 100), which only
+exists off-screen), then samples the texture to the window and checks
+the mapping, plus the `glGetIntegerv` binding/viewport round trips.
+`graphics_effects_webgl_test` (`tests_wasm`) runs it and
+`graphics_effects_gl_test` as wasm in headless Chromium's real WebGL2
+through `tools/web/run_browser_webgl.mjs` (SKIP without a Chromium).
 
 `graphics_darwin` (part of `tests`) cross-compiles the three darwin
 binaries (`dynamic_darwin_test`, `graphics_gl_smoke_darwin`,

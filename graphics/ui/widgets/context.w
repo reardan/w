@@ -16,6 +16,8 @@ import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import lib.utf8
 import graphics.ui.text
+import graphics.ui.accessibility_json
+import graphics.control_hooks
 
 
 void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
@@ -81,6 +83,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_select_count = 0
 	ctx.access_focus_owner = 0
 	ctx.access_focus_child = 0
+	ctx.access_control_owned = 0
 	ctx.clip_out = 0
 	ctx.clip_out_ready = 0
 	ctx.clip_out_html = 0
@@ -439,6 +442,13 @@ void ui_begin_window(ui_context* ctx, gfx_window* win):
 	ctx.input.mouse_x = win.mouse_x
 	ctx.input.mouse_y = win.mouse_y
 	ui_render_set_pixel_scale(ctx.rndr, gfx_window_pixel_ratio(win))
+	# A driver asked for the accessibility tree (graphics.control's
+	# a11y_tree): capture this frame's, unless the program already does.
+	if (gfx_control_a11y_request == 1):
+		gfx_control_a11y_request = 2
+		if (ctx.access == 0):
+			ctx.access = ui_access_tree_new(8192, 4194304)
+			ctx.access_control_owned = 1
 	ui_begin(ctx, win.width, win.height)
 	ctx.clip_window = cast(char*, win)
 
@@ -480,6 +490,14 @@ void ui_end(ui_context* ctx):
 			# A focused list reports its cursor item instead.
 			if ((ctx.access_focus_owner == ctx.focus) && (ui_access_find(ctx.access, ctx.access_focus_child) != 0)):
 				ctx.access.focused_id = ctx.access_focus_child
+		if (gfx_control_a11y_request == 2):
+			if (gfx_control_a11y_reply != 0): free(gfx_control_a11y_reply)
+			gfx_control_a11y_reply = ui_access_tree_json(ctx.access)
+			gfx_control_a11y_request = 3
+		if (ctx.access_control_owned):
+			ui_access_tree_free(ctx.access)
+			ctx.access = 0
+			ctx.access_control_owned = 0
 	# Assistive requests live for exactly the frame after their dispatch.
 	ctx.access_activation_count = 0
 	ctx.access_value_id = 0

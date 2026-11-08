@@ -1817,3 +1817,60 @@ The runtime's locals share the type namespace of whatever program imports
 it. Direction: resolve a runtime module's identifiers in its own scope (or
 warn when a program type shadows a runtime local), and until then keep
 runtime locals to names no test is likely to declare as a type.
+
+## Millisecond `timeout=` is easy to mistake for seconds (2026-11-08, wdrive)
+
+Writing the `wdrive_xvfb_test` target, `# wbuild: step="..." timeout=180`
+meant three minutes but is 180 ms; the run failed with "command timed
+out after 180 ms", which at least named the unit. `tools/host_tools.w`'s
+`ht_run(..., timeout)` is milliseconds too and silently kills a child
+after 120 ms when given `120`. Direction: have `manifest_check` warn on a
+step `timeout=` below, say, 1000 (no real step finishes that fast on
+purpose), or accept an explicit unit suffix (`timeout=180s`).
+
+## `stream_close` also frees the stream (2026-11-08, wdrive)
+
+`graphics/ui/demo.w`'s `--screenshot` path called `stream_close(out)`
+then `stream_free(out)`, a double free that `lib/memory_freelist.w`
+aborts on (fixed alongside wdrive; the same pattern was copied into the
+first draft of `graphics/control.w`). The two names read as "close the
+fd" / "free the object". Direction: say "closes and frees" at every
+`stream_open_*` call site's docs, or make `stream_free` after
+`stream_close` a diagnosable misuse (a `--lint` rule pairing the two on
+the same local).
+
+## Driving native GUI programs (2026-11-08, wdrive)
+
+Agents can now drive native graphics programs with `bin/wdrive`
+(docs/projects/wdrive.md). Open items: run the Win32 (Winsock AF_UNIX)
+and Cocoa hooks for real (needs a Windows/macOS-capable driver, since
+wdrive spawns Xvfb and uses POSIX processes); a deterministic frame clock
+so animations can be stepped; and an agent tool wrapper over
+`wdrive serve` in the sibling repo.
+
+## `wtest changed` sends host glue to the whole `tests` umbrella (2026-11-08)
+
+Changing `tools/web/webgl_env.mjs` (the WebGL host glue every wasm
+graphics program links against) made `bin/wtest changed` print `tests`,
+the full pre-merge umbrella, even though the targets that exercise the
+file name it as an `input=` (`graphics_effects_webgl_test`) or reference
+it in a step (`wasm_webgl_test`, `wasm_ui_test`). The literal step match
+found those too; the umbrella came on top as the unmapped-path fallback.
+Running all of `tests` for a JS glue edit costs far more than the dozen
+targets that load it. Direction: treat a path that some target already
+names in its steps or `input=`/`data=` as mapped (no fallback), or add a
+`tools/web/` residue rule pointing at the `tests_wasm` browser and stub
+gates.
+
+## `new T(field: v)` zeroes fixed-array descriptors (2026-11-08)
+
+`new fx_effect(kind: k)` on a struct with a `float32[12] p` field
+compiled cleanly, then the first `e.p[0] = ...` trapped "index out of
+range: index 0, length 0" deep inside the constructor helper — the
+named-field form zero-fills the array's descriptor header, while plain
+`new T()` initializes it. Nothing at compile time hints at it, and the
+trap names the list runtime (`__w_list_index_trap`), not the struct, so
+it reads like a container bug. Workaround in graphics/effects_core.w;
+recorded under "current limitations" in docs/todo.txt. Direction:
+initialize fixed-array descriptors in every `new` form (or reject the
+named form for such structs with a diagnostic).
