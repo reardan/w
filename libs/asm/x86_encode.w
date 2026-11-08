@@ -322,6 +322,35 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	if (strcmp(m, c"leave") == 0):
 		asm_buffer_byte(b, 0xc9)
 		return b.length - start
+
+	# Port I/O: in <port>, <acc> and out <acc>, <port>. The port is dx
+	# (variable form, EC/ED and EE/EF) or an imm8 (E4/E5 and E6/E7); the
+	# accumulator width (al/ax/eax) picks the byte-vs-word opcode and the
+	# 0x66 prefix. After the AT&T reversal op1 is the destination.
+	if (strcmp(m, c"in") == 0):
+		int acc = insn.op1.size
+		if (insn.op1.kind != ASM_OP_REG): acc = 4
+		if (acc == 2): asm_buffer_byte(b, 0x66)
+		if (insn.op2.kind == ASM_OP_IMM):
+			if (acc == 1): asm_buffer_byte(b, 0xe4)
+			else: asm_buffer_byte(b, 0xe5)
+			asm_buffer_byte(b, insn.op2.imm & 255)
+		else:
+			if (acc == 1): asm_buffer_byte(b, 0xec)
+			else: asm_buffer_byte(b, 0xed)
+		return b.length - start
+	if (strcmp(m, c"out") == 0):
+		int acc = insn.op2.size
+		if (insn.op2.kind != ASM_OP_REG): acc = 4
+		if (acc == 2): asm_buffer_byte(b, 0x66)
+		if (insn.op1.kind == ASM_OP_IMM):
+			if (acc == 1): asm_buffer_byte(b, 0xe6)
+			else: asm_buffer_byte(b, 0xe7)
+			asm_buffer_byte(b, insn.op1.imm & 255)
+		else:
+			if (acc == 1): asm_buffer_byte(b, 0xee)
+			else: asm_buffer_byte(b, 0xef)
+		return b.length - start
 	if (strcmp(m, c"nop") == 0):
 		asm_buffer_byte(b, 0x90)
 		return b.length - start
@@ -765,6 +794,18 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 	if (strcmp(m, c"clac") == 0): return asm_enc_0f_01(b, 0xca)
 	if (strcmp(m, c"stac") == 0): return asm_enc_0f_01(b, 0xcb)
 	if (strcmp(m, c"swapgs") == 0): return asm_enc_0f_01(b, 0xf8)
+
+	# fxsave / fxrstor m (0f ae /0 and /1); fxsaveq/fxrstorq force REX.W.
+	if (strcmp(m, c"fxsave") == 0 | strcmp(m, c"fxsaveq") == 0 | (strcmp(m, c"fxrstor") == 0 | strcmp(m, c"fxrstorq") == 0)):
+		int fw = 0
+		if (strcmp(m, c"fxsaveq") == 0 | strcmp(m, c"fxrstorq") == 0): fw = 1
+		int fext = 0
+		if (strcmp(m, c"fxrstor") == 0 | strcmp(m, c"fxrstorq") == 0): fext = 1
+		asm_enc_rex(b, is64, fw, fext, &insn.op1)
+		asm_buffer_byte(b, 0x0f)
+		asm_buffer_byte(b, 0xae)
+		asm_enc_modrm(b, fext, &insn.op1, is64)
+		return 1
 
 	# bsf / bsr / tzcnt / lzcnt / popcnt r, r/m (0f bc/bd; f3-prefixed forms)
 	if (((strcmp(m, c"bsf") == 0 | strcmp(m, c"bsr") == 0) | (strcmp(m, c"tzcnt") == 0 | strcmp(m, c"lzcnt") == 0)) | strcmp(m, c"popcnt") == 0):

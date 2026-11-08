@@ -109,5 +109,16 @@ int main():
 	att_is(c"sete %al", c"0F 94 C0")
 	att_is(c"setc %dl", c"0F 92 C2")
 
+
+	# Port I/O and FPU state save (kernel driver / FPU paths).
+	att_is(c"inl %dx, %eax", c"ED")
+	att_is(c"inb %dx, %al", c"EC")
+	att_is(c"inw %dx, %ax", c"66 ED")
+	att_is(c"outl %eax, %dx", c"EF")
+	att_is(c"outb %al, %dx", c"EE")
+	att_is(c"inb $8, %al", c"E4 08")
+	att_is(c"fxsaveq (%rax)", c"48 0F AE 00")
+	att_is(c"fxrstorq (%rax)", c"48 0F AE 08")
+
 	println(c"asm_att_test passed")
 	return 0
