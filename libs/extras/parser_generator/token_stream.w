@@ -38,6 +38,11 @@ struct pg_token_stream:
 	int checkpoint_limit
 	int token_limit
 	int exhausted
+	# Grammar-owned predicate memo, one value per default-channel token,
+	# valid while predicate_tokens[i] is still tokens[i] (rollback rescans
+	# replace token objects, so stale entries are detected, never trusted).
+	list[int] predicate_values
+	list[pg_token*] predicate_tokens
 
 
 struct pg_stream_checkpoint:
@@ -80,6 +85,8 @@ pg_token_stream* pg_token_stream_new():
 	stream.checkpoint_limit = 4096
 	stream.token_limit = 1000000
 	stream.exhausted = 0
+	stream.predicate_values = 0
+	stream.predicate_tokens = 0
 	return stream
 
 
@@ -361,8 +368,31 @@ void pg_token_stream_free(pg_token_stream* stream):
 	__w_list_free(cast(__w_list*, stream.boundaries))
 	__w_list_free(cast(__w_list*, stream.boundary_all))
 	__w_list_free(cast(__w_list*, stream.boundary_diagnostics))
+	if (stream.predicate_values != 0):
+		__w_list_free(cast(__w_list*, stream.predicate_values))
+		__w_list_free(cast(__w_list*, stream.predicate_tokens))
 	pg_lexer_state_free(stream.provider)
 	free(stream)
+
+
+# Memoized predicate value for consumed token index, or -1. Values must be
+# derived only from tokens at or before index; stale entries miss.
+int pg_token_stream_memo_get(pg_token_stream* stream, int index):
+	if (stream.predicate_values == 0 || index < 0 || index >= stream.predicate_values.length || index >= stream.tokens.length): return -1
+	if (stream.predicate_tokens[index] != stream.tokens[index]): return -1
+	return stream.predicate_values[index]
+
+
+void pg_token_stream_memo_set(pg_token_stream* stream, int index, int value):
+	if (index < 0 || index >= stream.tokens.length): return
+	if (stream.predicate_values == 0):
+		stream.predicate_values = new list[int]
+		stream.predicate_tokens = new list[pg_token*]
+	while (stream.predicate_values.length <= index):
+		stream.predicate_values.push(-1)
+		stream.predicate_tokens.push(0)
+	stream.predicate_values[index] = value
+	stream.predicate_tokens[index] = stream.tokens[index]
 
 
 # Includes newlines inside comments and Unicode JS line separators. Inspect
