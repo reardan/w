@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_der.w -o bin/wfuzz_der_harness"
 # wbuild: step="rm -rf bin/wfuzz_der_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_der_harness --bytes --ext .der --corpus tools/fuzz/seeds/der --out bin/wfuzz_der_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_der dep=wfuzz
+# wbuild: target=wfuzz_der tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_der.w -o bin/wfuzz_der_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_der_harness --bytes --ext .der --corpus tools/fuzz/seeds/der --out bin/wfuzz_der" timeout=3600000
 # Fuzz harness for DER/ASN.1 (issue #842): libs/standard/net/asn1.w's

@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_json.w -o bin/wfuzz_json_harness"
 # wbuild: step="rm -rf bin/wfuzz_json_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_json_harness --ext .json --dict tools/fuzz/dicts/json.dict --corpus tools/fuzz/seeds/json --corpus tests/wexec --out bin/wfuzz_json_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_json dep=wfuzz
+# wbuild: target=wfuzz_json tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_json.w -o bin/wfuzz_json_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_json_harness --ext .json --dict tools/fuzz/dicts/json.dict --corpus tools/fuzz/seeds/json --corpus tests/wexec --out bin/wfuzz_json" timeout=3600000
 # Fuzz harness for structures/json.w (issue #842): parses the input and,

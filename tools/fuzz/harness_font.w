@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_font.w -o bin/wfuzz_font_harness"
 # wbuild: step="rm -rf bin/wfuzz_font_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_font_harness --bytes --ext .ttf --corpus tests/data/fonts/NotoSans-subset.ttf --corpus tests/data/fonts/NotoSans-cff-subset.otf --corpus tests/data/fonts/NotoSansJP-subset.otf --corpus tests/data/fonts/NotoSansThai-subset.ttf --corpus tests/data/fonts/NotoSansGujarati-nogdef-subset.ttf --corpus tests/data/fonts/ColorTestCOLRv0.ttf --corpus tests/data/fonts/ColorTestCOLRv1.ttf --corpus tests/data/fonts/ColorTestSbix.ttf --corpus tools/fuzz/regressions/font --out bin/wfuzz_font_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_font dep=wfuzz
+# wbuild: target=wfuzz_font tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_font.w -o bin/wfuzz_font_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_font_harness --bytes --ext .ttf --corpus tests/data/fonts/NotoSans-subset.ttf --corpus tests/data/fonts/NotoSans-cff-subset.otf --corpus tests/data/fonts/NotoSansJP-subset.otf --corpus tests/data/fonts/NotoSansThai-subset.ttf --corpus tests/data/fonts/NotoSansGujarati-nogdef-subset.ttf --corpus tests/data/fonts/ColorTestCOLRv0.ttf --corpus tests/data/fonts/ColorTestCOLRv1.ttf --corpus tests/data/fonts/ColorTestSbix.ttf --corpus tools/fuzz/regressions/font --out bin/wfuzz_font" timeout=3600000
 # Fuzz harness for the font parsers (issue #842): lib/ttf.w's table

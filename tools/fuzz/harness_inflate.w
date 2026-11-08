@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_inflate.w -o bin/wfuzz_inflate_harness"
 # wbuild: step="rm -rf bin/wfuzz_inflate_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_inflate_harness --bytes --ext .z --corpus tools/fuzz/seeds/inflate --out bin/wfuzz_inflate_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_inflate dep=wfuzz
+# wbuild: target=wfuzz_inflate tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_inflate.w -o bin/wfuzz_inflate_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_inflate_harness --bytes --ext .z --corpus tools/fuzz/seeds/inflate --out bin/wfuzz_inflate" timeout=3600000
 # Fuzz harness for libs/extras/compress (issue #842). Every input goes

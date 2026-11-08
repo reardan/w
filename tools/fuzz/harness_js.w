@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_js.w -o bin/wfuzz_js_harness"
 # wbuild: step="rm -rf bin/wfuzz_js_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_js_harness --ext .js --dict tools/fuzz/dicts/js.dict --corpus tests/javascript/conformance --out bin/wfuzz_js_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_js dep=wfuzz dep=javascript_parser
+# wbuild: target=wfuzz_js tag=fuzz_campaign dep=wfuzz dep=javascript_parser
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_js.w -o bin/wfuzz_js_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_js_harness --ext .js --dict tools/fuzz/dicts/js.dict --corpus tests/javascript/conformance --corpus tests/javascript/corpus --out bin/wfuzz_js" timeout=3600000
 # Fuzz harness for the JavaScript front end (issue #842):
