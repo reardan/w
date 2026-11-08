@@ -289,7 +289,7 @@ void c_abi_extend_rax(int type):
 	if (type_get_pointer_level(type) > 0): return
 	if (type_float_kind(type) || (type_num_args(type) > 0)): return
 	int size = type_get_size(type)
-	int is_unsigned = type_is_unsigned_fixed(type)
+	int is_unsigned = type_is_unsigned_fixed(type) || (type_unqualified(type) == bool_type)
 	if (size == 1):
 		if (is_unsigned): emit(3, c"\x0f\xb6\xc0")   # movzx eax,al
 		else: emit(4, c"\x48\x0f\xbe\xc0")   # movsx rax,al
@@ -571,11 +571,19 @@ void c_abi_emit_extern_shim(int sym, int n, char* classes, int ret_class, int go
 	int* types = cast(int*, malloc((n + 1) * __word_size__))
 	for i in range(n): types[i] = sym_param_type_wide(sym, i)
 	int ret_type = load_int(table + sym + 6)
+	# System V leaves the bits of rax above a narrow integer result
+	# undefined (a bool comes back in al alone), and W reads the whole
+	# word: the shim extends it to the declared type.
+	int extend = (ret_class == 0) && (c_abi_type_is_record(ret_type) == 0)
 	if (c_abi_signature_has_records(n, types, ret_type) == 0):
 		free(cast(void*, types))
-		emit_ffi_shim(n, classes, ret_class, got_vaddr)
+		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
+		if (extend): c_abi_extend_rax(ret_type)
+		emit(1, c"\xc3")   # ret
+		if (stack_usage_mode): stack_usage_shim(n)
 		return
 	int words = c_abi_emit_call(n, types, ret_type, got_vaddr, 16)
+	if (extend): c_abi_extend_rax(ret_type)
 	emit(1, c"\xc3")   # ret
 	if (stack_usage_mode): stack_usage_shim(words)
 	free(cast(void*, types))

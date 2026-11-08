@@ -102,6 +102,21 @@ void test_c_abi_links_with_c():
 		free(object)
 
 
+# The value of the readelf -s line ending in `tail`, in hex without its
+# leading zeros (readelf -r's addend spelling).
+char* abi_symbol_value(char* listing, char* tail):
+	int at = index_of(listing, tail)
+	assert1(at > 0)
+	int line = at
+	while ((line > 0) && (listing[line - 1] != 10)): line = line - 1
+	int colon = line
+	while (listing[colon] != ':'): colon = colon + 1
+	int start = colon + 2
+	int end = start + 16
+	while ((start < end - 1) && (listing[start] == '0')): start = start + 1
+	return substring(listing, start, end)
+
+
 # Root functions are GLOBAL FUNC, 'static' ones and imported ones LOCAL;
 # a 'static' global is LOCAL too.
 void test_c_abi_symbols():
@@ -110,16 +125,23 @@ void test_c_abi_symbols():
 	char* listing = abi_shell(strjoin(c"readelf -s -W ", object))
 	assert_contains(listing, c"FUNC    GLOBAL DEFAULT    1 w_add")
 	assert_contains(listing, c"FUNC    GLOBAL DEFAULT    1 w_pick")
+	# function symbols are sized (stub and body), as address lookups need
+	assert1(index_of(listing, c"     0 FUNC    GLOBAL DEFAULT    1 w_add") < 0)
+	assert1(index_of(listing, c"     0 FUNC    LOCAL  DEFAULT    1 w_hidden") < 0)
 	assert_contains(listing, c"FUNC    LOCAL  DEFAULT    1 w_hidden")
 	assert_contains(listing, c"OBJECT  GLOBAL DEFAULT    2 w_table_add")
 	# zero-initialized: .bss, the section after .text and .data
 	assert_contains(listing, c"OBJECT  LOCAL  DEFAULT    3 w_private_total")
 	assert_contains(listing, c"NOTYPE  GLOBAL DEFAULT  UND c_weigh8")
-	free(listing)
 	char* relocations = abi_shell(strjoin(c"readelf -r -W ", object))
 	# the static table cell holding c_sub's address is relocated to it
 	assert_contains(relocations, c"R_X86_64_64            0000000000000000 c_sub + 0")
+	# a static function's symbol is its System V entry, the address its
+	# table cell (w_table_hidden, relocated against .text) holds
+	char* hidden = abi_symbol_value(listing, c"FUNC    LOCAL  DEFAULT    1 w_hidden")
+	assert_contains(relocations, strjoin(c"R_X86_64_64            0000000000000000 .text + ", hidden))
 	free(relocations)
+	free(listing)
 	free(object)
 
 
