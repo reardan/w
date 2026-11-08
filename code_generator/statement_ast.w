@@ -134,12 +134,16 @@ void emit_statement_ast_walk(retained_statement_walk* walk, int phase):
 	else: error(c"internal error: unknown statement walk phase")
 
 
+void goto_note_terminator();
+
+
 void emit_goto_target(int label, int source_stack):
 	if (goto_label_pos[label] >= 0):
 		# Backward: the label's depth is known
 		goto_adjust_stack(source_stack, goto_label_stack[label])
 		jmp_int32(0)
 		be_branch_patch(codepos, goto_label_pos[label])
+		goto_note_terminator()
 		return
 	jmp_int32(0)
 	goto_reserve()
@@ -147,9 +151,22 @@ void emit_goto_target(int label, int source_stack):
 	goto_pending_site[goto_pending_count] = codepos
 	goto_pending_stack[goto_pending_count] = source_stack
 	goto_pending_count = goto_pending_count + 1
+	goto_note_terminator()
+
+
+# A goto's 'jmp' ends straight-line code like a 'return' does (O1): the
+# stack unwind of the blocks it leaves, the 'jmp' past an else arm and
+# a fall-through epilogue right after it are unreachable, and dropping
+# them keeps kernel stack validation from reporting dead code. Every
+# label resets the note (emit_label_target).
+void goto_note_terminator():
+	if (target_isa == 0): term_note_end = codepos
 
 
 void emit_label_target(int label, int target_stack):
+	# Fall-through cannot reach the label after a 'jmp' or 'ret': the
+	# stubs below need no jump around them then
+	int fall_through = term_unreachable() == 0
 	# A jump lands here: no constant/compare fold may reach back across it
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -159,7 +176,7 @@ void emit_label_target(int label, int target_stack):
 	int i = goto_pending_base
 	while (i < goto_pending_count):
 		if ((goto_pending_label[i] == label) && (goto_pending_stack[i] != target_stack)):
-			if (skip == 0):
+			if ((skip == 0) && fall_through):
 				jmp_int32(0)
 				skip = codepos
 			be_branch_patch(goto_pending_site[i], codepos)

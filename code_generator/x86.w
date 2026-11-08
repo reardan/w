@@ -3517,6 +3517,11 @@ void be_br_linked(int h):
 	if (ctrl_kind_stack[h]): be_branch_patch(codepos, ctrl_val_stack[h])
 	else: be_ctrl_link(h)
 
+# A branch patched to target makes it a jump target: when that is
+# codepos, the code emitted next is reachable again.
+void term_note_land(int target):
+	if (target == codepos): term_note_end = 0
+
 # 1 when codepos is unreachable (O1, the terminator note): the last
 # instruction was a 'ret' or an unconditional 'jmp' and no jump target
 # has been placed since. Nothing is parked then (a park would have been
@@ -3764,7 +3769,12 @@ void be_ctrl_merge(int h, int target):
 # chain to the current position (their merge point); loop regions have
 # nothing to patch.
 void be_ctrl_end(int h):
+	# A forward region no branch entered is no jump target: code after
+	# a 'ret' or 'jmp' stays unreachable across its end (O1), so a
+	# 'break' folded into an 'if 1:' leaves no dead unwind behind it
+	int term_end = term_note_end
 	be_notes_reset()
+	if ((target_isa == 0) && (ctrl_kind_stack[h] == 0) && (ctrl_val_stack[h] == 0)): term_note_end = term_end
 	ctrl_stack_pos = ctrl_stack_pos - 1
 	if (target_isa == 3):
 		# Forward regions place their merge label here; backward regions
