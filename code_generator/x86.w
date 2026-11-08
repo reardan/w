@@ -241,7 +241,10 @@ int ers_slot_reg(int disp):
 	return ers_reg[ers_count - 1 - (disp >> word_size_log2)]
 
 # The real esp displacement of a logical one that names a stack word.
+# Nothing the emitter addresses lies below esp (no red zone), which
+# --kernel-codegen relies on: an interrupt overwrites that memory.
 int esp_disp(int disp):
+	if (kernel_codegen && (disp < 0)): ers_internal(c"stack word below rsp")
 	if (ers_count == 0): return disp
 	if (ers_slot_reg(disp) != 0): ers_internal(c"word used by an unhandled path")
 	return disp - ers_bias()
@@ -362,6 +365,16 @@ int[8] ers_xrt_b
 int[8] ers_xrt_c
 int[8] ers_xrt_d
 
+# The segment-override prefix (0x65 gs, 0x64 fs) of the one load or
+# store of a segment-space lvalue ('__seg_gs T', compiler/type_table.w),
+# or 0. The grammar sets it around exactly that emission (promote,
+# assign_store): every memory-operand form leads with it (emit_rex_mem,
+# so it precedes REX as the encoding requires, and the [ebx] stores),
+# and such an instruction is neither noted as a foldable memory load nor
+# recorded in the register-retarget trace, so no later fold re-emits it
+# without the prefix.
+int seg_override
+
 # Record one accumulator instruction emitted from start to codepos.
 void xrt_add(int start, int kind, int dst, int x4, int x5, int x6, int x7, int x8, int x9, int x10):
 	if (ers_count == 0): return
@@ -399,7 +412,7 @@ void xrt_add(int start, int kind, int dst, int x4, int x5, int x6, int x7, int x
 # A folded load of the accumulator: op[0..oplen) with REX.W in w, the
 # esp-relative displacement made real.
 void xrt_add_load(int start, int w, int oplen, char* op, int base, int index, int scale, int disp):
-	if (ers_count == 0): return
+	if ((ers_count == 0) || (seg_override != 0)): return
 	if (base == 4): disp = disp - ers_bias()
 	xrt_add(start, 3, 0, w, oplen, cast(int, op), base, index, scale, disp)
 
@@ -1307,6 +1320,7 @@ void alu_add();
 # for an extended base. Nothing when no bit is needed (the 32-bit forms,
 # movzx/movsx, byte and short stores keep their REX-free encodings).
 void emit_rex_mem(int w, int reg, int index, int base):
+	if (seg_override != 0): emit_int8(seg_override)
 	if (word_size != 8): return
 	int rex = 0x40
 	if (w): rex = rex | 8
@@ -1372,6 +1386,7 @@ void addr_form(int base, int index, int scale, int disp):
 # of its operand into eax (w: REX.W; op the opcode bytes), noting the
 # load for the compound store and the byte compare.
 void memload_note(int start, int base, int index, int scale, int disp, int w, int oplen, char* op):
+	if (seg_override != 0): return
 	memload_start = start
 	memload_end = codepos
 	memload_base = base
@@ -2075,6 +2090,7 @@ void store_ebx_int32():
 	elif (target_isa == 1): a64(op(0xb9, 0x000020))   # str w0,[x1]
 	else:
 		if (ebxreg_store(4)): return
+		if (seg_override != 0): emit_int8(seg_override)
 		emit(2, c"\x89\x03")
 
 
@@ -2085,6 +2101,7 @@ void store_ebx_word():
 	elif (target_isa == 1): a64(op(0xf9, 0x000020))   # str x0,[x1]
 	else:
 		if (ebxreg_store(word_size)): return
+		if (seg_override != 0): emit_int8(seg_override)
 		emit_x64_opcode()
 		emit(2, c"\x89\x03")
 
@@ -2096,6 +2113,7 @@ void store_ebx_int16():
 	elif (target_isa == 1): a64(op(0x79, 0x000020))   # strh w0,[x1]
 	else:
 		if (ebxreg_store(2)): return
+		if (seg_override != 0): emit_int8(seg_override)
 		emit(3, c"\x66\x89\x03")
 
 
@@ -2106,6 +2124,7 @@ void store_ebx_int8():
 	elif (target_isa == 1): a64(op(0x39, 0x000020))   # strb w0,[x1]
 	else:
 		if (ebxreg_store(1)): return
+		if (seg_override != 0): emit_int8(seg_override)
 		emit(2, c"\x88\x03")
 
 
@@ -2891,12 +2910,19 @@ void call_eax():
 		regalloc_call_reload()
 
 
+void object_note_rel32(int pos);      /* code_generator/elf_object.w */
+void object_rel32_rollback(int pos);
+
+
 void call_relative32(int v):
 	# The call pushes a real word (the string-literal emitters pop it
 	# back): the parked words (A3) must be below it
 	if (ers_count != 0): ers_spill_all()
 	emit(1, c"\xe8")
 	emit_int32(v)
+	# --emit=obj splits code across sections: every call cell is a
+	# candidate relocation (elf_object.w)
+	if (elf_object): object_note_rel32(codepos - 4)
 
 
 # Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4): one
@@ -3553,6 +3579,7 @@ void be_cmp_note_reset():
 # codepos. Every fold's rollback goes through here.
 void peep_rollback(int pos):
 	codepos = pos
+	if (elf_object): object_rel32_rollback(pos)
 	# A park whose bytes are discarded is gone (A3): the accumulator holds
 	# its value again, exactly as after rolling back a real push
 	while ((ers_count != 0) && (ers_start[ers_count - 1] >= pos)): ers_pop_top()

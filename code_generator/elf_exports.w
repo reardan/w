@@ -4,6 +4,7 @@ import code_generator.wasm_module
 import code_generator.ffi
 
 char* elf_export_addresses
+void stack_usage_adapter(int symbol, int words);   /* code_generator/stack_usage.w */
 
 
 # AAPCS64 adapter. Keep the native frame above the downward-growing W
@@ -71,6 +72,7 @@ void elf_emit_export_wrappers():
 			elf_emit_arm64_export(address, n, classes, load_i(wasm_export_rets + e * 4, 4))
 			continue
 		char* slots = ffi_assign_slots(n, classes, 6)
+		if (stack_usage_mode): stack_usage_adapter(sym, n)
 		# Preserve every System V callee-saved register around the W call.
 		emit(4, c"\x55\x48\x89\xe5")
 		push_reg(3)
@@ -84,6 +86,7 @@ void elf_emit_export_wrappers():
 				emit_int32(16 + spilled * 8)
 				spilled = spilled + 1
 			else if (slot >= 16):
+				sse_kernel_reject()
 				# movq rax,xmmN; push rax (float bits are W stack words).
 				emit(4, c"\x66\x48\x0f\x7e")
 				emit_int8(0xc0 | ((slot - 16) << 3))
@@ -98,6 +101,7 @@ void elf_emit_export_wrappers():
 				push_reg(reg)
 		emit_int8(0xe8)
 		emit_int32(address - code_offset - codepos - 4)
+		if (elf_object): object_note_rel32(codepos - 4)
 		if (n > 0):
 			emit(3, c"\x48\x83\xc4")
 			emit_int8(n * 8)
@@ -105,6 +109,7 @@ void elf_emit_export_wrappers():
 		pop_reg(3)
 		emit_int8(0x5d)
 		int ret_kind = load_i(wasm_export_rets + e * 4, 4)
+		if (ret_kind >= 2): sse_kernel_reject()
 		if (ret_kind == 2): emit(4, c"\x66\x0f\x6e\xc0")
 		if (ret_kind == 3): emit(5, c"\x66\x48\x0f\x6e\xc0")
 		emit_int8(0xc3)

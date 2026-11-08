@@ -51,6 +51,8 @@ int type_get_pointer_level(int type_index);
 int type_float_kind(int t);
 void error(char* s);
 void movd_xmm0_eax();
+void stack_usage_shim(int stack_words);   /* code_generator/stack_usage.w */
+void stack_usage_extra(int words);
 void cvtss2sd_xmm0();
 void movq_rax_xmm0();
 void push_eax();
@@ -128,7 +130,9 @@ void emit_x64_c_frame_begin():
 
 # Float results come back in xmm0; W callers expect the bits in rax.
 # Then drop the frame.
+void sse_kernel_reject();   /* code_generator/sse.w */
 void emit_x64_c_frame_end(int ret_class):
+	if (ret_class != 0): sse_kernel_reject()
 	if (ret_class == 1):
 		emit(4, c"\x66\x0f\x7e\xc0")       /* movd eax,xmm0 */
 	else if (ret_class == 2):
@@ -157,6 +161,7 @@ void emit_x64_load_gp_reg(int reg, int disp):
 
 # movss/movsd xmm<reg>,[rbp+disp32] for xmm0..xmm7.
 void emit_x64_load_xmm_reg(int reg, int arg_class, int disp):
+	sse_kernel_reject()
 	if (arg_class == 2):
 		emit(1, c"\xf2")           /* movsd */
 	else:
@@ -171,7 +176,8 @@ System V AMD64 call for n arguments described by classes. arg_base is the
 rbp-relative offset of the LAST argument (the one on top of the W stack)
 after the frame is set up: 16 inside a stub (saved rbp + return address),
 8 when emitted inline at a call site (saved rbp only). Argument i (0
-based) then sits at [rbp + arg_base + 8 * (n - 1 - i)].
+based) then sits at [rbp + arg_base + 8 * (n - 1 - i)]. A got_vaddr of 0
+calls the address in r11 instead (--c-abi indirect calls, c_abi.w).
 */
 void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int arg_base):
 	emit_x64_c_frame_begin()
@@ -205,9 +211,12 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 
 	emit(1, c"\xb8")               /* mov eax,imm32: xmm registers used */
 	emit_int32(ffi_fp_used)
-	emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
-	static_note_address(codepos)
-	emit_int32(got_vaddr - code_offset - codepos - 4)
+	if (got_vaddr == 0):
+		emit(3, c"\x41\xff\xd3")   /* call r11: a function-pointer value (c_abi.w) */
+	else:
+		emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
+		static_note_address(codepos)
+		emit_int32(got_vaddr - code_offset - codepos - 4)
 
 	emit_x64_c_frame_end(ret_class)
 
@@ -449,6 +458,7 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 	else if (word_size == 8): emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
 	else: emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 8)
 	emit(1, c"\xc3")           /* ret */
+	if (stack_usage_mode): stack_usage_shim(n)
 
 
 # The same conversion emitted inline at a call site: the n arguments were
@@ -459,6 +469,8 @@ void emit_ffi_call_inline_body(int n, char* classes, int ret_class, int got_vadd
 
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 	emitted_call_count = emitted_call_count + 1
+	# the inline C frame: saved frame pointer, alignment, stack arguments
+	if (stack_usage_mode): stack_usage_extra(3 + n)
 	# A parked expression operand (A3) never survives a call.
 	if (ers_count != 0): ers_spill_all()
 	# Loop-owned caller-saved registers (R3, compiler/regalloc_scan.w)
