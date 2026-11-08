@@ -66,8 +66,12 @@ js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index):
 		js_value* item = js_runtime_string(rt, text)
 		js_text_free(text)
 		return item
-	js_runtime_fail(rt, 6, c"iteration requires array or string")
-	return 0
+	# Other values use the iterator protocol; *index holds the open iterator.
+	if (*index == 0):
+		js_value* iterator = js_runtime_iterator_open(rt, value)
+		if (iterator == 0): return 0
+		*index = cast(int, iterator)
+	return js_runtime_iterator_step(rt, cast(js_value*, *index))
 
 void js_runtime_array_append(js_runtime* rt, js_value* array, js_value* value):
 	char* index = itoa(array.array_length)
@@ -87,7 +91,8 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 			binding.initialized = 1
 		return
 	if (js_kind(pattern, c"default_pattern")):
-		if (value.kind == 0): value = js_runtime_eval_node(rt, pattern.children[1], env)
+		if (value.kind == 0 && js_kind(pattern.children[0], c"identifier")): value = js_runtime_named_eval(rt, pattern.children[1], env, pattern.children[0].text)
+		else if (value.kind == 0): value = js_runtime_eval_node(rt, pattern.children[1], env)
 		if (rt.completion.status == 0): js_runtime_pattern_bind(rt, pattern.children[0], value, env)
 		return
 	if (js_kind(pattern, c"rest")):

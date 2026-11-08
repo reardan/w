@@ -26,10 +26,19 @@ Every backend also implements the clipboard seam
 	void  gfx_clipboard_request(gfx_window* win)          # start a paste
 	char* gfx_clipboard_take(gfx_window* win)             # 0 until it arrives
 
-X11 serves the CLIPBOARD selection (with INCR for large text), win64
-uses CF_UNICODETEXT, arm64_darwin NSPasteboard, and wasm the browser's
-asynchronous navigator.clipboard; the x86 stub and a null window keep
-an in-process clipboard. take returns malloc'd UTF-8 with LF line ends
+	int   gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length)
+	int   gfx_primary_set(gfx_window* win, char* text)   # the selection
+	void  gfx_primary_request(gfx_window* win)           # middle-click paste
+	char* gfx_primary_take(gfx_window* win)
+
+X11 serves the CLIPBOARD selection (with INCR for large text, and
+text/html and image/png beside the text after a rich copy) and PRIMARY,
+win64 uses CF_UNICODETEXT (plus "HTML Format" and "PNG"), arm64_darwin
+NSPasteboard (plus public.html and public.png), and wasm the browser's
+asynchronous navigator.clipboard (ClipboardItem for rich copies); the
+x86 stub and a null window keep an in-process clipboard, and every
+backend but X11 an in-process PRIMARY. MOUSE_DOWN events carry their
+click count (graphics.event gfx_event_clicks) from every backend. take returns malloc'd UTF-8 with LF line ends
 once, "" for a refused or empty read. graphics.ui widgets reach it
 through ui_begin_window, which pumps it every frame.
 

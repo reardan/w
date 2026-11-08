@@ -27,10 +27,12 @@ js_value* js_runtime_error_prototype(js_runtime* rt, char* name):
 	return 0
 
 
-# Only ordinary (non-arrow) function code is constructible here; methods
-# lowered as function expressions remain constructible as in the facade.
+# Only ordinary (non-arrow) function code and class constructors are
+# constructible here; object-literal methods lowered as function expressions
+# remain constructible as in the facade, class methods do not.
 int js_runtime_constructible(js_value* callable):
-	if (callable.kind != 7 || callable.code == 0): return 0
+	if (callable.kind != 7 || callable.code == 0 || callable.class_kind == 3): return 0
+	if (callable.class_kind != 0): return 1
 	return js_kind(callable.code, c"function") || js_kind(callable.code, c"function_expression")
 
 
@@ -54,26 +56,14 @@ js_value* js_runtime_prototype_of(js_runtime* rt, js_value* callable):
 	return prototype
 
 
-js_value* js_runtime_construct_ordinary(js_runtime* rt, js_value* callable, list[js_value*] arguments):
-	js_value* prototype = js_runtime_prototype_of(rt, callable)
-	if (rt.completion.status != 0): return rt.undefined_value
-	js_value* object = js_runtime_alloc(rt, 5)
-	if (object == rt.undefined_value): return object
-	if (prototype.kind >= 5 && prototype.kind != 8): object.prototype = prototype
-	js_value* result = js_runtime_call_receiver(rt, callable, object, arguments)
-	if (rt.completion.status != 0): return rt.undefined_value
-	if (result.kind >= 5 && result.kind != 8 && result.kind != 10): return result
-	return object
-
-
 js_value* js_runtime_instanceof(js_runtime* rt, js_value* value, js_value* target):
 	if (target.kind != 7 && target.kind != 9):
 		js_runtime_fail(rt, 2, c"instanceof target is not callable")
 		return rt.undefined_value
-	if (value.kind < 5 || value.kind == 8 || value.kind == 10): return js_runtime_boolean(rt, 0)
+	if (js_runtime_object(value) == 0): return js_runtime_boolean(rt, 0)
 	js_value* prototype = js_runtime_prototype_of(rt, target)
 	if (rt.completion.status != 0): return rt.undefined_value
-	if (prototype.kind < 5 || prototype.kind == 8 || prototype.kind == 10):
+	if (js_runtime_object(prototype) == 0):
 		js_runtime_fail(rt, 2, c"instanceof target has no prototype object")
 		return rt.undefined_value
 	js_value* current = value.prototype
@@ -153,7 +143,7 @@ js_value* js_runtime_error_construct(void* runtime, void* context, js_value* rec
 
 js_value* js_runtime_error_text(void* runtime, void* context, js_value* receiver, list[js_value*] arguments):
 	js_runtime* rt = cast(js_runtime*, runtime)
-	if (receiver.kind < 5 || receiver.kind == 8 || receiver.kind == 10):
+	if (js_runtime_object(receiver) == 0):
 		js_runtime_fail(rt, 2, c"Error.prototype.toString receiver is not an object")
 		return rt.undefined_value
 	js_text* key = js_runtime_key(c"name")
@@ -188,17 +178,29 @@ js_value* js_runtime_error_text(void* runtime, void* context, js_value* receiver
 	return value
 
 
-# String(value) for primitives; object conversion stays outside the subset.
+# String(value) and new String(value) (sec-string-constructor-string-value):
+# a symbol argument of a call gives its descriptive string; construction
+# creates a String wrapper whose [[StringData]] is owned in text.
 js_value* js_runtime_string_function(void* runtime, void* context, js_value* receiver, list[js_value*] arguments):
 	js_runtime* rt = cast(js_runtime*, runtime)
-	if (arguments.length == 0):
-		js_text* empty = js_text_new()
-		js_value* value = js_runtime_string(rt, empty)
-		js_text_free(empty)
-		return value
-	js_text* text = js_runtime_primitive_text(rt, arguments[0])
+	int constructing = rt.new_target != 0 && rt.new_target == rt.string_constructor
+	rt.new_target = 0
+	js_text* text = 0
+	if (arguments.length == 0): text = js_text_new()
+	else if (constructing == 0 && arguments[0].kind == 11): text = js_symbol_descriptive(arguments[0])
+	else: text = js_runtime_to_text(rt, arguments[0])
 	if (text == 0): return rt.undefined_value
-	js_value* value = js_runtime_string(rt, text)
+	js_value* value = rt.undefined_value
+	if (constructing):
+		value = js_runtime_alloc(rt, 5)
+		if (value != rt.undefined_value):
+			value.prototype = rt.string_prototype
+			value.builtin_state = 1
+			value.text = js_text_clone(text)
+			js_text* key = js_runtime_key(c"length")
+			js_runtime_define_data(rt, value, key, js_runtime_number(rt, cast(float64, text.units.length)), 0, 0, 0)
+			js_text_free(key)
+	else: value = js_runtime_string(rt, text)
 	js_text_free(text)
 	return value
 
@@ -238,4 +240,14 @@ void js_runtime_install_constructors(js_runtime* rt):
 			js_runtime_define_data(rt, prototype, key, js_runtime_host_callable(rt, 0, js_runtime_error_text), 1, 0, 1)
 			js_text_free(key)
 		js_runtime_set(rt, rt.global, name, constructor)
-	js_runtime_set(rt, rt.global, c"String", js_runtime_host_callable(rt, 0, js_runtime_string_function))
+	js_value* string_function = js_runtime_host_callable(rt, 0, js_runtime_string_function)
+	if (string_function == rt.undefined_value): return
+	string_function.host_construct = 1
+	rt.string_constructor = string_function
+	js_text* key = js_runtime_key(c"prototype")
+	js_runtime_define_data(rt, string_function, key, rt.string_prototype, 0, 0, 0)
+	js_text_free(key)
+	key = js_runtime_key(c"constructor")
+	js_runtime_define_data(rt, rt.string_prototype, key, string_function, 1, 0, 1)
+	js_text_free(key)
+	js_runtime_set(rt, rt.global, c"String", string_function)

@@ -15,11 +15,21 @@ json_value* tc_execute(char* source, char* mode = 0, int budget = 10000):
 	ht_write(path, source, strlen(source))
 	return t262_execute(c"bin/test262_runtime_runner", path, mode, 5000, budget)
 
+# The runner is deterministic, so repeated full-manifest runs reuse each
+# variant's first result (keyed by profile, mode and source text).
+map[char*, json_value*] tc_cache
+
 json_value* tc_override(char* binary, char* path, char* mode, int timeout, int budget):
 	if (tc_mutation == 1 && !tc_changed):
 		tc_changed = 1
 		return json_parse(c"{\"phase\":\"lower\",\"outcome\":\"unsupported\"}")
-	json_value* actual = t262_execute(binary, path, mode, timeout, budget)
+	if (tc_cache == 0): tc_cache = new map[char*, json_value*]
+	char* key = strjoin(strjoin(strjoin(itoa(t262_upstream), mode), c"\n"), file_read_text(path))
+	json_value* actual = 0
+	if (key in tc_cache): actual = json_clone(tc_cache[key])
+	else:
+		actual = t262_execute(binary, path, mode, timeout, budget)
+		tc_cache[key] = json_clone(actual)
 	if (tc_mutation == 2 && !tc_changed && jc_is(jc_get(actual, c"outcome"), c"unsupported")):
 		tc_changed = 1
 		return json_parse(c"{\"phase\":\"execute\",\"outcome\":\"normal\",\"steps\":1,\"assertions\":1}")
@@ -34,10 +44,10 @@ void tc_upstream():
 	t262_upstream = 1
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":579,\"FAIL\":0,\"UNSUPPORTED\":32,\"ERROR\":0}")), c"upstream-harness counts changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3066,\"FAIL\":0,\"UNSUPPORTED\":484,\"ERROR\":0}")), c"upstream-harness counts changed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"94.76%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 124 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	tc_eq(c"86.36%", ht_text(report, c"pass_rate"))
+	ht_require(ht_number(report, c"execution_passes") == 1993 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -57,20 +67,20 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":566,\"FAIL\":0,\"UNSUPPORTED\":45,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 111 && ht_number(report, c"assertions") == 515 && ht_number(report, c"variants") == 611 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3301,\"FAIL\":0,\"UNSUPPORTED\":249,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 2228 && ht_number(report, c"assertions") == 9368 && ht_number(report, c"variants") == 3550 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 565
-		int unsupported = 46
+		int passes = 3300
+		int unsupported = 250
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 567
-			unsupported = 44
+			passes = 3302
+			unsupported = 248
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")
@@ -137,6 +147,21 @@ int main():
 		modes = t262_variants(tc_meta(strjoin(strjoin(c"flags: [", flags[i]), c"]")))
 		ht_require(modes.length == 1 && strcmp(modes[0], expected[i]) == 0, c"flag variants changed")
 	for char* fields in ht_split(c"flags: [module]|flags: [async]|flags: [unknownFlag]|includes:\n  - compareArray.js|features: [BigInt]", '|'): ht_require(t262_unsupported(tc_meta(fields)) != 0, c"unsupported metadata accepted")
+	# Native regExpUtils.js helpers (#901): every symbol must match; the
+	# upstream profile needs the include pinned, and it is not.
+	json_value* utils = tc_meta(c"includes: [regExpUtils.js]")
+	ht_require(t262_unsupported(utils) == 0, c"native regExpUtils.js helpers rejected")
+	t262_upstream = 1
+	ht_require(t262_unsupported(utils) != 0, c"unpinned regExpUtils.js accepted upstream")
+	t262_upstream = 0
+	json_value* escapes = tc_execute(c"testPropertyEscapes(/^\\p{Lu}+$/u, buildString({loneCodePoints: [0x41], ranges: [[0x42, 0x5A], [0x10400, 0x10427]]}), 'Lu'); testPropertyEscapes(/^\\P{Lu}+$/u, buildString({loneCodePoints: [], ranges: [[0x61, 0x7A]]}), 'not Lu');")
+	tc_eq(c"normal", ht_text(escapes, c"outcome"))
+	ht_require(ht_number(escapes, c"assertions") == 2, c"property-escape helper did not assert")
+	for char* source in ht_split(c"testPropertyEscapes(/^\\p{Lu}+$/u, buildString({loneCodePoints: [0x41, 0x61], ranges: []}), 'Lu');|testPropertyEscapes(/^\\p{Lu}+$/u, 'A', 'Lu');|buildString({loneCodePoints: [-1], ranges: []});|buildString({loneCodePoints: [], ranges: [[0, 0x110000]]});|testPropertyEscapes(/a/g, buildString({loneCodePoints: [0x61], ranges: []}), 'a');", '|'):
+		json_value* failed = tc_execute(source)
+		tc_eq(c"throw", ht_text(failed, c"outcome"))
+		tc_eq(c"Test262Error", ht_text(failed, c"error_type"))
+	tc_eq(c"UNSUPPORTED", t262_classify(json_object(), tc_execute(c"matchValidator([], 0, '');")))
 	# Negative module tests run through parsing and static module linking (#840).
 	char* module_resolution = c"flags: [module]\nnegative:\n  phase: resolution\n  type: SyntaxError"
 	for char* fields in ht_split(strjoin(c"flags: [module]\nnegative:\n  phase: parse\n  type: SyntaxError|", module_resolution), '|'): ht_require(t262_unsupported(tc_meta(fields)) == 0, c"negative module metadata rejected")

@@ -339,7 +339,7 @@ campaign's null-`retained_bindings` SIGSEGV became
 
 ### Library targets
 
-Issue #842 added library- and API-level targets next to the compiler.
+Issues #842 and #909 added library- and API-level targets next to the compiler.
 Each is a small harness under `tools/fuzz/` (`harness_<name>.w`, with
 `tools/fuzz/harness.w`'s shared input reading) that reads one input
 from the file named by its argument (or stdin), feeds it to one
@@ -355,12 +355,25 @@ harness checks failed, which wfuzz counts as a crash):
 | `harness_font.w` | `lib/ttf.w` (cmap, kerning, glyf, CFF, rasterizer, subsetting), `lib/ttf_hint.w`, `lib/ttf_shape.w` + `lib/ttf_layout.w`, `graphics/ui/font_color.w` | `--bytes` `.ttf` | — |
 | `harness_c.w` | `libs/extras/c_preprocessor` + the generated C parser | text `.h` | — |
 | `harness_js.w` | `libs/extras/javascript` parser and validators, script and module | text `.js` | parse → lower → print → parse lowers to an equal tree |
+| `harness_hpack.w` | `libs/standard/web/hpack.w` decoding over a shared dynamic table, Huffman, integers | `--bytes` `.hpack` | field and table caps hold; decoded fields re-encode and decode equal; Huffman decode → encode gives the input back |
+| `harness_http2.w` | `libs/standard/web/http2.w` frames through `h2_pump` over a socketpair, as server (preface first) or client | `--bytes` `.h2` | windows, buffers, stream counts and header-block size stay in range; delivered requests are valid |
+| `harness_websocket.w` | `libs/standard/web/websocket.w` frame codec and masking, `ws_recv` sessions (permessage-deflate when RSV1 opens the input), extension negotiation | `--bytes` `.ws` | decoded frames re-encode to their exact bytes; messages are capped and valid UTF-8 when text; our server's negotiation response satisfies a default client |
+| `harness_png.w` | `graphics/image/png.w` as given, with CRCs repaired, and on synthesized scanline data | `--bytes` `.png` | images respect the limits and re-encode to the same pixels; a narrower limit fails with `IMAGE_LIMIT` |
+| `harness_jpeg.w` | `graphics/image/jpeg.w`, the input and every prefix of short inputs | `--bytes` `.jpg` | images respect the limits, alpha is 255, decoding is deterministic; a narrower limit fails with `IMAGE_LIMIT` |
+| `harness_protobuf.w` | `libs/extras/protobuf` decoding with a compiler-emitted descriptor (every 32-bit kind, recursive), a hand-written 64-bit one and an empty one; `varint.w` | `--bytes` `.pb` | decode → encode is a fixpoint after one round; the empty descriptor agrees with `wire.w`'s skip walk; failed decodes leave no pointers |
 
 Each harness owns two targets. `wfuzz_<name>_smoke` (in `tests`) builds
 the `--coverage` harness and runs wfuzz with `--cases 0
 --fail-on-findings`: every seed and every checked-in reproducer runs
-once, and any crash or hang fails it. `wfuzz_<name>` (in no umbrella)
-fuzzes for `$WFUZZ_SECONDS` into `bin/wfuzz_<name>/`. `wfuzz_c_import`
+once, and any crash or hang fails it. `wfuzz_<name>` fuzzes for
+`$WFUZZ_SECONDS` into `bin/wfuzz_<name>/` and carries
+`tag=fuzz_campaign`, which puts it in the `fuzz_campaign` umbrella
+(outside `tests`). The nightly workflow's libraries job reads that
+umbrella's members from the generated manifest and runs them one after
+another, splitting one shared budget (40 minutes by default) evenly, so
+a new harness joins the nightly campaign through its tag alone and the
+workflow never lists targets. `./wbuild fuzz_campaign` runs them all
+locally (in parallel, each for the full `$WFUZZ_SECONDS`). `wfuzz_c_import`
 covers the other half of `c_import`, the lowering into the compiler's
 type and symbol tables: it runs the `--coverage` compiler's `check` on
 `tools/fuzz/c_import_driver.wfuzz` (copied to
@@ -368,10 +381,14 @@ type and symbol tables: it runs the `--coverage` compiler's `check` on
 
 Seeds come from existing fixtures wherever there are some
 (`tests/wexec/*.json`, the subset fonts under `tests/data/fonts`, the
-`tests/*.h` c_import fixtures, `tests/javascript/conformance`); the
-formats with none (HTTP messages, DER converted from
-`libs/standard/net/x509_fixtures`, zlib/gzip/raw DEFLATE streams) have
-a few small ones under `tools/fuzz/seeds/`. `tools/fuzz/dicts/` holds
+`tests/*.h` c_import fixtures, `tests/javascript/conformance`, the
+color-glyph PNGs under `tests/data/color_glyphs`); the formats with
+none checked in as files (HTTP messages, DER converted from
+`libs/standard/net/x509_fixtures`, zlib/gzip/raw DEFLATE streams, the
+RFC 7541 Appendix C vectors from `hpack_test.w`, the JPEGs embedded in
+`tests/images/jpeg_fixtures.w`, and hand-built HTTP/2 frame sequences,
+WebSocket frames, PNGs and protobuf messages mirroring their unit
+tests' cases) have a few small ones under `tools/fuzz/seeds/`. `tools/fuzz/dicts/` holds
 the `--dict` token lists. Binary formats use `--bytes`. Every crash or
 hang a campaign finds is fixed in the library and its input checked in
 under `tools/fuzz/regressions/<name>/`, which the smoke target runs as

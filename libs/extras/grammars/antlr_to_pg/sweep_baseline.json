@@ -1298,8 +1298,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -1335,6 +1334,9 @@
           "apex/examples/ExampleSafeDereference.cls"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -2166,8 +2168,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -2245,6 +2246,9 @@
           "awk/examples/awk-libs/strings.awk"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -3383,8 +3387,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -3468,6 +3471,9 @@
           "bnf/examples/ics/digits.bnf"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -3513,8 +3519,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -3600,6 +3605,9 @@
           "c/examples/FuncCallAsFuncArgument.c"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -6258,8 +6266,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -6331,6 +6338,9 @@
           "dart2/examples/string_with_backslashes.dart"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -6369,16 +6379,14 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "stateful_strict": [],
         "exact_permissive": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -6432,6 +6440,10 @@
           "databank/examples/example5.db"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "stateful_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict.",
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -9256,8 +9268,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -9335,6 +9346,9 @@
           "golang/examples/constants.go"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -13623,8 +13637,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -13654,6 +13667,9 @@
           "lpc/examples/example2.c"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -13847,16 +13863,14 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "default_strict": [],
         "stateful_permissive": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "stateful_strict": [],
         "exact_permissive": [
@@ -13954,6 +13968,10 @@
           "lua/examples/3885-example1.lua"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "default_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict.",
+        "stateful_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -17413,8 +17431,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -17450,6 +17467,9 @@
           "pegen/examples/python-11.gram"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -20632,8 +20652,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -20711,6 +20730,9 @@
           "rex/examples/comments-options-unicode.ebnf"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -20760,8 +20782,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -20797,6 +20818,9 @@
           "rexx/examples/test_concatenation.rex"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -21665,7 +21689,14 @@
           {
             "path": "rust/examples/long/intellijrust_test_allinone.rs",
             "sha256": "f5fa3d749fbb2a6b8fc43fba2bdfd8f0ca554f4d5d69e42a9941757e2ea6e70c",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference",
+                "prediction_budget"
+              ],
+              "detail": "Ignored lexer predicates: FloatDotPossible() lets `0.foo()` (line 757) and `2...4` (line 800) lex `0.`/`2.` as floats, and SOF() lets SHEBANG swallow later `#![...]` lines. With those spellings neutralized the parse still exceeds the one-million-step prediction budget (#914); with a 50M budget its tree equals ANTLR 4.13.2's."
+            }
           },
           {
             "path": "rust/examples/long/issue_1985_raw_string.rs",
@@ -21675,22 +21706,46 @@
           {
             "path": "rust/examples/long/leaf_vmessstream.rs",
             "sha256": "87ee624caf7c2e5460128671dd22506243ce5f440178398ba8db4bef1bc52481",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "FloatDotPossible() ignored: `0..piece3.len()` lexes `0.` as a float, so W builds a method call where ANTLR 4.13.2 builds a range expression; same verdict, otherwise the identical tree."
+            }
           },
           {
             "path": "rust/examples/long/literal.rs",
             "sha256": "b674f4b8b13494dadf5dcf5c9d21ac28f90c50ce6fa844c838333156c1cdac8f",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "SOF() ignored: `#![allow(unused)]` after the leading newline lexes as a hidden SHEBANG, so W's tree lacks ANTLR 4.13.2's innerAttribute; same verdict, otherwise the identical tree."
+            }
           },
           {
             "path": "rust/examples/long/rustls_quic.rs",
             "sha256": "abd9f89deb5c5a737edb18430fb292731eee6d10f8290a72e36afbd22497e8ca",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "FloatDotPossible()/FloatLiteralPossible() ignored: `out[4..]` and `self.0.iter()` lex `4.`/`0.` as floats (line 204). With them spelled `4 ..`/`0 .` the tree equals ANTLR 4.13.2's."
+            }
           },
           {
             "path": "rust/examples/long/ssrust_config.rs",
             "sha256": "6ac37d523065ebd85207c361de93387bc5f739a5b35bafea41a768b18e508e9f",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "FloatDotPossible() ignored: `sport[1..]` lexes `1.` as a float (line 501). With it spelled `1 ..` the tree equals ANTLR 4.13.2's."
+            }
           },
           {
             "path": "rust/examples/long/ssrust_ssserver.rs",
@@ -23446,13 +23501,15 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ],
         "exact_strict": [
           "translate",
           "generate",
           "compile",
-          "compiler_strict"
+          "compiler_strict",
+          "examples"
         ]
       },
       "runtime": {
@@ -23462,52 +23519,122 @@
           {
             "path": "spl/examples/by.txt",
             "sha256": "107ac1792ba982059d530d9766055df19cbeaa8a799575498079de95e46f5576",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/complex_query_1.txt",
             "sha256": "571c2da686b6e296f49bc9ad370a2495d15c40348b2b60848f3b053c62bd91c4",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/complex_query_2.txt",
             "sha256": "d677ba9405393680002ba7bf074cd1df997653cb50b9386e780b274be65a1a0c",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/in.txt",
             "sha256": "b73e16845aa74c89a4f735bb39b82e89d99a708d568134dcae34803e93505fec",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/join.txt",
             "sha256": "8b7c8f65793c663913c544f43f88910375a77dc2b6024ff6528469757062a5c7",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/like_1.txt",
             "sha256": "f98b72bbee432d9036668eed4cf39115af54d7eeee67370427ffeefedf1c6107",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/like_2.txt",
             "sha256": "dbf7128cf26bcd6f7acc4bb27ad2e3e97df8abfcf6b43ee054dda2145b618bb1",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/not.txt",
             "sha256": "58c692c0d3c9aa245a8a5c270004caac3243943ebdbffca023244932f6419174",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/or.txt",
             "sha256": "5541e4f5fbe6859f9f399968eb33d8d4fbf7abe9e64152bd91b15a40e542c5b6",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           },
           {
             "path": "spl/examples/outputnew.txt",
             "sha256": "68ccb47aaa69a0b53e2e75b955213cbb7727b7628fcc6c88f0f04eca95765568",
-            "expect": "accept"
+            "expect": "reject",
+            "corpus_defect": "ANTLR 4.13.2 rejects this example from the pinned entry rule `expression` (pom.xml): a search pipeline is not one expression. The corpus pins no .errors file; W rejects it identically (live tree differential).",
+            "triage": {
+              "classes": [
+                "corpus_defect"
+              ],
+              "detail": "ANTLR 4.13.2 itself rejects the example from the pinned entry rule."
+            }
           }
         ]
       },
@@ -23516,8 +23643,30 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "spl/examples/by.txt",
+          "spl/examples/complex_query_1.txt",
+          "spl/examples/complex_query_2.txt",
+          "spl/examples/in.txt",
+          "spl/examples/join.txt",
+          "spl/examples/like_1.txt",
+          "spl/examples/like_2.txt",
+          "spl/examples/not.txt",
+          "spl/examples/or.txt",
+          "spl/examples/outputnew.txt"
+        ],
+        "exact_strict": [
+          "spl/examples/by.txt",
+          "spl/examples/complex_query_1.txt",
+          "spl/examples/complex_query_2.txt",
+          "spl/examples/in.txt",
+          "spl/examples/join.txt",
+          "spl/examples/like_1.txt",
+          "spl/examples/like_2.txt",
+          "spl/examples/not.txt",
+          "spl/examples/or.txt",
+          "spl/examples/outputnew.txt"
+        ]
       }
     },
     {
@@ -27032,8 +27181,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -27057,6 +27205,9 @@
           "v/examples/helloworld.v"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -27309,8 +27460,7 @@
           "translate",
           "generate",
           "compile",
-          "compiler_strict",
-          "examples"
+          "compiler_strict"
         ],
         "exact_strict": []
       },
@@ -27388,6 +27538,9 @@
           "velocity/examples/hello_world.vm"
         ],
         "exact_strict": []
+      },
+      "reclassified": {
+        "exact_permissive/examples": "Translation ignores host predicates, so permissive example verdicts are reported as unverified (predicate ignored) instead of pass (#915); expected_examples still gates each verdict."
       }
     },
     {
@@ -28794,7 +28947,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -28804,52 +28962,112 @@
           {
             "path": "z/examples/apD.utf8",
             "sha256": "c9d09ee2929c31790e422c9b88df9e4e74d89346b839c5f8f7c754cb61050c59",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/as.utf8",
             "sha256": "660eaddb4f7c80d0b5ac3ca1c4c197b9671b9698cbfcaa75b8ca81dda4c54778",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/birthdaybook.utf8",
             "sha256": "678bd2eb487dc79373148fdbb4ff86cbccff4e2f2a3f2632f2b8bcd736474d00",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/birthdaybook_simple.utf8",
             "sha256": "76f596edd1810d9a92f73e7d8abdf591a17053a5b7385fe905fba568ce543f03",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/birthdaybook_unfolded.utf8",
             "sha256": "d3719036e3917e1e2c93750ece7d0acf9b535e0a0057587b037c9a97010ded2e",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/buffer.utf8",
             "sha256": "12aaf7fa303bc513839aa2dd9d69a3dbab6e9cb89f7cc270f5e5030c65c3d2e1",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/ch3.utf8",
             "sha256": "7c8e053e9cddb51f2e1f7fe49d7ec32bb485ace5026cbaeaf906c9ebacb87ea5",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/ch4.utf8",
             "sha256": "0b362f73243bed93b2cca9ff16bbdb97b6bfd3dae120059c46e879a1fb3cdea9",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/ch6.utf8",
             "sha256": "4f5b1acc652adee8cec510fb4ea70843ab601bc7fbd4f9c8dd4641a06415ac6b",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           },
           {
             "path": "z/examples/ch7.utf8",
             "sha256": "5cefb10f49055831ded731772460638099ac2ff3ada8485ec48678db877ffc0b",
-            "expect": "accept"
+            "expect": "accept",
+            "triage": {
+              "classes": [
+                "lexer_difference"
+              ],
+              "detail": "shouldNL() ignored: W keeps NL tokens after operators such as `|` that ANTLR 4.13.2's lexer member predicate suppresses. With newline tokens removed both trees are identical, including the lowered predicated expression rule (#915)."
+            }
           }
         ]
       },
@@ -28858,7 +29076,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "z/examples/apD.utf8",
+          "z/examples/as.utf8",
+          "z/examples/birthdaybook.utf8",
+          "z/examples/birthdaybook_simple.utf8",
+          "z/examples/birthdaybook_unfolded.utf8",
+          "z/examples/buffer.utf8",
+          "z/examples/ch3.utf8",
+          "z/examples/ch4.utf8",
+          "z/examples/ch6.utf8",
+          "z/examples/ch7.utf8"
+        ],
         "exact_strict": []
       }
     },

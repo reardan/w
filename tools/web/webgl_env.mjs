@@ -26,9 +26,11 @@
 //             textInput(active, multiline, x, y, width, height, focusId),
 //             pointerMode(mode), pixelRatio() -> number,
 //               (optional mobile input and logical-pixel drawing support),
-//             clipboardWrite(text), clipboardRead() -> string | Promise
+//             clipboardWrite(text, rich), clipboardRead() -> string | Promise
 //               (optional: the clipboard; without them the env keeps an
-//               in-memory clipboard, which is what headless runs get),
+//               in-memory clipboard, which is what headless runs get.
+//               rich, when the copy offered more than text, is
+//               { html: string | null, png: Uint8Array | null }),
 //             nextEvent() -> { kind, code, x, y, mods } | null
 //               (optional: the input event queue; kind numbers mirror
 //               graphics/event.w's gfx_event_kind, mods its gfx_mod
@@ -44,7 +46,7 @@ const GL_STR_SCRATCH_END = 4096;
 export function makeEnv({ memory, gl, host, log = console.error }) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  const clipboard = { memo: '', read: null };
+  const clipboard = { memo: '', rich: null, read: null };
 
   const bytes = () => new Uint8Array(memory().buffer);
   const view = () => new DataView(memory().buffer);
@@ -270,6 +272,16 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       const text = decoder.decode(bytes().slice(ptr, ptr + length));
       if (host.clipboardWrite) host.clipboardWrite(text);
       else clipboard.memo = text;
+    },
+    gfx_host_clipboard_write_rich: (ptr, length, htmlPtr, htmlLength, pngPtr, pngLength) => {
+      const b = bytes();
+      const text = decoder.decode(b.slice(ptr, ptr + length));
+      const rich = {
+        html: htmlLength > 0 ? decoder.decode(b.slice(htmlPtr, htmlPtr + htmlLength)) : null,
+        png: pngLength > 0 ? b.slice(pngPtr, pngPtr + pngLength) : null,
+      };
+      if (host.clipboardWrite) host.clipboardWrite(text, rich);
+      else { clipboard.memo = text; clipboard.rich = rich; }
     },
     gfx_host_clipboard_read: () => {
       const read = { done: false, data: new Uint8Array(0) };

@@ -126,6 +126,11 @@ void js_validate_for_header(pg_ast_node* node, js_restriction_context* context, 
 		if (context.async_function == 0 || operator == 0 || strcmp(operator.first_token.text, c"of") != 0):
 			js_validation_error(diagnostics, node, c"for await requires async function and of clause")
 	pg_ast_node* binding = js_cst_child(header, c"for_binding")
+	# Annex B.3.6: only sloppy `for (var name = init in o)` takes an initializer.
+	if (binding != 0 && js_cst_child(binding, c"initializer") != 0):
+		int simple = js_cst_unwrap(js_cst_child(binding, c"binding_pattern")).token != 0
+		if (context.strict || awaiting || simple == 0 || strcmp(binding.first_token.text, c"var") != 0 || operator == 0 || strcmp(operator.first_token.text, c"in") != 0):
+			js_validation_error(diagnostics, binding, c"for-in/of head initializer requires a sloppy var name and in")
 	# for-of iterates an AssignmentExpression, not a comma Expression.
 	if (operator != 0 && strcmp(operator.first_token.text, c"of") == 0 && header.children.length > 2 && header.children[2].children.length > 1):
 		js_validation_error(diagnostics, header.children[2], c"for-of iterable must be an assignment expression")
@@ -270,7 +275,10 @@ void js_restriction_walk(pg_ast_node* node, js_restriction_context* context, pg_
 		if (js_cst_is(op, c"KW_DELETE") && here.strict):
 			pg_ast_node* target = js_restriction_unwrap_target(node.children[1])
 			if (target.token != 0 && js_simple_target(target)): js_validation_error(diagnostics, node, c"delete of unqualified identifier in strict code")
-	for pg_ast_node* child in node.children: js_restriction_walk(child, &here, diagnostics)
+	for pg_ast_node* child in node.children:
+		# A method's computed key evaluates in the enclosing context.
+		if (js_cst_is(node, c"method") && js_cst_is(child, c"property_name")): js_restriction_walk(child, context, diagnostics)
+		else: js_restriction_walk(child, &here, diagnostics)
 
 
 void js_validate_restrictions(pg_parse_result* result, int module):

@@ -101,6 +101,68 @@ struct gfx_event:
 	int32 mods
 
 
+# Presses in a row. A MOUSE_DOWN carries its click count (1 single, 2
+# double, 3 triple, up to 15) in mods bits 8..11, above the gfx_mod
+# keys: the backend counts, because the platform knows its own
+# double-click time (Win32 GetDoubleClickTime, Cocoa clickCount) and the
+# UI layer reads no clock. 0 there, from a backend or test that does not
+# count, reads as a single click.
+const int gfx_mod_keys = 255
+const int gfx_clicks_shift = 8
+
+
+int gfx_event_clicks(int mods):
+	int clicks = (mods >> gfx_clicks_shift) & 15
+	if (clicks == 0): return 1
+	return clicks
+
+
+int gfx_mods_with_clicks(int mods, int clicks):
+	if (clicks < 1): clicks = 1
+	if (clicks > 15): clicks = 15
+	return (mods & gfx_mod_keys) | (clicks << gfx_clicks_shift)
+
+
+# Multi-click detection for backends whose events carry only a
+# timestamp (X11 server milliseconds, Win32 GetMessageTime): a press of
+# the same button within interval_ms of the previous one, and within
+# slop pixels of it, continues the run.
+struct gfx_click_tracker:
+	int time
+	int32 x
+	int32 y
+	int32 button
+	int32 count
+
+
+const int gfx_click_interval_ms = 500
+const int gfx_click_slop = 4
+
+
+void gfx_click_tracker_init(gfx_click_tracker* t):
+	t.time = 0
+	t.x = 0
+	t.y = 0
+	t.button = 0
+	t.count = 0
+
+
+# Record a press at time_ms and return its click count.
+int gfx_click_tracker_press(gfx_click_tracker* t, int button, int time_ms, int x, int y, int interval_ms, int slop):
+	int dt = time_ms - t.time
+	int dx = x - t.x
+	int dy = y - t.y
+	if (dx < 0): dx = 0 - dx
+	if (dy < 0): dy = 0 - dy
+	if ((t.count > 0) && (button == t.button) && (dt >= 0) && (dt <= interval_ms) && (dx <= slop) && (dy <= slop)): t.count = t.count + 1
+	else: t.count = 1
+	t.time = time_ms
+	t.x = x
+	t.y = y
+	t.button = button
+	return t.count
+
+
 # Events the ring can hold minus one (tail == head means empty).
 const int gfx_event_ring_capacity = 64
 

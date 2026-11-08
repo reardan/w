@@ -269,6 +269,8 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 	for i in range(node.children.length):
 		pg_ast_node* child = node.children[i]
 		if (js_cst_is(node, c"function_decl") && js_cst_is(child, c"binding_identifier")): js_validate_node(child, &name_context, diagnostics)
+		# A method's computed key evaluates in the enclosing context.
+		else if (js_cst_is(node, c"method") && js_cst_is(child, c"property_name")): js_validate_node(child, context, diagnostics)
 		else: js_validate_node(child, &here, diagnostics)
 
 

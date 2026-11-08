@@ -51,6 +51,11 @@ def load_manifest():
                 raise ValueError(case["name"] + ": grammar hash mismatch for " + path)
         if [path for path in case["grammar_sha256"]] != case["grammars"]:
             raise ValueError(case["name"] + ": grammar hashes must list every grammar in order")
+        if sorted(case.get("host_support_sha256", {})) != sorted(case.get("host_support", [])):
+            raise ValueError(case["name"] + ": host support hashes must list every host support file")
+        for path, expected in case.get("host_support_sha256", {}).items():
+            if digest(ROOT / path) != expected:
+                raise ValueError(case["name"] + ": host support hash mismatch for " + path)
         ids = [item["id"] for item in case["inputs"]]
         if len(ids) != len(set(ids)):
             raise ValueError(case["name"] + ": duplicate input id")
@@ -98,7 +103,14 @@ def build_java(case, directory, jar, timeout):
         shutil.copyfile(ROOT / path, java / Path(path).name)
     for path in ORACLE_SOURCES:
         shutil.copyfile(path, java / path.name)
-    run(["java", "-jar", jar, "-Dlanguage=Java", "-o", java, *(java / Path(path).name for path in case["grammars"])],
+    for path in case.get("host_support", []):
+        shutil.copyfile(ROOT / path, java / Path(path).name)
+    # Host support may also use the directory's other grammars (z's operator
+    # pre-pass parser); they are generated for Java but never translated.
+    for path in case.get("host_grammars", []):
+        shutil.copyfile(ROOT / path, java / Path(path).name)
+    sources = [*case["grammars"], *case.get("host_grammars", [])]
+    run(["java", "-jar", jar, "-Dlanguage=Java", "-o", java, *(java / Path(path).name for path in sources)],
         directory / "antlr_generate.log", timeout, env=java_env())
     run(["javac", "-encoding", "UTF-8", "-cp", jar, "-d", java, *sorted(java.glob("*.java"))],
         directory / "java_compile.log", timeout, env=java_env())
@@ -148,6 +160,13 @@ def run_case(case, work, args, snapshots):
     return row
 
 
+def first_parser_rule(text):
+    """The sweep's default entry (`"entry": null`): the first parser rule."""
+    text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
+    text = re.sub(r"\{[^{}]*\}", "", text)
+    return re.search(r"^\s*([a-z]\w*)\s*(?:returns\b|locals\b|\[|:)", text, re.M)[1]
+
+
 def corpus_cases(corpus, names, max_examples):
     """Live-only cases from the pinned sweep manifest and its runtime examples."""
     baseline = json.loads((ROOT / "libs/extras/grammars/antlr_to_pg/sweep_baseline.json").read_text())
@@ -167,8 +186,14 @@ def corpus_cases(corpus, names, max_examples):
             if digest(path) != example["sha256"]:
                 raise ValueError(name + ": corpus example hash mismatch")
             inputs.append({"id": "%02d" % (index + 1), "path": example["path"], "text": path.read_bytes().decode("utf-8", "replace")})
+        # grammars-v4 keeps per-target host support (base classes the generated
+        # Java extends, predicate helpers) beside the grammar in Java/.
+        support = sorted(str(path) for path in (grammars[-1].parent / "Java").rglob("*.java"))
+        others = sorted(set(grammars[-1].parent.glob("*.g4")) - set(grammars)) if support else []
+        start = entry["runtime"]["entry"] or first_parser_rule(grammars[-1].read_text())
         cases.append({"name": name, "grammars": [str(path) for path in grammars], "java_name": java_name,
-                      "start": entry["runtime"]["entry"], "inputs": inputs})
+                      "start": start, "inputs": inputs, "host_support": support,
+                      "host_grammars": [str(path) for path in others]})
     return cases
 
 

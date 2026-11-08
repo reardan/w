@@ -1,0 +1,30 @@
+Unicode 12.1.0 UCD subset for JavaScript RegExp property escapes (reardan/w#901).
+Copyright 2019 Unicode, Inc. See libs/extras/javascript/UNICODE-LICENSE.txt.
+
+These files are byte-for-byte the Unicode 12.1.0 release files (emoji data 12.0,
+which Unicode 12.1 uses). Canonical sources:
+  https://www.unicode.org/Public/12.1.0/ucd/<file>  (extracted/ for
+  DerivedGeneralCategory.txt and DerivedBinaryProperties.txt)
+  https://www.unicode.org/Public/emoji/12.1/emoji-data.txt
+They were fetched on 2026-11-08 from the Unicode Consortium's own mirror,
+https://github.com/unicode-org/unicodetools (branch main), paths
+unicodetools/data/ucd/12.1.0-Update/<file> and
+unicodetools/data/emoji/12.1/emoji-data.txt, because www.unicode.org was not
+reachable from the build container. DerivedCoreProperties.txt matches the
+SHA-256 that libs/extras/javascript/unicode_12_1.ranges recorded from
+www.unicode.org; each file's header names its 12.1.0 version and date.
+
+tools/javascript_regexp_property.py generates
+libs/extras/javascript/regexp_property.w from them (--check: staleness,
+--verify: exhaustive comparison with the compiled tables).
+
+SHA-256:
+  fecd8a1c49935d794c4c1012f4158aa536a13049a4c10d01aaf7b5f90f3b2cbc  DerivedBinaryProperties.txt
+  a6eb7a8671fb532fbd88c37fd7b20b5b2e7dbfc8b121f74c14abe2947db0da68  DerivedCoreProperties.txt
+  78f898b988049a5bea5039cea6ffe87a92596859ac660a6c438519b512fe2ee6  DerivedGeneralCategory.txt
+  92dcdda84142194a1596f22180fcdf8c0e7f86897f09cc9203c7dc636c549f5f  DerivedNormalizationProps.txt
+  d30d3ee430cf3527449d024954f053e419fa4aa2246eb59e5cd8d621af0c4b3f  PropList.txt
+  efce54f7c715a332c19b3d14c6a0eea30c6cde91caf6ff0d21c755be933736f4  PropertyValueAliases.txt
+  3746848c181b5dbc1e614dfac9b8a5e3568e6525c693ac14e692ac55dec57e91  ScriptExtensions.txt
+  e6313a8edfd24f36c7a006fbcf1d1b7245b5dd009c6dde80441f0da08b822c43  Scripts.txt
+  fbdd941538ba21d9b1aa9e6d37efd77296a825422e520174a9694dd3023c4e0f  emoji-data.txt
