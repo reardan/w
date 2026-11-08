@@ -99,6 +99,41 @@ int js_predicate_operator_word(pg_token_stream* stream, int index):
 # Flags (1 generator, 2 async, 4 function) for the function whose parameter
 # list opens at index. Without a following body, `name(` may be a call and
 # only heads that cannot be calls qualify.
+# Inside the still open `name(` at open, look past its balanced parameter
+# list: a `{` right after the `)` makes it a method head, so a parameter
+# default such as `m(a = yield) {}` follows the method's context. A line break
+# before the `{` reads as a call followed by a block (ASI) unless the name
+# follows a `,` of an object literal. The answer is memoized on the opener
+# (bits 8 and up: 1 call, 2 method), so each list is looked through once.
+# Tokens past the cursor are lexed ahead in the current goal and discarded
+# at the next checkpoint; the parameter list's tokens never depend on it.
+int js_predicate_method_parameters(pg_token_stream* stream, int open, int before):
+	int memo = js_predicate_memo(stream, open)
+	if ((memo >> 8) != 0): return (memo >> 8) == 2
+	int depth = 0
+	int index = open
+	int method = 0
+	while (1):
+		pg_token* token = pg_token_stream_get(stream, index)
+		if (token == 0 || token.kind == pg_token_eof_kind || index >= stream.tokens.length): break
+		int kind = js_predicate_kind(token)
+		if (kind == 1): depth = depth + 1
+		else if (kind == 2):
+			depth = depth - 1
+			if (depth == 0):
+				pg_token* next = pg_token_stream_get(stream, index + 1)
+				if (next != 0 && index + 1 < stream.tokens.length && strcmp(next.text, c"{") == 0):
+					int saved = stream.index
+					stream.index = index + 1
+					int line_break = pg_token_stream_line_break_before(stream)
+					stream.index = saved
+					method = line_break == 0 || js_predicate_is(stream, before, c",")
+				break
+		index = index + 1
+	pg_token_stream_memo_set(stream, open, (js_predicate_memo(stream, open) & 255) | ((1 + method) << 8))
+	return method
+
+
 int js_predicate_function_head(pg_token_stream* stream, int open, int body):
 	int name = open - 1
 	if (js_predicate_is(stream, name, c"function")): return 4 | 2 * js_predicate_is(stream, name - 1, c"async")
@@ -115,7 +150,8 @@ int js_predicate_function_head(pg_token_stream* stream, int open, int body):
 	if (js_predicate_is(stream, before, c"async")): return 6
 	if (js_predicate_is(stream, before, c"get") || js_predicate_is(stream, before, c"set") || js_predicate_is(stream, before, c"static")): return 4
 	# A plain `name(...) {` is a method body; `name(` alone may be a call.
-	if (body && js_predicate_is(stream, before, c"extends") == 0): return 4
+	if (js_predicate_is(stream, before, c"extends")): return 0
+	if (body || (js_predicate_is(stream, name, c"extends") == 0 && js_predicate_method_parameters(stream, open, before))): return 4
 	return 0
 
 
@@ -148,6 +184,11 @@ int js_function_flags_from(pg_token_stream* stream, int index, int closed):
 	list[int] walk = 0
 	int result = 0
 	while (index >= 0):
+		int kind = js_predicate_kind(stream.tokens[index])
+		# A separator's result never depends on the incoming state, nor an
+		# opener's: key both by one state so every scan shares the entry.
+		if (kind == 3): closed = 1
+		else if (kind == 1): closed = 0
 		int memo = js_predicate_memo(stream, index)
 		int shift = 4 * closed
 		if (((memo >> shift) & 8) != 0):
@@ -155,15 +196,12 @@ int js_function_flags_from(pg_token_stream* stream, int index, int closed):
 			break
 		if (walk == 0): walk = new list[int]
 		walk.push(2 * index + closed)
-		int kind = js_predicate_kind(stream.tokens[index])
 		if (kind == 2):
 			index = js_predicate_open(stream, index)
 			if (index < 0): break
 		else if (kind == 1):
 			result = js_predicate_opener_flags(stream, index)
 			if (result != 0): break
-			closed = 0
-		else if (kind == 3): closed = 1
 		else if (kind == 4 && closed == 0):
 			result = js_predicate_arrow(stream, index)
 			break
@@ -232,6 +270,8 @@ int js_predicate_of_operator(pg_token_stream* stream, int index):
 # as do the middle operand of `?:`, the clauses after the first `;` and the
 # expression after the head's own `in`/`of`.
 int js_relational_in(pg_token_stream* stream):
+	# Alternatives evaluate the predicate before matching KW_IN.
+	if (js_predicate_next(stream, c"in") == 0): return 1
 	int index = stream.index - 1
 	int colons = 0
 	while (index >= 0):

@@ -518,7 +518,12 @@ passes when its version pin is bypassed under v22.
   to the enclosing function is memoized per token in the stream
   (`pg_token_stream_memo_get`/`_set`, dropped when rollback rescans a
   token), so n contextual keywords cost O(n) overall; template `${` counts
-  as a bracket and template text is never one.
+  as a bracket and template text is never one. Inside a still-open
+  `name(`, the predicate looks past the balanced list for a method body's
+  `{` (memoized on the opener), so `m(a = yield) {}` in a generator takes
+  the method's context; a line break before that `{` reads as a call and a
+  block unless the name follows an object literal's `,`. Method computed
+  keys are validated in the enclosing context.
 - **`[~In]` and `let` substatements (reardan/w#903).** `js_relational_in`
   rejects a relational `in` at the top level of a for head's first clause,
   which gives both `for (var x = a in b;;)` its early error and Annex B.3.6

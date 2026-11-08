@@ -238,3 +238,26 @@ void test_method_computed_keys():
 	early(c"class C { [new.target]() {} }", 0, 0)
 	early(c"class C { [super.x]() {} }", 0, 0)
 	early(c"function f() { ({ [yield 1]() {} }); }", 0, 0)
+
+
+# A non-generator method's parameters follow the method, not the enclosing
+# generator or async function: the predicate looks past the balanced list
+# for the method body's `{` (checked against Node 22).
+void test_method_parameter_defaults():
+	early(c"function* g() { ({ m(a = yield) {} }); }", 0, 1)
+	early(c"async function f() { ({ m(a = await) {} }); }", 0, 1)
+	early(c"function* g() { ({ [k](a = yield) {} }); ({ a: 1, m(a = yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = (yield), b = [yield], c = {d: yield}, e = `${yield}`) {} }); }", 0, 1)
+	early(c"function* g() { var o = { m(a = yield) { return yield; } }; }", 0, 1)
+	early(c"function* g() { ({ a: 1,\n m(a = yield)\n {} }); }", 0, 1)
+	early(c"function* g() { ({ m(yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = yield 1) {} }); }", 0, 0)
+	early(c"function* g() { ({ *m(a = yield) {} }); }", 0, 0)
+	early(c"async function f() { ({ m(a = await 1) {} }); }", 0, 0)
+	early(c"async function f() { ({ async m(a = await 1) {} }); }", 0, 0)
+	early(c"function* g() { class C { m(a = yield) {} } }", 0, 0)
+	# Calls keep the enclosing context, including a call followed by a block.
+	early(c"function* g() { f(yield); f(yield 1, yield 2); f(a = yield 1); f(yield)(yield); new F(yield); }", 0, 1)
+	early(c"function* g() { if (f(yield)) {} class C extends f(yield) {} class D extends (yield) {} }", 0, 1)
+	early(c"function* g() { f(yield)\n{} }", 0, 1)
+	early(c"async function f() { g(await 1); g(await 1)(await 2); }", 0, 1)
