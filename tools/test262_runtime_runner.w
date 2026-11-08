@@ -1,5 +1,5 @@
 # wbuild: binary=test262_runtime_runner arch=x64 dep=javascript_parser
-# wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance
+# wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
 # wbuild: step="bin/test262_conformance --json bin/test262-conformance.json"
 # Bounded upstream Test262 profile. Fresh process and realm per variant.
 import lib.args

@@ -1,5 +1,5 @@
 # wbuild: name=javascript_runtime_regexp_property_test
-# wbuild: target=javascript_runtime_regexp_property_test tag=tests dep=javascript_parser
+# wbuild: target=javascript_runtime_regexp_property_test tag=tests dep=javascript_parser data=tools/unicode/12.1.0/ data=libs/extras/javascript/unicode_12_1.ranges
 # wbuild: step="bin/wv2 x64 tests/javascript/runtime_regexp_property_test.w -o bin/javascript_runtime_regexp_property_test"
 # wbuild: step="bin/javascript_runtime_regexp_property_test" expect_stdout="javascript_runtime_regexp_property_test: OK"
 # wbuild: step="bin/javascript_runtime_regexp_property_test memory" expect_stdout="javascript_runtime_regexp_property_test: OK"

@@ -1710,3 +1710,18 @@ garbage index, which surfaced only as a runtime "list index out of range"
 deep in module linking. Direction: diagnose a function whose name matches a
 struct in the same program (or at least warn at the ambiguous call site),
 and have `symbols --json` flag duplicate names across kinds.
+
+## Cast results cannot be dereferenced; data files select nothing (2026-11-08, #901)
+
+Two frictions while adding RegExp property tables. First,
+`cast(__w_list*, node.ranges).items` is a parse error ("')' expected, found
+'.'"), so reading a field of a cast result needs a throwaway local; the
+message does not say that member access on a cast is unsupported.
+Direction: accept postfix `.field`/`[i]` after `cast(...)`, or make the
+diagnostic name the limitation. Second, `wtest changed` selected nothing for
+the vendored `tools/unicode/12.1.0/*.txt` inputs of
+`tools/javascript_regexp_property.py`, and only `wfuzz_c_*` for edits to
+`tests/javascript/test262/manifest.json` or its pinned `.js` files, until the
+reading targets declared `data=` directories. Direction: have `wtest why`
+suggest a `data=` directive when a changed non-`.w` file appears verbatim in a
+target's step command or in a script that step runs.
