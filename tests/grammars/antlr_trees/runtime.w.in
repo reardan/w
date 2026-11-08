@@ -8,6 +8,8 @@ int main(int argc, char** argv):
 	if (source == 0): return 2
 	pg_parse_result* result = oracle_parse_owned(source, strlen(source), c"input")
 	if ((result.success == 0) || (result.root == 0)):
+		# The reason goes to stderr (the per-input .w.log) for triage.
+		pg_diagnostics_print(result.diagnostics)
 		println(c"{\"accepted\":false,\"tree\":null}")
 		return 0
 	char* tree = at_tree_json(result.root)
