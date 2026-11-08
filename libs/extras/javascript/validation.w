@@ -72,7 +72,7 @@ void js_validation_error(pg_diagnostics* diagnostics, pg_ast_node* node, char* m
 int js_simple_target(pg_ast_node* node):
 	node = js_cst_unwrap(node)
 	if (node.token != 0):
-		return js_cst_is(node, c"IDENT") || js_cst_is(node, c"KW_ASYNC") || js_cst_is(node, c"KW_OF") || js_cst_is(node, c"KW_GET") || js_cst_is(node, c"KW_SET") || js_cst_is(node, c"KW_STATIC") || js_cst_is(node, c"KW_FROM") || js_cst_is(node, c"KW_AS") || js_cst_is(node, c"KW_TARGET") || js_cst_is(node, c"KW_LET")
+		return js_cst_is(node, c"IDENT") || js_cst_is(node, c"KW_ASYNC") || js_cst_is(node, c"KW_OF") || js_cst_is(node, c"KW_GET") || js_cst_is(node, c"KW_SET") || js_cst_is(node, c"KW_STATIC") || js_cst_is(node, c"KW_FROM") || js_cst_is(node, c"KW_AS") || js_cst_is(node, c"KW_TARGET") || js_cst_is(node, c"KW_LET") || js_cst_is(node, c"KW_YIELD") || js_cst_is(node, c"KW_AWAIT")
 	if (js_cst_is(node, c"primary") && node.children.length == 3):
 		if (js_cst_is(node.children[0], c"LPAREN")): return js_simple_target(node.children[1])
 	if (js_cst_is(node, c"postfix") || js_cst_is(node, c"new_expression")):
@@ -83,6 +83,20 @@ int js_simple_target(pg_ast_node* node):
 			if (js_cst_child(tail, c"OPTIONAL") != 0): return 0
 		return js_cst_is(last.children[0], c"DOT") || js_cst_is(last.children[0], c"LBRACKET")
 	return 0
+
+
+# Annex B web-compat function-call assignment targets: in non-strict code
+# `f() = v`, `f() op= v`, `f()++`, `--f()` and `for (f() in/of o)` parse, and
+# evaluation throws a ReferenceError after the call (as V8 does). Strict code
+# and modules keep the ES2020 early SyntaxError (V8 defers those too).
+int js_call_target(pg_ast_node* node):
+	node = js_cst_unwrap(node)
+	if (js_cst_is(node, c"primary") && node.children.length == 3 && js_cst_is(node.children[0], c"LPAREN")): return js_call_target(node.children[1])
+	if (js_cst_is(node, c"postfix") == 0 || node.children.length < 2): return 0
+	for pg_ast_node* tail in node.children:
+		if (js_cst_child(tail, c"OPTIONAL") != 0): return 0
+	pg_ast_node* last = node.children[node.children.length - 1]
+	return js_cst_is(last, c"postfix_tail") && js_cst_is(last.children[0], c"arguments")
 
 
 int js_assignment_target(pg_ast_node* node, int destructuring):
@@ -196,7 +210,7 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 		pg_ast_node* tail = node.children[1]
 		if (js_cst_is(tail, c"assignment_tail")):
 			int destructuring = strcmp(tail.first_token.text, c"=") == 0
-			if (js_assignment_target(node.children[0], destructuring) == 0): js_validation_error(diagnostics, node, c"invalid assignment target")
+			if (js_assignment_target(node.children[0], destructuring) == 0 && (here.strict || js_call_target(node.children[0]) == 0)): js_validation_error(diagnostics, node, c"invalid assignment target")
 			pg_ast_node* id = js_target_identifier(node.children[0])
 			if (here.strict && id != 0):
 				char* name = js_identifier_decode(id.text)
@@ -206,11 +220,11 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 		pg_ast_node* head = js_cst_unwrap(node.children[0])
 		if (js_cst_is(head, c"logical_or") || js_cst_is(head, c"logical_and")): js_validation_error(diagnostics, node, c"nullish coalescing cannot mix with unparenthesized logical operators")
 	if (js_cst_is(node, c"update") && node.children.length == 2):
-		if (js_simple_target(node.children[0]) == 0): js_validation_error(diagnostics, node, c"invalid update target")
+		if (js_simple_target(node.children[0]) == 0 && (here.strict || js_call_target(node.children[0]) == 0)): js_validation_error(diagnostics, node, c"invalid update target")
 	if (js_cst_is(node, c"unary") && node.children.length == 2):
 		pg_ast_node* op = js_cst_unwrap(node.children[0])
 		if (js_cst_is(op, c"INC") || js_cst_is(op, c"DEC")):
-			if (js_simple_target(node.children[1]) == 0): js_validation_error(diagnostics, node, c"invalid update target")
+			if (js_simple_target(node.children[1]) == 0 && (here.strict || js_call_target(node.children[1]) == 0)): js_validation_error(diagnostics, node, c"invalid update target")
 	if (js_cst_is(node, c"power") && node.children.length == 2):
 		pg_ast_node* base = js_cst_unwrap(node.children[0])
 		if (js_cst_is(base, c"unary") && base.children.length == 2):
@@ -247,7 +261,15 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 	if (js_cst_is(node, c"for_statement") || js_cst_is(node, c"while_statement") || js_cst_is(node, c"do_statement")): here.loops = here.loops + 1
 	if (js_cst_is(node, c"switch_statement")): here.switches = here.switches + 1
 	if (js_cst_is(node, c"block") || js_cst_is(node, c"if_statement") || js_cst_is(node, c"while_statement") || js_cst_is(node, c"for_statement") || js_cst_is(node, c"do_statement") || js_cst_is(node, c"switch_statement") || js_cst_is(node, c"labelled_statement") || js_cst_is(node, c"with_statement")): here.top_level = 0
-	for i in range(node.children.length): js_validate_node(node.children[i], &here, diagnostics)
+	# A declaration's name binds in the enclosing scope: its yield/await
+	# reservation follows that context (FunctionDeclaration's
+	# BindingIdentifier[?Yield, ?Await]), while strictness follows the body.
+	js_validation_context name_context = *context
+	name_context.strict = here.strict
+	for i in range(node.children.length):
+		pg_ast_node* child = node.children[i]
+		if (js_cst_is(node, c"function_decl") && js_cst_is(child, c"binding_identifier")): js_validate_node(child, &name_context, diagnostics)
+		else: js_validate_node(child, &here, diagnostics)
 
 
 void js_validate(pg_parse_result* result, int module):
@@ -264,4 +286,8 @@ void js_validate(pg_parse_result* result, int module):
 	context.new_target_allowed = 0
 	context.in_parameters = 0
 	js_validate_node(result.root, &context, result.diagnostics)
+	if (module):
+		for pg_token* token in result.stream.all_tokens:
+			if (token.channel == pg_token_hidden_channel && (starts_with(token.text, c"<!--") || starts_with(token.text, c"-->"))):
+				pg_diagnostics_add(result.diagnostics, token.filename, token.line, token.column, c"HTML-like comment in module code", c"valid JavaScript syntax context", token.text)
 	if (pg_diagnostics_count(result.diagnostics) != 0): result.success = 0

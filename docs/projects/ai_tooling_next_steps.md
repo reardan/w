@@ -1699,3 +1699,14 @@ forward reference in one `check` run (they are all known once the file is
 scanned), with the line of the declaration each needs to move above, or a
 `check --fix` mode that reorders a moved-up function to just before its
 first use.
+
+## Struct name shadowing a function name compiles silently (2026-11-08, wave merge)
+
+Merging #840 and #841 put `struct js_module_request` (modules.w) and
+`int js_module_request(record, statement)` (module_graph.w) in one import
+closure. `check` and `--strict` builds were clean, but every call
+`js_module_request(record, node)` resolved to the struct and returned a
+garbage index, which surfaced only as a runtime "list index out of range"
+deep in module linking. Direction: diagnose a function whose name matches a
+struct in the same program (or at least warn at the ambiguous call site),
+and have `symbols --json` flag duplicate names across kinds.

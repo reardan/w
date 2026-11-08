@@ -14,13 +14,12 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 228 upstream test files expanded into 451 variants. The
-native profile reports **435 PASS, 0 FAIL, 16 UNSUPPORTED, 0 ERROR**; 84 passes
-reach runtime execution (including eight genuine ReferenceError negatives) and
-the rest verify syntax errors. The upstream-harness profile (below) reports
-**436 PASS, 0 FAIL, 15 UNSUPPORTED, 0 ERROR (96.67%)**: it also executes the
-`eval-this.js` module test. The positive cases execute 268 assertions across strict/sloppy
-variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+The corpus contains 337 upstream test files (plus module fixtures) expanded
+into 611 variants. The native profile reports **566 PASS, 0 FAIL, 45
+UNSUPPORTED, 0 ERROR**; 111 passes reach runtime execution and the rest verify
+syntax and module-resolution errors. The upstream-harness profile (below)
+reports **579 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (94.76%)**. The positive
+cases execute 515 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
 incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
@@ -34,6 +33,34 @@ includes. Tests that need `eval` or other harness includes
 (`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
+
+### Static semantics, module linking and Annex B (reardan/w#840)
+
+109 of the files pin #840's static-semantics work: module linking negatives
+under `test/language/module-code/` (`instn-*` indirect-export, named-import,
+star-import and resolution-order failures, default-through-star, re-export
+cycles and dependency syntax errors, with their `_FIXTURE.js` modules), the
+module goal's HTML-like comment negatives, contextual `yield`/`await` tests
+(`reserved-words/await-*`, `labeled/value-*`, generator, async and `await`
+expression binding/reference/label cases), `__proto__` duplicates, `let` bound
+names, `for-of` heads, IsLabelledFunction (`labelled-fn-stmt*` in if and loop
+bodies), the optional-chain template early error, legacy octal and
+NonOctalDecimal literals and escapes, and Annex B block, if-clause, switch and
+labelled function declarations under `test/annexB/`. The pinned revision has no
+ambiguous-star-export negative; `javascript_module_graph_test` covers that case.
+Annex B tests that need `assert.throws`, global error constructors, the
+`arguments` object or `new Test262Error()` were either left out or remain
+UNSUPPORTED with their reason; generator and async bodies that the lowering
+subset cannot run report UNSUPPORTED after parsing and early errors succeed.
+
+Negative module tests (`flags: [module]` with a parse or resolution negative)
+run: the supervisor writes the case under its upstream path with its pinned
+sibling `_FIXTURE.js` files, and the runner links the graph with
+`libs/extras/javascript/module_graph.w` after early errors. A link failure is a
+`resolution` phase SyntaxError (or ReferenceError for an unloadable
+specifier). Positive module tests remain UNSUPPORTED. The `async-functions`,
+`generators` and `optional-chaining` feature tags are enabled; their runtime
+support is still decided by lowering and preflight.
 
 ## Provenance
 
@@ -101,11 +128,12 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Ordinary scripts run once unchanged and once with `"use strict";` prepended.
   `onlyStrict`, `noStrict`, and `raw` select their appropriate single variant.
   Raw scripts receive no harness bindings and no source prefix.
-- Async tests, modules/resolution, includes, blocking/non-deterministic flags,
+- Async tests, positive modules, includes, blocking/non-deterministic flags,
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
-  `coalesce-expression`, `regexp-named-groups` and
-  `regexp-unicode-property-escapes` feature tags are currently enabled; untagged cases still
+  `coalesce-expression`, `regexp-named-groups`,
+  `regexp-unicode-property-escapes`, `async-functions`, `generators` and
+  `optional-chaining` feature tags are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.

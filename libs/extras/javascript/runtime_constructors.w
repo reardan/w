@@ -95,8 +95,15 @@ js_value* js_runtime_switch(js_runtime* rt, js_node* node, js_value* env):
 	js_value* discriminant = js_runtime_eval_node(rt, node.children[0], env)
 	if (rt.completion.status != 0): return rt.undefined_value
 	js_value* scope = js_runtime_environment(rt, env)
+	# One CaseBlock scope: declare every clause's statements in a single pass
+	# so sloppy duplicate functions across clauses (B.3.3.5) are not
+	# mistaken for redeclarations. A temporary borrowed wrapper holds them.
+	js_node* wrapper = js_node_new(c"block", c"")
 	for i in range(1, node.children.length):
-		if (rt.completion.status == 0): js_runtime_declare(rt, node.children[i], scope)
+		for js_node* statement in node.children[i].children: js_node_add(wrapper, statement)
+	js_runtime_declare(rt, wrapper, scope)
+	while (wrapper.children.length > 0): wrapper.children.pop()
+	js_node_free(wrapper)
 	int start = -1
 	int fallback = -1
 	for i in range(1, node.children.length):

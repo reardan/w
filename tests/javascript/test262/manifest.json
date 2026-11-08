@@ -1185,6 +1185,646 @@
       "path": "upstream/test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
       "upstream_path": "test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
       "sha256": "dfb36bd8ef0a744c256685d61645fd3686999c414791ddb74b860e591bea5987"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star.js",
+      "sha256": "c0d32ab7ca2682ce77e5cfefd9a72fcd371fc70c5a0ee553a9b710e5964b2f70"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star-int_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star-int_FIXTURE.js",
+      "sha256": "52f6800be916aba38d70ec388015cb91686900ef40525123ce9bb368d31bd2a9"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star-dflt_FIXTURE.js",
+      "sha256": "2c51cc1863b9a1c6b1043a6a46258752acf39fc2640733ce8d47895be318a986"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-not-found.js",
+      "sha256": "5865740fe209c1c54a57c4d4f2afc4ef62021736ae05f87818b108b31892c733"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found.js",
+      "sha256": "76526a3cfcbcaa2bd29fc6dade11d7ff9f0cc6d77f95695a31ec024786a9fab4"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found-faulty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found-faulty_FIXTURE.js",
+      "sha256": "9744f0bb7d671516434dd11cb579826d2acf5d5c0f4502fa0440a67023d700dd"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-named-err-not-found.js",
+      "sha256": "b4bc3230fa4c5057b10ed26d1e373c41779bdafbcffd02e891e02671ee680e72"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+      "sha256": "8969afda03d04ba65fb428016f4cfd070882b915bf5508b338d5950ca9a0cb07"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-int_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-int_FIXTURE.js",
+      "sha256": "2e50d471452af4e2edbdf2b8c5423677c1400cb6386d48dec493792ac7718131"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-dflt_FIXTURE.js",
+      "sha256": "2c51cc1863b9a1c6b1043a6a46258752acf39fc2640733ce8d47895be318a986"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-circular.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-circular.js",
+      "sha256": "484faea3f4bd09e44ee0a1ad8457ddb2ffa441d774c53ba883bff00cabbabb97"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-circular_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-circular_FIXTURE.js",
+      "sha256": "f77197d7a2012a88fab84846ee900b2340ee38228785b21d9fb72ecf32c79d45"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-1.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-1.js",
+      "sha256": "f3140ef3b4dd185b9d034e0d525a9fd34bedbeba3b1f52182fa4c5d9eed54075"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-1_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-1_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-2.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-2.js",
+      "sha256": "7bd714bc6bf20123d96b37b4375977431c5576634ce07f6d9643a019352e1167"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-2_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-2_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth.js",
+      "sha256": "d6c9cdc83fddc62086874da0090135cf163f162a5166e6269db2f9b87dc2b7ee"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-child_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-child_FIXTURE.js",
+      "sha256": "1d1c46a6831ae315ac1099bd23525c7c9b476074a928ff8de374c56c85e6869e"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-reference_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-reference_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-syntax_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-syntax_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src.js",
+      "sha256": "608ccd08e98c2c60a4495bd8570cabdf793ccd0cea7c863ec449bf71b7499bbc"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-valid_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-valid_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-reference_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-reference_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-syntax_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-syntax_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-export.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-export.js",
+      "sha256": "bf31ec4c14ee0db34f218b4ab77af2efcbb96997a432b89fa6a5bdc8fdc31b6a"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-export_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-export_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-import.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-import.js",
+      "sha256": "88161e79a99ef0372dddb122e6dc2e545961bf0d4775f53ba48531b3fcc3fadb"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-import_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-import_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/early-export-unresolvable.js",
+      "upstream_path": "test/language/module-code/early-export-unresolvable.js",
+      "sha256": "b1fd3fd7568179bb4dff65c65bab75feaac235b933ee0c048062c3091ca7df25"
+    },
+    {
+      "path": "upstream/test/language/module-code/early-export-global.js",
+      "upstream_path": "test/language/module-code/early-export-global.js",
+      "sha256": "93d50d0d347b0dc2c2e25a7d57a093b166b358f83da7afb36091cea3b73242c4"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+      "sha256": "4a5856a5a51db64a8894b0002eb953c055cfca5aa3dfc5a7d5e8e11a0eece314"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-param.js",
+      "sha256": "c44a1d8839662c4263c7ffd4cbf2508b532762e78ca0b75af4ae90ab559ad074"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+      "sha256": "4166b2031160e974e6cfd63147cb64cbad73ff4a1b00833e1de3e52cd7e7d291"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+      "sha256": "35422a157d736bcb7fcd04fb79da9d50bc2863081ec73cdb84f73f4f8c56eeb1"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-update.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-update.js",
+      "sha256": "8a690572e19921004cba1372c40e1131f7849c9a570fefba1262d2415829c82f"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+      "sha256": "83c12b9e0966e1ee76e0d51c8c1b9a6861881807a579c769629ce672d2e0c729"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/switch-case-func-init.js",
+      "upstream_path": "test/annexB/language/function-code/switch-case-func-init.js",
+      "sha256": "71ddefa847fa59b5e9b98d1ea5c7e6ec2c94b4f080741fc4cc2165519ae718cf"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-block-scoping.js",
+      "sha256": "19d7713b693780189c70c14df23117cf9d13416e45cc42209d80626e4ddfa6ed"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+      "sha256": "6a23262d38ff6daacc42e13d7b14d44a9e58dba8239bffd6b42151268dbcdb56"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+      "sha256": "63a36ccb4170886e4d03fce8af7d4fe132d74ffd5709393ece80b69b98c75af9"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+      "sha256": "161b1e86998c06a8fb6cff6e5872027d81b52045863c4d40186a6f5ccad6be21"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/function-redeclaration-block.js",
+      "upstream_path": "test/annexB/language/function-code/function-redeclaration-block.js",
+      "sha256": "8d4a3f259dabceeee101959aac117a19f5bfe9e374e1178b45f45a1142195d9e"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/function-redeclaration-switch.js",
+      "upstream_path": "test/annexB/language/function-code/function-redeclaration-switch.js",
+      "sha256": "780859b6d92926f14a7aff5df1baadc06cf5fd535929a0de88bc1a4d2bad4d24"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+      "upstream_path": "test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+      "sha256": "ed6c489d73feab4475761b0c7be336b15bed1be1a489b657d3676b7750914a53"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+      "upstream_path": "test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+      "sha256": "7f839488e478a2435602e31c622cdc85170bf8d617ddb150b1d67aaa4dfd77ce"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-open.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-open.js",
+      "sha256": "f98a148529a7526df321e117713d05d9e3ccaa31274f5d422b8019e834af2477"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close.js",
+      "sha256": "08c1ac363be762e6f52fb7fb16cddb89a386f2ea437579bf8aa259b7c9b5121c"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+      "sha256": "58286011a02d66ee70dbebaef25e1744e9938b7618a3204e49d5ed280a7bef01"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/multi-line-html-close.js",
+      "upstream_path": "test/annexB/language/comments/multi-line-html-close.js",
+      "sha256": "d07c9b1501f3dcbf1257172c7741760a4db90d54446361b7dbe4329a2522fa30"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close-asi.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close-asi.js",
+      "sha256": "c625d6507352b7bd469b7ba3f3b20d775a02b13eca4db5e2ca6f9b1356df33ca"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-lhs-async-invalid.js",
+      "upstream_path": "test/language/statements/for-of/head-lhs-async-invalid.js",
+      "sha256": "396db167822bcc739e13284d6843e48f6b58b4de31f4eb6df04995fb647d7ab0"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-lhs-let.js",
+      "upstream_path": "test/language/statements/for-of/head-lhs-let.js",
+      "sha256": "d8bd1092c94bd1feada388d3495210b6f38746ad36de6852d124298f7f2224ff"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-expr-no-expr.js",
+      "upstream_path": "test/language/statements/for-of/head-expr-no-expr.js",
+      "sha256": "4bc67b737e5402ed9050fcd0266f2630fc5de8250ef3b790395c22b8a3732121"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-expr.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-expr.js",
+      "sha256": "6aa92894955c9090fa6dea98385ab45e56c6d0506f893efe3fb723478935be98"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-let.js",
+      "sha256": "4d0a0b60b5d3efbea344ecbfe872d7e42b7260557b1b14398c362cc0394a674b"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-var.js",
+      "sha256": "9a46508c14022c8d1db0d65a814cffcc5e138761db71de94bda6d9511a319e79"
+    },
+    {
+      "path": "upstream/test/language/statements/do-while/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/do-while/labelled-fn-stmt.js",
+      "sha256": "9c6f8c1f9fef86889da1daf4493ede93364909dab441490f710a71d7047a735b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-let.js",
+      "sha256": "3997c380a431d706904d619f84a2d4572943a3c5dd9a810d2d1e77c461375e03"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-var.js",
+      "sha256": "fc5fbcdd6ae0c41a3f5af5dedbf10295983b5c16619eeb72b9792102f2bc941d"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+      "sha256": "a3fc06b8d18737d7f84925224333354bcf79b8e9b7cdd7181503fc55a020125f"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-let.js",
+      "sha256": "152a3131e59a7c77e2a186a885adc4c638eb395f2f2344887c5721bd2198f8cc"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-var.js",
+      "sha256": "822425bc9a6e1279d261d9e4e159a9394f2cfe446577ec06d51402adc9f6d666"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+      "sha256": "3e249e18a17238780dfee1b0fb07b3ae70b3b893ba501e71758b9718a50e040b"
+    },
+    {
+      "path": "upstream/test/language/statements/with/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/with/labelled-fn-stmt.js",
+      "sha256": "25c595cc8af2510112fc0095be1c66288bf39495e8588efe9fe7cd7872d1f0ff"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-first.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-first.js",
+      "sha256": "dc9c0f59237114d8879a348d07d7fbd48d24dc669bf4931a4ef6d4337b4548b8"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-lone.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-lone.js",
+      "sha256": "1f0e5dd126003f5011f45cfa401d1d7f382718f6a6f9b1376a2b1cd09a505368"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-second.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-second.js",
+      "sha256": "563a7ddd03c5cebc8cd17f41deb61243161d241900ea877c788829fe989270df"
+    },
+    {
+      "path": "upstream/test/language/statements/while/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/while/labelled-fn-stmt.js",
+      "sha256": "2a823de5f945aad5324d7c70988a73b40fdd88ffb75c1de911063948e8260016"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-yield-non-strict.js",
+      "upstream_path": "test/language/statements/labeled/value-yield-non-strict.js",
+      "sha256": "be8ae0d296fd6d1c2f359e238c256bcefc89f05067d187ac7975f914ad16105c"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-await-non-module.js",
+      "upstream_path": "test/language/statements/labeled/value-await-non-module.js",
+      "sha256": "606f6d76ab554e6b6db1c9a02f60ae177e2ff24e4a65ca28d320087d7a9befa2"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-yield-strict.js",
+      "upstream_path": "test/language/statements/labeled/value-yield-strict.js",
+      "sha256": "658f508b07a24bc1f7833736713878452041f2c5316fbe29a42747bb3af2e363"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-await-module.js",
+      "upstream_path": "test/language/statements/labeled/value-await-module.js",
+      "sha256": "39de9daf4b36b4f9644b1b92a5203d306d8ad0c9f70d82f6467713d9149c02d9"
+    },
+    {
+      "path": "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+      "upstream_path": "test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+      "sha256": "051f5d9f59ab3df1ea71fa81f09e921c73f3c6d7f488a947a0748214bf8958c6"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/head-let-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-in/head-let-bound-names-let.js",
+      "sha256": "0204e38540ba7b4dd90d90c33a023ca03ae96f289c3f3533b9893ff76cecbc9b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-let-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-of/head-let-bound-names-let.js",
+      "sha256": "b4c8585a036f845e79916b2ec271f41dfae42d4cb35f18581a7acdbed3a5a4aa"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-const-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-of/head-const-bound-names-let.js",
+      "sha256": "ff79389657b7e8835afbcd423dc22fb3b648501834ad3fca2f8a4c4d90ef7a8b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/head-const-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-in/head-const-bound-names-let.js",
+      "sha256": "6f0fd856aa4d6d8a0144692162ef2b29f0491c7a8cf42e5e4a8a34721e55b29f"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-identifier-non-strict.js",
+      "upstream_path": "test/language/statements/generators/yield-identifier-non-strict.js",
+      "sha256": "d2d09c86898aa4a7e2c9274f90d708789c7e79e3e7110976b8672175ea4a19f2"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-identifier-strict.js",
+      "upstream_path": "test/language/statements/generators/yield-identifier-strict.js",
+      "sha256": "3fed7a8d83f6dc113dd7072c15a0527cd938b7d5761243a5ae24fd991bb0a8c2"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+      "upstream_path": "test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+      "sha256": "0f88fe4005d50e13a6b091682341c546982db7a42f75274c08d7cd3129677595"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+      "sha256": "847f6c81f964ef912e5ff771b9be6c80d5fab70cb26d1f341adcd372fce81ebe"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-binding-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-binding-identifier.js",
+      "sha256": "69479d42525a0b843eefc070b33212636b3fae004438fd6ad816efdd20adcd4f"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-identifier-reference.js",
+      "upstream_path": "test/language/statements/generators/yield-as-identifier-reference.js",
+      "sha256": "0e2385276ff58a6d9e624395c42ec3548f2ed0d6832502025cde575ffab660ff"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-label-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-label-identifier.js",
+      "sha256": "739ccb8d5ef5df3ffa658f3f0c19422fba9ce1258583a5aeee9eaa4d75c50215"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-parameter.js",
+      "upstream_path": "test/language/statements/generators/yield-as-parameter.js",
+      "sha256": "53fbfa129640971308fd19572c6d77746ad6a2ba8b7b049bb0df22e9f5ff2729"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-logical-or-expression.js",
+      "upstream_path": "test/language/statements/generators/yield-as-logical-or-expression.js",
+      "sha256": "e1b9b94b368a424547d82e5678d3f476582f5654f7ef0689a599bcec5ace8d4a"
+    },
+    {
+      "path": "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+      "upstream_path": "test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+      "sha256": "fa865441ce71ec59319db2f32c62ca905e2d9e60568727fa739285c81f4f4cd5"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-duplicate.js",
+      "upstream_path": "test/language/expressions/object/__proto__-duplicate.js",
+      "sha256": "a8b222172ed348f9c984d97c43f3d8ccb03ed310641d380856bc02132490c7ae"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-duplicate-computed.js",
+      "upstream_path": "test/language/expressions/object/__proto__-duplicate-computed.js",
+      "sha256": "ba74409e0f165c14ffab43b84d7ab90b34676b79e9a3fcc9f1c8d00ab70d0ce8"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-permitted-dup.js",
+      "upstream_path": "test/language/expressions/object/__proto__-permitted-dup.js",
+      "sha256": "22d27f287beaf1fa64a9700f591be84c6c3d0af1a200f2d948abc6c7b06c9d94"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/yield-non-strict-access.js",
+      "upstream_path": "test/language/expressions/object/yield-non-strict-access.js",
+      "sha256": "b3cd9a45bf610907cb8f1c8c2cd27882bc7dc3ac75e7084baf8f21ecfe335175"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/yield-non-strict-syntax.js",
+      "upstream_path": "test/language/expressions/object/yield-non-strict-syntax.js",
+      "sha256": "e61e69829fd093d715141cc6b5da1d6a72794489adbd2b5101e32e4e42ed1ea1"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js",
+      "upstream_path": "test/language/expressions/await/await-BindingIdentifier-in-global.js",
+      "sha256": "72b401f72957c32f450c0f62e736ce06ed5295f36069815a4e1975eaaaff294b"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js",
+      "upstream_path": "test/language/expressions/await/await-BindingIdentifier-nested.js",
+      "sha256": "57ba2291d9cfb3c9abcc5c2f04754e586892665d3fa65462f6d3b676adb53902"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-nested-function.js",
+      "upstream_path": "test/language/expressions/await/await-in-nested-function.js",
+      "sha256": "d47da4de69ca362a341f60176be42d0f44eff79ba5994020d8b70552b0f34557"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-nested-generator.js",
+      "upstream_path": "test/language/expressions/await/await-in-nested-generator.js",
+      "sha256": "4a5cd53d8b6a8236e8515e9dcbd5942f60de911791190f5fe7aef423f1681aa4"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-global.js",
+      "upstream_path": "test/language/expressions/await/await-in-global.js",
+      "sha256": "2ca438078065facb2f597eea04c29d9176ad35a25688ef8f306ed4228440fc55"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+      "upstream_path": "test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+      "sha256": "20c0d3affae170b9d284f51da598fc416d68d153c59765da050fdd02738e255a"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+      "sha256": "36ea6f2a5872cc00d9d6c44ab79d37bb615e1d1006d1af4f7de28d3a1df4bec6"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+      "sha256": "4d139c1371ad9c89bde5a6d2921ff42b800a33288e3fa2320013308477361b85"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-identifier-non-strict.js",
+      "upstream_path": "test/language/expressions/generators/yield-identifier-non-strict.js",
+      "sha256": "4ff41d80626699c2cb750b873ffdf28e7f979a692d9c2dbae2b5ac75860521dc"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-identifier-strict.js",
+      "upstream_path": "test/language/expressions/generators/yield-identifier-strict.js",
+      "sha256": "3fa730ad512ad2cceaac10434b5e0cfbc2e36f1e42ec05bcd63af0b19072dc44"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-binding-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-binding-identifier.js",
+      "sha256": "9238d104b788ed439e5e5f60105dca539cabfccee906eb98f3748837e73439e7"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-identifier-reference.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-identifier-reference.js",
+      "sha256": "89d2b0b3d902797ff787eb11e3a770daa950a40e0ed45744d9c4d2ffb89d95de"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-label-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-label-identifier.js",
+      "sha256": "17dcab0988bef2b9adb735c343b657ba8864d43a6e3552118d629d832cb48fa7"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+      "sha256": "9700d4c2915c2b755057c30848bf4e46465e52abb97604824a0de964e954b334"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+      "sha256": "f09310cd6c55f9ae129db1919cdd7c6042efafae149d9fec854abdc6ce31de6e"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+      "sha256": "070b729c46fef1eb2973a35363ef2bc33d088ec7fea2cb28c7bf0615ee06482e"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+      "sha256": "2b9151cac9f2fa1d9eec531814b29ded598edf8eead085f0adbbb92480928730"
+    },
+    {
+      "path": "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+      "upstream_path": "test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+      "sha256": "3fbcf59dd3a3975804641ed37bd1d80e51043b8ff863b7a6c31c0ecc072dd0e4"
+    },
+    {
+      "path": "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+      "upstream_path": "test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+      "sha256": "bbba0a611851cd7b8bea56040752de40de13a7524637239427e7909518f13dea"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/legacy-octal-integer.js",
+      "upstream_path": "test/language/literals/numeric/legacy-octal-integer.js",
+      "sha256": "e1f20b170d9d1f49bd7498ab672c17b07a8417f317d8167d416edd5c5653f969"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js",
+      "upstream_path": "test/language/literals/numeric/legacy-octal-integer-strict.js",
+      "sha256": "1f4d61d873c444bcc1e459c733d5c3852d692eb27e8c9719254fea99785c1de1"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/non-octal-decimal-integer.js",
+      "upstream_path": "test/language/literals/numeric/non-octal-decimal-integer.js",
+      "sha256": "e02131b1c8af4d2159e28a0a76935ac34bdbcdd6ea7fa4f4eeff4402db15015f"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+      "upstream_path": "test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+      "sha256": "836487f2921c64de0cbfd5204b19be75e808c22d91b1a3ed31020e0f105f8026"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-octal-escape-sequence.js",
+      "upstream_path": "test/language/literals/string/legacy-octal-escape-sequence.js",
+      "sha256": "b958f764dc5de806c67cbde5ba23da31c410d1caa6f03e0158363d994d9d1384"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+      "upstream_path": "test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+      "sha256": "92f885dc7451767ad6aaed842442d0d8f08bff80976ef37847a509672077ec5a"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+      "upstream_path": "test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+      "sha256": "fc5572b46973fcf3b8daa8e7aa4ad1aed8a277eaf8ba66fc196c96e1bd4e2cea"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/numeric-followed-by-ident.js",
+      "upstream_path": "test/language/literals/numeric/numeric-followed-by-ident.js",
+      "sha256": "9c15ea8dcad644ec09513a8b5217feecc4149ffb4861830458470bd2626b7dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-single-line-html-open.js",
+      "upstream_path": "test/language/module-code/comment-single-line-html-open.js",
+      "sha256": "789641728f7d8496801f145059d329c8b3c9cc1d2901ecbe893ff70e5e426d11"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-single-line-html-close.js",
+      "upstream_path": "test/language/module-code/comment-single-line-html-close.js",
+      "sha256": "3b43fff901f4d1cac508995fdc369375b621ce3842fa29cc2f39cb9ae51524c1"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-multi-line-html-close.js",
+      "upstream_path": "test/language/module-code/comment-multi-line-html-close.js",
+      "sha256": "fc3fae0f513b1db887ec33ec7fc35fe698248bdfe20df2cc6380592033080faf"
+    },
+    {
+      "path": "upstream/test/annexB/language/statements/labeled/function-declaration.js",
+      "upstream_path": "test/annexB/language/statements/labeled/function-declaration.js",
+      "sha256": "d0b59b52ca9f3db2d5519f7f7d18974cb0c50e739693c2c80d82e02ff625aed7"
+    },
+    {
+      "path": "upstream/test/language/reserved-words/await-script.js",
+      "upstream_path": "test/language/reserved-words/await-script.js",
+      "sha256": "db28c5449114ecbde80c342447ada982a9b421bad0f96eec41a6789af38a9003"
+    },
+    {
+      "path": "upstream/test/language/reserved-words/await-module.js",
+      "upstream_path": "test/language/reserved-words/await-module.js",
+      "sha256": "44edf8299f089ae5a58c536e57d8796867171da8237c93c6e28a752661c86a62"
     }
   ],
   "cases": [
@@ -1415,7 +2055,116 @@
     "upstream/test/language/statements/switch/S12.11_A3_T2.js",
     "upstream/test/language/statements/switch/S12.11_A1_T2.js",
     "upstream/test/language/module-code/eval-this.js",
-    "upstream/test/language/module-code/instn-iee-bndng-const.js"
+    "upstream/test/language/module-code/instn-iee-bndng-const.js",
+    "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js",
+    "upstream/test/language/module-code/instn-iee-err-not-found.js",
+    "upstream/test/language/module-code/instn-star-err-not-found.js",
+    "upstream/test/language/module-code/instn-named-err-not-found.js",
+    "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+    "upstream/test/language/module-code/instn-iee-err-circular.js",
+    "upstream/test/language/module-code/instn-resolve-err-syntax-1.js",
+    "upstream/test/language/module-code/instn-resolve-err-syntax-2.js",
+    "upstream/test/language/module-code/instn-resolve-order-depth.js",
+    "upstream/test/language/module-code/instn-resolve-order-src.js",
+    "upstream/test/language/module-code/instn-resolve-empty-export.js",
+    "upstream/test/language/module-code/instn-resolve-empty-import.js",
+    "upstream/test/language/module-code/early-export-unresolvable.js",
+    "upstream/test/language/module-code/early-export-global.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-update.js",
+    "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+    "upstream/test/annexB/language/function-code/switch-case-func-init.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+    "upstream/test/annexB/language/function-code/function-redeclaration-block.js",
+    "upstream/test/annexB/language/function-code/function-redeclaration-switch.js",
+    "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+    "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+    "upstream/test/annexB/language/comments/single-line-html-open.js",
+    "upstream/test/annexB/language/comments/single-line-html-close.js",
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+    "upstream/test/annexB/language/comments/multi-line-html-close.js",
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js",
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js",
+    "upstream/test/language/statements/for-of/head-lhs-let.js",
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+    "upstream/test/language/statements/with/labelled-fn-stmt.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js",
+    "upstream/test/language/statements/while/labelled-fn-stmt.js",
+    "upstream/test/language/statements/labeled/value-yield-non-strict.js",
+    "upstream/test/language/statements/labeled/value-await-non-module.js",
+    "upstream/test/language/statements/labeled/value-yield-strict.js",
+    "upstream/test/language/statements/labeled/value-await-module.js",
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+    "upstream/test/language/statements/for-in/head-let-bound-names-let.js",
+    "upstream/test/language/statements/for-of/head-let-bound-names-let.js",
+    "upstream/test/language/statements/for-of/head-const-bound-names-let.js",
+    "upstream/test/language/statements/for-in/head-const-bound-names-let.js",
+    "upstream/test/language/statements/generators/yield-identifier-non-strict.js",
+    "upstream/test/language/statements/generators/yield-identifier-strict.js",
+    "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+    "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js",
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-parameter.js",
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js",
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+    "upstream/test/language/expressions/object/__proto__-duplicate.js",
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js",
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js",
+    "upstream/test/language/expressions/object/yield-non-strict-access.js",
+    "upstream/test/language/expressions/object/yield-non-strict-syntax.js",
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js",
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js",
+    "upstream/test/language/expressions/await/await-in-nested-function.js",
+    "upstream/test/language/expressions/await/await-in-nested-generator.js",
+    "upstream/test/language/expressions/await/await-in-global.js",
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+    "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+    "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+    "upstream/test/language/expressions/generators/yield-identifier-non-strict.js",
+    "upstream/test/language/expressions/generators/yield-identifier-strict.js",
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js",
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js",
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+    "upstream/test/language/literals/numeric/legacy-octal-integer.js",
+    "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js",
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer.js",
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence.js",
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+    "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js",
+    "upstream/test/language/module-code/comment-single-line-html-open.js",
+    "upstream/test/language/module-code/comment-single-line-html-close.js",
+    "upstream/test/language/module-code/comment-multi-line-html-close.js",
+    "upstream/test/annexB/language/statements/labeled/function-declaration.js",
+    "upstream/test/language/reserved-words/await-script.js",
+    "upstream/test/language/reserved-words/await-module.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -2786,6 +3535,515 @@
     "upstream/test/language/module-code/instn-iee-bndng-const.js#module": {
       "status": "UNSUPPORTED",
       "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-iee-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-star-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-named-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-iee-err-circular.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-err-syntax-1.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-err-syntax-2.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-order-depth.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-order-src.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-empty-export.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-empty-import.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/early-export-unresolvable.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/early-export-global.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-update.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/switch-case-func-init.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/function-redeclaration-block.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/function-redeclaration-switch.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-open.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-open.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/multi-line-html-close.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/multi-line-html-close.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/with/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/with/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/while/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/while/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-yield-non-strict.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-non-module.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-non-module.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-yield-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-module.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/head-let-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-let-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-const-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/head-const-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-identifier-non-strict.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-identifier-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-parameter.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-parameter.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: __proto__, async-iteration"
+    },
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: __proto__, async-iteration"
+    },
+    "upstream/test/language/expressions/object/yield-non-strict-access.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/yield-non-strict-syntax.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-function.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-generator.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-generator.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-global.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-in-global.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-identifier-non-strict.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-identifier-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/legacy-octal-integer.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-single-line-html-open.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-single-line-html-close.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-multi-line-html-close.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/statements/labeled/function-declaration.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-module.js#module": {
+      "status": "PASS"
     }
   },
   "builtins_required": {

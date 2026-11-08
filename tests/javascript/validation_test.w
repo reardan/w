@@ -36,7 +36,9 @@ void test_js_assignment_and_exponentiation_contexts():
 	js_validation_expect(c"`\\u0`;", 0, 0)
 	js_validation_expect(c"tag`\\u0`;", 0, 1)
 	js_validation_expect(c"1 = x;", 0, 0)
-	js_validation_expect(c"f()++;", 0, 0)
+	# Annex B web-compat call targets: sloppy scripts parse, modules reject.
+	js_validation_expect(c"f()++;", 0, 1)
+	js_validation_expect(c"f()++;", 1, 0)
 	js_validation_expect(c"++(x + y);", 0, 0)
 	js_validation_expect(c"obj?.x = 1;", 0, 0)
 	js_validation_expect(c"obj.x += 1; obj[x]++;", 0, 1)

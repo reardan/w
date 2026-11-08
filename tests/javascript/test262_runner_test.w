@@ -34,10 +34,10 @@ void tc_upstream():
 	t262_upstream = 1
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":436,\"FAIL\":0,\"UNSUPPORTED\":15,\"ERROR\":0}")), c"upstream-harness counts changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":579,\"FAIL\":0,\"UNSUPPORTED\":32,\"ERROR\":0}")), c"upstream-harness counts changed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"96.67%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 85 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	tc_eq(c"94.76%", ht_text(report, c"pass_rate"))
+	ht_require(ht_number(report, c"execution_passes") == 124 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -57,20 +57,20 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":435,\"FAIL\":0,\"UNSUPPORTED\":16,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 84 && ht_number(report, c"assertions") == 268 && ht_number(report, c"variants") == 451 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":566,\"FAIL\":0,\"UNSUPPORTED\":45,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 111 && ht_number(report, c"assertions") == 515 && ht_number(report, c"variants") == 611 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 434
-		int unsupported = 17
+		int passes = 565
+		int unsupported = 46
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 436
-			unsupported = 15
+			passes = 567
+			unsupported = 44
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")
@@ -137,6 +137,13 @@ int main():
 		modes = t262_variants(tc_meta(strjoin(strjoin(c"flags: [", flags[i]), c"]")))
 		ht_require(modes.length == 1 && strcmp(modes[0], expected[i]) == 0, c"flag variants changed")
 	for char* fields in ht_split(c"flags: [module]|flags: [async]|flags: [unknownFlag]|includes:\n  - compareArray.js|features: [BigInt]", '|'): ht_require(t262_unsupported(tc_meta(fields)) != 0, c"unsupported metadata accepted")
+	# Negative module tests run through parsing and static module linking (#840).
+	char* module_resolution = c"flags: [module]\nnegative:\n  phase: resolution\n  type: SyntaxError"
+	for char* fields in ht_split(strjoin(c"flags: [module]\nnegative:\n  phase: parse\n  type: SyntaxError|", module_resolution), '|'): ht_require(t262_unsupported(tc_meta(fields)) == 0, c"negative module metadata rejected")
+	ht_require(t262_unsupported(tc_meta(c"negative:\n  phase: resolution\n  type: SyntaxError")) != 0, c"script resolution metadata accepted")
+	json_value* resolved = json_parse(c"{\"phase\":\"resolution\",\"outcome\":\"error\",\"error_type\":\"SyntaxError\"}")
+	tc_eq(c"PASS", t262_classify(tc_meta(module_resolution), resolved))
+	tc_eq(c"FAIL", t262_classify(tc_meta(c"flags: [module]\nnegative:\n  phase: parse\n  type: SyntaxError"), resolved))
 	for char* fields in ht_split(c"flags: [onlyStrict, noStrict]|flags: [raw, onlyStrict]|negative:\n  phase: runtime|negative:\n  phase: unknown\n  type: Error|flags: []\nflags: []|unexpected: value|includes: &anchor []", '|'): ht_require(tc_meta(fields) == 0, c"invalid metadata accepted")
 	ht_require(jc_equal(jc_get(tc_meta(c"flags:\n  - onlyStrict\nnegative:\n  phase: runtime\n  type: ReferenceError"), c"negative"), jc_get(negative, c"negative")), c"block metadata parsing changed")
 	for char* text in ht_split(c"{\"phase\":\"parse\",\"outcome\":\"error\",\"error_type\":\"ReferenceError\"}|{\"phase\":\"execute\",\"outcome\":\"throw\",\"error_type\":\"TypeError\"}|{\"phase\":\"execute\",\"outcome\":\"normal\"}", '|'): tc_eq(c"FAIL", t262_classify(negative, json_parse(text)))
