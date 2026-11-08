@@ -14,12 +14,12 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 337 upstream test files (plus module fixtures) expanded
-into 611 variants. The native profile reports **566 PASS, 0 FAIL, 45
-UNSUPPORTED, 0 ERROR**; 111 passes reach runtime execution and the rest verify
+The corpus contains 1239 upstream test files (plus module fixtures) expanded
+into 2407 variants. The native profile reports **2362 PASS, 0 FAIL, 45
+UNSUPPORTED, 0 ERROR**; 1289 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **579 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (94.76%)**. The positive
-cases execute 515 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+reports **2375 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (98.67%)**. The positive
+cases execute 4443 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
 incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
@@ -33,6 +33,26 @@ includes. Tests that need `eval` or other harness includes
 (`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
+
+### Classes (reardan/w#905)
+
+902 of the files are the `test/language/statements/class/` and
+`test/language/expressions/class/` tests that pass in both profiles once the
+interpreter executes classes: declarations/expressions, accessors, static and
+computed keys (`cpn-*`, `accessor-name-*`), method definitions and their
+default/destructured parameters (`dstr/`, `method*/`), `subclass/`, `super/`,
+`definition/`, `syntax/`, `elements/`, `subclass-builtins/` (Error subclasses
+and syntax), and the class early errors, including the `gen-method*/` and
+`async-method*/` negatives.
+They were selected by running all 8426 class tests of the pinned revision;
+the rest are left out because they need class fields, private names, static
+blocks, generator/async methods, `propertyHelper.js`/`compareArray.js`, or
+built-ins outside the bounded realm (`Object.prototype`, `Function.prototype.bind`,
+`eval`, primitive wrapper and Array/Date/Map/... subclassing), or hit
+non-class gaps (generator-context `yield` in computed keys, numeric separators,
+separate parameter scopes). The `class`, `computed-property-names`,
+`new.target`, `default-parameters`, `rest-parameters`, `arrow-function` and
+`destructuring-binding` feature tags are enabled for them.
 
 ### Static semantics, module linking and Annex B (reardan/w#840)
 
@@ -132,8 +152,10 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
   `coalesce-expression`, `regexp-named-groups`,
-  `regexp-unicode-property-escapes`, `async-functions`, `generators` and
-  `optional-chaining` feature tags are currently enabled; untagged cases still
+  `regexp-unicode-property-escapes`, `async-functions`, `generators`,
+  `optional-chaining`, `class`, `computed-property-names`, `new.target`,
+  `default-parameters`, `rest-parameters`, `arrow-function` and
+  `destructuring-binding` feature tags are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.
