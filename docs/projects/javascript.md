@@ -292,8 +292,9 @@ The initial semantic subset is deliberately explicit:
   without `new` and assigning the inner class-name binding are TypeErrors.
   Anonymous functions, arrows and classes take their binding's name
   (NamedEvaluation) and `length` counts parameters before the first default or
-  rest. The realm has no `Object.prototype`/`Function.prototype` intrinsics, so
-  a class without heritage has null-prototype objects. Class fields, private
+  rest. The realm has no `Object.prototype` intrinsic, so a class without
+  heritage has a null-prototype prototype object; constructors inherit
+  `Function.prototype`. Class fields, private
   names, static blocks and generator/async methods remain unsupported.
 - RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
   or RegExp arguments create objects with own `lastIndex` and the shared

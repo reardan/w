@@ -4,8 +4,9 @@ Classes for the bounded interpreter (reardan/w#905): ClassDefinitionEvaluation,
 super(...) and super.x through a method's [[HomeObject]], new.target and the
 derived-constructor this TDZ. Class fields, private names, static blocks and
 generator/async methods are outside the subset (preflight rejects them).
-The realm has no %Object.prototype% or %Function.prototype% intrinsics, so a
-class without heritage has a null-prototype prototype object and constructor.
+The realm has no %Object.prototype% intrinsic, so a class without heritage
+has a null-prototype prototype object; constructors inherit %Function.prototype%
+(also for extends null).
 */
 import libs.extras.javascript.runtime
 
@@ -38,14 +39,7 @@ int js_runtime_class_supported(js_node* node):
 
 
 int js_runtime_is_object(js_value* value):
-	return value.kind >= 5 && value.kind != 8 && value.kind != 10
-
-
-int js_runtime_is_constructor(js_runtime* rt, js_value* value):
-	if (value == 0): return 0
-	if (value.kind == 7): return js_runtime_constructible(value)
-	if (value.kind != 9): return 0
-	return value == rt.promise_constructor || value.binary_constructor != 0 || value.host_construct != 0
+	return js_runtime_object(value)
 
 
 # The nearest environment with a this binding: arrows have none.
@@ -136,7 +130,12 @@ js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value
 	js_value* result = rt.undefined_value
 	if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
 	else if (callable.kind == 9 && callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
-	else if (callable.kind == 9 && callable.host_construct): result = js_runtime_call_code(rt, callable, rt.undefined_value, arguments, new_target, 0)
+	else if (callable.kind == 9 && callable.host_construct):
+		# Host constructors see new_target in rt.new_target (new String(x) vs String(x)).
+		js_value* saved = rt.new_target
+		rt.new_target = new_target
+		result = js_runtime_call_code(rt, callable, rt.undefined_value, arguments, new_target, 0)
+		rt.new_target = saved
 	else if (callable.kind == 9):
 		js_runtime_fail(rt, 6, c"unsupported native constructor")
 		return rt.undefined_value
@@ -244,7 +243,7 @@ js_value* js_runtime_class_named(js_runtime* rt, js_node* node, js_value* env, c
 			inner.immutable = 1
 			inner.lexical_binding = 1
 	js_value* prototype_parent = 0
-	js_value* constructor_parent = 0
+	js_value* constructor_parent = rt.function_prototype
 	int derived = 0
 	if (js_kind(node.children[0], c"empty") == 0):
 		derived = 1
