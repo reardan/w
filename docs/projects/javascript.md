@@ -244,7 +244,9 @@ The initial semantic subset is deliberately explicit:
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
   function expressions, synchronous arrows with expression or block bodies,
-  object/array binding patterns and default/rest parameters, recursive calls, captured mutable environments and
+  object/array binding patterns (array patterns take arrays and strings by
+  index and other iterables through the iterator protocol, closing an
+  unfinished iterator) and default/rest parameters, recursive calls, captured mutable environments and
   per-iteration `for (let ...)` environments, including a separate initializer
   environment for captured bindings.
 - Array literals with holes (an elision extends `length` without creating the
