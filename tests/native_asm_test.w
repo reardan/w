@@ -71,6 +71,49 @@ void test_native_asm_vs_gcc():
 	process_result_free(run)
 
 
+# Compile a one-function program whose asm_native template is lines
+# (joined with newlines and tabbed into the block); the compile must fail
+# with a message containing want. object selects --emit=obj.
+void native_reject(int object, char* lines, char* want):
+	char* source = native_path(c"reject.w")
+	char* text = strjoin(c"export void f():\n\tasm_native:\n", lines)
+	assert_equal(1, file_write_text(source, text))
+	list[char*] argv = new list[char*]
+	argv.push(c"wv2")
+	argv.push(c"x64")
+	if (object):
+		argv.push(c"--emit=obj")
+		argv.push(c"--freestanding")
+		argv.push(c"--c-abi")
+	argv.push(source)
+	argv.push(c"-o")
+	argv.push(native_path(c"reject.out"))
+	process_result* r = tool_spawn(0, 60000, argv)
+	if (r.status == 0): println2(text)
+	assert1(r.status != 0)
+	assert_contains(strjoin(r.stdout_text, r.stderr_text), want)
+	process_result_free(r)
+
+
+# Templates the native path rejects, each with its diagnostic.
+void test_native_asm_rejects():
+	native_reject(0, c"\t\t\".pushsection w_x,\\\"a\\\"\"\n\t\t\".popsection\"\n", c"sections and symbol references need --emit=obj")
+	native_reject(0, c"\t\t\"call c_fn\"\n", c"sections and symbol references need --emit=obj")
+	native_reject(1, c"\t\t\"jmp 9f\"\n", c"undefined local label: 9f")
+	native_reject(1, c"\t\t\".ascii x\"\n", c"unsupported directive")
+	native_reject(1, c"\t\t\".pushsection w_x\"\n", c"template ends outside its code")
+	native_reject(1, c"\t\t\".popsection\"\n", c".popsection without .pushsection")
+	native_reject(1, c"\t\t\"x: nop\"\n\t\t\"x: nop\"\n", c"label defined twice: x")
+	native_reject(1, c"\t\t\".pushsection w_x\"\n\t\t\".balign 3\"\n", c"alignment must be a power of two")
+	native_reject(1, c"\t\t\".pushsection w_x\"\n\t\t\".byte 300\"\n", c"value out of range")
+	native_reject(1, c"\t\t\"lock;\"\n", c"prefix without an instruction")
+	native_reject(1, c"\t\t\"frobnicate %eax\"\n", c"cannot assemble")
+	native_reject(1, c"\t\t\"movw $sym, %ax\"\n", c"symbol operand needs a 32-bit field")
+	native_reject(1, c"\t\t\"1: nop\"\n\t\t\".pushsection w_x\"\n\t\t\"2: .byte 0\"\n\t\t\".popsection\"\n\t\t\".pushsection w_y\"\n\t\t\".long 1b - 2b\"\n\t\t\".popsection\"\n", c"label difference across sections")
+	native_reject(1, c"\t\t\".byte sym\"\n", c"an absolute symbol value must be 4 or 8 bytes")
+	native_reject(1, c"\t\t\".pushsection w_x,\\\"aQ\\\"\"\n\t\t\".popsection\"\n", c"unsupported section flag")
+
+
 void test_native_asm_cleanup():
 	dir_remove_all(native_dir)
 	free(native_dir)

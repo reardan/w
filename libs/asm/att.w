@@ -118,6 +118,47 @@ void asm_att_reg(asm_operand* op, char* name):
 	op.size = asm_reg_size(enc)
 
 
+# 1 when tok is a numeric local label reference (`1b`, `12f`): digits
+# then a single b/f.
+int asm_att_numeric_label(char* tok):
+	int n = strlen(tok)
+	if (n < 2): return 1 == 2
+	if (tok[n - 1] != 'b' && tok[n - 1] != 'f'): return 1 == 2
+	for i in range(n - 1):
+		if (tok[i] < '0' || tok[i] > '9'): return 1 == 2
+	return 1
+
+
+# 1 when the cursor starts a symbol (a name, or a numeric local label).
+int asm_att_symbol_start(asm_parse* p):
+	int c = asm_att_peek(p)
+	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')): return 1
+	if (c == '_' || c == '.'): return 1
+	if (c < '0' || c > '9'): return 1 == 2
+	int save = p.pos
+	char* tok = asm_att_ident(p)
+	p.pos = save
+	return asm_att_numeric_label(tok)
+
+
+# A symbol with an optional `+N`/`-N` addend: the name into op.label, the
+# addend returned. A `@PLT`/`@GOTPCREL`-style suffix is skipped (the
+# caller chooses the relocation).
+int asm_att_symbol(asm_parse* p, asm_operand* op):
+	op.label = asm_att_ident(p)
+	if (asm_att_peek(p) == '@'):
+		p.pos = p.pos + 1
+		asm_att_ident(p)
+	asm_att_skip_spaces(p)
+	int c = asm_att_peek(p)
+	if (c != '+' && c != '-'): return 0
+	p.pos = p.pos + 1
+	asm_att_skip_spaces(p)
+	int v = asm_parse_number(asm_att_ident(p))
+	if (c == '-'): return 0 - v
+	return v
+
+
 # A memory operand `disp(%base,%index,scale)` / `disp(%base)` /
 # `(%base)` / `disp`. The cursor is at the displacement or '('.
 void asm_att_mem(asm_parse* p, asm_operand* op):
@@ -129,7 +170,12 @@ void asm_att_mem(asm_parse* p, asm_operand* op):
 	op.disp_size = 0
 	op.size = 0
 	asm_att_skip_spaces(p)
-	if (asm_att_peek(p) == '-' || (asm_att_peek(p) >= '0' && asm_att_peek(p) <= '9')):
+	if (asm_att_symbol_start(p)):
+		# A symbolic displacement (`sym(%rip)`, `1f+8(%rip)`, `sym`): the
+		# reference stays in op.label, always a disp32 field.
+		op.disp = asm_att_symbol(p, op)
+		op.disp_size = 4
+	else if (asm_att_peek(p) == '-' || (asm_att_peek(p) >= '0' && asm_att_peek(p) <= '9')):
 		# A signed displacement; asm_att_ident stops at '-', so consume the
 		# sign by hand and read the magnitude.
 		int neg = 0
@@ -211,8 +257,18 @@ int asm_att_operand(asm_parse* p, asm_operand* op, int mnem_size):
 		return 1
 	if (c == '$'):
 		p.pos = p.pos + 1
-		char* tok = asm_att_ident(p)
 		op.kind = ASM_OP_IMM
+		if (asm_att_symbol_start(p)):
+			# A symbolic immediate (`$sym`, `$1f`): the reference in
+			# op.label, the addend in op.imm.
+			op.imm = asm_att_symbol(p, op)
+			return 1
+		# asm_att_ident stops at a sign: a negative immediate keeps it.
+		char* sign = c""
+		if (asm_att_peek(p) == '-'):
+			sign = c"-"
+			p.pos = p.pos + 1
+		char* tok = strjoin(sign, asm_att_ident(p))
 		op.imm = asm_parse_number(tok)
 		op.imm_hi = asm_parse_number_hi(tok)
 		# An immediate keeps size 0: the operand width comes from the
@@ -221,15 +277,28 @@ int asm_att_operand(asm_parse* p, asm_operand* op, int mnem_size):
 		# matching the GNU assembler's output.
 		op.size = 0
 		return 1
+	if (asm_att_symbol_start(p)):
+		int save = p.pos
+		op.kind = ASM_OP_LABEL
+		int addend = asm_att_symbol(p, op)
+		asm_att_skip_spaces(p)
+		if (strcmp(op.label, c".") == 0):
+			# A dot-relative branch target `.+N` / `.-N`, as the encoder
+			# takes it.
+			if (addend < 0): op.label = strjoin(c".-", itoa(0 - addend))
+			else: op.label = strjoin(c".+", itoa(addend))
+			return 1
+		if (addend == 0 && asm_att_peek(p) != '('): return 1
+		# `sym(%rip)`, `sym+8`: a symbolic memory operand.
+		p.pos = save
+		asm_att_mem(p, op)
+		if (op.size == 0): op.size = mnem_size
+		return 1
 	if (c == '-' || (c >= '0' && c <= '9') || c == '('):
 		asm_att_mem(p, op)
 		if (op.size == 0): op.size = mnem_size
 		return 1
-	char* label = asm_att_ident(p)
-	if (label[0] == 0): return 1 == 2
-	op.kind = ASM_OP_LABEL
-	op.label = label
-	return 1
+	return 1 == 2
 
 
 # movzbl/movzwl/movsbl/movslq style double suffixes on movz/movs: map to

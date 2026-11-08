@@ -134,8 +134,31 @@ stays seed-compilable, enforced by the `asm_seed_gate`.
   C-link test (`tests/native_asm_test.w`) checks each statement against
   the same operation in C inline asm. `verify`, `verify_x64`,
   `native_asm_test`, `parser_generator_w_test` and `wfmt_check` pass.
-- **Next**: templates with local numeric labels and internal branches;
-  the directive/section emitter (`.pushsection`, `.byte` records) and
-  relocations for symbol operands and external calls, through the object
-  writer (`code_generator/elf_object.w`); multiple flag outputs and
-  `asm goto`; the per-build fallback report.
+- **Done**: `%fs:`/`%gs:` segment overrides (the prefix byte, ahead of
+  `lock`), negative immediates, and the template assembler
+  (`grammar/inline_asm_template.w`): numeric (`1:`/`1b`/`1f`) and named
+  local labels with rel32 branches patched when the template ends; a
+  lone prefix statement (`lock;`) and `#` comments; `.pushsection`,
+  `.section`, `.popsection`, `.previous`, `.byte/.word/.short/.long/.int/
+  .quad` over `A`, `A + N`, `A - .` and `A - B`, and
+  `.balign/.align/.p2align`; symbol operands (`call sym`, `sym(%rip)`,
+  `$sym`, bare `sym`). Pushed sections become object sections of their
+  own (`code_generator/elf_object.w`, `object_asm_*`); a reference that
+  crosses sections or names a symbol outside the statement becomes an
+  `R_X86_64_PC32`/`PLT32`/`64`/`32`/`32S`/`PC64` relocation, against the
+  target's section symbol or a global (undefined when the object does
+  not define it). Sections and symbol references therefore need
+  `--emit=obj`; local labels work in every output mode.
+  `native_asm_test` links such an object with gcc: a call into C, RIP-
+  relative and absolute symbol operands, label loops, and an
+  exception-table section the driver's SIGSEGV handler walks through
+  `__start_`/`__stop_` symbols to resume a faulting load at its fixup
+  code; it also checks the diagnostics for the rejected forms.
+- **Limits**: branches are always rel32 (no `rel8` relaxation, so no
+  `jrcxz`/`loop`); a symbolic operand needs a 32-bit field (no `movw
+  $sym`); a symbol named in a template binds to a global of that name, so
+  a W function or global must be global in the object (`--c-abi`
+  non-static) to be referenced; code alignment in the function is at
+  most 16 bytes.
+- **Next**: multiple flag outputs and `asm goto`; the per-build fallback
+  report.

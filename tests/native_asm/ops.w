@@ -97,3 +97,127 @@ export int w_inc_byte(int* p):
 		output rcx:4 = &seen
 		"nop"
 	return seen
+
+# Local labels: a counted loop with numeric labels (1b / 2f) and a named
+# label, every branch in the rel32 form. Returns 1 + 2 + ... + n.
+export int w_sum_to(int n):
+	int out = 0
+	asm_native:
+		input rcx = n
+		output rax:4 = &out
+		"xorl %eax, %eax"
+		"1: testl %ecx, %ecx"
+		"jz done"
+		"addl %ecx, %eax; decl %ecx"
+		"jmp 1b"
+		"done:"
+	return out
+
+# Numeric labels redefined: each `1b` / `1f` names the nearest one. The
+# value counts how many of the two forward jumps were taken (both).
+export int w_relabel():
+	int out = 0
+	asm_native:
+		output rax:4 = &out
+		"xorl %eax, %eax"
+		"jmp 1f"
+		"addl $100, %eax"
+		"1: incl %eax"
+		"jmp 1f"
+		"addl $100, %eax"
+		"1: incl %eax"
+	return out
+
+# A call to an external C function from the template (R_X86_64_PLT32),
+# on a 16-byte aligned stack, with rbx holding the caller's rsp.
+export int w_call_c(int a):
+	int out = 0
+	asm_native:
+		input rdi = a
+		output rax:4 = &out
+		clobber rbx
+		"movq %rsp, %rbx"
+		"andq $-16, %rsp"
+		"call c_triple@PLT"
+		"movq %rbx, %rsp"
+	return out
+
+# RIP-relative symbol operands (R_X86_64_PC32): read, then bump, a C
+# global; and its address as a sign-extended immediate (R_X86_64_32S).
+export int w_bump_counter(int add, int* address_ok):
+	int old = 0
+	asm_native:
+		input rcx = add
+		output rax:4 = &old
+		output rdx:4 = address_ok
+		"movl c_counter(%rip), %eax"
+		"addl %ecx, c_counter(%rip)"
+		"addl $1, c_counter(%rip)"
+		"leaq c_counter(%rip), %rsi"
+		"movq $c_counter, %rdx"
+		"cmpq %rsi, %rdx"
+		"sete %dl"
+		"movzbl %dl, %edx"
+	return old
+
+# An exception-table record: the load at 1 may fault; the C driver's
+# SIGSEGV handler finds the faulting address in the w_extable section
+# (through __start_w_extable / __stop_w_extable) and resumes at the
+# fixup code at 3, which sets -14 and jumps back to 2. The record is
+# `.long 1b - .` / `.long 3b - .`, relocated across sections; w_sites
+# holds the load's absolute address (R_X86_64_64), and the leaq gives it
+# to the caller too.
+export int w_probe(int* p, int* fault_site):
+	int v = 0
+	asm_native:
+		input rcx = p
+		output rax:4 = &v
+		output rdx:8 = fault_site
+		"leaq 1f(%rip), %rdx"
+		"1: movl (%rcx), %eax"
+		"2:"
+		".pushsection .text.w_fixup,\"ax\""
+		"3: movl $-14, %eax"
+		"jmp 2b"
+		".popsection"
+		".pushsection w_extable,\"a\""
+		".balign 4"
+		".long 1b - ., 3b - ."
+		".popsection"
+		".pushsection w_sites,\"a\""
+		".balign 8"
+		".quad 1b"
+		".popsection"
+	return v
+
+# Data directives in a section of their own: constant bytes, words and a
+# label difference, with alignment padding, plus an absolute 32-bit
+# symbol value (R_X86_64_32) and a PC-relative one to a C function.
+export void w_misc_marker():
+	asm_native:
+		"1: nop"
+		"2: nop; nop"
+		".pushsection w_misc,\"a\""
+		".byte 0x11, 0x22"
+		".balign 4"
+		".word 0x3344"
+		".balign 8, 0xee"
+		".quad 2b - 1b + 5"
+		".long c_counter"
+		".long c_triple - ."
+		".popsection"
+
+# A lone prefix statement (`lock;`), a `#` comment, `.section` /
+# `.previous`, `.p2align` and a 64-bit PC-relative value (R_X86_64_PC64).
+export int w_lock_add(int* p, int add):
+	int old = 0
+	asm_native:
+		input rax = add
+		input rcx = p
+		output rax:4 = &old
+		"lock; xaddl %eax, (%rcx)   # fetch and add"
+		".section w_more,\"a\""
+		".p2align 3"
+		".quad c_triple - ."
+		".previous"
+	return old

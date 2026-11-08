@@ -29,8 +29,8 @@ so W holds no value in a general register across it; r10 and r11 are
 reserved as the statement's own scratch (flag capture and address
 register), and rsp/rbp are off limits to operands.
 
-This first form handles straight-line templates (no local labels,
-branches, directives or external calls -- those are a follow-on). A
+The template lines may hold local labels, branches, section and data
+directives and symbol references (grammar/inline_asm_template.w). A
 template line the encoder cannot assemble is a compile error, so a
 producer only emits templates it has checked are supported.
 
@@ -42,6 +42,7 @@ import libs.asm.att
 import libs.asm.registers
 import libs.asm.insn
 import libs.asm.x86_encode
+import grammar.inline_asm_template
 
 
 int expression();
@@ -249,8 +250,9 @@ void inasm_emit():
 			inasm_load_address(inasm_slot[i])
 			inasm_load_through_r11(inasm_reg[i], inasm_width[i])
 
-	# The template, in source order.
-	for i in range(inasm_lines.length): inasm_emit_line(inasm_lines[i])
+	# The template, in source order: labels, branches, directives and
+	# symbol references (grammar/inline_asm_template.w).
+	inasm_template(inasm_lines)
 
 	# Flag captures, while the template's flags are still live: set*cc into
 	# r10b, then zero-extend to the full register so the output store

@@ -131,5 +131,10 @@ int main():
 	att_is(c"movq %rax, %fs:(%rbx,%rcx,8)", c"64 48 89 04 CB")
 	att_is(c"incq %gs:0x10", c"65 48 FF 04 25 10 00 00 00")
 
+	# Negative immediates keep their sign.
+	att_is(c"andq $-16, %rsp", c"48 83 E4 F0")
+	att_is(c"movl $-14, %eax", c"B8 F2 FF FF FF")
+	att_is(c"addq $-200, %rax", c"48 05 38 FF FF FF")
+
 	println(c"asm_att_test passed")
 	return 0
