@@ -217,3 +217,24 @@ void test_contextual_keywords_after_templates():
 	early(c"async function f() { x = `)`; await y; }", 0, 1)
 	early(c"async function f() { x = `${b})(`; await y; }", 0, 1)
 	early(c"function f() { x = `${a}`; await y; }", 0, 0)
+
+
+# A method's computed key evaluates in the enclosing function and class
+# context, not the method's own (checked against Node 22).
+void test_method_computed_keys():
+	early(c"function* g() { class C { [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static *[yield 1]() { yield 2; } } }", 0, 1)
+	early(c"function* g() { ({ [yield 1]() {} }); ({ get [yield]() {} }); ({ set [yield 1](v) {} }); }", 0, 1)
+	early(c"function* g() { ({ [yield]() { 'use strict'; } }); }", 0, 1)
+	early(c"async function f() { class C { [await 1]() {} } }", 0, 1)
+	early(c"async function f() { ({ [await x]() {} }); ({ async [await x]() { await y; } }); }", 0, 1)
+	early(c"function f() { class C { [new.target]() {} } }", 0, 1)
+	early(c"var o = { m() { return { [super.x]() {} }; } };", 0, 1)
+	# The method body keeps its own context; the key keeps the class's strictness.
+	early(c"function* g() { class C { [yield 1]() { yield 2; } } }", 0, 0)
+	early(c"function* g() { class C { [yield]() {} } }", 0, 1)
+	early(c"class C { [yield]() {} }", 0, 0)
+	early(c"class C { [new.target]() {} }", 0, 0)
+	early(c"class C { [super.x]() {} }", 0, 0)
+	early(c"function f() { ({ [yield 1]() {} }); }", 0, 0)
