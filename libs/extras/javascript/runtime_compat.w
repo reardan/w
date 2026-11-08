@@ -1,5 +1,7 @@
 import libs.extras.javascript.runtime
 
+js_value* js_runtime_destructure_step(js_runtime* rt, js_value* value, js_value* iterator, int* index, int* done);
+
 # Browser-host language operations. Imported by runtime.w after its core.
 # Binding patterns visit only binding positions, never initializer expressions.
 void js_runtime_pattern_names(js_node* pattern, list[js_node*] names):
@@ -20,7 +22,16 @@ void js_runtime_pattern_declare(js_runtime* rt, js_node* pattern, js_value* env,
 		if (rt.completion.status != 0): break
 		js_text* key = js_runtime_key(names[i].text)
 		js_value* binding = js_runtime_property(env, key)
-		if ((mode == 0 && binding != 0) || (mode == 2 && binding != 0 && binding.lexical_binding)): js_runtime_fail(rt, 2, c"duplicate lexical binding")
+		# GlobalDeclarationInstantiation (runtime_global.w): global vars are
+		# global object properties; lexicals also conflict with var names and
+		# non-configurable global properties.
+		if (env == rt.global && mode == 0 && js_runtime_global_lexical_conflict(rt, key) == 0):
+			js_value* existing = js_runtime_property(rt.global_object, key)
+			if (existing != 0 && (existing.variable_scope != 0 || existing.configurable == 0)): js_runtime_fail(rt, 2, c"duplicate lexical binding")
+		if (env == rt.global && (mode == 2 || mode == 3)):
+			if (js_runtime_global_lexical_conflict(rt, key)): js_runtime_fail(rt, 2, c"duplicate lexical binding")
+			else if (mode == 3): js_runtime_global_declare(rt, key, 0, 0)
+		else if ((mode == 0 && binding != 0) || (mode == 2 && binding != 0 && binding.lexical_binding)): js_runtime_fail(rt, 2, c"duplicate lexical binding")
 		else if (mode == 1 || mode == 4 || (mode == 3 && binding == 0)):
 			js_runtime_put(rt, env, key, rt.undefined_value)
 			binding = js_runtime_property(env, key)
@@ -28,6 +39,8 @@ void js_runtime_pattern_declare(js_runtime* rt, js_node* pattern, js_value* env,
 				binding.initialized = mode == 3
 				binding.lexical_binding = mode == 1
 				binding.immutable = immutable
+				# Var bindings created by eval code are deletable.
+				if (mode == 3 && rt.eval_code): binding.variable_scope = 2
 		js_text_free(key)
 	__w_list_free(cast(__w_list*, names))
 
@@ -99,23 +112,33 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 		js_runtime_pattern_bind(rt, pattern.children[0], value, env)
 		return
 	if (js_kind(pattern, c"array_pattern")):
-		if (value.kind != 6 && value.kind != 4):
-			js_runtime_fail(rt, 2, c"array binding requires iterable")
-			return
+		# Arrays and strings use the index fast path while their Symbol.iterator
+		# is the built-in one; other values use the iterator protocol, closing
+		# an iterator the pattern leaves unfinished.
+		js_value* iterator = 0
+		int protocol = (value.kind != 6 && value.kind != 4) || js_list_iterator_intact(rt, value) == 0
+		if (rt.completion.status != 0): return
+		if (protocol):
+			iterator = js_runtime_iterator_open(rt, value)
+			if (iterator == 0): return
 		int index = 0
+		int done = 0
 		for i in range(pattern.children.length):
 			if (rt.completion.status != 0): break
 			js_node* child = pattern.children[i]
 			js_value* item = 0
 			if (js_kind(child, c"rest")):
 				item = js_runtime_alloc(rt, 6)
-				while (js_runtime_compat_step(rt)):
-					js_value* next = js_runtime_iter_next(rt, value, &index)
-					if (next == 0): break
-					js_runtime_array_append(rt, item, next)
-			else: item = js_runtime_iter_next(rt, value, &index)
+				while (done == 0 && js_runtime_compat_step(rt)):
+					js_value* next = js_runtime_destructure_step(rt, value, iterator, &index, &done)
+					if (next != 0): js_runtime_array_append(rt, item, next)
+			else: item = js_runtime_destructure_step(rt, value, iterator, &index, &done)
+			if (rt.completion.status != 0):
+				done = 1
+				break
 			if (item == 0): item = rt.undefined_value
 			js_runtime_pattern_bind(rt, child, item, env)
+		if (iterator != 0 && done == 0 && rt.completion.status != 5 && rt.completion.status != 6 && rt.completion.status != 7): js_runtime_iterator_close(rt, iterator)
 		return
 	if (js_kind(pattern, c"object_pattern")):
 		if (value.kind == 0 || value.kind == 1):
@@ -261,4 +284,11 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding):
 	if (binding == 0 || binding.initialized == 0):
 		js_runtime_fail(rt, 2, c"uninitialized module binding")
 		return rt.undefined_value
+	# Only global object properties reach identifier resolution as accessors.
+	if (binding.accessor == 1):
+		if (binding.getter == 0): return rt.undefined_value
+		list[js_value*] arguments = new list[js_value*]
+		js_value* value = js_runtime_call_receiver(rt, binding.getter, rt.global_object, arguments)
+		__w_list_free(cast(__w_list*, arguments))
+		return value
 	return binding.value

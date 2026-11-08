@@ -26,7 +26,10 @@ const int UI_ACCESS_TAB_LIST = 18
 const int UI_ACCESS_TAB = 19
 const int UI_ACCESS_PROGRESS = 20
 const int UI_ACCESS_DIALOG = 21
-const int UI_ACCESS_ROLE_LAST = 21
+# A settable range (#911): its range values (ui_access_set_range) say
+# where it is; UI_ACCESS_SET_VALUE takes the new value as decimal text.
+const int UI_ACCESS_SLIDER = 22
+const int UI_ACCESS_ROLE_LAST = 22
 const int UI_ACCESS_DISABLED = 1
 const int UI_ACCESS_CHECKED = 2
 const int UI_ACCESS_SELECTED = 4
@@ -58,6 +61,13 @@ const int UI_ACCESS_SELECT = 32
 # "anchor active" pair followed by "start end" pairs of the further
 # selections, all space separated (ui_access_selections_format).
 const int UI_ACCESS_SET_SELECTIONS = 64
+# Scroll a text node's characters into view (#912): the payload is
+# ASCII "start end align" (ui_access_scroll_format), align one of
+# UI_ACCESS_SCROLL_TOP, _BOTTOM or _ANYWHERE.
+const int UI_ACCESS_SCROLL_TO = 128
+const int UI_ACCESS_SCROLL_TOP = 0
+const int UI_ACCESS_SCROLL_BOTTOM = 1
+const int UI_ACCESS_SCROLL_ANYWHERE = 2
 const int UI_ACCESS_SELECT_ADD = 1
 const int UI_ACCESS_SELECT_REMOVE = 2
 const int UI_ACCESS_SELECT_ONLY = 3
@@ -70,6 +80,15 @@ const int UI_ACCESS_DESCRIPTION = 3
 const int UI_ACCESS_LIVE_OFF = 0
 const int UI_ACCESS_LIVE_POLITE = 1
 const int UI_ACCESS_LIVE_ASSERTIVE = 2
+# Relations (#911) from a node to another, by id
+# (ui_access_add_relation). Each has a reverse that bridges derive:
+# label-for, description-for, controlled-by and, for member-of, the
+# group's members.
+const int UI_ACCESS_REL_LABELLED_BY = 1
+const int UI_ACCESS_REL_DESCRIBED_BY = 2
+const int UI_ACCESS_REL_CONTROLLER_FOR = 3
+const int UI_ACCESS_REL_MEMBER_OF = 4
+const int UI_ACCESS_REL_LAST = 4
 
 type ui_access_action = fn(void*, int, int, char*, int) -> int
 
@@ -134,6 +153,25 @@ struct ui_access_node:
 	# counts as 1.
 	int row_span
 	int col_span
+	# Relations (#911): pairs of (UI_ACCESS_REL_*, target id).
+	int* relations
+	int relation_count
+	# A range's values (#911; progress bars and sliders): has_range is
+	# set by ui_access_set_range.
+	int has_range
+	float32 range_now
+	float32 range_min
+	float32 range_max
+	float32 range_step
+	# IME composition (#912), in characters of value: the composing text
+	# is [composition_start, composition_start + composition_length),
+	# included in the value where the screen shows it, and the clause
+	# being converted [conversion_start, + conversion_length) inside it.
+	# composition_length 0 is no composition.
+	int composition_start
+	int composition_length
+	int conversion_start
+	int conversion_length
 	ui_rect bounds
 	ui_access_text name
 	ui_access_text value
@@ -374,6 +412,83 @@ int ui_access_selections_format(char* out, int* pairs, int count):
 	return n
 
 
+# Parse a SCROLL_TO payload: "start end align", three decimal numbers
+# separated by single spaces, start <= end and a known align. 0 when it
+# is malformed.
+int ui_access_scroll_parse(char* data, int length, int* start, int* end, int* align):
+	int[3] v
+	int values = 0
+	int current = 0
+	int digits = 0
+	for i in range(length + 1):
+		if ((i == length) || (data[i] == ' ')):
+			if ((digits == 0) || (values >= 3)): return 0
+			v[values] = current
+			values = values + 1
+			current = 0
+			digits = 0
+		else:
+			if ((data[i] < '0') || (data[i] > '9') || (digits >= 9)): return 0
+			current = current * 10 + (data[i] - '0')
+			digits = digits + 1
+	if ((values != 3) || (v[1] < v[0]) || (v[2] > UI_ACCESS_SCROLL_ANYWHERE)): return 0
+	start[0] = v[0]
+	end[0] = v[1]
+	align[0] = v[2]
+	return 1
+
+
+# Encode a SCROLL_TO payload into out (at least 40 bytes); returns its
+# length.
+int ui_access_scroll_format(char* out, int start, int end, int align):
+	int n = ui_access_selection_format(out, start, end)
+	out[n] = ' '
+	if ((align < 0) || (align > UI_ACCESS_SCROLL_ANYWHERE)): align = UI_ACCESS_SCROLL_ANYWHERE
+	out[n + 1] = '0' + align
+	return n + 2
+
+
+# Decimal text for v into out (at least 40 bytes): an optional minus,
+# the integer part and up to four fractional digits without trailing
+# zeros ("40", "-2.5", "0.125"). Returns its length.
+int ui_access_number_format(char* out, float32 v):
+	int n = 0
+	if (v < 0.0):
+		out[0] = '-'
+		n = 1
+		v = 0.0 - v
+	# Words are 32 bits on x86: the integer part stops at 2e9.
+	if (v > 2000000000.0): v = 2000000000.0
+	int whole = cast(int, v)
+	int frac = cast(int, (v - cast(float32, whole)) * 10000.0 + 0.5)
+	if (frac >= 10000):
+		whole = whole + 1
+		frac = frac - 10000
+	char[24] digits
+	int k = 0
+	while ((whole > 0) || (k == 0)):
+		digits[k] = '0' + (whole % 10)
+		whole = whole / 10
+		k = k + 1
+	while (k > 0):
+		k = k - 1
+		out[n] = digits[k]
+		n = n + 1
+	if (frac > 0):
+		out[n] = '.'
+		n = n + 1
+		int div = 1000
+		while (frac > 0):
+			out[n] = '0' + (frac / div)
+			n = n + 1
+			frac = frac % div
+			div = div / 10
+	if ((n == 2) && (out[0] == '-') && (out[1] == '0')):
+		out[0] = '0'
+		n = 1
+	return n
+
+
 int ui_access_inert(ui_access_node* node):
 	while (node != 0):
 		if ((node.states & (UI_ACCESS_DISABLED | UI_ACCESS_HIDDEN)) != 0): return 1
@@ -385,7 +500,7 @@ int ui_access_inert(ui_access_node* node):
 int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int length):
 	ui_access_node* node = ui_access_find(tree, id)
 	if ((node == 0) || (cast(int, tree.action) == 0)): return 0
-	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE) && (action != UI_ACCESS_SET_SELECTION) && (action != UI_ACCESS_SELECT) && (action != UI_ACCESS_SET_SELECTIONS)): return 0
+	if ((action != UI_ACCESS_ACTIVATE) && (action != UI_ACCESS_FOCUS) && (action != UI_ACCESS_SET_VALUE) && (action != UI_ACCESS_TOGGLE) && (action != UI_ACCESS_SET_SELECTION) && (action != UI_ACCESS_SELECT) && (action != UI_ACCESS_SET_SELECTIONS) && (action != UI_ACCESS_SCROLL_TO)): return 0
 	if ((node.actions & action) == 0): return 0
 	if (ui_access_inert(node)): return 0
 	if ((action == UI_ACCESS_SET_VALUE) && ((node.states & UI_ACCESS_READONLY) != 0)): return 0
@@ -407,6 +522,11 @@ int ui_access_dispatch(ui_access_tree* tree, int id, int action, char* data, int
 		# Only a multi-selection container's items add or remove.
 		int multiple = (node.parent != 0) && ((node.parent.states & UI_ACCESS_MULTISELECTABLE) != 0)
 		if ((mode != UI_ACCESS_SELECT_ONLY) && !multiple): return 0
+	if (action == UI_ACCESS_SCROLL_TO):
+		int from = 0
+		int to = 0
+		int align = 0
+		if (!ui_access_scroll_parse(data, length, &from, &to, &align)): return 0
 	return tree.action(tree.context, id, action, data, length)
 
 
@@ -424,6 +544,15 @@ int ui_access_dispatch_selection(ui_access_tree* tree, int id, int anchor, int a
 int ui_access_dispatch_select(ui_access_tree* tree, int id, int mode):
 	char* word = ui_access_select_word(mode)
 	return ui_access_dispatch(tree, id, UI_ACCESS_SELECT, word, strlen(word))
+
+
+# Ask the host to scroll characters [start, end) of text node id into
+# view through ui_access_dispatch.
+int ui_access_dispatch_scroll(ui_access_tree* tree, int id, int start, int end, int align):
+	if ((start < 0) || (end < start)): return 0
+	char[48] payload
+	int n = ui_access_scroll_format(&payload[0], start, end, align)
+	return ui_access_dispatch(tree, id, UI_ACCESS_SCROLL_TO, &payload[0], n)
 
 
 # next is forward when reverse=0; otherwise previous. Insertion order
@@ -696,11 +825,80 @@ ui_access_text_attrs* ui_access_add_attr_run(ui_access_tree* tree, int id, int s
 	return &run.attrs
 
 
-# Copy src's #863 text data (boxes, attributes, further selections) and
-# table spans onto dst in tree.
+# Relate node id to node target (#911): kind is a UI_ACCESS_REL_*.
+# The target is resolved when bridges answer, so it may be added later
+# (or never: a missing target is left out). At most 32 per node;
+# duplicates and bad input return 0.
+int ui_access_add_relation(ui_access_tree* tree, int id, int kind, int target):
+	ui_access_node* node = ui_access_find(tree, id)
+	if ((node == 0) || (kind < 1) || (kind > UI_ACCESS_REL_LAST) || (target <= 0) || (target == id) || (node.relation_count >= 32)): return 0
+	for i in range(node.relation_count):
+		if ((node.relations[i * 2] == kind) && (node.relations[i * 2 + 1] == target)): return 0
+	int* grown = cast(int*, malloc((node.relation_count + 1) * 2 * __word_size__))
+	for i in range(node.relation_count * 2): grown[i] = node.relations[i]
+	grown[node.relation_count * 2] = kind
+	grown[node.relation_count * 2 + 1] = target
+	free(cast(char*, node.relations))
+	node.relations = grown
+	node.relation_count = node.relation_count + 1
+	return 1
+
+
+# The range values of a progress bar or slider (#911): now within
+# [min, max] (clamped), step the increment a keyboard step makes (0:
+# none). 0 when min > max.
+int ui_access_set_range(ui_access_tree* tree, int id, float32 now, float32 min, float32 max, float32 step):
+	ui_access_node* node = ui_access_find(tree, id)
+	if ((node == 0) || (min > max) || (step < 0.0)): return 0
+	if (now < min): now = min
+	if (now > max): now = max
+	node.has_range = 1
+	node.range_now = now
+	node.range_min = min
+	node.range_max = max
+	node.range_step = step
+	return 1
+
+
+# Record an IME composition (#912) on a text node: characters [start,
+# start + length) of its value are the composing text, and [target,
+# target + target_length) inside them the clause being converted
+# (target_length 0: none). length 0 clears it. 0 for a range outside
+# the value.
+int ui_access_set_composition(ui_access_tree* tree, int id, int start, int length, int target, int target_length):
+	ui_access_node* node = ui_access_find(tree, id)
+	if ((node == 0) || (start < 0) || (length < 0) || (target_length < 0)): return 0
+	int count = ui_access_char_count(node.value.data, node.value.length)
+	if (start + length > count): return 0
+	if ((target_length > 0) && ((target < start) || (target + target_length > start + length))): return 0
+	node.composition_start = start
+	node.composition_length = length
+	node.conversion_start = target
+	node.conversion_length = target_length
+	if (length == 0):
+		node.composition_start = 0
+		node.conversion_start = 0
+		node.conversion_length = 0
+	if (target_length == 0): node.conversion_start = 0
+	return 1
+
+
+# Copy src's #863 text data (boxes, attributes, further selections),
+# table spans and the #911/#912 relations, range and composition onto
+# dst in tree.
 void ui_access_copy_depth(ui_access_tree* tree, ui_access_node* dst, ui_access_node* src):
 	dst.row_span = src.row_span
 	dst.col_span = src.col_span
+	for k in range(src.relation_count): ui_access_add_relation(tree, dst.id, src.relations[k * 2], src.relations[k * 2 + 1])
+	dst.has_range = src.has_range
+	dst.range_now = src.range_now
+	dst.range_min = src.range_min
+	dst.range_max = src.range_max
+	dst.range_step = src.range_step
+	dst.composition_start = src.composition_start
+	dst.composition_length = src.composition_length
+	dst.conversion_start = src.conversion_start
+	dst.conversion_length = src.conversion_length
 	for k in range(src.selection_count): ui_access_add_selection(tree, dst.id, src.selections[k * 2], src.selections[k * 2 + 1])
 	if (src.char_boxes != 0): ui_access_set_char_boxes(tree, dst.id, src.char_boxes, src.char_box_count)
 	if (src.attrs != 0): ui_access_attrs_copy(ui_access_default_attrs(tree, dst.id), src.attrs)
@@ -713,6 +911,11 @@ void ui_access_copy_depth(ui_access_tree* tree, ui_access_node* dst, ui_access_n
 # 1 when two nodes carry the same #863 text data and spans.
 int ui_access_depth_same(ui_access_node* x, ui_access_node* y):
 	if ((x.row_span != y.row_span) || (x.col_span != y.col_span)): return 0
+	if ((x.relation_count != y.relation_count) || (x.has_range != y.has_range)): return 0
+	for i in range(x.relation_count * 2):
+		if (x.relations[i] != y.relations[i]): return 0
+	if ((x.range_now != y.range_now) || (x.range_min != y.range_min) || (x.range_max != y.range_max) || (x.range_step != y.range_step)): return 0
+	if ((x.composition_start != y.composition_start) || (x.composition_length != y.composition_length) || (x.conversion_start != y.conversion_start) || (x.conversion_length != y.conversion_length)): return 0
 	if ((x.selection_count != y.selection_count) || (x.char_box_count != y.char_box_count) || (x.run_count != y.run_count)): return 0
 	if ((x.char_boxes == 0) != (y.char_boxes == 0)): return 0
 	if ((x.attrs == 0) != (y.attrs == 0)): return 0
@@ -729,6 +932,7 @@ int ui_access_depth_same(ui_access_node* x, ui_access_node* y):
 
 
 void ui_access_free_depth(ui_access_node* n):
+	free(cast(char*, n.relations))
 	free(cast(char*, n.selections))
 	free(cast(char*, n.char_boxes))
 	if (n.attrs != 0): free(n.attrs.family.data)

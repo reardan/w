@@ -1,0 +1,92 @@
+# wbuild: x64
+/*
+REPL rollback of in-place type redefinitions (grammar/type_redefine.w):
+a struct, union or enum redefinition resets the existing type record in
+place, so the per-entry rollback and :reset must put its earlier layout,
+its enum constants and its to_json descriptor back, not only truncate the
+type table by count.
+*/
+import lib.testing
+import repl.core
+
+
+int rollback_ready
+
+
+void rollback_session():
+	if (rollback_ready): return;
+	repl_init()
+	rollback_ready = 1
+
+
+int rollback_eval(char* text):
+	repl_result r = repl_eval(text)
+	assert_equal(1, r.status)
+	return r.value
+
+
+char* rollback_text(char* text):
+	return cast(char*, rollback_eval(text))
+
+
+void rollback_rejected(char* text):
+	repl_result r = repl_eval(text)
+	assert_equal(0, r.status)
+
+
+void test_failed_entry_restores_struct_layout():
+	rollback_session()
+	rollback_eval(c"struct rb_pair:\n\tint a\n\tint b\n")
+	assert_equal(2 * __word_size__, rollback_eval(c"sizeof(rb_pair)"))
+	# The redefinition compiles, then a later item of the same entry fails
+	rollback_rejected(c"struct rb_pair:\n\tchar* name\n\tint a\n\tint b\n\tint c\n\nint rb_broken = rb_missing_name\n")
+	assert_equal(2 * __word_size__, rollback_eval(c"sizeof(rb_pair)"))
+	assert_equal(7, rollback_eval(c"rb_pair rb_p\nrb_p.a = 3\nrb_p.b = 4\nrb_p.a + rb_p.b"))
+	rollback_rejected(c"rb_p.c")
+
+
+void test_failed_entry_restores_union_and_enum():
+	rollback_session()
+	rollback_eval(c"union rb_word:\n\tint i\n\tchar c\n")
+	rollback_eval(c"enum rb_color:\n\trb_red = 1\n\trb_blue = 2\n")
+	assert_equal(__word_size__, rollback_eval(c"sizeof(rb_word)"))
+	rollback_rejected(c"union rb_word:\n\tchar c\n\nenum rb_color:\n\trb_green = 7\n\nint rb_bad = rb_missing_name\n")
+	assert_equal(__word_size__, rollback_eval(c"sizeof(rb_word)"))
+	assert_strings_equal(c"rb_blue", rollback_text(c"enum_name(rb_blue)"))
+	assert_strings_equal(c"7", rollback_text(c"enum_name(cast(rb_color, 7))"))
+
+
+void test_redefinition_refreshes_json_descriptor():
+	rollback_session()
+	rollback_eval(c"import structures.json\nstruct rb_point:\n\tint x\n\nrb_point* rb_v = new rb_point(5)\n")
+	assert_strings_equal(c"{\"x\":5}", rollback_text(c"json_stringify(to_json(rb_v))"))
+	# A successful redefinition must not reuse the descriptor cached for
+	# the old layout
+	rollback_eval(c"struct rb_point:\n\tint x\n\tint y\n\nrb_point* rb_w = new rb_point(1, 2)\n")
+	assert_strings_equal(c"{\"x\":1,\"y\":2}", rollback_text(c"json_stringify(to_json(rb_w))"))
+	# A failed one must not leave the new layout's descriptor behind
+	rollback_rejected(c"struct rb_point:\n\tint q\n\nchar* rb_q = json_stringify(to_json(new rb_point(9)))\nint rb_bad2 = rb_missing_name\n")
+	assert_strings_equal(c"{\"x\":1,\"y\":2}", rollback_text(c"json_stringify(to_json(rb_w))"))
+
+
+void test_reset_restores_layout_constants_and_descriptor():
+	rollback_session()
+	rollback_eval(c"struct rb_cfg:\n\tint volume\n\nrb_cfg* rb_c = new rb_cfg(50)\n")
+	rollback_eval(c"enum rb_mode:\n\trb_on = 1\n")
+	assert_strings_equal(c"{\"volume\":50}", rollback_text(c"json_stringify(to_json(rb_c))"))
+	repl_genesis_checkpoint()
+	rollback_eval(c"struct rb_cfg:\n\tint level\n\tint volume\n\tint muted\n")
+	rollback_eval(c"enum rb_mode:\n\trb_off = 0\n")
+	assert_equal(3 * __word_size__, rollback_eval(c"sizeof(rb_cfg)"))
+	assert_strings_equal(c"{\"level\":0,\"volume\":0,\"muted\":0}", rollback_text(c"json_stringify(to_json(new rb_cfg))"))
+	assert_equal(1, repl_reset_to_genesis())
+	assert_equal(__word_size__, rollback_eval(c"sizeof(rb_cfg)"))
+	assert_strings_equal(c"{\"volume\":50}", rollback_text(c"json_stringify(to_json(rb_c))"))
+	assert_strings_equal(c"rb_on", rollback_text(c"enum_name(rb_on)"))
+# The same rollbacks through the REPL binary itself (bin/repl): a failed
+# struct redefinition after a successful one, then a union and an enum
+# whose redefinitions fail mid-declaration, and :reset over them.
+# wbuild: target=repl_type_rollback_repl_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 repl.w -o bin/repl"
+# wbuild: step="bin/repl" stdin="import structures.json\nstruct rr_pt:\n\tint x\n\nrr_pt rr_a\nrr_a.x = 5\nrr_a\njson_stringify(to_json(&rr_a))\nstruct rr_pt:\n\tint x\n\tint y\n\nrr_pt rr_b\nrr_b.y = 2\nrr_b\nstruct rr_pt:\n\tint q\n\tqq_badtype z\n\nrr_b\njson_stringify(to_json(&rr_b))\n:quit\n" expect_stdout="{\"x\":5}" expect_stdout="{\"x\":0,\"y\":2}" reject_stdout="\"q\"" expect_stderr="unknown type name: 'qq_badtype'"
+# wbuild: step="bin/repl" stdin="union rr_u:\n\tint i\n\tchar c\n\nsizeof(rr_u) * 10\nunion rr_u:\n\tchar c\n\tqq_bad z\n\nsizeof(rr_u) * 100\nenum rr_e:\n\trr_ea = 1\n\nenum rr_e:\n\trr_eb = 2\n\trr_ec = qq_missing\n\nenum_name(rr_ea)\nenum rr_e:\n\trr_ed = 4\n\nenum_name(rr_ed)\n:reset\nstruct rr_pt:\n\tint w\n\nrr_pt rr_c\nrr_c\n:quit\n" expect_stdout="40" expect_stdout="400" expect_stdout="rr_ea" expect_stdout="rr_ed" expect_stdout="{\"w\":0}"

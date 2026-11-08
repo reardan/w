@@ -143,8 +143,9 @@ void classes_errors():
 
 
 void classes_unsupported_forms():
-	classes_unsupported(c"class A { *g() {} }")
-	classes_unsupported(c"class A { async m() {} }")
+	# Generator and async methods run since reardan/w#906.
+	classes_true(c"class A { *g() { yield this.k; } get k() { return 7; } } new A().g().next().value === 7;")
+	classes_true(c"class A { static async m() { return 1; } } typeof A.m().then === 'function';")
 	classes_unsupported(c"var o = { m() { return super.x; } };")
 
 

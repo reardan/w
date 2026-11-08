@@ -134,6 +134,14 @@ int js_predicate_method_parameters(pg_token_stream* stream, int open, int before
 	return method
 
 
+# `extends` at index after `class` or `class Name` opens a heritage, so its
+# parenthesized `(B) {` is never a function head; a method may still be
+# named `extends`.
+int js_predicate_heritage(pg_token_stream* stream, int index):
+	if (js_predicate_is(stream, index, c"extends") == 0): return 0
+	return js_predicate_is(stream, index - 1, c"class") || (js_predicate_word(stream, index - 1) && js_predicate_is(stream, index - 2, c"class"))
+
+
 int js_predicate_function_head(pg_token_stream* stream, int open, int body):
 	int name = open - 1
 	if (js_predicate_is(stream, name, c"function")): return 4 | 2 * js_predicate_is(stream, name - 1, c"async")
@@ -141,7 +149,7 @@ int js_predicate_function_head(pg_token_stream* stream, int open, int body):
 	if (js_predicate_is(stream, name, c"]")):
 		name = js_predicate_open(stream, name)
 		if (name < 0): return 0
-	else if (js_predicate_word(stream, name) == 0 || js_predicate_control(stream, name) || (body == 0 && js_predicate_operator_word(stream, name))): return 0
+	else if (js_predicate_word(stream, name) == 0 || js_predicate_control(stream, name) || js_predicate_heritage(stream, name) || (body == 0 && js_predicate_operator_word(stream, name))): return 0
 	int before = name - 1
 	if (js_predicate_is(stream, before, c"function")): return 4 | 2 * js_predicate_is(stream, before - 1, c"async")
 	if (js_predicate_is(stream, before, c"*")):
@@ -151,7 +159,7 @@ int js_predicate_function_head(pg_token_stream* stream, int open, int body):
 	if (js_predicate_is(stream, before, c"get") || js_predicate_is(stream, before, c"set") || js_predicate_is(stream, before, c"static")): return 4
 	# A plain `name(...) {` is a method body; `name(` alone may be a call.
 	if (js_predicate_is(stream, before, c"extends")): return 0
-	if (body || (js_predicate_is(stream, name, c"extends") == 0 && js_predicate_method_parameters(stream, open, before))): return 4
+	if (body || js_predicate_method_parameters(stream, open, before)): return 4
 	return 0
 
 

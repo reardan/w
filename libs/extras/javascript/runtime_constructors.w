@@ -81,30 +81,61 @@ js_value* js_runtime_instanceof(js_runtime* rt, js_value* value, js_value* targe
 # switch = discriminant, case(test, statements...)/default(statements...).
 # Clauses share one lexical scope; matching uses strict equality, and the
 # default clause runs only when no case (before or after it) matches.
+js_value* js_runtime_switch_save(js_runtime* rt, js_node* node, int phase, js_value* discriminant, js_value* scope, int clause, int other):
+	js_value* saved = js_frame_save(rt, node, phase)
+	if (saved == 0): return 0
+	saved.parent = scope
+	js_frame_put(saved, discriminant)
+	js_frame_set_int(saved, 0, clause)
+	js_frame_set_int(saved, 1, other)
+	return saved
+
+
+# Frame phases (generators): 0 discriminant, 1 case test (int slots: clause,
+# default clause), 2 clause statements (int slots: clause, statement).
 js_value* js_runtime_switch(js_runtime* rt, js_node* node, js_value* env):
-	js_value* discriminant = js_runtime_eval_node(rt, node.children[0], env)
-	if (rt.completion.status != 0): return rt.undefined_value
-	js_value* scope = js_runtime_environment(rt, env)
-	# One CaseBlock scope: declare every clause's statements in a single pass
-	# so sloppy duplicate functions across clauses (B.3.3.5) are not
-	# mistaken for redeclarations. A temporary borrowed wrapper holds them.
-	js_node* wrapper = js_node_new(c"block", c"")
-	for i in range(1, node.children.length):
-		for js_node* statement in node.children[i].children: js_node_add(wrapper, statement)
-	js_runtime_declare(rt, wrapper, scope)
-	while (wrapper.children.length > 0): wrapper.children.pop()
-	js_node_free(wrapper)
+	js_value* frame = js_frame_resume(rt, node)
+	int phase = 0
+	js_value* discriminant = 0
+	js_value* scope = 0
+	int resume_clause = 1
+	int resume_other = -1
+	if (frame != 0):
+		phase = frame.array_length
+		discriminant = js_frame_get(frame, 0)
+		scope = frame.parent
+		resume_clause = js_frame_int(frame, 0)
+		resume_other = js_frame_int(frame, 1)
+	if (phase == 0):
+		discriminant = js_runtime_eval_node(rt, node.children[0], env)
+		if (js_runtime_switch_save(rt, node, 0, 0, 0, 0, 0) != 0 || rt.completion.status != 0): return rt.undefined_value
+		scope = js_runtime_environment(rt, env)
+		# One CaseBlock scope: declare every clause's statements in a single pass
+		# so sloppy duplicate functions across clauses (B.3.3.5) are not
+		# mistaken for redeclarations. A temporary borrowed wrapper holds them.
+		js_node* wrapper = js_node_new(c"block", c"")
+		for i in range(1, node.children.length):
+			for js_node* statement in node.children[i].children: js_node_add(wrapper, statement)
+		js_runtime_declare(rt, wrapper, scope)
+		while (wrapper.children.length > 0): wrapper.children.pop()
+		js_node_free(wrapper)
 	int start = -1
-	int fallback = -1
-	for i in range(1, node.children.length):
-		if (rt.completion.status != 0 || start >= 0): break
-		js_node* clause = node.children[i]
-		if (js_kind(clause, c"default")):
-			fallback = i
-			continue
-		js_value* test = js_runtime_eval_node(rt, clause.children[0], scope)
-		if (rt.completion.status == 0 && js_runtime_equal(discriminant, test)): start = i
-	if (start < 0): start = fallback
+	int fallback = resume_other
+	int first_statement = -1
+	if (phase == 2):
+		start = resume_clause
+		first_statement = resume_other
+	else:
+		for i in range(resume_clause, node.children.length):
+			if (rt.completion.status != 0 || start >= 0): break
+			js_node* clause = node.children[i]
+			if (js_kind(clause, c"default")):
+				fallback = i
+				continue
+			js_value* test = js_runtime_eval_node(rt, clause.children[0], scope)
+			if (js_runtime_switch_save(rt, node, 1, discriminant, scope, i, fallback) != 0): return rt.undefined_value
+			if (rt.completion.status == 0 && js_runtime_equal(discriminant, test)): start = i
+		if (start < 0): start = fallback
 	js_value* result = rt.undefined_value
 	int empty = 1
 	if (start > 0):
@@ -113,9 +144,13 @@ js_value* js_runtime_switch(js_runtime* rt, js_node* node, js_value* env):
 			js_node* clause = node.children[i]
 			int first = 0
 			if (js_kind(clause, c"case")): first = 1
+			if (first_statement >= 0):
+				first = first_statement
+				first_statement = -1
 			for j in range(first, clause.children.length):
 				if (rt.completion.status != 0): break
 				js_value* value = js_runtime_eval_node(rt, clause.children[j], scope)
+				if (js_runtime_switch_save(rt, node, 2, discriminant, scope, i, j) != 0): return rt.undefined_value
 				if (rt.empty == 0):
 					result = value
 					empty = 0

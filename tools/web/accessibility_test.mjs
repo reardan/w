@@ -190,9 +190,9 @@ menuCheck.emit('click');
 assert.equal(access.next(10, 256).action, 1, 'a checkbox without toggle activates');
 access.close();
 assert.equal(access.begin(4, 64, 11), 1);
-assert.equal(access.add(1, 0, 22, 0, 0, 0), 0, 'roles past the table are rejected');
+assert.equal(access.add(1, 0, 23, 0, 0, 0), 0, 'roles past the table are rejected');
 assert.equal(access.begin(4, 64, 11), 1);
-assert.equal(access.add(1, 0, 21, 0, 0, 0), 1);
+assert.equal(access.add(1, 0, 22, 0, 0, 0), 1, 'the slider role (#911) is the last one');
 access.close();
 // Identity across publications: focus, the textarea's value (and with it
 // caret and selection) and a composition in progress survive a republish.

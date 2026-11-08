@@ -235,3 +235,148 @@ int ui_access_selections_edit(ui_access_node* n, int k, int start, int end, char
 	free(cast(char*, pairs))
 	out[0] = payload
 	return length
+
+
+/* Relations (#911). */
+
+# Reverse relation kinds, as ui_access_related answers them: the nodes
+# whose relation of the negated kind names this one.
+const int UI_ACCESS_REL_LABEL_FOR = 0 - 1
+const int UI_ACCESS_REL_DESCRIPTION_FOR = 0 - 2
+const int UI_ACCESS_REL_CONTROLLED_BY = 0 - 3
+
+
+# The nodes related to n by kind: a UI_ACCESS_REL_* (n's own relations
+# whose targets exist) or a reverse kind (the nodes relating to n).
+# Returns how many there are, storing the index-th (0 when out of
+# range) in *out.
+int ui_access_related(ui_access_tree* tree, ui_access_node* n, int kind, int index, ui_access_node** out):
+	out[0] = 0
+	if ((tree == 0) || (n == 0) || (kind == 0)): return 0
+	int count = 0
+	if (kind > 0):
+		for i in range(n.relation_count):
+			if (n.relations[i * 2] == kind):
+				ui_access_node* t = ui_access_find(tree, n.relations[i * 2 + 1])
+				if (t != 0):
+					if (count == index): out[0] = t
+					count = count + 1
+		return count
+	if (kind == 0 - UI_ACCESS_REL_MEMBER_OF): return 0
+	for int id in tree.nodes:
+		ui_access_node* c = tree.nodes[id]
+		for i in range(c.relation_count):
+			if ((c.relations[i * 2] == 0 - kind) && (c.relations[i * 2 + 1] == n.id)):
+				if (count == index): out[0] = c
+				count = count + 1
+	return count
+
+
+# The relation kinds n has at least one target for, forward kinds then
+# reverse ones, in a fixed order: how many, the index-th in *kind.
+int ui_access_relation_kinds(ui_access_tree* tree, ui_access_node* n, int index, int* kind):
+	kind[0] = 0
+	int count = 0
+	ui_access_node* t = 0
+	for k in range(1, UI_ACCESS_REL_LAST + 1):
+		for sign in range(2):
+			int candidate = k
+			if (sign == 1): candidate = 0 - k
+			if (ui_access_related(tree, n, candidate, 0, &t) > 0):
+				if (count == index): kind[0] = candidate
+				count = count + 1
+	return count
+
+
+/* IME composition (#912). */
+
+# Insert an IME composition into text node id's value as the screen
+# shows it: text[0..length) (UTF-8) at character at, with boxes[k] the
+# box of its k-th character (0: none; the node then loses its glyph
+# geometry unless it had none). The caret moves to at + caret (caret
+# counts characters of the composition), the selection collapses onto
+# it, later selections and attribute runs shift, and the composition and
+# its conversion target [target, target + target_length) (inside the
+# composition, 0 length for none) are recorded. 0 on bad input.
+int ui_access_insert_composition(ui_access_tree* tree, int id, int at, char* text, int length, ui_rect* boxes, int caret, int target, int target_length):
+	ui_access_node* n = ui_access_find(tree, id)
+	if ((n == 0) || (length <= 0) || (at < 0)): return 0
+	if (!utf8_validate_bytes(text, length)): return 0
+	int count = ui_access_char_count(text, length)
+	int total = ui_access_text_count(n)
+	if ((at > total) || (caret < 0) || (caret > count) || (target < 0) || (target_length < 0) || (target + target_length > count)): return 0
+	int glyphs = ui_access_has_glyphs(n)
+	int byte = ui_access_char_byte(n.value.data, n.value.length, at)
+	int size = n.value.length + length
+	char* joined = cast(char*, malloc(size + 1))
+	for i in range(byte): joined[i] = n.value.data[i]
+	for i in range(length): joined[byte + i] = text[i]
+	for i in range(byte, n.value.length): joined[length + i] = n.value.data[i]
+	ui_rect* old_boxes = n.char_boxes
+	int old_count = n.char_box_count
+	n.char_boxes = 0
+	n.char_box_count = 0
+	int ok = ui_access_set_text(tree, id, UI_ACCESS_VALUE, joined, size)
+	free(joined)
+	if (!ok):
+		n.char_boxes = old_boxes
+		n.char_box_count = old_count
+		return 0
+	if (glyphs && (boxes != 0)):
+		ui_rect* grown = cast(ui_rect*, malloc((old_count + count + 1) * sizeof(ui_rect)))
+		for i in range(at): grown[i] = old_boxes[i]
+		for i in range(count): grown[at + i] = boxes[i]
+		for i in range(at, old_count): grown[count + i] = old_boxes[i]
+		ui_access_set_char_boxes(tree, id, grown, old_count + count)
+		free(cast(char*, grown))
+	free(cast(char*, old_boxes))
+	for i in range(n.selection_count * 2):
+		if (n.selections[i] >= at): n.selections[i] = n.selections[i] + count
+	for i in range(n.run_count):
+		ui_access_text_run* run = &n.runs[i]
+		if (run.start >= at): run.start = run.start + count
+		if (run.end >= at): run.end = run.end + count
+	n.caret = at + caret
+	n.selection_start = n.caret
+	n.selection_end = n.caret
+	return ui_access_set_composition(tree, id, at, count, at + target, target_length)
+
+
+/* Visible text (#912). */
+
+# 1 when character k's box overlaps clip (a zero-width box counts when
+# its edge lies inside it).
+int ui_access_char_in(ui_access_node* n, int k, ui_rect clip):
+	ui_rect b = n.char_boxes[k]
+	if ((b.y + b.h <= clip.y) || (b.y >= clip.y + clip.h)): return 0
+	if (b.w <= 0.0): return (b.x >= clip.x) && (b.x <= clip.x + clip.w)
+	return (b.x + b.w > clip.x) && (b.x < clip.x + clip.w)
+
+
+# The stretches of n's characters whose boxes overlap clip, as [start,
+# end) pairs in order: how many, with up to cap of them in out (two
+# ints each). Without glyph geometry the whole text is one stretch.
+int ui_access_visible_ranges(ui_access_node* n, ui_rect clip, int* out, int cap):
+	int count = ui_access_text_count(n)
+	if (!ui_access_has_glyphs(n)):
+		if (cap > 0):
+			out[0] = 0
+			out[1] = count
+		return 1
+	int ranges = 0
+	int start = 0 - 1
+	for k in range(count + 1):
+		int inside = (k < count) && ui_access_char_in(n, k, clip)
+		if (inside && (start < 0)): start = k
+		if (!inside && (start >= 0)):
+			if (ranges < cap):
+				out[ranges * 2] = start
+				out[ranges * 2 + 1] = k
+			ranges = ranges + 1
+			start = 0 - 1
+	return ranges
+
+
+# The rectangle n's text shows through: its bounds.
+ui_rect ui_access_text_clip(ui_access_node* n):
+	return n.bounds

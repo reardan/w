@@ -8,8 +8,11 @@
 import lib.lib
 
 
+# Inline globals get cache lines of their own: a store into a line the
+# core also fetched code from is a self-modifying-code pipeline flush
+# (code_generator/code_emitter.w inline_global_line).
 void repl_jit_configure():
-	return;
+	inline_global_line = 64
 
 
 int repl_jit_map_code(int size, int flags):

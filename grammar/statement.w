@@ -424,7 +424,10 @@ void statement_impl():
 	# switch back to the consumer until the next gen_next
 	else if (accept(c"yield")): yield_statement_tail()
 
-	else if (accept(c"debugger")):
+	else if (peek(c"debugger")):
+		# int3 is not a fault the engine's window recovers (scripting.md §5.2)
+		script_profile_reject(c"script profile: debugger statements are not allowed")
+		get_token()
 		# wdbg reads this to know whether the program can pause itself
 		# without --break_start (see wdbg_main in debugger/wdbg.w).
 		saw_debugger_statement = 1

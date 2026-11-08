@@ -87,9 +87,11 @@ extern int SysAllocStringLen(char* text, int length)
 extern void SysFreeString(int bstr)
 extern int SafeArrayCreateVector(int vt, int lower_bound, int count)
 extern int SafeArrayPutElement(int array, int32* index, char* value)
+extern int SafeArrayDestroy(int array)
 
 c_lib "ole32.dll"
 extern int CoInitializeEx(int reserved, int flags)
+extern int CoTaskMemAlloc(int size)
 
 c_lib "user32.dll"
 extern int ClientToScreen(int hwnd, int32* point)
@@ -141,15 +143,26 @@ const int UI_UIA_LEGACY = 17
 const int UI_UIA_ENUM = 18
 const int UI_UIA_SERVICE = 19
 const int UI_UIA_IA2 = 20
-const int UI_UIA_IFACES = 21
+# #911: IAccessible2's companion interfaces (graphics.ui.accessibility_ia2).
+const int UI_UIA_IA2_TEXT = 21
+const int UI_UIA_IA2_EDIT = 22
+const int UI_UIA_IA2_TABLE = 23
+const int UI_UIA_IA2_CELL = 24
+const int UI_UIA_IA2_VALUE = 25
+const int UI_UIA_IFACES = 26
 # ui_uia_iids slots after IUnknown and the interface kinds (slot kind + 1):
 # IDispatch (IAccessible's base), then ITextRangeProvider.
 const int UI_UIA_IDISPATCH_SLOT = 17
 const int UI_UIA_TEXT_RANGE_IID = 18
 # ITextProvider2, answered by the Text kind (its vtable is the
-# ITextProvider2 layout, which begins with ITextProvider's).
-const int UI_UIA_TEXT2_IID = 24
-const int UI_UIA_IID_SLOTS = 25
+# ITextProvider2 layout, which begins with ITextProvider's), then
+# IAccessible2_2 and IAccessible2_3 (answered by the IAccessible2 kind,
+# whose vtable is IAccessible2_3's) and IAccessibleRelation.
+const int UI_UIA_TEXT2_IID = 29
+const int UI_UIA_IA2_2_IID = 30
+const int UI_UIA_IA2_3_IID = 31
+const int UI_UIA_RELATION_IID = 32
+const int UI_UIA_IID_SLOTS = 33
 
 # Control pattern ids (UIA_*PatternId).
 const int UIA_InvokePatternId = 10000
@@ -202,6 +215,13 @@ const int UIA_FullDescriptionPropertyId = 30159
 const int UIA_HeadingLevelPropertyId = 30173
 const int UIA_IsDialogPropertyId = 30174
 const int UIA_LiveSettingPropertyId = 30135
+const int UIA_LabeledByPropertyId = 30018
+const int UIA_ControllerForPropertyId = 30104
+const int UIA_DescribedByPropertyId = 30105
+const int UIA_RangeValueValuePropertyId = 30047
+const int UIA_RangeValueIsReadOnlyPropertyId = 30048
+const int UIA_RangeValueMinimumPropertyId = 30049
+const int UIA_RangeValueMaximumPropertyId = 30050
 const int HeadingLevel_None = 80050
 
 # Text attribute ids (UIA_*AttributeId), TextUnit,
@@ -238,6 +258,11 @@ const int NotificationProcessing_All = 2
 const int UIA_Text_TextSelectionChangedEventId = 20014
 const int UIA_Text_TextChangedEventId = 20015
 const int StructureChangeType_ChildrenInvalidated = 2
+# ITextEditProvider's events (#912) and TextEditChangeType.
+const int UIA_TextEdit_TextChangedEventId = 20032
+const int UIA_TextEdit_ConversionTargetChangedEventId = 20033
+const int TextEditChangeType_Composition = 2
+const int TextEditChangeType_CompositionFinalized = 3
 
 # Control type ids (UIA_*ControlTypeId).
 const int UIA_ButtonControlTypeId = 50000
@@ -261,6 +286,7 @@ const int UIA_PaneControlTypeId = 50033
 const int UIA_HeaderControlTypeId = 50034
 const int UIA_HeaderItemControlTypeId = 50035
 const int UIA_TableControlTypeId = 50036
+const int UIA_SliderControlTypeId = 50015
 
 # NavigateDirection, ProviderOptions, ToggleState, ExpandCollapseState.
 const int NavigateDirection_Parent = 0
@@ -309,6 +335,7 @@ const int ROLE_SYSTEM_CHECKBUTTON = 44
 const int ROLE_SYSTEM_RADIOBUTTON = 45
 const int ROLE_SYSTEM_COMBOBOX = 46
 const int ROLE_SYSTEM_PROGRESSBAR = 48
+const int ROLE_SYSTEM_SLIDER = 51
 const int ROLE_SYSTEM_PAGETABLIST = 60
 const int STATE_SYSTEM_UNAVAILABLE = 0x1
 const int STATE_SYSTEM_SELECTED = 0x2
@@ -353,12 +380,19 @@ struct ui_uia_iface:
 
 
 struct ui_uia_element:
-	ui_uia_iface[21] ifaces
+	ui_uia_iface[26] ifaces
 	int refs                    # COM references held by clients
 	int id
 	int dead                    # the node is gone (or the bridge closed)
 	int bridge                  # ui_uia_bridge*, valid while !dead
 	int enum_cursor             # IEnumVARIANT: the next child to hand out
+	# IAccessibleText's last change (#911, ui_ia2_track_text): where it
+	# starts (characters) and the UTF-8 text it removed and inserted.
+	int text_change_start
+	char* text_removed
+	int text_removed_length
+	char* text_inserted
+	int text_inserted_length
 
 
 # An ITextRangeProvider: its own COM object, holding one reference to
@@ -393,10 +427,11 @@ struct ui_uia_bridge:
 
 /* Plumbing: vtables, GUIDs, strings, VARIANTs. */
 
-int[21] ui_uia_vtables
+int[26] ui_uia_vtables
 int ui_uia_range_vtable         # ITextRangeProvider
+int ui_uia_relation_vtable      # IAccessibleRelation (ui_ia2_relation_obj)
 int ui_uia_enum_vtable          # a standalone IEnumVARIANT (ui_uia_enum)
-char[400] ui_uia_iids           # IUnknown, kinds 0-15, IDispatch, ITextRangeProvider, kinds 16-20, ITextProvider2
+char[528] ui_uia_iids           # IUnknown, kinds 0-15, IDispatch, ITextRangeProvider, kinds 16-25, ITextProvider2, IA2_2, IA2_3, IAccessibleRelation
 int ui_uia_ready
 ui_uia_bridge* ui_uia_active    # the bridge ui_access_uia_wm_getobject serves
 
@@ -589,6 +624,7 @@ int ui_uia_control_type(ui_uia_bridge* b, ui_access_node* n):
 	if (r == UI_ACCESS_TAB_LIST): return UIA_TabControlTypeId
 	if (r == UI_ACCESS_TAB): return UIA_TabItemControlTypeId
 	if (r == UI_ACCESS_PROGRESS): return UIA_ProgressBarControlTypeId
+	if (r == UI_ACCESS_SLIDER): return UIA_SliderControlTypeId
 	# Dialogs are windows with IsDialog set.
 	if (r == UI_ACCESS_DIALOG): return UIA_WindowControlTypeId
 	return UIA_GroupControlTypeId
@@ -614,10 +650,18 @@ int ui_uia_supports(ui_uia_bridge* b, ui_access_node* n, int kind):
 	if (kind == UI_UIA_EXPAND):
 		if (r == UI_ACCESS_COMBOBOX): return 1
 		return ((n.states & UI_ACCESS_EXPANDED) != 0) && ((n.actions & UI_ACCESS_ACTIVATE) != 0)
-	if (kind == UI_UIA_RANGE): return r == UI_ACCESS_PROGRESS
+	if (kind == UI_UIA_RANGE): return (r == UI_ACCESS_PROGRESS) || (r == UI_ACCESS_SLIDER)
 	if (kind == UI_UIA_TEXT): return r == UI_ACCESS_TEXTBOX
 	if (kind == UI_UIA_TEXT_EDIT): return (r == UI_ACCESS_TEXTBOX) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0)
 	if ((kind == UI_UIA_LEGACY) || (kind == UI_UIA_ENUM) || (kind == UI_UIA_SERVICE) || (kind == UI_UIA_IA2)): return 1
+	# IAccessible2's companions (#911): text and editable text on
+	# textboxes, table and cell on tables and data cells, value on
+	# progress bars and sliders.
+	if (kind == UI_UIA_IA2_TEXT): return r == UI_ACCESS_TEXTBOX
+	if (kind == UI_UIA_IA2_EDIT): return ui_uia_supports(b, n, UI_UIA_TEXT_EDIT)
+	if (kind == UI_UIA_IA2_TABLE): return r == UI_ACCESS_TABLE
+	if (kind == UI_UIA_IA2_CELL): return ui_uia_supports(b, n, UI_UIA_GRID_ITEM)
+	if (kind == UI_UIA_IA2_VALUE): return ui_uia_supports(b, n, UI_UIA_RANGE)
 	if (kind == UI_UIA_INVOKE):
 		if ((n.actions & UI_ACCESS_ACTIVATE) == 0): return 0
 		for k in range(UI_UIA_TOGGLE, UI_UIA_RANGE):
@@ -749,6 +793,7 @@ int ui_uia_query_interface(int self, int riid, int out):
 	else:
 		ui_access_node* n = ui_uia_node(e)
 		if (ui_uia_guid_is(riid, UI_UIA_TEXT2_IID) && (n != 0) && ui_uia_supports(ui_uia_bridge_of(e), n, UI_UIA_TEXT)): kind = UI_UIA_TEXT
+		if ((ui_uia_guid_is(riid, UI_UIA_IA2_2_IID) || ui_uia_guid_is(riid, UI_UIA_IA2_3_IID)) && (n != 0)): kind = UI_UIA_IA2
 		for k in range(UI_UIA_IFACES):
 			if ((kind < 0) && ui_uia_guid_is(riid, ui_uia_kind_slot(k))):
 				if ((k == UI_UIA_SIMPLE) || (k == UI_UIA_FRAGMENT)): kind = k
@@ -771,7 +816,10 @@ int ui_uia_release(int self):
 	ui_uia_element* e = ui_uia_self(self)
 	if (e.refs > 0): e.refs = e.refs - 1
 	int left = e.refs
-	if ((left == 0) && e.dead): free(e)
+	if ((left == 0) && e.dead):
+		free(e.text_removed)
+		free(e.text_inserted)
+		free(e)
 	return left
 
 
@@ -815,6 +863,41 @@ int ui_uia_get_pattern(int self, int pattern, int out):
 	e.refs = e.refs + 1
 	save_int64(cast(char*, out), ui_uia_iface_ptr(e, kind))
 	return UIA_S_OK
+
+
+# Ranges (#911): the node's range values (ui_access_set_range), else,
+# for a progress bar publishing none, 0..100 with the value the leading
+# number of its value text ("40%"). A slider offering SET_VALUE takes
+# SetValue as decimal text; progress bars are read-only.
+int ui_uia_range_writable(ui_access_node* n):
+	return (n.role == UI_ACCESS_SLIDER) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0) && !ui_access_inert(n)
+
+
+int ui_uia_range_number(ui_access_node* n):
+	int v = 0
+	int i = 0
+	while ((i < n.value.length) && (n.value.data[i] >= '0') && (n.value.data[i] <= '9')):
+		v = v * 10 + (n.value.data[i] - '0')
+		i = i + 1
+	return v
+
+
+# Range value which of n: 0 the value, 1 the maximum, 2 the minimum, 3
+# the large change, 4 the small change.
+float64 ui_uia_range_of(ui_access_node* n, int which):
+	if (n.has_range):
+		if (which == 0): return cast(float64, n.range_now)
+		if (which == 1): return cast(float64, n.range_max)
+		if (which == 2): return cast(float64, n.range_min)
+		if (which == 4): return cast(float64, n.range_step)
+		if (n.range_step > 0.0): return cast(float64, n.range_step) * 10.0
+		return cast(float64, n.range_max - n.range_min) / 10.0
+	int v = 0
+	if (which == 0): v = ui_uia_range_number(n)
+	else if (which == 1): v = 100
+	else if (which == 3): v = 10
+	else if (which == 4): v = 1
+	return cast(float64, v)
 
 
 int ui_uia_checked(ui_access_node* n):
@@ -868,6 +951,35 @@ int ui_uia_get_property(int self, int property, int out):
 		int level = HeadingLevel_None
 		if ((n.role == UI_ACCESS_HEADING) && (n.heading_level >= 1) && (n.heading_level <= 9)): level = HeadingLevel_None + n.heading_level
 		ui_uia_variant_i4(v, level)
+	# Relations (#911): the first labelling node; the controlled and
+	# describing nodes as element arrays.
+	else if (p == UIA_LabeledByPropertyId):
+		ui_access_node* label = 0
+		if (ui_access_related(b.published, n, UI_ACCESS_REL_LABELLED_BY, 0, &label) > 0):
+			save_int16(v, VT_UNKNOWN)
+			ui_uia_hand_out(b, label.id, UI_UIA_SIMPLE, cast(int, &v[8]))
+	else if ((p == UIA_ControllerForPropertyId) || (p == UIA_DescribedByPropertyId)):
+		int kind = UI_ACCESS_REL_CONTROLLER_FOR
+		if (p == UIA_DescribedByPropertyId): kind = UI_ACCESS_REL_DESCRIBED_BY
+		list[int] ids = new list[int]
+		ui_access_node* t = 0
+		int count = ui_access_related(b.published, n, kind, 0, &t)
+		for i in range(count):
+			ui_access_related(b.published, n, kind, i, &t)
+			ids.push(t.id)
+		int array = ui_uia_element_array(b, ids)
+		list_free[int](ids)
+		if (array != 0):
+			save_int16(v, VT_UNKNOWN | VT_ARRAY)
+			save_int64(&v[8], array)
+	else if ((p >= UIA_RangeValueValuePropertyId) && (p <= UIA_RangeValueMaximumPropertyId) && ui_uia_supports(b, n, UI_UIA_RANGE)):
+		if (p == UIA_RangeValueIsReadOnlyPropertyId): ui_uia_variant_bool(v, !ui_uia_range_writable(n))
+		else:
+			int which = 0
+			if (p == UIA_RangeValueMinimumPropertyId): which = 2
+			if (p == UIA_RangeValueMaximumPropertyId): which = 1
+			save_int16(v, VT_R8)
+			ui_uia_put_double(cast(int, &v[8]), ui_uia_range_of(n, which))
 	# Pattern properties too, for clients that ask the element directly.
 	else if ((p == UIA_ToggleToggleStatePropertyId) && ui_uia_supports(b, n, UI_UIA_TOGGLE)): ui_uia_variant_i4(v, ui_uia_checked(n))
 	else if ((p == UIA_ValueValuePropertyId) && ui_uia_supports(b, n, UI_UIA_VALUE)): ui_uia_variant_text(v, &n.value)
@@ -1227,21 +1339,17 @@ int ui_uia_expand_state(int self, int out):
 	return ui_uia_answer32(self, out, 3)
 
 
-# Progress bars are read-only ranges 0..100 whose value is the leading
-# number of the node's value text ("40%").
 int ui_uia_range_set(int self, int bits):
 	ui_uia_element* e = ui_uia_self(self)
-	if (ui_uia_node(e) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if (!ui_uia_range_writable(n)): return UIA_E_ELEMENTNOTENABLED
+	float64 v = ui_uia_double_from_bits(bits)
+	if (n.has_range && ((v < cast(float64, n.range_min)) || (v > cast(float64, n.range_max)))): return UIA_E_INVALIDARG
+	char[48] text
+	int length = ui_access_number_format(&text[0], cast(float32, v))
+	if (ui_uia_enqueue(ui_uia_bridge_of(e), n, UI_ACCESS_SET_VALUE, &text[0], length)): return UIA_S_OK
 	return UIA_E_ELEMENTNOTENABLED
-
-
-int ui_uia_range_number(ui_access_node* n):
-	int v = 0
-	int i = 0
-	while ((i < n.value.length) && (n.value.data[i] >= '0') && (n.value.data[i] <= '9')):
-		v = v * 10 + (n.value.data[i] - '0')
-		i = i + 1
-	return v
 
 
 int ui_uia_range_answer(int self, int out, int which):
@@ -1250,12 +1358,7 @@ int ui_uia_range_answer(int self, int out, int which):
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	int v = 0
-	if (which == 0): v = ui_uia_range_number(n)
-	else if (which == 1): v = 100
-	else if (which == 3): v = 10
-	else if (which == 4): v = 1
-	ui_uia_put_double(out, cast(float64, v))
+	ui_uia_put_double(out, ui_uia_range_of(n, which))
 	return UIA_S_OK
 
 
@@ -1264,7 +1367,12 @@ int ui_uia_range_value(int self, int out):
 
 
 int ui_uia_range_read_only(int self, int out):
-	return ui_uia_answer32(self, out, 4)
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 1)
+	ui_access_node* n = ui_uia_node(ui_uia_self(self))
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	save_int32(cast(char*, out), !ui_uia_range_writable(n))
+	return UIA_S_OK
 
 
 int ui_uia_range_maximum(int self, int out):
@@ -1310,43 +1418,58 @@ int* ui_uia_codes(ui_access_node* n, int* count):
 
 
 # The units this provider distinguishes: Paragraph is Line (a field has
-# no paragraph styling); Format and Page are the whole document (one
-# uniform run, one page).
+# no paragraph styling); Format is a stretch of uniform text attributes
+# (an attribute run or the text between runs, #912); Page is the whole
+# document (one page).
 int ui_uia_unit(int unit):
 	int u = ui_uia_lo32(unit)
 	if (u == TextUnit_Paragraph): return TextUnit_Line
-	if ((u == TextUnit_Character) || (u == TextUnit_Word) || (u == TextUnit_Line)): return u
+	if ((u == TextUnit_Character) || (u == TextUnit_Format) || (u == TextUnit_Word) || (u == TextUnit_Line)): return u
 	return TextUnit_Document
+
+
+# 1 when the attributes at character p differ from those at p - 1: an
+# attribute run starts or ends there (adjacent runs with equal
+# attributes are one format unit).
+int ui_uia_format_boundary(ui_access_node* n, int p):
+	int a = 0
+	int b = 0
+	ui_access_text_attrs* before = ui_access_attrs_at(n, p - 1, &a, &b)
+	ui_access_text_attrs* at = ui_access_attrs_at(n, p, &a, &b)
+	if (before == at): return 0
+	if ((before == 0) || (at == 0)): return 1
+	return !ui_access_attrs_same(before, at)
 
 
 # 1 when a unit starts at character p. A word is a run of non-space
 # characters with the spaces after it; a line ends after its newline.
-int ui_uia_boundary(int* cp, int count, int unit, int p):
+int ui_uia_boundary(ui_access_node* n, int* cp, int count, int unit, int p):
 	if ((p <= 0) || (p >= count)): return 1
 	if (unit == TextUnit_Character): return 1
 	if (unit == TextUnit_Document): return 0
+	if (unit == TextUnit_Format): return ui_uia_format_boundary(n, p)
 	if (cp[p - 1] == 10): return 1
 	if (unit == TextUnit_Line): return 0
 	return ui_uia_space(cp[p - 1]) && !ui_uia_space(cp[p])
 
 
-int ui_uia_next_boundary(int* cp, int count, int unit, int p):
+int ui_uia_next_boundary(ui_access_node* n, int* cp, int count, int unit, int p):
 	if (p >= count): return count
 	int q = p + 1
-	while ((q < count) && !ui_uia_boundary(cp, count, unit, q)): q = q + 1
+	while ((q < count) && !ui_uia_boundary(n, cp, count, unit, q)): q = q + 1
 	return q
 
 
-int ui_uia_prev_boundary(int* cp, int count, int unit, int p):
+int ui_uia_prev_boundary(ui_access_node* n, int* cp, int count, int unit, int p):
 	if (p <= 0): return 0
 	int q = p - 1
-	while ((q > 0) && !ui_uia_boundary(cp, count, unit, q)): q = q - 1
+	while ((q > 0) && !ui_uia_boundary(n, cp, count, unit, q)): q = q - 1
 	return q
 
 
-int ui_uia_floor_boundary(int* cp, int count, int unit, int p):
-	if (ui_uia_boundary(cp, count, unit, p)): return p
-	return ui_uia_prev_boundary(cp, count, unit, p)
+int ui_uia_floor_boundary(ui_access_node* n, int* cp, int count, int unit, int p):
+	if (ui_uia_boundary(n, cp, count, unit, p)): return p
+	return ui_uia_prev_boundary(n, cp, count, unit, p)
 
 
 int ui_uia_text_range_new(ui_uia_element* e, int start, int end):
@@ -1443,16 +1566,27 @@ int ui_uia_text_selection(int self, int out):
 	return UIA_S_OK
 
 
-# GetVisibleRanges: the whole text (the bridge knows no scroll state).
+# GetVisibleRanges (#912): the stretches of characters whose glyph
+# boxes lie inside the field (a scrolled ui_textarea publishes boxes
+# for every line, its hidden ones outside its bounds); the whole text
+# without glyph geometry; none when the field is hidden.
 int ui_uia_text_visible(int self, int out):
 	if (out == 0): return UIA_E_POINTER
 	save_int64(cast(char*, out), 0)
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	int array = SafeArrayCreateVector(VT_UNKNOWN, 0, 1)
-	if (array == 0): return UIA_E_INVALIDARG
-	ui_uia_put_range(array, 0, ui_uia_text_range_new(e, 0, ui_access_char_count(n.value.data, n.value.length)))
+	ui_rect clip = ui_access_text_clip(n)
+	int count = 0
+	if (!ui_uia_hidden(n)): count = ui_access_visible_ranges(n, clip, 0, 0)
+	int* pairs = cast(int*, malloc((count + 1) * 2 * __word_size__))
+	ui_access_visible_ranges(n, clip, pairs, count)
+	int array = SafeArrayCreateVector(VT_UNKNOWN, 0, count)
+	if (array == 0):
+		free(cast(char*, pairs))
+		return UIA_E_INVALIDARG
+	for k in range(count): ui_uia_put_range(array, k, ui_uia_text_range_new(e, pairs[k * 2], pairs[k * 2 + 1]))
+	free(cast(char*, pairs))
 	save_int64(cast(char*, out), array)
 	return UIA_S_OK
 
@@ -1543,13 +1677,32 @@ int ui_uia_text_caret_range(int self, int active, int out):
 	return UIA_S_OK
 
 
-# ITextEditProvider: the snapshot carries no IME composition, so there
-# is no active composition or conversion target (a null range).
-int ui_uia_text_composition(int self, int out):
+# ITextEditProvider (#912): the IME composition the widget publishes
+# (ui_access_set_composition) as a range, and the clause being
+# converted inside it; a null range when there is none.
+int ui_uia_text_edit_range(int self, int out, int target):
 	if (out == 0): return UIA_E_POINTER
 	save_int64(cast(char*, out), 0)
-	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if (n.composition_length == 0): return UIA_S_OK
+	int start = n.composition_start
+	int length = n.composition_length
+	if target:
+		if (n.conversion_length == 0): return UIA_S_OK
+		start = n.conversion_start
+		length = n.conversion_length
+	save_int64(cast(char*, out), ui_uia_text_range_new(e, start, start + length))
 	return UIA_S_OK
+
+
+int ui_uia_text_composition(int self, int out):
+	return ui_uia_text_edit_range(self, out, 0)
+
+
+int ui_uia_text_conversion(int self, int out):
+	return ui_uia_text_edit_range(self, out, 1)
 
 
 /* ITextRangeProvider. */
@@ -1614,10 +1767,10 @@ int ui_uia_range_expand(int self, int unit):
 	int* cp = ui_uia_codes(n, &count)
 	int u = ui_uia_unit(unit)
 	int start = r.start
-	if ((start >= count) && (count > 0)): start = ui_uia_prev_boundary(cp, count, u, count)
-	start = ui_uia_floor_boundary(cp, count, u, start)
+	if ((start >= count) && (count > 0)): start = ui_uia_prev_boundary(n, cp, count, u, count)
+	start = ui_uia_floor_boundary(n, cp, count, u, start)
 	r.start = start
-	r.end = ui_uia_next_boundary(cp, count, u, start)
+	r.end = ui_uia_next_boundary(n, cp, count, u, start)
 	free(cast(char*, cp))
 	return UIA_S_OK
 
@@ -1913,21 +2066,21 @@ int ui_uia_range_move(int self, int unit, int count, int out):
 	int degenerate = r.start == r.end
 	int p = r.start
 	if (!degenerate):
-		if ((p >= total) && (total > 0)): p = ui_uia_prev_boundary(cp, total, u, total)
-		p = ui_uia_floor_boundary(cp, total, u, p)
+		if ((p >= total) && (total > 0)): p = ui_uia_prev_boundary(n, cp, total, u, total)
+		p = ui_uia_floor_boundary(n, cp, total, u, p)
 	int moved = 0
 	while ((moved < want) && (p < total)):
-		int q = ui_uia_next_boundary(cp, total, u, p)
+		int q = ui_uia_next_boundary(n, cp, total, u, p)
 		# A whole unit has to follow a non-degenerate range's new start.
 		if (!degenerate && (q >= total)): break
 		p = q
 		moved = moved + 1
 	while ((moved > want) && (p > 0)):
-		p = ui_uia_prev_boundary(cp, total, u, p)
+		p = ui_uia_prev_boundary(n, cp, total, u, p)
 		moved = moved - 1
 	r.start = p
 	r.end = p
-	if (!degenerate): r.end = ui_uia_next_boundary(cp, total, u, p)
+	if (!degenerate): r.end = ui_uia_next_boundary(n, cp, total, u, p)
 	free(cast(char*, cp))
 	save_int32(cast(char*, out), moved)
 	return UIA_S_OK
@@ -1946,10 +2099,10 @@ int ui_uia_range_move_endpoint(int self, int endpoint, int unit, int count, int 
 	int p = ui_uia_range_endpoint(r, endpoint)
 	int moved = 0
 	while ((moved < want) && (p < total)):
-		p = ui_uia_next_boundary(cp, total, u, p)
+		p = ui_uia_next_boundary(n, cp, total, u, p)
 		moved = moved + 1
 	while ((moved > want) && (p > 0)):
-		p = ui_uia_prev_boundary(cp, total, u, p)
+		p = ui_uia_prev_boundary(n, cp, total, u, p)
 		moved = moved - 1
 	ui_uia_range_set_endpoint(r, endpoint, p)
 	free(cast(char*, cp))
@@ -2021,9 +2174,21 @@ int ui_uia_range_remove_selection(int self):
 	return ui_uia_range_selection_edit(self, 1)
 
 
+# ScrollIntoView (#912): queue a SCROLL_TO of the range, aligned to the
+# top or bottom of the view, for a node that scrolls (ui_textarea);
+# nothing to do for one that does not.
 int ui_uia_range_scroll(int self, int align_to_top):
-	if (ui_uia_range_node(cast(ui_uia_text_range*, self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	return UIA_S_OK
+	ui_uia_text_range* r = cast(ui_uia_text_range*, self)
+	ui_access_node* n = ui_uia_range_node(r)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if ((n.actions & UI_ACCESS_SCROLL_TO) == 0): return UIA_S_OK
+	int align = UI_ACCESS_SCROLL_BOTTOM
+	if (ui_uia_lo32(align_to_top) != 0): align = UI_ACCESS_SCROLL_TOP
+	char[48] payload
+	int length = ui_access_scroll_format(&payload[0], r.start, r.end, align)
+	ui_uia_element* e = cast(ui_uia_element*, r.element)
+	if (ui_uia_enqueue(ui_uia_bridge_of(e), n, UI_ACCESS_SCROLL_TO, &payload[0], length)): return UIA_S_OK
+	return UIA_E_ELEMENTNOTENABLED
 
 
 int ui_uia_range_children(int self, int out):
@@ -2242,6 +2407,7 @@ int ui_msaa_role(ui_uia_bridge* b, ui_access_node* n):
 	if (r == UI_ACCESS_TAB_LIST): return ROLE_SYSTEM_PAGETABLIST
 	if (r == UI_ACCESS_TAB): return ROLE_SYSTEM_PAGETAB
 	if (r == UI_ACCESS_PROGRESS): return ROLE_SYSTEM_PROGRESSBAR
+	if (r == UI_ACCESS_SLIDER): return ROLE_SYSTEM_SLIDER
 	if (r == UI_ACCESS_DIALOG): return ROLE_SYSTEM_DIALOG
 	return ROLE_SYSTEM_GROUPING
 
@@ -2936,8 +3102,11 @@ int ui_uia_legacy_selection(int self, int out):
 /* IAccessible2 (#863), reached from the IAccessible through
 IServiceProvider::QueryService(IID_IAccessible, IID_IAccessible2) (or a
 plain QueryInterface): IAccessible's methods, then IA2's role, states,
-attributes, group position, unique id, window and index. Relations,
-extended roles and states are empty; scrolling does nothing. */
+attributes, group position, unique id, window and index. Extended
+roles and states are empty; scrolling the object does nothing.
+Relations, the IAccessible2_2 / _3 methods and the text, table, cell
+and value interfaces (#911) are in graphics.ui.accessibility_ia2,
+imported before ui_uia_init. */
 
 const int IA2_ROLE_HEADING = 0x414
 const int IA2_ROLE_TOGGLE_BUTTON = 0x42a
@@ -2958,11 +3127,9 @@ int ui_uia_query_service(int self, int service, int riid, int out):
 	if (ui_uia_node(e) == 0): return UIA_E_FAIL
 	int known = ui_uia_guid_is(service, ui_uia_kind_slot(UI_UIA_ACCESSIBLE)) || ui_uia_guid_is(service, ui_uia_kind_slot(UI_UIA_IA2))
 	if (!known): return UIA_E_NOINTERFACE
-	int kind = 0 - 1
-	if (ui_uia_guid_is(riid, ui_uia_kind_slot(UI_UIA_IA2))): kind = UI_UIA_IA2
-	if (ui_uia_guid_is(riid, ui_uia_kind_slot(UI_UIA_ACCESSIBLE))): kind = UI_UIA_ACCESSIBLE
-	if (kind < 0): return UIA_E_NOINTERFACE
-	return ui_uia_hand_out(ui_uia_bridge_of(e), e.id, kind, out)
+	# IAccessible2 (and its _2/_3 revisions), IAccessible, and the IA2
+	# companions the node offers, as QueryInterface hands them out.
+	return ui_uia_query_interface(self, riid, out)
 
 
 ui_access_node* ui_ia2_node(int self, int out):
@@ -2977,14 +3144,8 @@ int ui_ia2_zero(int self, int out):
 	return UIA_S_OK
 
 
-int ui_ia2_relation(int self, int index, int out):
-	if (out == 0): return UIA_E_POINTER
-	save_int64(cast(char*, out), 0)
-	return UIA_E_INVALIDARG
-
-
-# get_relations / get_extendedStates / get_localizedExtendedStates:
-# none (count 0, a null array).
+# get_extendedStates / get_localizedExtendedStates: none (count 0, a
+# null array).
 int ui_ia2_empty_list(int self, int max, int items, int count):
 	if ((items == 0) || (count == 0)): return UIA_E_POINTER
 	save_int64(cast(char*, items), 0)
@@ -3181,6 +3342,11 @@ int* ui_uia_vtable(int methods):
 	return vt
 
 
+# IAccessible2's relations and companion interfaces: built on the
+# element plumbing and vtable helpers above, called by ui_uia_init.
+import graphics.ui.accessibility_ia2
+
+
 void ui_uia_init():
 	if ui_uia_ready: return
 	ui_uia_ready = 1
@@ -3372,7 +3538,7 @@ void ui_uia_init():
 			ui_uia_vtables[UI_UIA_TEXT] = cast(int, vt)
 		else:
 			vt[9] = ui_uia_thunk(cast(int, ui_uia_text_composition), 2)
-			vt[10] = ui_uia_thunk(cast(int, ui_uia_text_composition), 2)
+			vt[10] = ui_uia_thunk(cast(int, ui_uia_text_conversion), 2)
 			ui_uia_vtables[UI_UIA_TEXT_EDIT] = cast(int, vt)
 
 	# ITextRangeProvider, with its own IUnknown (a range is not an
@@ -3438,9 +3604,10 @@ void ui_uia_init():
 	vt[3] = ui_uia_thunk(cast(int, ui_uia_query_service), 4)
 	ui_uia_vtables[UI_UIA_SERVICE] = cast(int, vt)
 
-	# IAccessible2: IAccessible's 28 entries, then its own 18.
+	# IAccessible2: IAccessible's 28 entries, then its own 18, then
+	# IAccessible2_2's three and IAccessible2_3's one (ui_ia2_init).
 	int* acc = cast(int*, ui_uia_vtables[UI_UIA_ACCESSIBLE])
-	vt = ui_uia_vtable(43)
+	vt = ui_uia_vtable(47)
 	for i in range(28): vt[i] = acc[i]
 	vt[28] = ui_uia_thunk(cast(int, ui_ia2_zero), 2)
 	vt[29] = ui_uia_thunk(cast(int, ui_ia2_relation), 3)
@@ -3461,6 +3628,7 @@ void ui_uia_init():
 	vt[44] = ui_uia_thunk(cast(int, ui_ia2_locale), 2)
 	vt[45] = ui_uia_thunk(cast(int, ui_ia2_attributes), 2)
 	ui_uia_vtables[UI_UIA_IA2] = cast(int, vt)
+	ui_ia2_init()
 
 
 /* Events. */
@@ -3572,6 +3740,70 @@ void ui_uia_raise_notification(ui_uia_bridge* b, int id, ui_access_text* text, i
 	SysFreeString(activity)
 
 
+type ui_uia_text_edit_fn = fn(int, int, int) -> int
+
+int ui_uia_text_edit_thunk      # UiaRaiseTextEditTextChangedEvent's trampoline; -1 when missing
+int ui_uia_last_text_edit       # its last HRESULT (1 when it is unavailable)
+
+
+# The composition's text: characters [composition_start, +length) of
+# n's value, as a UTF-8 copy in *out (freed by the caller).
+void ui_uia_composition_text(ui_access_node* n, ui_access_text* out):
+	int from = ui_access_char_byte(n.value.data, n.value.length, n.composition_start)
+	int to = ui_access_char_byte(n.value.data, n.value.length, n.composition_start + n.composition_length)
+	out.length = to - from
+	out.data = cast(char*, malloc(out.length + 1))
+	for i in range(out.length): out.data[i] = n.value.data[from + i]
+	out.data[out.length] = 0
+
+
+# TextEdit_TextChanged (#912): kind is TextEditChangeType_Composition
+# (the composing text, which UI Automation hands listeners as the event
+# string) or _CompositionFinalized (the text it committed).
+void ui_uia_raise_text_edit(ui_uia_bridge* b, int id, int kind, ui_access_text* text):
+	if (ui_uia_text_edit_thunk == 0):
+		ui_uia_text_edit_thunk = 0 - 1
+		int module = GetModuleHandleA(c"uiautomationcore.dll")
+		int sym = 0
+		if (module != 0): sym = GetProcAddress(module, c"UiaRaiseTextEditTextChangedEvent")
+		if (sym != 0): ui_uia_text_edit_thunk = win_c_function(sym, 3, 1)
+		if (ui_uia_text_edit_thunk == 0): ui_uia_text_edit_thunk = 0 - 1
+	if (ui_uia_text_edit_thunk == 0 - 1):
+		ui_uia_last_text_edit = 1
+		return
+	int strings = SafeArrayCreateVector(VT_BSTR, 0, 1)
+	if (strings == 0): return
+	int bstr = ui_uia_bstr(text.data, text.length)
+	int32[1] at
+	at[0] = 0
+	SafeArrayPutElement(strings, &at[0], cast(char*, bstr))
+	SysFreeString(bstr)
+	ui_uia_text_edit_fn* raise = cast(ui_uia_text_edit_fn*, ui_uia_text_edit_thunk)
+	ui_uia_last_text_edit = ui_uia_lo32(raise(ui_uia_simple_of(b, id), kind, strings))
+	SafeArrayDestroy(strings)
+
+
+# The composition events of text node n against its previous state was:
+# TextEdit_TextChanged while the composing text changes and once it is
+# finalized, TextEdit_ConversionTargetChanged when the converted clause
+# moves.
+void ui_uia_raise_composition(ui_uia_bridge* b, ui_access_node* n, ui_access_node* was):
+	ui_access_text now
+	ui_access_text before
+	now.data = 0
+	now.length = 0
+	before.data = 0
+	before.length = 0
+	if (n.composition_length > 0): ui_uia_composition_text(n, &now)
+	if (was.composition_length > 0): ui_uia_composition_text(was, &before)
+	if (n.composition_length > 0):
+		if ((was.composition_length == 0) || (n.composition_start != was.composition_start) || !ui_uia_text_same(&now, &before)): ui_uia_raise_text_edit(b, n.id, TextEditChangeType_Composition, &now)
+		if ((n.conversion_start != was.conversion_start) || (n.conversion_length != was.conversion_length)): UiaRaiseAutomationEvent(ui_uia_simple_of(b, n.id), UIA_TextEdit_ConversionTargetChangedEventId)
+	else if (was.composition_length > 0): ui_uia_raise_text_edit(b, n.id, TextEditChangeType_CompositionFinalized, &before)
+	free(now.data)
+	free(before.data)
+
+
 # Live regions: one LiveRegionChanged per region whose text was added or
 # changed (Narrator then reads the region), and the snapshot's explicit
 # announcement as a notification event from the root.
@@ -3624,6 +3856,17 @@ void ui_uia_raise_changes(ui_uia_bridge* b, ui_access_tree* old, ui_access_tree*
 			if (ui_uia_supports(b, n, UI_UIA_EXPAND) && (ui_uia_expanded(n) != ui_uia_expanded(was))): ui_uia_raise_i4(b, id, UIA_ExpandCollapseExpandCollapseStatePropertyId, ui_uia_expanded(was), ui_uia_expanded(n))
 			if (ui_access_inert(n) != ui_access_inert(was)): ui_uia_raise_bool(b, id, UIA_IsEnabledPropertyId, ui_access_inert(was) == 0, ui_access_inert(n) == 0)
 			if (!ui_uia_children_same(n, was)): ui_uia_raise_children(b, n)
+			if (ui_uia_supports(b, n, UI_UIA_RANGE) && (ui_uia_range_of(n, 0) != ui_uia_range_of(was, 0))):
+				char[24] old_value
+				char[24] new_value
+				ui_uia_variant_clear(&old_value[0])
+				ui_uia_variant_clear(&new_value[0])
+				save_int16(&old_value[0], VT_R8)
+				save_int16(&new_value[0], VT_R8)
+				ui_uia_put_double(cast(int, &old_value[8]), ui_uia_range_of(was, 0))
+				ui_uia_put_double(cast(int, &new_value[8]), ui_uia_range_of(n, 0))
+				ui_uia_raise_property(b, id, UIA_RangeValueValuePropertyId, &old_value[0], &new_value[0])
+			if (ui_uia_supports(b, n, UI_UIA_TEXT_EDIT)): ui_uia_raise_composition(b, n, was)
 			if (ui_uia_supports(b, n, UI_UIA_TEXT)):
 				if value_changed: UiaRaiseAutomationEvent(ui_uia_simple_of(b, id), UIA_Text_TextChangedEventId)
 				if ((n.caret != was.caret) || (n.selection_start != was.selection_start) || (n.selection_end != was.selection_end)):
@@ -3656,7 +3899,10 @@ void ui_uia_retire(ui_uia_bridge* b, ui_access_tree* fresh):
 		b.elements.remove(id)
 		e.dead = 1
 		if (e.refs > 0): UiaDisconnectProvider(ui_uia_iface_ptr(e, UI_UIA_SIMPLE))
-		if (e.refs == 0): free(e)
+		if (e.refs == 0):
+			free(e.text_removed)
+			free(e.text_inserted)
+			free(e)
 	list_free[int](gone)
 
 
@@ -3714,6 +3960,7 @@ int ui_access_uia_publish(ui_uia_bridge* b, ui_access_tree* tree):
 	ui_uia_retire(b, fresh)
 	b.published = fresh
 	ui_uia_clear_queue(b)
+	ui_ia2_track_text(b, old, fresh)
 	ui_uia_raise_changes(b, old, fresh)
 	ui_access_tree_free(old)
 	# The announcement is raised once: consumed from both trees.

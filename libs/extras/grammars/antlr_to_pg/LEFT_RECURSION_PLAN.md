@@ -92,8 +92,8 @@ Evidence:
   fixtures, two new fixtures and six pinned upstream grammars (163 inputs, 136
   accepted by ANTLR, all identical), including 14 Z expressions. A live run over the sweep's pinned example
   files of the 15 grammars whose Java compiles without host support produced
-  identical trees for 73 of 75 files; the other two exceed the
-  one-million-step prediction budget.
+  identical trees for all 75 files (two exceeded the one-million-step
+  prediction budget until #914's prediction caches).
 - The full pinned sweep (291 roots, six configurations) has zero regressions
   and zero infrastructure errors: exact translation is 287/291 permissive and
   232/291 strict (from 267 and 218), and the recorded progressions are in
@@ -104,9 +104,10 @@ Evidence:
 - The negative Wave 0 fixtures (direct, mutual and nullable-adjacent cycles,
   attached options) are still refused.
 
-Not done: a DFA or other prediction cache for highly ambiguous adjacency (HyperTalk's `chunk chunk`
-exceeds the budget on one pinned example), and numeric per-fixture performance
-bounds.
+Done in #914: a one-token prediction cache per decision and a failure cache
+keyed by rule, position and continuation (HyperTalk's `chunk chunk` example now
+takes 96,838 steps), and numeric per-example work bounds (`work_bound`) in the
+sweep baseline ([SWEEP_RESULTS.md](SWEEP_RESULTS.md#prediction-work-914)).
 
 ## Baseline and outcome
 

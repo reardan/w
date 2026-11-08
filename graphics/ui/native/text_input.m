@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 // Queue entry kinds; graphics/ime_cocoa.w maps them to GFX_EVENT_*.
-enum { W_TEXTIN_COMMIT = 1, W_TEXTIN_PREEDIT_BEGIN = 2, W_TEXTIN_PREEDIT_TEXT = 3, W_TEXTIN_PREEDIT_END = 4 };
+enum { W_TEXTIN_COMMIT = 1, W_TEXTIN_PREEDIT_BEGIN = 2, W_TEXTIN_PREEDIT_TEXT = 3, W_TEXTIN_PREEDIT_END = 4, W_TEXTIN_PREEDIT_TARGET = 5 };
 enum { W_TEXTIN_QUEUE_LIMIT = 8192 };
 
 @interface WTextInputView : NSView <NSTextInputClient>
@@ -102,7 +102,11 @@ static intptr_t scalarOffset(NSString *text, NSUInteger utf16) {
     }
     self.marked = text;
     self.markedSelection = selectedRange;
-    [self push:W_TEXTIN_PREEDIT_BEGIN code:scalarOffset(text, selectedRange.location)];
+    // The selected range is the clause being converted (#912): its
+    // length in scalars goes first, then BEGIN with its start.
+    intptr_t start = scalarOffset(text, selectedRange.location);
+    [self push:W_TEXTIN_PREEDIT_TARGET code:scalarOffset(text, selectedRange.location + selectedRange.length) - start];
+    [self push:W_TEXTIN_PREEDIT_BEGIN code:start];
     [self pushScalars:text kind:W_TEXTIN_PREEDIT_TEXT];
 }
 

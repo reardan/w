@@ -7,8 +7,10 @@ session bus and at-spi-bus-launcher. This libatspi client launches the
 fixture (tools/access_depth_app.w) and checks, through libatspi's own
 API, glyph geometry (character and range extents, the offset at a
 point), text attributes (default set and runs), multiple selections,
-a multi-selection list, table row headers and spans, and that libatspi
-moved its queries onto the application's peer-to-peer bus. Exits
+a multi-selection list, table row headers and spans, relations and a
+slider's value (#911), bounded ranges and scroll-substring-to on a
+scrolled log (#912), and that libatspi moved its queries onto the
+application's peer-to-peer bus. Exits
 non-zero on the first failed check.
 """
 import subprocess
@@ -19,7 +21,7 @@ import time
 import gi
 
 gi.require_version("Atspi", "2.0")
-from gi.repository import Atspi, GLib  # noqa: E402
+from gi.repository import Atspi, Gio, GLib  # noqa: E402
 
 EVENTS = []
 OUTPUT = []
@@ -94,6 +96,24 @@ def read_output(stream):
 
 def rect(r):
     return (r.x, r.y, r.width, r.height)
+
+
+A11Y_BUS = []
+
+
+def bounded_ranges(node, x, y, width, height, coord, xclip, yclip):
+    """Text.GetBoundedRanges on node over the accessibility bus, as
+    (start, end, text) tuples."""
+    if not A11Y_BUS:
+        session = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        reply = session.call_sync("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress",
+                                  None, GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 2000, None)
+        flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+        A11Y_BUS.append(Gio.DBusConnection.new_for_address_sync(reply.unpack()[0], flags, None, None))
+    reply = A11Y_BUS[0].call_sync(node.app.bus_name, node.path, "org.a11y.atspi.Text", "GetBoundedRanges",
+                                  GLib.Variant("(iiiiuuu)", (x, y, width, height, coord, xclip, yclip)),
+                                  GLib.VariantType("(a(iisv))"), Gio.DBusCallFlags.NONE, 2000, None)
+    return [(start, end, text) for start, end, text, _ in reply.unpack()[0]]
 
 
 def main():
@@ -174,6 +194,42 @@ def main():
         require([h.get_name() for h in cherry.get_column_header_cells()] == ["Item"], "column header cells")
         fruit_cell = table.get_accessible_at(0, 0)
         require(fruit_cell.get_role() == Atspi.Role.TABLE_ROW_HEADER, "row header role")
+
+        # Relations and the slider's value (#911).
+        slider = next(node for node in walk(app) if node.get_role() == Atspi.Role.SLIDER)
+        relations = slider.get_relation_set()
+        require([r.get_relation_type() for r in relations] == [Atspi.RelationType.LABELLED_BY], "labelled-by relation")
+        label = relations[0].get_target(0)
+        require(label.get_name() == "Volume" and label.get_role() == Atspi.Role.LABEL, "relation target")
+        require([r.get_relation_type() for r in label.get_relation_set()] == [Atspi.RelationType.LABEL_FOR],
+                "the reverse label-for relation")
+        require(label.get_relation_set()[0].get_target(0).get_role() == Atspi.Role.SLIDER, "label-for target")
+        require(slider.get_current_value() == 4.0 and slider.get_maximum_value() == 10.0
+                and slider.get_minimum_value() == 0.0 and slider.get_minimum_increment() == 0.5, "slider range")
+        require(slider.set_current_value(7.5), "set the slider")
+        wait_for(lambda: "request 41 4 7.5" in requests(), "SET_VALUE reaches the application")
+        wait_for(lambda: slider.get_current_value() == 7.5, "new value after the republish")
+
+        # Scroll-aware text geometry (#912): the log shows two of its
+        # four lines; scrolling a substring moves which ones.
+        log = by_name_role(app, "Log", Atspi.Role.ENTRY)
+        none = Atspi.TextClipType.NONE
+
+        def shown(y=220, clip=none):
+            # libatspi 2.52 hands back a GArray of AtspiTextRange
+            # pointers that its introspection data declares as structs,
+            # so Atspi.Text.get_bounded_ranges crashes Python: the same
+            # call goes over the accessibility bus instead.
+            return bounded_ranges(log, 10, y, 100, 40, int(Atspi.CoordType.WINDOW), int(clip), int(clip))
+
+        require(shown() == [(3, 9, "cd\nef\n")], "bounded ranges: the visible lines %r" % (shown(),))
+        both = Atspi.TextClipType.BOTH
+        require([r[:2] for r in shown(225, both)] == [(6, 9)], "clipped bounded ranges")
+        require(Atspi.Text.scroll_substring_to(log, 9, 11, Atspi.ScrollType.BOTTOM_EDGE), "scroll a substring")
+        wait_for(lambda: "request 42 128 9 11 1" in requests(), "SCROLL_TO reaches the application")
+        wait_for(lambda: shown() == [(6, 11, "ef\ngh")], "last lines visible after scrolling")
+        require(Atspi.Text.scroll_substring_to(log, 0, 1, Atspi.ScrollType.TOP_EDGE), "scroll to the top")
+        wait_for(lambda: shown() == [(0, 6, "ab\ncd\n")], "first lines visible after scrolling")
 
         # The peer-to-peer bus: libatspi sends its queries straight to
         # the application once it has the address.

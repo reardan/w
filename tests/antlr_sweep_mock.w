@@ -16,8 +16,10 @@ int main(int argc, int argv):
 	char* name = path_basename(args_program())
 	# The compiler mock installs itself as the compiled example driver: an
 	# example whose text names an outcome produces it, any other is accepted.
+	# A prediction driver reports ten work units per example byte.
 	if (ends_with(name, c".bin")):
 		char* example = ht_read(args_get(1)).data
+		if (path_exists(strjoin(args_program(), c".work"))): println(strjoin(c"SWEEP: work ", itoa(10 * strlen(example))))
 		if (contains(example, c"reject")):
 			println(c"example: syntax error")
 			return 1
@@ -51,6 +53,7 @@ int main(int argc, int argv):
 		int at = index_of(program, c"int main(")
 		ht_require(at >= 0 && index_of(program + at + 1, c"int main(") < 0, c"compile harness must have exactly one main")
 		ht_require(shutil_copy(args_program(), sm_option(c"-o")) == 0, c"cannot install example driver")
+		if (contains(program, c"SWEEP: work")): ht_write(strjoin(sm_option(c"-o"), c".work"), c"", 0)
 		return 0
 	char* dependencies = sm_option(c"--dependencies")
 	if (dependencies != 0):
