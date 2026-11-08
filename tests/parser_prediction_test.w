@@ -152,6 +152,45 @@ void prediction_memo_replay():
 	pg_grammar_free(grammar)
 
 
+# The one-token prediction cache skips only alternatives that cannot start
+# with the lookahead token, so priority is unchanged: a nullable alternative
+# is always kept (the continuation decides), a call's FIRST set includes
+# what follows a nullable callee, and a decision with no viable alternative
+# fails at once without trying any of them.
+void prediction_lookahead():
+	prediction_case(c"rule start = item EOF\nrule item = empty B | A\nrule empty =\n", c"a", 1, 2)
+	prediction_case(c"rule start = item EOF\nrule item = empty B | A\nrule empty =\n", c"b", 1, 1)
+	prediction_case(c"rule start = item A EOF\nrule item = B | empty\nrule empty =\n", c"a", 1, 2)
+	prediction_case(c"rule start = item EOF\nrule item = C | A B | A | B\n", c"a", 1, 3)
+	prediction_case(c"rule start = item EOF\nrule item = C | A B | A | B\n", c"ab", 1, 2)
+	pg_grammar* grammar = prediction_grammar(c"rule start = item EOF\nrule item = C | C A | C B | C C | C | C A A | C B B | C C C | B\n")
+	pg_prediction_program* program = pg_prediction_build(grammar)
+	pg_token_stream* stream = prediction_tokens(c"b")
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	int before = pg_prediction_work
+	pg_ast_node* root = pg_prediction_parse(program, 0, stream, diagnostics)
+	assert1(root != 0)
+	assert_equal(9, pg_ast_get_metadata(root.children[0], c"pg_alternative", -1))
+	# Twelve steps are exactly the accepted path: one charged choice resolves
+	# the eight doomed alternatives, none of which is entered.
+	assert_equal(12, program.steps)
+	assert_equal(before + program.steps, pg_prediction_work)
+	assert1(program.predictions.length > 0)
+	pg_ast_free(root)
+	pg_token_stream_free(stream)
+	# No alternative starts with `a`: the rejection tries none of them.
+	stream = prediction_tokens(c"a")
+	assert1(pg_prediction_parse(program, 0, stream, diagnostics) == 0)
+	assert_equal(3, program.steps)
+	assert_equal(0, diagnostics.items.length)
+	assert_equal(0, stream.index)
+	assert_equal(0, stream.max_index)
+	pg_token_stream_free(stream)
+	pg_prediction_free(program)
+	pg_grammar_free(grammar)
+	pg_diagnostics_free(diagnostics)
+
+
 void prediction_metadata():
 	char* source = c"parser metadata\nmode antlr\nliteral A \"a\"\nstart start\nrule start = item EOF\nrule item = A\nnode_meta item \"1\" \"origin\" \"7\"\nterm_meta item \"1\" \"1\" \"argument\" \"1\"\n"
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
@@ -213,5 +252,6 @@ int main():
 	prediction_adversarial()
 	prediction_linear()
 	prediction_memo_replay()
+	prediction_lookahead()
 	println(c"continuation prediction, priority, rollback and bounded failure passed")
 	return 0
