@@ -87,6 +87,13 @@ creates the window, registers WM_DELETE_WINDOW and makes a GL context
 current; `gfx_window_poll` drains the X event queue and tracks
 close/resize, last keycode, pointer position and button mask.
 
+Every native backend (X11, Win32, Cocoa) also links the control
+channel `graphics/control.w`: when `W_GFX_CONTROL` names a unix socket,
+a driver such as `bin/wdrive` can inject input into the window's event
+queue, step frames, read pixels, take PNG screenshots and read the
+graphics.ui accessibility tree, headless under Xvfb included. See
+[wdrive.md](wdrive.md).
+
 ## The macOS backend (arm64_darwin)
 
 `graphics.cocoa` + `graphics.window_cocoa`, running as a native arm64
