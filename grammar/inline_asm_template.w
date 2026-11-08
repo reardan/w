@@ -394,6 +394,9 @@ int inasm_section_flags(char* flags, char* name):
 int inasm_section_operand(char* text, int i):
 	inasm_need_object(text)
 	char* name = inasm_until(text, i, ',')
+	# A quoted name (`"__ex_table"`) is the name without its quotes.
+	int n = strlen(name)
+	if ((n >= 2) && (name[0] == '"') && (name[n - 1] == '"')): name = asm_att_slice(name + 1, n - 2)
 	if (name[0] == 0): inasm_fail(c"section directive needs a name", text)
 	int at = inasm_after(text, i, ',')
 	char* flags = 0
@@ -422,6 +425,10 @@ void inasm_data_value(char* expr, int width, char* line):
 	char* plus = 0
 	char* minus = 0
 	int sign = 1
+	# Parentheses group terms (`(1b) - .`, `x - (a - b)`): the sign in
+	# front of a group applies to every term inside it.
+	int group = 1
+	list[int] groups = new list[int]
 	while (1 == 1):
 		asm_att_skip_spaces(p)
 		int c = asm_att_peek(p)
@@ -431,9 +438,19 @@ void inasm_data_value(char* expr, int width, char* line):
 		else if (c == '-'):
 			sign = 0 - sign
 			p.pos = p.pos + 1
+		else if (c == '('):
+			groups.push(group)
+			group = group * sign
+			sign = 1
+			p.pos = p.pos + 1
+		else if (c == ')'):
+			if (groups.length == 0): inasm_fail(c"unbalanced parentheses", line)
+			group = groups.pop()
+			p.pos = p.pos + 1
 		else:
 			char* tok = asm_att_ident(p)
 			if (tok[0] == 0): inasm_fail(c"bad data expression", line)
+			sign = sign * group
 			if (inasm_symbol_token(tok)):
 				if (sign > 0):
 					if (plus != 0): inasm_fail(c"too many symbols in data expression", line)
@@ -443,6 +460,7 @@ void inasm_data_value(char* expr, int width, char* line):
 					minus = tok
 			else: total = total + sign * asm_parse_number(tok)
 			sign = 1
+	if (groups.length != 0): inasm_fail(c"unbalanced parentheses", line)
 	int here = inasm_here()
 	char* zero = c"\x00\x00\x00\x00\x00\x00\x00\x00"
 	inasm_put(zero, width)

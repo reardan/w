@@ -111,6 +111,7 @@ void test_native_asm_rejects():
 	native_reject(1, c"\t\t\"movw $sym, %ax\"\n", c"symbol operand needs a 32-bit field")
 	native_reject(1, c"\t\t\"1: nop\"\n\t\t\".pushsection w_x\"\n\t\t\"2: .byte 0\"\n\t\t\".popsection\"\n\t\t\".pushsection w_y\"\n\t\t\".long 1b - 2b\"\n\t\t\".popsection\"\n", c"label difference across sections")
 	native_reject(1, c"\t\t\".byte sym\"\n", c"an absolute symbol value must be 4 or 8 bytes")
+	native_reject(1, c"\t\t\".pushsection w_x\"\n\t\t\".long (1\"\n\t\t\".popsection\"\n", c"unbalanced parentheses")
 	native_reject(1, c"\t\t\".pushsection w_x,\\\"aQ\\\"\"\n\t\t\".popsection\"\n", c"unsupported section flag")
 
 
