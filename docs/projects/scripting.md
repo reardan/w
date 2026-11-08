@@ -1,7 +1,7 @@
 # W as an embedded scripting language: the addon engine plan
 
 Status: **Phase E (E1-E6), Phase S (S1, S2), Phase A1/A2 (arm64 Linux and macOS),
-Phase P (P1, P2) and Phase R1 (the `map` runtime) implemented**
+Phase P (P1, P2, P2b) and Phase R1 (the `map` runtime) implemented**
 (A2 added 2026-11-01): the engine API is `repl/embed.w` (documented at its top),
 saved variables are `lib/saved_vars.w`, `examples/scripting/addon_host.w`
 runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
@@ -10,8 +10,10 @@ runs on the API, and `tests/addon_host_test.w` / `tests/saved_vars_test.w`
 (§5); the in-process engine and the whole engine API run on arm64 Linux
 (`repl/jit_arm64.w`; `repl_test_arm64`, `addon_host_test_arm64`,
 `addon_profile_test_arm64` under qemu); `map[int,int]` is 4.2x faster
-(2.0x C, ahead of V8). A3, P3, the rest of R3 and W are
-tracked below. Companion study with the
+(2.0x C, ahead of V8); in-process x86/x64 globals no longer trigger
+self-modifying-code flushes (x86 `strings(1M)` 4.6 s -> 0.30 s). A3
+(blocked on arm64 threads in the language runtime), P3, the compiler
+side of R3 and W are tracked below. Companion study with the
 full inventory, three tier prototypes and benchmark sources: the project
 folder `scripting/w_as_scripting_language.md` (not in this repository).
 
@@ -114,7 +116,8 @@ container with the API (best of a few runs, a loaded 4-core machine):
 (17 ms with `import structures.json`); `engine_reload` of it with one
 later unit replayed 22 ms; `engine_call1` 6 ns per call against 2 ns
 through a raw function pointer; `strings(1M)` 292 ms with provenance off
-(the engine default) against 2312 ms with `engine_checked`; 20 reloads of
+(the engine default) against 2312 ms with `engine_checked` (since the
+inline-global padding of §3 R3, ~300 and ~500 ms on x86 and x64 alike); 20 reloads of
 an addon grow the buffer by 0 bytes. Notes on how the units landed:
 
 - E1: `repl/core.w` only gained embedder parameters, all 0 for the REPL
@@ -257,6 +260,17 @@ Q7 already lists this ("arm64, then darwin REPL, M-L").
   `repl_test_darwin` and the addon tests in the macOS suite.
 - **A3 threads in the engine on arm64** (M, optional): today the
   session thread rules (`repl_threads_enable`) are x86/x64 only.
+  Blocked below the engine (checked 2026-11 with qemu-user-static):
+  arm64 Linux has no threads or `thread_local` in AOT programs either.
+  `thread_local` is a compile error there
+  (`tests/thread_local_target_error_fixture.w`, `be_tls_address` emits
+  only the fs/gs forms), `lib/thread.w` has no arm64 `thread_create`
+  stub, and the host `atomic_add`/`atomic_cas` it needs have no A64
+  emitter (`docs/projects/threads.md` "Per-target support", staging
+  step 1). Once those land, A3 is the session part: map the 64 KB
+  per-thread block and point TPIDR_EL0 at it (the `__w_tls_set` stub),
+  let `repl_threads_enable` accept `target_isa == 1`, and run
+  `repl_test_arm64`'s thread cases under qemu.
 
 **Status (A1 and A2 implemented).** The engine runs on arm64 Linux:
 `bin/wv2 arm64 repl.w` builds a working REPL, and `repl_test_arm64`
@@ -440,6 +454,45 @@ A2 (macOS) uses the same API and A64 emitter, with native host support:
   one division per digit (reciprocal multiply or a two-digit table).
   Reusing the builder block as the result descriptor was also tried and
   saved only 3.5% of instructions, so it was not kept.
+
+  **R3 follow-up (2026-11).** Done: (3) `string_append_int` takes two
+  digits per division from a `00`..`99` pair table, and
+  `__w_template_new` starts the builder at 32 bytes instead of 16, which
+  is the measured part of (1): `strings(200k)` AOT fell from 588 M to
+  435 M instructions on x86 and from 479 M to 403 M on x64 (callgrind,
+  same tree otherwise). Not done: (1) as a compiler-computed exact
+  capacity. The default AST front end could size it, but the streaming
+  front end emits the `__w_template_new` call before it has read the
+  rest of the template, and `ast_expression_verify` requires the two to
+  produce byte-identical images on all six targets; it becomes a local
+  change once the streaming grammar is retired
+  (`ast_completion_plan.md` P1.5). (2) still needs a re-pin of the
+  audited `lib/memory.w`.
+
+  **x86 engine `strings(1M)`: self-modifying-code flushes, fixed.** The
+  ~2.2 s x86 figure (4-4.7 s on the loaded container this was measured
+  on, against 0.45-0.52 s on x64) was not the generated code: callgrind
+  counted ~400 instructions per malloc/free pair on x86 and ~370 on x64,
+  yet the pair took ~1.2 us on x86 and ~50 ns on x64 in the engine,
+  while x86 AOT was fast. Linux in-process sessions keep globals inline
+  in the RWX code buffer (no `data_split`), so the session allocator's
+  bump pointer and bin heads sat in cache lines that also held fetched
+  code, and every store to them was a self-modifying-code pipeline
+  clear; which globals shared a line with hot code depended on the
+  layout, which is why x64 escaped it with provenance off but not with
+  it on (5.6-6.2 s). Padding inline globals to whole cache lines
+  (`inline_global_line = 64`, set by the x86/x64 `repl_jit_configure`)
+  removes it: malloc/free 1184 -> 55 ms per million on x86, and
+  `strings(1M)` through the engine (best of 3, same container):
+
+  | | x86 before | x86 after | x64 before | x64 after |
+  |---|---:|---:|---:|---:|
+  | provenance off (engine default) | 3720 | 301 | 453 | 293 |
+  | provenance on (`engine_checked`) | 5291 | 460 | 5581 | 499 |
+
+  (the "after" columns include the R3 runtime change above; without it
+  327/438 and 319/553). File targets are unaffected (their globals are
+  in the data segment).
 
 ### Phase W: wasm tier JIT (optional, only if untrusted scripts matter)
 

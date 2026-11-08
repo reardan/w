@@ -9,7 +9,7 @@
 #       host can ship lib/ and structures/ beside itself (--import-root,
 #       docs/projects/compilation_model.md §7). flags: engine_checked keeps
 #       the session allocator's provenance tracking on (needed by checked
-#       addons crossing attested boundaries; off by default, it costs ~5x
+#       addons crossing attested boundaries; off by default, it costs ~1.6x
 #       on allocation-heavy code); engine_script compiles every addon
 #       source under --profile=script (scripting.md P2; pass the curated
 #       root from bin/script_root in roots). Returns 1, or 0 when a root is not a
