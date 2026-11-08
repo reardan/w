@@ -1424,3 +1424,217 @@ void test_atspi_glyphs_attributes_selections_tables_and_p2p():
 		return
 	check_depth(bus.address)
 	dbus_test_bus_stop(&bus)
+
+
+# The #911/#912 depth: a slider labelled by a label, a combo box that
+# controls its list, and an editor scrolled so that only its middle two
+# lines show, which takes SCROLL_TO.
+ui_access_tree* relations_tree(atspi_test_app* app):
+	ui_access_tree* tree = ui_access_tree_new(32, 512)
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 300.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	ui_access_add(tree, 2, 1, UI_ACCESS_TEXT, ui_rect_new(10.0, 10.0, 60.0, 20.0))
+	ui_access_set_text(tree, 2, UI_ACCESS_NAME, c"Volume", 6)
+	ui_access_node* slider = ui_access_add(tree, 3, 1, UI_ACCESS_SLIDER, ui_rect_new(80.0, 10.0, 100.0, 20.0))
+	slider.states = UI_ACCESS_FOCUSABLE
+	slider.actions = UI_ACCESS_SET_VALUE
+	ui_access_set_text(tree, 3, UI_ACCESS_VALUE, c"4", 1)
+	assert_equal(1, ui_access_set_range(tree, 3, 4.0, 0.0, 10.0, 0.5))
+	assert_equal(1, ui_access_add_relation(tree, 3, UI_ACCESS_REL_LABELLED_BY, 2))
+	ui_access_node* editor = ui_access_add(tree, 4, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 100.0, 100.0, 40.0))
+	editor.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SCROLL_TO
+	ui_access_set_text(tree, 4, UI_ACCESS_VALUE, c"ab\ncd\nef\ngh", 11)
+	ui_rect[11] boxes
+	for k in range(11):
+		float32 line = cast(float32, k / 3)
+		float32 column = cast(float32, k % 3)
+		float32 w = 10.0
+		if (k % 3 == 2): w = 0.0
+		boxes[k] = ui_rect_new(10.0 + column * 10.0, 80.0 + line * 20.0, w, 20.0)
+	ui_access_set_char_boxes(tree, 4, &boxes[0], 11)
+	ui_access_node* combo = ui_access_add(tree, 5, 1, UI_ACCESS_COMBOBOX, ui_rect_new(10.0, 40.0, 100.0, 20.0))
+	combo.states = UI_ACCESS_EXPANDED
+	ui_access_add(tree, 6, 1, UI_ACCESS_LIST, ui_rect_new(10.0, 60.0, 100.0, 30.0))
+	assert_equal(1, ui_access_add_relation(tree, 5, UI_ACCESS_REL_CONTROLLER_FOR, 6))
+	tree.focused_id = 3
+	tree.action = atspi_test_action
+	tree.context = app
+	return tree
+
+
+# A node's relation set as "type:path,path;" entries.
+char* atspi_test_relations(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int id):
+	dbus_body(c.conn)
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, id, c"org.a11y.atspi.Accessible", c"GetRelationSet", 0, &reply))
+	assert_strings_equal(c"a(ua(so))", reply.signature)
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	atspi_test_client text
+	text.log_length = 0
+	text.log[0] = 0
+	int bytes = dbus_read_u32(&r)
+	dbus_read_align(&r, 8)
+	int end = r.pos + bytes
+	while ((r.pos < end) && (r.failed == 0)):
+		dbus_read_align(&r, 8)
+		atspi_test_log(&text, itoa(dbus_read_u32(&r)))
+		atspi_test_log(&text, c":")
+		int inner = dbus_read_u32(&r)
+		dbus_read_align(&r, 8)
+		int inner_end = r.pos + inner
+		while ((r.pos < inner_end) && (r.failed == 0)):
+			dbus_read_align(&r, 8)
+			dbus_read_string(&r, 0)
+			atspi_test_log(&text, dbus_read_string(&r, 0))
+			atspi_test_log(&text, c",")
+		atspi_test_log(&text, c";")
+	asserts(c"relation set parses", r.failed == 0)
+	dbus_message_free(&reply)
+	return dbus_strdup(&text.log[0])
+
+
+# A Value property of node id, as a double.
+float32 atspi_test_double(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int id, char* prop):
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_string(out, c"org.a11y.atspi.Value")
+	dbus_put_string(out, prop)
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, id, c"org.freedesktop.DBus.Properties", c"Get", c"ss", &reply))
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"d", dbus_read_sig(&r))
+	float32 v = dbus_read_double_f32(&r)
+	dbus_message_free(&reply)
+	return v
+
+
+# GetBoundedRanges over (x, y, w, h) in window coordinates, as
+# "start-end:text;" entries.
+char* atspi_test_bounded(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int x, int y, int w, int h, int xclip, int yclip):
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_i32(out, x)
+	dbus_put_i32(out, y)
+	dbus_put_i32(out, w)
+	dbus_put_i32(out, h)
+	dbus_put_u32(out, 1)
+	dbus_put_u32(out, xclip)
+	dbus_put_u32(out, yclip)
+	dbus_message reply
+	assert_equal(1, atspi_test_call(c, b, tree, 4, c"org.a11y.atspi.Text", c"GetBoundedRanges", c"iiiiuuu", &reply))
+	assert_strings_equal(c"a(iisv)", reply.signature)
+	dbus_reader r
+	dbus_message_reader(&reply, &r)
+	atspi_test_client text
+	text.log_length = 0
+	text.log[0] = 0
+	int bytes = dbus_read_u32(&r)
+	dbus_read_align(&r, 8)
+	int end = r.pos + bytes
+	while ((r.pos < end) && (r.failed == 0)):
+		dbus_read_align(&r, 8)
+		atspi_test_log(&text, itoa(dbus_read_i32(&r)))
+		atspi_test_log(&text, c"-")
+		atspi_test_log(&text, itoa(dbus_read_i32(&r)))
+		atspi_test_log(&text, c":")
+		atspi_test_log(&text, dbus_read_string(&r, 0))
+		assert_strings_equal(c"i", dbus_read_sig(&r))
+		dbus_read_i32(&r)
+		atspi_test_log(&text, c";")
+	asserts(c"ranges parse", r.failed == 0)
+	dbus_message_free(&reply)
+	return dbus_strdup(&text.log[0])
+
+
+void check_relations(char* address):
+	atspi_test_client client
+	client.log_length = 0
+	client.log[0] = 0
+	client.embeds = 0
+	client.conn = dbus_open(address)
+	asserts(c"client connects", client.conn != 0)
+	atspi_test_client* c = &client
+	atspi_test_app app
+	app.calls = 0
+	ui_access_tree* tree = relations_tree(&app)
+	ui_atspi_bridge* b = ui_access_atspi_open_at(address, c"Relations")
+	asserts(c"bridge connects", b != 0)
+	assert_equal(1, ui_access_atspi_publish(b, tree))
+	dbus_message reply
+
+	# Relations both ways: labelled-by and its label-for, controller-for
+	# and its controlled-by; a node without any has an empty set.
+	assert_strings_equal(c"2:/org/a11y/atspi/accessible/2,;", atspi_test_relations(c, b, tree, 3))
+	assert_strings_equal(c"1:/org/a11y/atspi/accessible/3,;", atspi_test_relations(c, b, tree, 2))
+	assert_strings_equal(c"3:/org/a11y/atspi/accessible/6,;", atspi_test_relations(c, b, tree, 5))
+	assert_strings_equal(c"4:/org/a11y/atspi/accessible/5,;", atspi_test_relations(c, b, tree, 6))
+	assert_strings_equal(c"", atspi_test_relations(c, b, tree, 4))
+
+	# The slider: its role, its range and setting it.
+	assert_equal(ATSPI_ROLE_SLIDER, atspi_test_u32(c, b, tree, 3, c"org.a11y.atspi.Accessible", c"GetRole"))
+	asserts(c"current", atspi_test_double(c, b, tree, 3, c"CurrentValue") == 4.0)
+	asserts(c"maximum", atspi_test_double(c, b, tree, 3, c"MaximumValue") == 10.0)
+	asserts(c"minimum", atspi_test_double(c, b, tree, 3, c"MinimumValue") == 0.0)
+	asserts(c"increment", atspi_test_double(c, b, tree, 3, c"MinimumIncrement") == 0.5)
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_double_f32(out, 7.5)
+	asserts(c"set value", atspi_test_bool(c, b, tree, 3, c"org.a11y.atspi.Value", c"SetCurrentValue", c"d"))
+	assert_equal(UI_ACCESS_SET_VALUE, app.last_action)
+	assert_equal(3, app.last_id)
+	assert_strings_equal(c"7.5", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_double_f32(out, 11.0)
+	asserts(c"out of range", !atspi_test_bool(c, b, tree, 3, c"org.a11y.atspi.Value", c"SetCurrentValue", c"d"))
+	out = dbus_body(c.conn)
+	dbus_put_string(out, c"org.a11y.atspi.Value")
+	dbus_put_string(out, c"CurrentValue")
+	dbus_put_sig(out, c"d")
+	dbus_put_double_f32(out, 2.0)
+	assert_equal(1, atspi_test_call(c, b, tree, 3, c"org.freedesktop.DBus.Properties", c"Set", c"ssv", &reply))
+	dbus_message_free(&reply)
+	assert_strings_equal(c"2", &app.last_value[0])
+
+	# Bounded ranges over the scrolled editor: the visible middle lines
+	# with no clipping, and only the fully shown line when both edges
+	# clip.
+	assert_strings_equal(c"3-9:cd\nef\n;", atspi_test_bounded(c, b, tree, 10, 100, 100, 40, 0, 0))
+	assert_strings_equal(c"3-11:cd\nef\ngh;", atspi_test_bounded(c, b, tree, 10, 105, 100, 40, 0, 0))
+	assert_strings_equal(c"6-9:ef\n;", atspi_test_bounded(c, b, tree, 10, 105, 100, 40, 3, 3))
+	assert_strings_equal(c"3-4:c;6-7:e;", atspi_test_bounded(c, b, tree, 10, 100, 10, 40, 3, 0))
+	assert_strings_equal(c"", atspi_test_bounded(c, b, tree, 200, 100, 10, 40, 0, 0))
+
+	# Scrolling a substring: the last line to the bottom edge, the
+	# first to a point near the top.
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 9)
+	dbus_put_i32(out, 11)
+	dbus_put_u32(out, 3)
+	asserts(c"scroll substring", atspi_test_bool(c, b, tree, 4, c"org.a11y.atspi.Text", c"ScrollSubstringTo", c"iiu"))
+	assert_equal(UI_ACCESS_SCROLL_TO, app.last_action)
+	assert_strings_equal(c"9 11 1", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 2)
+	dbus_put_u32(out, 1)
+	dbus_put_i32(out, 10)
+	dbus_put_i32(out, 101)
+	asserts(c"scroll to point", atspi_test_bool(c, b, tree, 4, c"org.a11y.atspi.Text", c"ScrollSubstringToPoint", c"iiuii"))
+	assert_strings_equal(c"0 2 0", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 99)
+	dbus_put_u32(out, 6)
+	asserts(c"bad range", !atspi_test_bool(c, b, tree, 4, c"org.a11y.atspi.Text", c"ScrollSubstringTo", c"iiu"))
+
+	ui_access_atspi_close(b)
+	ui_access_tree_free(tree)
+	dbus_close(c.conn)
+
+
+void test_atspi_relations_slider_bounded_ranges_and_scroll():
+	dbus_test_bus bus
+	if (!dbus_test_bus_start(&bus)):
+		test_skip(c"SKIP: dbus-daemon not available")
+		return
+	check_relations(bus.address)
+	dbus_test_bus_stop(&bus)
