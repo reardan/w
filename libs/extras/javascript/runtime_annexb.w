@@ -38,7 +38,7 @@ void js_annexb_lexical_names(js_node* block, list[char*] names, int functions):
 				for js_node* name in bound: names.push(name.text)
 				__w_list_free(cast(__w_list*, bound))
 		if (js_kind(statement, c"class") && strlen(statement.text) > 0): names.push(statement.text)
-		if (functions && js_kind(statement, c"function")): names.push(statement.text)
+		if (functions && js_runtime_function_declaration(statement)): names.push(statement.text)
 
 
 struct js_annexb_scan:
@@ -57,7 +57,8 @@ void js_annexb_qualify(js_annexb_scan* scan, js_node* function, list[char*] oute
 	if (binding != 0 && binding.lexical_binding):
 		js_text_free(key)
 		return
-	if (binding == 0):
+	if (binding == 0 && scan.env == rt.global): js_runtime_global_declare(rt, key, 0, 0)
+	else if (binding == 0):
 		js_runtime_put(rt, scan.env, key, rt.undefined_value)
 		binding = js_runtime_property(scan.env, key)
 		if (binding != 0):
@@ -73,7 +74,7 @@ void js_annexb_qualify(js_annexb_scan* scan, js_node* function, list[char*] oute
 
 
 void js_annexb_visit(js_annexb_scan* scan, js_node* node, list[char*] outer):
-	if (js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return
+	if (js_runtime_function_node(node)): return
 	int count = outer.length
 	if (js_kind(node, c"block")):
 		# Siblings may repeat a sloppy block function name (B.3.3.4); only
@@ -94,12 +95,19 @@ void js_annexb_visit(js_annexb_scan* scan, js_node* node, list[char*] outer):
 	if (js_kind(node, c"if")):
 		for i in range(1, node.children.length):
 			if (js_kind(node.children[i], c"function")): js_annexb_qualify(scan, node.children[i], outer, 1)
-	if ((js_kind(node, c"for") && js_kind(node.children[0], c"variable")) || js_kind(node, c"for_of")):
+	# A destructured catch parameter's names conflict (B.3.5 exempts only a
+	# simple one).
+	if (js_kind(node, c"catch") && node.children.length == 2):
+		list[js_node*] caught = new list[js_node*]
+		js_runtime_pattern_names(node.children[0], caught)
+		for js_node* name in caught: outer.push(name.text)
+		__w_list_free(cast(__w_list*, caught))
+	if ((js_kind(node, c"for") && js_kind(node.children[0], c"variable")) || js_kind(node, c"for_of") || js_kind(node, c"for_in")):
 		js_node* head = node
 		if (js_kind(node, c"for")): head = node.children[0]
-		if (strcmp(head.text, c"var") != 0):
+		if (strcmp(head.text, c"let") == 0 || strcmp(head.text, c"const") == 0):
 			list[js_node*] bound = new list[js_node*]
-			if (js_kind(node, c"for_of")): js_runtime_pattern_names(node.children[0], bound)
+			if (js_kind(node, c"for_of") || js_kind(node, c"for_in")): js_runtime_pattern_names(node.children[0], bound)
 			else:
 				for js_node* declarator in head.children: js_runtime_pattern_names(declarator.children[0], bound)
 			for js_node* name in bound: outer.push(name.text)
@@ -115,7 +123,8 @@ void js_annexb_declare(js_runtime* rt, js_node* body, js_value* env):
 	scan.rt = rt
 	scan.env = env
 	scan.parameters = new list[char*]
-	if (env.code != 0 && env.code.children.length > 0 && js_kind(env.code.children[0], c"parameters")):
+	# Eval code (B.3.3.3) does not skip parameter names.
+	if (rt.eval_code == 0 && env.code != 0 && env.code.children.length > 0 && js_kind(env.code.children[0], c"parameters")):
 		list[js_node*] bound = new list[js_node*]
 		js_runtime_pattern_names(env.code.children[0], bound)
 		for js_node* name in bound: scan.parameters.push(name.text)
@@ -147,6 +156,7 @@ int js_annexb_evaluate(js_runtime* rt, js_node* node, js_value* env):
 		js_value* binding = js_runtime_binding(env, node.text)
 		if (binding != 0): value = js_runtime_binding_value(rt, binding)
 	js_value* target = js_annexb_variable_environment(env)
-	if (value != 0 && target != 0 && rt.completion.status == 0): js_runtime_put(rt, target, key, value)
+	if (value != 0 && target == rt.global && rt.completion.status == 0): js_runtime_member_write(rt, rt.global_object, key, value)
+	else if (value != 0 && target != 0 && rt.completion.status == 0): js_runtime_put(rt, target, key, value)
 	js_text_free(key)
 	return 1

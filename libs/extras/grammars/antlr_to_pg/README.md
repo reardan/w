@@ -76,7 +76,7 @@ grammars describe the two formats involved, run through
 - [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the implementation plan and
   capability ledger for the exact lexer and imported parser prediction engines.
 - [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the left-recursion lowering
-  plan and its implementation status (24 of the 25 inventoried rules lowered).
+  plan and its implementation status (all 25 inventoried rules lowered).
 
 ## Why w, not a scripting language
 
@@ -177,9 +177,14 @@ predicates, and unsupported options remain audited and strict-refused.
 `--prediction` emits `mode antlr`, a pure complete-input parser using bounded
 continuation search. It retains the full caller stack, source-order alternatives,
 and greedy term priority, then builds only the selected AST. It is not ANTLR's
-ALL(*) algorithm: rule calls are memoized by start position, but ambiguity can
-still take exponential work, limited by an explicit step budget (one million by
-default). Exhaustion is a sticky resource error.
+ALL(*) algorithm: rule calls are memoized by start position, each decision
+consults a one-token prediction cache (alternatives that cannot start with the
+next token are never entered), and a call exhausted with a given return stack
+is cached as failed by rule, position and interned continuation. Both caches
+only remove work that cannot succeed, so the selected derivation is the plain
+depth-first one, but ambiguity can still take exponential work, limited by an
+explicit step budget (one million by default). Exhaustion is a sticky resource
+error. `pg_prediction_work` counts the steps of every parse in the process.
 Every public rule entry requires complete input; native `.pg` partial parsing,
 ordered choice, and streaming remain separate modes. Prediction refuses host
 callbacks, lexical goals, recovery, parser actions/predicates, and unsupported
@@ -419,13 +424,33 @@ to `examples/**`. `*.errors`/`*.tree` files, hidden paths, unusual path
 characters, files over 64 KiB and files with NUL bytes are skipped, and the first
 ten remaining paths in byte order are pinned. An example with a non-empty
 upstream `.errors` file must be rejected; every other example must be accepted.
-The translator receives the start rule as `--start RULE`.
+The translator receives the start rule as `--start RULE`. Where ANTLR 4.13.2
+itself contradicts that expectation (checked with the live
+[tree differential](../../../../tests/grammars/antlr_trees/README.md)'s
+`--corpus` mode), the example records ANTLR's verdict in `expect` and the
+reason in `corpus_defect`, which `--select-examples` keeps while the example's
+path and hash are unchanged; SPL's ten examples are such corpus defects.
 
-Each example runs in its own process with a 10-second limit. A wrong verdict, a
-hang or a crash is a measured failure of the generated parser, not an
-infrastructure error; only an unrunnable driver or unreadable input is. A
+Each example runs in its own process with a 30-second hang guard. A wrong
+verdict, a hang or a crash is a measured failure of the generated parser, not an
+infrastructure error; only an unrunnable driver or unreadable input is.
+Performance is gated deterministically instead of by time: a prediction driver
+(the exact configurations) prints `SWEEP: work N`, its search steps, and an
+example's `work_bound` in the baseline fails the gate when any configuration
+needs more. A measured example without a bound, or whose bound is over twice
+what acceptance would record, is a progression; `--update-baseline` records
+`work + work/4 + 64` for it and never loosens an existing bound, so a slowdown
+past its bound needs a reviewed edit. `--select-examples` keeps a bound while
+the example's path and hash are unchanged. A
 configuration's `examples` stage passes when every pinned example of the case
-gets the expected verdict; per-example outcomes, exit codes, timings and
+gets the expected verdict. When the configuration's translation ignored host
+predicates (an `AT_HOST_SITE` predicate finding, which only permissive modes
+allow), no verdict is evidence: ANTLR may decide differently wherever a
+predicate is false. Each decided example is then reported as `unverified`
+("predicate ignored") rather than pass or fail, and is not counted as passed; a
+stage with only such examples is `unverified`. Its `verdict` still records
+whether the outcome matched, and `expected_examples` gates that, so a changed
+verdict remains a regression or progression. Per-example outcomes, exit codes, timings and
 diagnostic logs are in `results.json` and in an `examples/` directory beside each configuration's artifacts.
 `bin/antlr_sweep --sparse-patterns` prints the sparse-checkout patterns for the
 grammars plus exactly the pinned examples (CI uses it).

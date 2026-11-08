@@ -18,6 +18,7 @@
 			"tests/wexec/direct_file/sample_test.w"
 		],
 		"no_umbrella": {
+			"javascript_test262_upstream": "one-process run of the upstream Test262 profile for local use; tests runs it as javascript_test262_upstream_0.._3",
 			"update": "promotes bin/wv3 to the local ./w seed; mutates the checkout",
 			"update_win": "promotes the win64 fixpoint to w.exe; mutates the checkout",
 			"update_android": "promotes the locally verified Android compiler to w_android; mutates the checkout",
@@ -50,26 +51,20 @@
 			"wcoverage_report": "writes a coverage report on demand",
 			"compiler_coverage": "reruns the whole tests umbrella under --coverage builds of the compiler, REPL and wdbg; the CI coverage job runs it, coverage_test covers the tool",
 			"wfuzz_compiler": "coverage-guided compiler fuzzing for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_test covers the tool",
-			"wfuzz_json": "coverage-guided fuzzing of structures/json.w for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_json_smoke runs its seeds in tests",
-			"wfuzz_http": "coverage-guided fuzzing of HTTP/1.1 request/response parsing for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_http_smoke runs its seeds in tests",
-			"wfuzz_der": "coverage-guided fuzzing of DER/ASN.1 and X.509 for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_der_smoke runs its seeds in tests",
-			"wfuzz_inflate": "coverage-guided fuzzing of inflate/zlib/gzip for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_inflate_smoke runs its seeds in tests",
-			"wfuzz_font": "coverage-guided fuzzing of the TTF/CFF/color font parsers and shaper for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_font_smoke runs its seeds in tests",
-			"wfuzz_c": "coverage-guided fuzzing of the C preprocessor and C parser for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_c_smoke runs its seeds in tests",
-			"wfuzz_js": "coverage-guided fuzzing of the JavaScript parser for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_js_smoke runs its seeds in tests",
-			"wfuzz_c_import": "coverage-guided fuzzing of c_import through the --coverage compiler for a bounded time ($WFUZZ_SECONDS); the nightly fuzz workflow runs it, wfuzz_c_smoke covers the preprocessor and parser half in tests",
 			"wvm_pool_bench": "benchmark driver",
 			"wvm_darwin": "native Apple Silicon CLI; requires macOS codesign and Hypervisor entitlement",
 			"wvmd_darwin": "native Apple Silicon daemon; exercised by the explicit native VM gate",
 			"vm_darwin_native_test": "required manual Apple Silicon execution gate; never substitute Linux cross-compilation",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it",
-			"graphics_clipboard_x11_test": "opt-in real X11 clipboard round trips (two clients, INCR, xclip) requiring Xvfb, GLX and xclip; graphics_ui_clipboard_test covers selection and the widget clipboard headlessly in tests",
+			"graphics_clipboard_x11_test": "opt-in real X11 clipboard round trips (two clients, INCR, xclip, PRIMARY, rich text/html and image/png targets, xdotool multi-clicks) requiring Xvfb, GLX, xclip and xdotool; graphics_ui_clipboard_test and graphics_ui_selection_test cover selection and the widget clipboard headlessly in tests",
 			"mermaid_editor_ui_test": "opt-in real-window editor workflow requiring Xvfb and X11/XTest; display-independent canvas and edit tests run in tests",
 			"mermaid_editor_atspi_test": "opt-in screen-reader qualification of the editor canvas against real at-spi2-core (Xvfb, session bus, pyatspi); mermaid_canvas_access_test covers the snapshot in tests",
-			"access_atspi_depth_test": "opt-in #863 qualification of glyph geometry, text attributes, multiple selections, multi-select, table spans and the peer-to-peer bus against real at-spi2-core (Xvfb, session bus, pyatspi); graphics_ui_accessibility_atspi_test covers the bridge on a private bus in tests",
+			"access_atspi_widgets_test": "opt-in #913 qualification of the list box (multiselectable state, selected children, select_child/select_all/deselect_child/clear_selection reaching the widget) and the grid table (header row, row headers, spans) against real at-spi2-core (Xvfb, session bus, pyatspi); graphics_ui_focus_test and graphics_ui_widgets_uia_test cover the widgets in tests and tests_win64",
+			"access_atspi_depth_test": "opt-in #863/#911/#912 qualification of glyph geometry, text attributes, multiple selections, multi-select, table spans, relations, slider values, bounded ranges, scroll-substring-to and the peer-to-peer bus against real at-spi2-core (Xvfb, session bus, pyatspi); graphics_ui_accessibility_atspi_test covers the bridge on a private bus in tests",
 			"mermaid_editor_orca_test": "opt-in: mermaid_editor_atspi_test plus headless Orca and speech-dispatcher's dummy module, checking what Orca speaks",
 			"mermaid_editor_wine_test": "opt-in Windows editor workflow under wine's X11 driver on Xvfb with real XTest input (private wine prefix); mermaid_canvas_uia_test and save_guard_test_win64 cover the Win32 logic in tests_win64",
-			"web_mobile_browser_test": "opt-in headless Chromium phone emulation of tools/web; needs a local Chromium (wasm_mobile_ui_test and web_mobile_input_test cover the logic)"
+			"web_mobile_browser_test": "opt-in headless Chromium phone emulation of tools/web; needs a local Chromium (wasm_mobile_ui_test and web_mobile_input_test cover the logic)",
+			"web_clipboard_browser_test": "opt-in real-browser clipboard checks (copy/cut/paste events, navigator.clipboard with and without permission, rich copies, multi-click and middle-click) through Playwright's headless browsers; web_mobile_input_test covers the page logic in Node"
 		},
 		"tool_targets": [
 			{
@@ -530,6 +525,10 @@
 		},
 		{
 			"name": "tests_x64",
+			"deps": []
+		},
+		{
+			"name": "fuzz_campaign",
 			"deps": []
 		},
 		{

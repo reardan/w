@@ -531,6 +531,15 @@ int compile_relative_path(char* fn):
 	# the import roots (compiler/script_profile.w)
 	int profile_gated = script_profile_import_gate
 	script_profile_import_gate = 0
+	# An engine compiling an addon with its own allowlist: those roots
+	# replace the session's for a gated import, and come first for the
+	# imports of the trusted modules it pulls in
+	if (script_profile_roots_on()):
+		for root in script_profile_roots:
+			if (compile_joined(root, fn)): return 1
+		if (profile_gated):
+			script_profile_import_outside_roots(import_current_spelling)
+			return 0
 	# Explicit --import-root roots first, in order (block comment above)
 	if (import_root_count > 0):
 		if (deps_mode): import_root_note_shadows(fn)
@@ -1807,6 +1816,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# auto-imported container-runtime closure that --imports treats like
 	# a direct import for every file (grammar/import_statement.w).
 	auto_import_closure_count = imported_count
+	# --profile=script: the --import-root list is the profiled files'
+	# allowlist, and modules opened from here on are visible to them only
+	# inside it -- the rules an engine applies per addon
+	# (compiler/script_profile.w).
+	if (script_profile_mode):
+		script_profile_seal()
+		script_profile_roots_begin()
+		for r in range(import_root_count): script_profile_roots_add(import_root_at(r))
 	safe_trust_sources(0)
 	# Application semantic records are required even without --safe: a later
 	# imported signature may introduce checked pointers into an earlier body.

@@ -16,8 +16,10 @@ int main(int argc, int argv):
 	char* name = path_basename(args_program())
 	# The compiler mock installs itself as the compiled example driver: an
 	# example whose text names an outcome produces it, any other is accepted.
+	# A prediction driver reports ten work units per example byte.
 	if (ends_with(name, c".bin")):
 		char* example = ht_read(args_get(1)).data
+		if (path_exists(strjoin(args_program(), c".work"))): println(strjoin(c"SWEEP: work ", itoa(10 * strlen(example))))
 		if (contains(example, c"reject")):
 			println(c"example: syntax error")
 			return 1
@@ -34,6 +36,11 @@ int main(int argc, int argv):
 		json_object_set(finding, c"file", json_string(args_get(1)))
 		json_value* document = json_parse(c"{\"schema_version\":1,\"findings\":[]}")
 		json_array_push(ht_field(document, c"findings"), finding)
+		# A permissive translation that ignored a host predicate.
+		if (strcmp(mode, c"predicate") == 0 && !sm_flag(c"--strict")):
+			json_value* predicate = json_parse(c"{\"code\":\"AT_HOST_SITE\",\"stage\":\"translate\",\"feature\":\"host_code\",\"classification\":\"unsupported\",\"line\":1,\"column\":3,\"rule\":\"root\",\"reason\":\"unmapped predicate at atom position 0: {p()}?\"}")
+			json_object_set(predicate, c"file", json_string(args_get(1)))
+			json_array_push(ht_field(document, c"findings"), predicate)
 		char* text = json_stringify(document)
 		ht_write(audit, text, strlen(text))
 	if (strcmp(mode, c"timeout") == 0): process_sleep_ms(5000)
@@ -46,6 +53,7 @@ int main(int argc, int argv):
 		int at = index_of(program, c"int main(")
 		ht_require(at >= 0 && index_of(program + at + 1, c"int main(") < 0, c"compile harness must have exactly one main")
 		ht_require(shutil_copy(args_program(), sm_option(c"-o")) == 0, c"cannot install example driver")
+		if (contains(program, c"SWEEP: work")): ht_write(strjoin(sm_option(c"-o"), c".work"), c"", 0)
 		return 0
 	char* dependencies = sm_option(c"--dependencies")
 	if (dependencies != 0):

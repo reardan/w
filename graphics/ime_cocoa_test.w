@@ -49,6 +49,8 @@ void expect_event(gfx_window* win, int kind, int code):
 
 void test_event_mapping(gfx_window* win):
 	# Bridge entries become window events addressed to the focused field.
+	# The conversion target's length rides on BEGIN's code (#912).
+	gfx_cocoa_text_input_event(win, GFX_COCOA_TEXTIN_PREEDIT_TARGET, 2, 0)
 	gfx_cocoa_text_input_event(win, GFX_COCOA_TEXTIN_PREEDIT_BEGIN, 1, 0)
 	gfx_cocoa_text_input_event(win, GFX_COCOA_TEXTIN_PREEDIT_TEXT, 0x4e2d, 0)
 	gfx_cocoa_text_input_event(win, GFX_COCOA_TEXTIN_PREEDIT_END, 0, 0)
@@ -58,6 +60,8 @@ void test_event_mapping(gfx_window* win):
 	assert_equal(GFX_EVENT_PREEDIT_BEGIN, e.kind)
 	assert_equal(5, e.x)
 	assert_equal(1, e.y)
+	assert_equal(2, e.code)
+	assert_equal(0, gfx_cocoa_preedit_target)
 	expect_event(win, GFX_EVENT_PREEDIT_TEXT, 0x4e2d)
 	expect_event(win, GFX_EVENT_PREEDIT_END, 0)
 	assert_equal(1, gfx_window_next_event(win, &e))

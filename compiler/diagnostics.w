@@ -1124,3 +1124,6 @@ void diag_code_table():
 	diag_code_row(c"W0434", c"alias target '@' is never defined")
 	diag_code_row(c"W0435", c"global in section '@' must be zero-initialized")
 	diag_code_row(c"W0436", c"section '@' holds both functions and data")
+	diag_code_row(c"W0437", c"script profile: runtime function '@' is not visible to addon code")
+	diag_code_row(c"W0438", c"script profile: debugger statements are not allowed")
+	diag_code_row(c"W0439", c"script profile: '@' is declared in a module outside this addon's import roots")

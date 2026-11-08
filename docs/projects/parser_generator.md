@@ -484,6 +484,11 @@ directives and streaming mode are explicitly rejected on this path.
 Pure `&{ expression }` predicates now work at any sequence position in AST mode.
 They can inspect `stream`, its preceding token, context and
 `pg_token_stream_line_break_before(stream)`; they may execute repeatedly.
+A predicate that scans consumed tokens can cache one int per token with
+`pg_token_stream_memo_set(stream, index, value)` and read it back with
+`pg_token_stream_memo_get` (-1 when unknown). An entry must depend only on
+that token and the ones before it; it is dropped automatically when rollback
+rescans the token. The JavaScript `yield`/`await` predicates use it.
 Arbitrary `{ action }` terms remain forbidden in AST mode. Streaming predicates
 retain their existing leading-position restriction. `$n`/`text(n)` bindings are
 not available in predicates. Grammar generation rejects undefined references,

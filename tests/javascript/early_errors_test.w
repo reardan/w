@@ -144,3 +144,120 @@ void test_static_semantics_additions():
 	early(c"let {c: [d, ...e]} = x; let {g: {...h}} = x; function f(a, {c: [...e]}) {}", 0, 1)
 	early(c"function f(a = (...b) => 1, c) {}", 0, 1)
 	early(c"let {c: [...d, e]} = x;", 0, 0)
+
+
+# reardan/w#903, each checked against Node 22.
+void test_annex_b_for_in_initializer():
+	early(c"for (var x = 1 in o) ;", 0, 1)
+	early(c"for (var x = a in b in o) ; for (var x = (a in b) in o) ;", 0, 1)
+	early(c"for (var x = a ? b in c : d in o) ; for (var x = a ? b : c in o) ;", 0, 1)
+	early(c"for (var x = () => a in b) ; for (var x = y = 1 in o) ;", 0, 1)
+	early(c"for (var x = [a in b] in o) ; for (var x = {a: b in c} in o) ; for (var x = f(a in b) in o) ;", 0, 1)
+	early(c"for (var x = function() { a in b; } in o) ; for (var x = `${a in b}` in o) ;", 0, 1)
+	early(c"for (var x = a.in in o) ; for (var x = a?.in in o) ; for (x of a.of) ;", 0, 1)
+	early(c"for (var yield = 1 in o) ; function* g() { for (var x = yield in o) ; }", 0, 1)
+	early(c"async function f() { for (var x = await a in o) ; }", 0, 1)
+	early(c"for (var x = 1; x in o; ) ; for (var x = (1 in o); ; ) ; for (x of a in b) ; for (x in a in b) ;", 0, 1)
+	early(c"for (var [x] = 1 in o) ;", 0, 0)
+	early(c"for (var {x} = 1 in o) ;", 0, 0)
+	early(c"for (let x = 1 in o) ;", 0, 0)
+	early(c"for (const x = 1 in o) ;", 0, 0)
+	early(c"for (var x = 1 of o) ;", 0, 0)
+	early(c"'use strict'; for (var x = 1 in o) ;", 0, 0)
+	early(c"for (var x = 1 in o) ;", 1, 0)
+	early(c"for (var x = 1, y in o) ;", 0, 0)
+	early(c"for (var x = 1 in o) function f() {}", 0, 0)
+	# The first clause of an ordinary for statement is [~In] as well.
+	early(c"for (var x = a in b; ;) ;", 0, 0)
+	early(c"for (x = 1 in o; ;) ;", 0, 0)
+
+
+void test_let_identifier_substatement():
+	early(c"if (x) let\ny", 0, 1)
+	early(c"if (x) let\n{}", 0, 1)
+	early(c"if (x) let\nawait", 0, 1)
+	early(c"if (x) let\n/a/g", 0, 1)
+	early(c"if (a) ; else let\ny", 0, 1)
+	early(c"while (0) let\ny", 0, 1)
+	early(c"for (;;) let\ny", 0, 1)
+	early(c"for (var x = 1 in o) let\ny", 0, 1)
+	early(c"with (a) let\ny", 0, 1)
+	early(c"L: let\ny", 0, 1)
+	early(c"L: let\nlet", 0, 1)
+	early(c"x: if (a) let\ny", 0, 1)
+	early(c"do let\nwhile (0)", 0, 1)
+	# Statement lists keep the declaration, whatever came before.
+	early(c"let\ny", 0, 1)
+	early(c"{ let\ny }", 0, 1)
+	early(c"switch (a) { case 1: let\ny }", 0, 1)
+	early(c"switch (a) { case f(b): let\ny; default: let\nz }", 0, 1)
+	early(c"do ; while (0) let\ny", 0, 1)
+	early(c"do {} while (0) let\ny", 0, 1)
+	early(c"do if (a) b; while (c) let\ny", 0, 1)
+	early(c"let\ny; let\ny", 0, 0)
+	early(c"if (x) let y", 0, 0)
+	early(c"if (x) let\n[a] = b", 0, 0)
+	early(c"L: let y", 0, 0)
+	early(c"'use strict'; if (x) let\ny", 0, 0)
+
+
+void test_nested_binding_rest():
+	# The #841 report: a nested rest is checked by its own pattern only.
+	early(c"let {c: [d, ...e]} = x;", 0, 1)
+	early(c"let {c: [d, ...e], ...f} = x; let [{a: [...b]}, ...c] = y; let {g: {...h}, ...i} = z;", 0, 1)
+	early(c"let {c: [...e, d]} = x;", 0, 0)
+	early(c"let {c: [d, ...e], ...f, g} = x;", 0, 0)
+	early(c"let [{a: [...b]}, ...c, d] = y;", 0, 0)
+
+
+# Contextual keyword scans skip template interpolations and template text.
+void test_contextual_keywords_after_templates():
+	early(c"async function f() { x = `${a}`; await y; }", 0, 1)
+	early(c"function* g() { x = `a${b}c${d}`; yield 1; }", 0, 1)
+	early(c"async function f() { x = `)`; await y; }", 0, 1)
+	early(c"async function f() { x = `${b})(`; await y; }", 0, 1)
+	early(c"function f() { x = `${a}`; await y; }", 0, 0)
+
+
+# A method's computed key evaluates in the enclosing function and class
+# context, not the method's own (checked against Node 22).
+void test_method_computed_keys():
+	early(c"function* g() { class C { [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static *[yield 1]() { yield 2; } } }", 0, 1)
+	early(c"function* g() { ({ [yield 1]() {} }); ({ get [yield]() {} }); ({ set [yield 1](v) {} }); }", 0, 1)
+	early(c"function* g() { ({ [yield]() { 'use strict'; } }); }", 0, 1)
+	early(c"async function f() { class C { [await 1]() {} } }", 0, 1)
+	early(c"async function f() { ({ [await x]() {} }); ({ async [await x]() { await y; } }); }", 0, 1)
+	early(c"function f() { class C { [new.target]() {} } }", 0, 1)
+	early(c"var o = { m() { return { [super.x]() {} }; } };", 0, 1)
+	# The method body keeps its own context; the key keeps the class's strictness.
+	early(c"function* g() { class C { [yield 1]() { yield 2; } } }", 0, 0)
+	early(c"function* g() { class C { [yield]() {} } }", 0, 1)
+	early(c"class C { [yield]() {} }", 0, 0)
+	early(c"class C { [new.target]() {} }", 0, 0)
+	early(c"class C { [super.x]() {} }", 0, 0)
+	early(c"function f() { ({ [yield 1]() {} }); }", 0, 0)
+
+
+# A non-generator method's parameters follow the method, not the enclosing
+# generator or async function: the predicate looks past the balanced list
+# for the method body's `{` (checked against Node 22).
+void test_method_parameter_defaults():
+	early(c"function* g() { ({ m(a = yield) {} }); }", 0, 1)
+	early(c"async function f() { ({ m(a = await) {} }); }", 0, 1)
+	early(c"function* g() { ({ [k](a = yield) {} }); ({ a: 1, m(a = yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = (yield), b = [yield], c = {d: yield}, e = `${yield}`) {} }); }", 0, 1)
+	early(c"function* g() { var o = { m(a = yield) { return yield; } }; }", 0, 1)
+	early(c"function* g() { ({ a: 1,\n m(a = yield)\n {} }); }", 0, 1)
+	early(c"function* g() { ({ m(yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = yield 1) {} }); }", 0, 0)
+	early(c"function* g() { ({ *m(a = yield) {} }); }", 0, 0)
+	early(c"async function f() { ({ m(a = await 1) {} }); }", 0, 0)
+	early(c"async function f() { ({ async m(a = await 1) {} }); }", 0, 0)
+	early(c"function* g() { class C { m(a = yield) {} } }", 0, 0)
+	# Calls keep the enclosing context, including a call followed by a block.
+	early(c"function* g() { f(yield); f(yield 1, yield 2); f(a = yield 1); f(yield)(yield); new F(yield); }", 0, 1)
+	early(c"function* g() { if (f(yield)) {} class C extends f(yield) {} class D extends (yield) {} }", 0, 1)
+	early(c"function* g() { f(yield)\n{} }", 0, 1)
+	early(c"async function f() { g(await 1); g(await 1)(await 2); }", 0, 1)

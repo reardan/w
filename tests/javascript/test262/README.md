@@ -3,7 +3,7 @@
 From the W repository root:
 
 ```sh
-./wbuild javascript_test262
+./wbuild javascript_test262 javascript_test262_upstream
 bin/test262_conformance --json bin/test262-conformance.json
 bin/test262_conformance --require-all
 ```
@@ -11,15 +11,32 @@ bin/test262_conformance --require-all
 This target executes **unmodified upstream Test262 tests in W's x64 interpreter**,
 with a new process and realm for each variant. Python supervises execution; Node
 is not involved. The default target also runs the adapter's contract tests and writes the full
-report to `bin/test262-conformance.json`. No
+report to `bin/test262-conformance.json`. The wbuild targets split the two
+profiles so they run in parallel: `javascript_test262` runs the native profile
+(`--native-only`) and `javascript_test262_upstream` the upstream-harness profile
+(`--upstream-only`, report in `bin/test262-upstream.json`); a bare
+`bin/test262_conformance` still runs both. The `tests` umbrella runs the
+upstream profile as `javascript_test262_upstream_0` ... `_3` instead, each
+`--shard K/4` (manifest cases K, K+4, ...), because one process outgrew a CI
+shard's 30-minute job; their pinned counts sum to the full target's. Each target pins its profile's
+counts and execution evidence with `--expect KEY=N,...` (the four status
+counts, `execution_passes`, `assertions`, `variants`, `pass_rate`), so a
+change to any of them fails that target; update the directive in
+`tools/test262_runtime_runner.w` with the README numbers. The adapter's
+contract test (`test262_runner_test`) runs both profiles on a deterministic
+sample of the manifest (every 25th case, plus every `builtins_required` case
+in the native profile) rather than repeating the full runs. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 337 upstream test files (plus module fixtures) expanded
-into 611 variants. The native profile reports **566 PASS, 0 FAIL, 45
-UNSUPPORTED, 0 ERROR**; 111 passes reach runtime execution and the rest verify
+The corpus contains 5117 upstream test files (plus module fixtures) expanded
+into 9444 variants. The native profile reports **8398 PASS, 0 FAIL, 1046
+UNSUPPORTED, 0 ERROR**; 6418 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **579 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (94.76%)**. The positive
-cases execute 515 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+reports **8930 PASS, 0 FAIL, 514 UNSUPPORTED, 0 ERROR (94.55%)**, 6950 of them
+reaching runtime execution; the 452
+property-escape variants (below) are UNSUPPORTED there because
+`regExpUtils.js` is not pinned. The positive cases execute 24243 assertions
+across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
 incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
@@ -29,10 +46,117 @@ escapes, astral characters, case mapping, surrogate pairs, sticky `^` and
 forward named references. reardan/w#841 added `instanceof` and `switch` tests
 (`test/language/expressions/instanceof/`, `test/language/statements/switch/`),
 two module tests with their fixtures, and the `tcoHelper.js`/`compareArray.js`
-includes. Tests that need `eval` or other harness includes
-(`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
+includes. Tests that need other harness includes
+(`propertyHelper.js`, `regExpUtils.js`) were not vendored (the property-escape
+files below use native `regExpUtils.js` overrides instead). These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
+
+### Global object, for-in, destructuring, wrappers and eval (reardan/w#907)
+
+1021 of the files pass once the interpreter executes `for-in`, `var` and
+assignment-target `for-in`/`for-of` heads, `in`, `delete`, destructuring
+assignment, array holes, destructured `catch` parameters, the global object
+and global `this`, Number/Boolean wrappers with `Object(value)`, and direct
+and indirect `eval`: `test/language/statements/{for-in,for-of,for,try,variable}/`
+(including `dstr/` heads and binding patterns over iterators),
+`test/language/expressions/{assignment,in,delete,this,typeof,array,object}/`,
+`test/language/eval-code/{direct,indirect}/`, `test/annexB/language/eval-code/`
+(Annex B.3.3 functions declared by eval code), `test/language/function-code/`
+(`this` substitution and boxing), `test/language/global-code/`,
+`test/language/types/`, `test/language/identifier-resolution/` and
+`test/built-ins/{Number,Boolean,eval,global}/`. They were selected by running
+all 4741 not-yet-pinned files of those directories (plus
+`test/built-ins/Object/prototype/`) at the pinned revision and keeping each
+file whose native variants all PASS, whose upstream-harness variants PASS or
+are UNSUPPORTED, and which did not already pass before #907. The rest need
+`Object.prototype` (`hasOwnProperty`, `Object.create`, ...), the `Function`
+constructor, `propertyHelper.js`, the `arguments` object, separate parameter
+scopes for `eval` in parameter initializers, implicit `+`/relational
+coercions, generators, or `with`. Files naming `eval`, `Number` or `isNaN`
+record them in `builtins_required`.
+
+### Classes (reardan/w#905)
+
+912 of the files are the `test/language/statements/class/` and
+`test/language/expressions/class/` tests that pass in both profiles once the
+interpreter executes classes: declarations/expressions, accessors, static and
+computed keys (`cpn-*`, `accessor-name-*`), method definitions and their
+default/destructured parameters (`dstr/`, `method*/`), `subclass/`, `super/`,
+`definition/`, `syntax/`, `elements/`, `subclass-builtins/` (Error subclasses
+and syntax), and the class early errors, including the `gen-method*/` and
+`async-method*/` negatives.
+They were selected by running all 8426 class tests of the pinned revision;
+the rest are left out because they need class fields, private names, static
+blocks, `propertyHelper.js`/`compareArray.js`, or
+built-ins outside the bounded realm (`Object.prototype`, `Function.prototype.bind`,
+`eval`, primitive wrapper and Array/Date/Map/... subclassing), or hit
+non-class gaps (numeric separators, separate parameter scopes). Generator
+and async methods, and the `yield` computed-key tests, joined with #906
+(next section). The `class`, `computed-property-names`,
+`new.target`, `default-parameters`, `rest-parameters`, `arrow-function` and
+`destructuring-binding` feature tags are enabled for them.
+
+### Generators and async functions (reardan/w#906)
+
+2061 of the files pin the generator, async function and async generator
+subsets that pass in at least one profile with no FAIL in either:
+`test/language/{statements,expressions}/{generators,async-function,
+async-generator,async-arrow-function,yield,await}/`, `for-await-of/`,
+generator/async/async-generator methods of classes and object literals
+(`class/{gen-method,async-method,async-gen-method}*/`,
+`object/method-definition/`, the `yield` computed-key `cpn-*` and
+`accessor-name-*-computed-yield-expr` class tests) and
+`test/built-ins/{GeneratorPrototype,AsyncGeneratorPrototype,
+AsyncFromSyncIteratorPrototype,AsyncFunction}/`. They were selected by
+running all 5626 such candidate files of the pinned revision in both
+profiles. The generated destructuring families repeat the same `.case`
+files for every function template, so only one template of each is pinned:
+`statements/generators/dstr/`, `statements/async-generator/dstr/`, class
+`gen-meth-*` (non-static) under `statements/class/dstr/` and for-await-of's
+`async-gen-dstr-let-*`; their other templates (expression forms, static and
+async methods, `var`/`const` heads) pass the same way but would only add run
+time.
+
+982 of the files are `flags: [async]` tests. The runner runs them with the
+`async` goal: after the script it drains the microtask queue within the
+remaining step budget, and a test passes only when `$DONE` was called
+without an error. The native profile binds `$DONE`, `asyncTest` and
+`assert.throwsAsync` (`asyncHelpers.js`) natively; the upstream profile
+evaluates the pinned `doneprintHandle.js`, whose `print` the runner
+observes (`Test262:AsyncTestComplete` / `Test262:AsyncTestFailure:`).
+`asyncHelpers.js` is vendored but reported UNSUPPORTED in the upstream
+profile: it starts with `Object.prototype.hasOwnProperty.call(globalThis,
+...)`, and the bounded realm has neither intrinsic. The `async-functions`,
+`generators`, `async-iteration` and `Symbol.asyncIterator` feature tags are
+enabled. Not pinned: tests needing `Object.prototype`/`Object.create`,
+`Function.prototype.bind`, `Promise.all`/other combinators, `propertyHelper.js`
+or `compareArray.js` beyond the native subset, the `arguments` object,
+implicit coercion, array holes, `var`/assignment-target `for-await` heads,
+destructuring assignment, `eval`, separate parameter scopes and class fields.
+
+### String and RegExp Symbol methods (reardan/w#902)
+
+336 of the files are the `test/built-ins/String/prototype/{match,matchAll,
+replace,search,split}/` and `test/built-ins/RegExp/prototype/Symbol.{match,
+matchAll,replace,search,split}/` tests that pass in at least one profile with no
+FAIL in either: Symbol dispatch, coercion order, `lastIndex` handling for
+global/sticky RegExps, RegExpExec with user `exec`, GetSubstitution, species
+construction, the RegExp String Iterator and result shapes. The `Symbol`,
+`Symbol.iterator`, `Symbol.match`, `Symbol.matchAll`, `Symbol.replace`,
+`Symbol.search`, `Symbol.species`, `Symbol.split`, `Symbol.toPrimitive`,
+`String.prototype.matchAll` and `arrow-function` feature tags are enabled.
+The native profile reports `assert.throws` and includes such as `compareArray.js`
+as UNSUPPORTED; the upstream-harness profile passes most of those. Not pinned
+(174 files): tests needing `propertyHelper.js`, `isConstructor.js`/`Reflect`,
+`compareIterator.js`, other built-ins (`Number.prototype`, `Boolean`,
+`Object.prototype`, `Function.prototype.bind`, `lastIndexOf`, `charAt`,
+`Math.pow`, `eval`), the `arguments` object, global `this`, implicit `+`
+coercion, `v`-flag or duplicate-named-group syntax, and tests of post-ES2020
+algorithm changes (`matchAll` rejecting non-global RegExps, `Symbol.match`/
+`Symbol.replace` reading `flags`, primitive arguments skipping `Symbol.*`
+lookup; see "String and RegExp Symbol methods" in
+`docs/projects/javascript.md`).
 
 ### Static semantics, module linking and Annex B (reardan/w#840)
 
@@ -58,9 +182,64 @@ run: the supervisor writes the case under its upstream path with its pinned
 sibling `_FIXTURE.js` files, and the runner links the graph with
 `libs/extras/javascript/module_graph.w` after early errors. A link failure is a
 `resolution` phase SyntaxError (or ReferenceError for an unloadable
-specifier). Positive module tests remain UNSUPPORTED. The `async-functions`,
+specifier). The `async-functions`,
 `generators` and `optional-chaining` feature tags are enabled; their runtime
 support is still decided by lowering and preflight.
+
+### Module code (reardan/w#908)
+
+227 of the files are `test/language/module-code/` tests (with 57 more
+`_FIXTURE.js` modules), and all of them pass in the upstream-harness profile:
+instantiation (`instn-*`: local, named, default and namespace bindings, `export
+*` and `export * as ns` re-exports, cyclic `iee`/`star` graphs, TDZ, namespace
+identity), evaluation (`eval-*`: `this`, export forms, default export naming,
+live indirect bindings, request order), the `parse-err-*` and `early-*`
+negatives, `namespace/internals/` (`[[Get]]` live values and TDZ, `[[Set]]`,
+`@@toStringTag`, extensibility through `Object.defineProperty`, super property
+assignment in the TDZ) and the ES2020-compatible `ambiguous-export-bindings/`
+cases. The positive cases run through `libs/extras/javascript/modules.w`'s link
+and evaluation on `module_graph.w` records, and the native profile still
+reports them UNSUPPORTED (`flags: module`), since it has no `assert.throws`.
+The `export-star-as-namespace-from-module`, `let`, `const` and
+`Symbol.toStringTag` feature tags are enabled.
+
+With the `in` operator from reardan/w#907, 10 more module tests pass in the
+upstream-harness profile (with 22 more `_FIXTURE.js` modules): the
+`instn-star-props-*`, `instn-star-as-props-dflt-skip`, `instn-star-id-name`,
+`instn-named-bndng-dflt-star` and `namespace/internals/get-nested-namespace-dflt-skip`
+namespace-property checks (`'x' in ns`), `eval-export-dflt-expr-in` and
+`ambiguous-export-bindings/omitted-from-namespace`. Seven
+`test/language/{import,export}/` module-goal syntax negatives (escaped
+contextual keywords, duplicate import bindings) were pinned with them; they
+pass in both profiles.
+
+Not pinned: tests that need `fnGlobalObject.js` (the `Function` constructor),
+`Reflect`, `Object.keys`, `Object.prototype` methods,
+`Object.setPrototypeOf`/`Object.isExtensible`,
+`instanceof Object`, or an engine-identified `new TypeError()` runtime negative.
+Also not pinned: generator and async default exports, dynamic `import()`,
+top-level await, import attributes, source/defer phase imports, string export
+names (`arbitrary-module-namespace-names`) and class private names, plus the
+`ambiguous-export-bindings/` cases that test the post-ES2020 rule making
+`import * as` + `export {ns}` and `export * as ns` of one module unambiguous.
+
+### Unicode property escapes (reardan/w#901)
+
+226 files pin `test/built-ins/RegExp/property-escapes/generated/`: the files
+whose Unicode 17.0 expectations agree with the Unicode 12.1 data the runtime
+pins (see [javascript.md](../../../docs/projects/javascript.md), "Unicode version
+pin", for the split and the 215 that differ). Each builds the strings of
+matching and non-matching code points (up to 1.1M of them) with
+`regExpUtils.js` and tests `/^\p{...}+$/u` and `/^\P{...}+$/u` against them.
+INTERPRETING.md lets a host override harness functions, and the native profile
+does: the runner's `buildString` keeps the code points host-side (the strings
+exceed the runtime's string length cap) and its `testPropertyEscapes` runs the
+RegExp's matcher over the whole string like `RegExp.prototype.test` and, if
+that fails, over each symbol, failing the test when any symbol does not match.
+That matching has its own step budget. The other `regExpUtils.js` helpers are
+unsupported. In the upstream-harness profile these files stay UNSUPPORTED,
+since `regExpUtils.js` is not pinned (the interpreter has no
+`String.fromCodePoint` and its loops would exceed the step budget).
 
 ## Provenance
 
@@ -82,8 +261,7 @@ pinned `harness/sta.js`, `harness/assert.js` and each declared include from
 script that fails is an ERROR (or UNSUPPORTED when it needs syntax outside the
 runtime subset). Includes that are not pinned remain UNSUPPORTED. Module tests
 are staged beside their pinned `*_FIXTURE.js` siblings and evaluated through
-`libs/extras/javascript/modules.w` with a relative-path file resolver, so
-loader limits (cycles, default/namespace imports) report UNSUPPORTED. A
+`libs/extras/javascript/modules.w` with a relative-path file resolver. A
 runtime-negative `Test262Error` is identified by inheritance from the harness's
 `Test262Error.prototype`, never by forgeable properties. This pass is not gated
 by the native per-variant baseline; an ERROR in it fails the target, and the
@@ -107,16 +285,19 @@ outside this profile. Constructor syntax now lowers, allowing unreachable
 `new Test262Error` branches in the two newly passing short-circuit variants;
 executing that constructor remains unsupported.
 
-Manifest version 2 records built-in requirements for three hash-pinned addition
-cases: `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
-`Number` and `isNaN`. The adapter capability inventory does not yet advertise
-these complete capabilities (the bounded Number helpers do not provide the
-required Number constants or global `isNaN`), so those six variants report an explicit metadata UNSUPPORTED
-reason before execution. This is a declared capability boundary, not an exception
-filter: unknown identifiers and direct uses of missing built-ins still throw
-ReferenceError and classify as FAIL. A regression test advertises all three
-capabilities and verifies that execution exposes all six failures. Source bytes
-and hashes are unchanged. The `instanceof` addition case now executes.
+Manifest version 2 records built-in requirements (`builtins_required`) for
+cases that need `eval`, `Number` or `isNaN` without a feature tag: the three
+`S11.6.1` addition cases and every file pinned for reardan/w#907 whose body
+names one of them. The adapter capability inventory (`t262_builtins` in
+`tools/test262_conformance_lib.w`) advertises all three since #907 (the
+runtime provides `eval`, the Number constructor and constants, and the global
+`isNaN`), so these cases execute. A case whose required built-in is withheld
+from the inventory reports an explicit metadata UNSUPPORTED reason before
+execution; this is a declared capability boundary, not an exception filter,
+and the regression test withholds the inventory to check that every such
+variant changes the baseline. Unknown identifiers and direct uses of missing
+built-ins still throw ReferenceError and classify as FAIL. Source bytes and
+hashes are unchanged.
 
 The native callbacks count real assertion invocations. Contract tests verify
 both passing and failing assertion paths, signed zero, NaN, boolean strictness,
@@ -128,12 +309,16 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Ordinary scripts run once unchanged and once with `"use strict";` prepended.
   `onlyStrict`, `noStrict`, and `raw` select their appropriate single variant.
   Raw scripts receive no harness bindings and no source prefix.
-- Async tests, positive modules, includes, blocking/non-deterministic flags,
-  and features outside the declared profile produce explicit UNSUPPORTED
-  results. No missing include is silently ignored. Only the
-  `coalesce-expression`, `regexp-named-groups`,
-  `regexp-unicode-property-escapes`, `async-functions`, `generators` and
-  `optional-chaining` feature tags are currently enabled; untagged cases still
+- Async tests, positive modules (native profile only), includes,
+  blocking/non-deterministic flags, and features outside the declared profile
+  produce explicit UNSUPPORTED results. No missing include is silently
+  ignored. Only the `coalesce-expression`, `regexp-named-groups`,
+  `regexp-unicode-property-escapes`, `async-functions`, `generators`,
+  `optional-chaining`, `arrow-function`, `String.prototype.matchAll`, `Symbol`,
+  the `Symbol.*` tags listed above, `class`, `computed-property-names`,
+  `new.target`, `default-parameters`, `rest-parameters`,
+  `destructuring-binding`, `export-star-as-namespace-from-module`, `let` and
+  `const` are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.

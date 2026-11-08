@@ -69,3 +69,27 @@ void ui_access_field_attrs(ui_context* ctx, ui_access_node* node, int scale, ui_
 void ui_access_publish_boxes(ui_context* ctx, ui_access_node* node, ui_rect* boxes, int count):
 	ui_access_set_char_boxes(ctx.access, node.id, boxes, count)
 	free(cast(char*, boxes))
+
+
+# Publish the IME composition field node shows (#912) into its value,
+# as the screen shows it: call it once ui_text_preedit_showing, after
+# the field's value, caret and layout. The preview goes in at caret_byte
+# with boxes drawn from (x, y) on a line h tall, the caret and the
+# conversion target from the preedit state (the clause at
+# preedit_selection, preedit_target_length long; with none the caret
+# sits at preedit_selection).
+void ui_access_publish_preedit(ui_context* ctx, ui_access_node* node, int caret_byte, float32 x, float32 y, float32 h):
+	if ((node == 0) || (ctx.access == 0) || (ctx.preedit_length <= 0)): return
+	int at = ui_access_byte_char(node.value.data, node.value.length, caret_byte)
+	int chars = ui_access_char_count(&ctx.preedit[0], ctx.preedit_length)
+	ui_rect* boxes = cast(ui_rect*, malloc((ctx.preedit_length + 1) * sizeof(ui_rect)))
+	int count = ui_access_line_boxes(&ctx.preedit[0], ctx.preedit_length, ctx.theme.text_scale, x, y, h, 1000000.0, boxes)
+	int target = ctx.preedit_selection
+	if ((target < 0) || (target > chars)): target = chars
+	int target_length = ctx.preedit_target_length
+	if ((target_length < 0) || (target + target_length > chars)): target_length = 0
+	int caret = target + target_length
+	ui_rect* given = boxes
+	if (count != chars): given = 0
+	ui_access_insert_composition(ctx.access, node.id, at, &ctx.preedit[0], ctx.preedit_length, given, caret, target, target_length)
+	free(cast(char*, boxes))

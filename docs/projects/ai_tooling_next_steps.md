@@ -1710,3 +1710,110 @@ garbage index, which surfaced only as a runtime "list index out of range"
 deep in module linking. Direction: diagnose a function whose name matches a
 struct in the same program (or at least warn at the ambiguous call site),
 and have `symbols --json` flag duplicate names across kinds.
+
+## Cast results cannot be dereferenced; data files select nothing (2026-11-08, #901)
+
+Two frictions while adding RegExp property tables. First,
+`cast(__w_list*, node.ranges).items` is a parse error ("')' expected, found
+'.'"), so reading a field of a cast result needs a throwaway local; the
+message does not say that member access on a cast is unsupported.
+Direction: accept postfix `.field`/`[i]` after `cast(...)`, or make the
+diagnostic name the limitation. Second, `wtest changed` selected nothing for
+the vendored `tools/unicode/12.1.0/*.txt` inputs of
+`tools/javascript_regexp_property.py`, and only `wfuzz_c_*` for edits to
+`tests/javascript/test262/manifest.json` or its pinned `.js` files, until the
+reading targets declared `data=` directories. Direction: have `wtest why`
+suggest a `data=` directive when a changed non-`.w` file appears verbatim in a
+target's step command or in a script that step runs.
+
+## A keyword as a local name reports the wrong token (2026-11-08, #913 widgets)
+
+`int32* map = cast(int32*, malloc(n))` in `tools/wmermaid_editor.w` failed
+`check` with "unknown type name: 'count'" pointing at a later line
+(`map[count] = i`): `map` is the built-in container type, so the
+declaration and every use parse as types, and the message names whatever
+follows. Direction: when a declaration's identifier is a reserved type name
+(`map`, `set`, `list`, `byte`), say so at that declaration ("'map' is a
+built-in type and cannot name a variable"), as CLAUDE.md already warns for
+`byte`.
+
+## `&int32_field` passed as `int*` compiles silently (2026-11-08, #910)
+
+`ui_word_bounds(text, n, at, &st.unit_start, &st.unit_end)` with
+`int32 unit_start, unit_end` fields and `int* start, int* end`
+parameters was clean under `check`, `check --lint` and `--strict`, but on
+x64 each 8-byte store spilled into the next field, and the last one into
+whatever the caller had next on the stack: the headless test crashed later
+in an unrelated call with a mangled `ctx` pointer. Direction: warn when a
+pointer to a narrower integer is passed (or assigned) where a pointer to a
+wider one is expected; the widths are known at the call site.
+
+## `string` as a local name gives an unrelated parse error (2026-11-08, #902)
+
+`js_value* string = ...; string.host_construct = 1` fails `check` with
+"';' expected, found 'host_construct'" at the member access, because
+`string` is treated as a type name at statement position (like `byte`, which
+CLAUDE.md warns about). The declaration itself is accepted, so the error
+points away from the cause. Direction: reject (or warn on) declaring a local
+whose name is a built-in type name, and mention the type-name reading in the
+statement-position parse error.
+
+## Test262 candidate sweeps are slow and silent (2026-11-08, #906)
+
+Selecting which generator/async Test262 files to pin meant running
+`bin/test262_conformance --manifest <candidate>/manifest.json` over about
+5500 candidate files. Each run needs a hand-built manifest with sha256
+entries for every file, runs both profiles for every file, and prints
+nothing until the final JSON report, so a 1400-file chunk on a shared box
+took about 30 minutes with no way to tell how far it had got or to stop
+early on the first failure class. Direction: give `test262_conformance` a
+`--paths <dir|file...>` mode that runs unpinned files from a local Test262
+checkout without a manifest, a `--profile native|upstream` switch, and
+periodic progress on stderr (files done, counts so far).
+
+## Test262 candidate surveys need hand-built manifests (2026-11-08, #907)
+
+Choosing which upstream Test262 files to pin means running thousands of
+not-yet-pinned files through `bin/test262_conformance`, which only accepts a
+complete manifest (every file hashed, every variant in the baseline) and
+runs serially. Surveying 4741 candidate files took hand-written scripts to
+build throwaway manifests, split them into parts to stay under the agent
+background-task time limit (one serial pass exceeded 30 minutes on a shared
+box), merge reruns, and pick files. Direction: a `--survey DIR` mode that
+runs every test under an upstream checkout without a baseline, in parallel
+(`--jobs N`), and emits per-file native/upstream statuses ready for pinning.
+Module tests add two more hand steps: a survey manifest must leave out
+upstream files whose metadata the loader rejects (`flags: [raw, module]`
+aborts the whole run with `conflicting raw flags`), and pinning one needs
+the transitive closure of its `_FIXTURE.js` imports (fixtures import further
+fixtures), which nothing checks until a staged module fails to resolve.
+
+## `wtest changed` over-selects when roots import generated sources (2026-11-08, #914)
+
+For a one-file change to `libs/extras/parser_generator/prediction.w`, `git
+diff --name-only HEAD | bin/wtest changed` printed 99 targets, including
+every `javascript_*` test and `javascript_test262`, with the warning that
+`bin/wv2 deps` failed for 180 roots and they fell back to literal matching.
+The failing roots import a generated file that a fresh worktree has not
+built yet (`libs/extras/javascript/parser.w` imports
+`bin/generated_javascript_parser.w`, written by a `step=` of the
+`javascript_parser` target that declares no outputs and is not part of the
+`generated` umbrella), so their real closures were unknown and every literal
+mention of the parser-generator tree selected them. Separately, diffing
+against a moving integration branch (`git diff origin/<branch>`) silently
+adds the files other merged work changed, which is easy to mistake for one's
+own diff. Direction: declare such generated parsers as target outputs (or
+tag them `generated`) so a fresh worktree can resolve them, let `deps`
+report a missing generated import instead of failing the whole root, and
+print which of the changed paths caused each fallback selection.
+
+## A user type name breaks auto-imported runtime code (2026-11-08, #887)
+
+`structures/string.w` (auto-imported into every program) gained a local
+`int pair = ...`; `tests/regalloc_test.w` declares `struct pair`, so in that
+program `pair = 0 - pair` parsed as a declaration and the runtime failed to
+compile ("';' expected, found '0'"), pointing into `structures/string.w`.
+The runtime's locals share the type namespace of whatever program imports
+it. Direction: resolve a runtime module's identifiers in its own scope (or
+warn when a program type shadows a runtime local), and until then keep
+runtime locals to names no test is likely to declare as a type.

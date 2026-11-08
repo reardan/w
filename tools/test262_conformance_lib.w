@@ -7,13 +7,38 @@ map[char*, char*] t262_sources
 # unmodified in the realm before each test, and module tests load their
 # pinned fixtures through the runner's file resolver.
 int t262_upstream
+# Set while executing a case with flags: [async]; selects the async goal.
+int t262_async_case
 char* t262_corpus
 list[char*] t262_harness
 set[char*] t262_builtins
+# --shard K/N: run only the manifest cases whose index is K modulo N, so one
+# long pass splits into wbuild targets that run in parallel (0 = all cases).
+int t262_shard_index
+int t262_shard_count
 type t262_executor = fn(char*, char*, char*, int, int) -> json_value*
 
+# Compiled patterns are cached per (flags, pattern): metadata parsing matches
+# every header line, and recompiling (and leaking) a pattern per line grew the
+# 32-bit test262_runner_test past its heap once the corpus doubled (#906).
+map[char*, re_pattern*] t262_patterns
+
+re_pattern* t262_pattern(char* pattern, int flags):
+	if (t262_patterns == 0): t262_patterns = new map[char*, re_pattern*]
+	char* prefix = itoa(flags)
+	char* key = strjoin(prefix, pattern)
+	free(prefix)
+	re_pattern* compiled = 0
+	if (key in t262_patterns):
+		compiled = t262_patterns[key]
+		free(key)
+	else:
+		compiled = re_compile(pattern, flags)
+		t262_patterns[key] = compiled
+	return compiled
+
 re_result* t262_match(char* pattern, char* text, int flags = 0):
-	return re_fullmatch(re_compile(pattern, flags), text)
+	return re_fullmatch(t262_pattern(pattern, flags), text)
 
 int t262_has(json_value* array, char* value):
 	if (!jc_type(array, json_type_array())): return 0
@@ -39,7 +64,7 @@ int t262_doc(char* key):
 
 json_value* t262_metadata(char* source):
 	jc_error = 0
-	list[re_result*] blocks = re_finditer(re_compile(c"/\\*---(.*?)---\\*/", RE_DOTALL), source)
+	list[re_result*] blocks = re_finditer(t262_pattern(c"/\\*---(.*?)---\\*/", RE_DOTALL), source)
 	if (!jc_require(blocks.length == 1, c"exactly one Test262 metadata block required")): return 0
 	json_value* result = json_object()
 	char* key = 0
@@ -121,18 +146,30 @@ char* t262_unsupported(json_value* meta):
 		# Negative module tests stop before evaluation: parse and static
 		# module-graph resolution (reardan/w#840) cover them; the upstream
 		# harness profile (reardan/w#841) also runs positive module tests.
-		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic") && !(jc_is(flag, c"module") && (t262_upstream || jc_choice(jc_get(jc_get(meta, c"negative"), c"phase"), c"parse resolution")))): blocked.push(flag.string_value)
+		# Asynchronous scripts (reardan/w#906) report through $DONE after the
+		# runner drains the microtask queue; asynchronous modules remain out.
+		int async_script = jc_is(flag, c"async") && !t262_has(jc_get(meta, c"flags"), c"module")
+		if (jc_choice(flag, c"module async CanBlockIsFalse CanBlockIsTrue non-deterministic") && !async_script && !(jc_is(flag, c"module") && (t262_upstream || jc_choice(jc_get(jc_get(meta, c"negative"), c"phase"), c"parse resolution")))): blocked.push(flag.string_value)
 	ht_sort(unknown)
 	ht_sort(blocked)
 	if (unknown.length): return strjoin(c"unknown flags: ", join(unknown, c", "))
 	if (blocked.length): return strjoin(c"unsupported flags: ", join(blocked, c", "))
 	list[char*] includes = new list[char*]
 	for json_value* item in jc_get(meta, c"includes").array_values:
-		if (!t262_upstream || !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		# The native profile overrides regExpUtils.js's helpers in the runner;
+		# the upstream profile needs each include pinned. The pinned
+		# asyncHelpers.js starts with Object.prototype.hasOwnProperty.call(
+		# globalThis, ...), which the bounded realm lacks, so upstream reports
+		# it unsupported until those intrinsics exist (the native profile
+		# overrides asyncTest and assert.throwsAsync).
+		if (t262_upstream && (!(strjoin(c"upstream/harness/", item.string_value) in t262_sources) || jc_is(item, c"asyncHelpers.js"))): includes.push(item.string_value)
+		if (!t262_upstream && !jc_is(item, c"regExpUtils.js") && !jc_is(item, c"asyncHelpers.js")): includes.push(item.string_value)
+	# The upstream profile reports asynchronous results through doneprintHandle.js.
+	if (t262_upstream && t262_has(jc_get(meta, c"flags"), c"async") && !(c"upstream/harness/doneprintHandle.js" in t262_sources)): includes.push(c"doneprintHandle.js")
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
-		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining")): features.push(item.string_value)
+		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining Symbol Symbol.iterator Symbol.match Symbol.matchAll Symbol.replace Symbol.search Symbol.species Symbol.split Symbol.toPrimitive String.prototype.matchAll arrow-function class computed-property-names new.target default-parameters rest-parameters destructuring-binding export-star-as-namespace-from-module let const Symbol.toStringTag async-iteration Symbol.asyncIterator")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
 	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution") && !t262_upstream && !t262_has(jc_get(meta, c"flags"), c"module")): return c"module resolution is unsupported"
@@ -204,11 +241,20 @@ json_value* t262_load(char* path):
 
 # Module tests run from a staging directory mirroring the upstream layout, with
 # every pinned sibling *_FIXTURE.js copied beside them for relative imports.
+# Folders of the current run whose sibling sources are already staged.
+set[char*] t262_staged
 char* t262_stage_module(char* directory, char* name):
 	char* folder = path_join(directory, path_dirname(name))
+	if (t262_staged == 0): t262_staged = new set[char*]
+	if (folder in t262_staged): return path_join(directory, name)
+	t262_staged.add(folder)
 	ht_mkdir(folder)
+	# Every sibling source, not only the _FIXTURE files: a fixture may import
+	# a test file back (instn-iee-err-circular_FIXTURE.js imports
+	# instn-iee-err-circular.js), which otherwise resolved only when that test
+	# had already run earlier in the same pass.
 	for char* other in t262_sources.keys():
-		if (strcmp(path_dirname(other), path_dirname(name)) == 0 && contains(other, c"_FIXTURE")): ht_write(path_join(directory, other), t262_sources[other], strlen(t262_sources[other]))
+		if (strcmp(path_dirname(other), path_dirname(name)) == 0): ht_write(path_join(directory, other), t262_sources[other], strlen(t262_sources[other]))
 	return path_join(directory, name)
 
 json_value* t262_execute(char* binary, char* path, char* mode, int timeout, int budget):
@@ -217,6 +263,7 @@ json_value* t262_execute(char* binary, char* path, char* mode, int timeout, int 
 	char* harness = c"harness"
 	if (strcmp(mode, c"module") == 0): goal = c"module"
 	if (strcmp(mode, c"raw") == 0): harness = c"raw"
+	if (t262_async_case && strcmp(goal, c"script") == 0): goal = c"async"
 	list[char*] command = ht_argv(binary, path, goal, itoa(budget), harness)
 	if (t262_upstream && strcmp(harness, c"harness") == 0):
 		command[4] = c"upstream"
@@ -266,15 +313,23 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 		json_object_set(report, c"harness_error", json_string(jc_error))
 		*status = 2
 		return report
-	if (t262_builtins == 0): t262_builtins = new set[char*]
+	# Capability inventory for builtins_required: complete built-ins the
+	# runtime provides (reardan/w#907). Tests replace it to withhold one.
+	if (t262_builtins == 0):
+		t262_builtins = new set[char*]
+		for char* builtin in split(c"eval Number isNaN"): t262_builtins.add(builtin)
 	char* directory = ht_temp()
+	t262_staged = new set[char*]
 	json_value* results = json_array()
 	json_value* changes = json_array()
 	json_value* counts = json_object()
 	for char* name in split(c"PASS FAIL UNSUPPORTED ERROR"): json_object_set(counts, name, json_int(0))
 	int passes = 0
 	int assertions = 0
+	int case_index = -1
 	for json_value* entry in jc_get(manifest, c"cases").array_values:
+		case_index = case_index + 1
+		if (t262_shard_count > 0 && case_index % t262_shard_count != t262_shard_index): continue
 		char* name = entry.string_value
 		char* source = t262_sources[name]
 		json_value* meta = t262_metadata(source)
@@ -300,10 +355,13 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 				if (t262_upstream):
 					t262_harness = new list[char*]
 					for char* file in split(c"sta.js assert.js"): t262_harness.push(path_join(path_join(t262_corpus, c"harness"), file))
+					if (t262_has(jc_get(meta, c"flags"), c"async")): t262_harness.push(path_join(path_join(t262_corpus, c"harness"), c"doneprintHandle.js"))
 					for json_value* item in jc_get(meta, c"includes").array_values: t262_harness.push(path_join(path_join(t262_corpus, c"harness"), item.string_value))
 				if (strcmp(mode, c"module") == 0): path = t262_stage_module(directory, name)
 				ht_write(path, content, strlen(content))
+				t262_async_case = t262_has(jc_get(meta, c"flags"), c"async")
 				actual = execute(binary, path, mode, timeout, budget)
+				t262_async_case = 0
 			char* id = strjoin(strjoin(name, c"#"), mode)
 			char* classification = t262_classify(meta, actual)
 			json_value* result = json_object()
@@ -346,3 +404,35 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 	json_object_set(report, c"results", results)
 	*status = ht_number(counts, c"FAIL") != 0 || ht_number(counts, c"ERROR") != 0 || changes.array_values.length != 0
 	return report
+
+# Parses "K/N" (0 <= K < N) into the shard globals; returns 0 when invalid.
+int t262_set_shard(char* spec):
+	list[char*] parts = split(spec, '/')
+	if (parts.length != 2 || strlen(parts[0]) == 0 || strlen(parts[1]) == 0): return 0
+	for char* part in parts:
+		for int i in range(strlen(part)):
+			if (part[i] < '0' || part[i] > '9'): return 0
+	int index = atoi(parts[0])
+	int count = atoi(parts[1])
+	if (count <= 0 || index >= count): return 0
+	t262_shard_index = index
+	t262_shard_count = count
+	return 1
+
+# Pinned run evidence for the gate targets: "KEY=VALUE,..." where a key
+# names a count (PASS FAIL UNSUPPORTED ERROR) or a report field
+# (execution_passes assertions variants files pass_rate). Returns 0 when
+# every value matches, else a message naming the first mismatch.
+char* t262_expect(json_value* report, char* spec):
+	for char* item in split(spec, ','):
+		list[char*] pair = split(item, '=')
+		if (pair.length != 2 || strlen(pair[0]) == 0): return strjoin(c"invalid expectation: ", item)
+		if (!jc_choice(json_string(pair[0]), c"PASS FAIL UNSUPPORTED ERROR execution_passes assertions variants files pass_rate")): return strjoin(c"unknown expectation: ", pair[0])
+		json_value* actual = jc_get(jc_get(report, c"counts"), pair[0])
+		if (actual == 0): actual = jc_get(report, pair[0])
+		if (actual == 0): return strjoin(c"report has no ", pair[0])
+		char* text = 0
+		if (actual.type == json_type_string()): text = actual.string_value
+		else: text = itoa(actual.int_value)
+		if (strcmp(text, pair[1]) != 0): return strjoin(strjoin(strjoin(c"expected ", item), c", got "), text)
+	return 0

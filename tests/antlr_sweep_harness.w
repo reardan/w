@@ -43,9 +43,10 @@ json_value* sh_summary(json_value* row): return sw_write_results(sh_work, sh_man
 
 # Pinned examples covering every verdict: expected accept and reject, a
 # wrong verdict, a hang and a crash. Only the first two pass.
-void sh_pin_examples():
+void sh_pin_examples(char* specs = 0):
+	if (specs == 0): specs = c"ok:accept reject:reject reject-wrong:accept hang:accept crash:accept"
 	json_value* runtime = json_parse(c"{\"entry\":\"root\",\"entry_source\":\"pom.xml\",\"examples\":[]}")
-	for char* spec in ht_command(c"ok:accept reject:reject reject-wrong:accept hang:accept crash:accept"):
+	for char* spec in ht_command(specs):
 		list[char*] parts = ht_split(spec, ':')
 		char* path = strjoin(strjoin(c"ex/", parts[0]), c".txt")
 		ht_mkdir(path_join(sh_corpus, c"ex"))
@@ -80,8 +81,66 @@ void sh_runtime(json_value* row):
 	json_value* rows = sh_rows(row)
 	ht_require(sw_progressions(sw_accept(sh_manifest(), rows), rows).array_values.length == 0, c"accepted baseline still reports progressions")
 
+# Ignored host predicates: every decided verdict is unverified, never pass
+# or fail, while its `verdict` still drives the baseline gate.
+void sh_unverified(json_value* row):
+	json_value* configs = ht_field(row, c"configurations")
+	json_value* strict = ht_field(ht_field(ht_field(configs, c"default_strict"), c"stages"), c"examples")
+	ht_require(jc_is(ht_field(strict, c"status"), c"fail") && ht_number(strict, c"passed") == 2 && ht_number(strict, c"unverified") == 0, c"a translation without ignored predicates was unverified")
+	json_value* examples = ht_field(ht_field(ht_field(configs, c"default_permissive"), c"stages"), c"examples")
+	ht_require(jc_is(ht_field(examples, c"status"), c"fail") && ht_number(examples, c"passed") == 0 && ht_number(examples, c"unverified") == 3 && ht_number(examples, c"ignored_predicates") == 1, c"unverified verdicts not counted")
+	list[char*] statuses = new list[char*]
+	for json_value* example in ht_field(examples, c"examples").array_values:
+		char* status = ht_text(example, c"status")
+		if (strcmp(status, c"unverified") == 0):
+			ht_require(jc_is(ht_field(example, c"unverified"), c"predicate ignored"), c"unverified reason")
+			status = strjoin(status, strjoin(c"/", ht_text(example, c"verdict")))
+		statuses.push(status)
+	ht_require(strcmp(join(statuses, c" "), c"unverified/pass unverified/pass unverified/fail fail fail") == 0, strjoin(c"example statuses: ", join(statuses, c" ")))
+	json_object_set(sh_case, c"expected_configurations", json_parse(c"{\"default_permissive\":[\"translate\",\"generate\",\"compile\",\"compiler_strict\"]}"))
+	json_object_set(sh_case, c"expected_examples", json_parse(c"{\"default_permissive\":[\"ex/ok.txt\",\"ex/reject-wrong.txt\"]}"))
+	json_value* summary = sh_summary(row)
+	ht_require(jc_equal(ht_field(summary, c"regressions"), json_parse(c"[\"fixture: default_permissive/examples ex/reject-wrong.txt regressed to rejected\"]")), c"unverified verdict not gated")
+	ht_require(sw_has(ht_field(summary, c"progressions"), c"fixture: default_permissive/examples ex/reject.txt progressed to pass"), c"unverified progression not detected")
+	json_value* totals = ht_field(ht_field(summary, c"examples"), c"default_permissive")
+	ht_require(ht_number(totals, c"examples_passed") == 0 && ht_number(totals, c"examples_unverified") == 3, c"unverified totals")
+	ht_require(contains(ht_read(path_join(sh_work, c"results.csv")).data, c"\"0/5 (3 unverified)\""), c"unverified CSV count")
+	# Only decided, unverified verdicts: the stage is neither pass nor fail.
+	sh_setup()
+	sh_mode(c"translator", c"predicate")
+	sh_pin_examples(c"ok:accept reject:reject")
+	json_value* decided = ht_field(ht_field(ht_field(ht_field(sh_run(), c"configurations"), c"default_permissive"), c"stages"), c"examples")
+	ht_require(jc_is(ht_field(decided, c"status"), c"unverified") && ht_number(decided, c"unverified") == 2, c"unverified stage status")
+
+# Prediction drivers report work units per example, and the baseline bounds
+# them the way it gates verdicts.
+json_value* sh_bounded(json_value* manifest): return ht_field(ht_field(ht_field(manifest, c"cases").array_values[0], c"runtime"), c"examples").array_values[1]
+void sh_work_bounds(json_value* row):
+	ht_require(contains(ht_read(path_join(sh_work, c"fixture/exact_strict/compile.w")).data, c"SWEEP: work {pg_prediction_work}") && !contains(ht_read(path_join(sh_work, c"fixture/compile.w")).data, c"SWEEP: work"), c"work report not limited to prediction drivers")
+	json_value* configs = ht_field(row, c"configurations")
+	for char* name in configs.object_values.keys():
+		json_value* rows = ht_field(ht_field(ht_field(ht_field(configs, name), c"stages"), c"examples"), c"examples")
+		json_value* work = jc_get(rows.array_values[1], c"work")
+		if (starts_with(name, c"exact_")): ht_require(work != 0 && work.int_value == 60, c"prediction work not measured")
+		else: ht_require(work == 0, c"work reported without prediction")
+	json_value* rows = sh_rows(row)
+	ht_require(sw_has(ht_field(sh_summary(row), c"progressions"), c"fixture: exact_strict/examples ex/reject.txt work 60 has no bound"), c"unbounded work not reported")
+	json_value* accepted = sw_accept(sh_manifest(), rows)
+	ht_require(ht_number(sh_bounded(accepted), c"work_bound") == sw_work_limit(60), c"accepted work bound")
+	ht_require(sw_progressions(accepted, rows).array_values.length == 0 && sw_compare(accepted, rows).array_values.length == 0, c"accepted work bound not quiet")
+	# Work above its bound regresses and is never loosened by acceptance;
+	# a bound over twice what acceptance would record is tightened.
+	json_value* example = ht_field(ht_field(sh_case, c"runtime"), c"examples").array_values[1]
+	vj_i(example, c"work_bound", 59)
+	ht_require(sw_has(sw_compare(sh_manifest(), rows), c"fixture: exact_permissive/examples ex/reject.txt work 60 exceeds its bound 59"), c"work regression not detected")
+	ht_require(ht_number(sh_bounded(sw_accept(sh_manifest(), rows)), c"work_bound") == 59, c"acceptance loosened a work bound")
+	vj_i(example, c"work_bound", 1000)
+	ht_require(sw_compare(sh_manifest(), rows).array_values.length == 0, c"work within its bound regressed")
+	ht_require(sw_has(sw_progressions(sh_manifest(), rows), c"fixture: exact_strict/examples ex/reject.txt work 60 is under half its bound 1000"), c"loose work bound not reported")
+	ht_require(ht_number(sh_bounded(sw_accept(sh_manifest(), rows)), c"work_bound") == sw_work_limit(60), c"loose work bound not tightened")
+
 void sh_scenarios():
-	for scenario in range(13):
+	for scenario in range(15):
 		sh_setup()
 		if (scenario == 1): sh_mode(c"generator", c"fail")
 		if (scenario == 2): sh_mode(c"translator", c"fail")
@@ -94,10 +153,14 @@ void sh_scenarios():
 		if (scenario == 9): sh_mode(c"translator", c"stateful_fail")
 		int timeout = 5000
 		if (scenario == 4): timeout = 200
-		if (scenario == 12): sh_pin_examples()
-		json_value* row = sh_run(timeout, scenario == 10)
+		if (scenario == 13): sh_mode(c"translator", c"predicate")
+		if (scenario == 12 || scenario == 13): sh_pin_examples()
+		if (scenario == 14): sh_pin_examples(c"ok:accept reject:reject")
+		json_value* row = sh_run(timeout, scenario == 10 || scenario == 14)
 		json_value* configs = ht_field(row, c"configurations")
 		if (scenario == 12): sh_runtime(row)
+		if (scenario == 13): sh_unverified(row)
+		if (scenario == 14): sh_work_bounds(row)
 		if (scenario == 0 || (scenario >= 8 && scenario < 12)):
 			for char* stage in sw_stages(): sh_status(row, stage, c"pass")
 		if (scenario == 0):
@@ -220,6 +283,28 @@ void sh_manifest_tests():
 	json_object_set(sh_case, c"reclassified", json_parse(c"{\"compile\":\"Fixture intentionally rejects an unsafe empty token\"}"))
 	vj_write(path, manifest)
 	ht_require(sw_load(path, sh_corpus) != 0, c"documented reclassification rejected")
+	json_value* runtime = json_parse(c"{\"entry\":\"root\",\"examples\":[{\"path\":\"Grammar.g4\",\"expect\":\"reject\",\"corpus_defect\":\" \"}]}")
+	vj_s(ht_field(runtime, c"examples").array_values[0], c"sha256", sw_digest(source))
+	json_object_set(sh_case, c"runtime", runtime)
+	vj_write(path, manifest)
+	ht_require(sw_load(path, sh_corpus) == 0 && contains(sw_error, c"corpus_defect"), c"unexplained corpus defect accepted")
+	vj_s(ht_field(runtime, c"examples").array_values[0], c"corpus_defect", c"ANTLR 4.13.2 rejects this example")
+	vj_write(path, manifest)
+	ht_require(sw_load(path, sh_corpus) != 0, c"explained corpus defect rejected")
+	for char* triage in ht_split(c"{}|{\"classes\":[],\"detail\":\"x\"}|{\"classes\":[\"guess\"],\"detail\":\"x\"}|{\"classes\":[\"lexer_difference\"],\"detail\":\" \"}", '|'):
+		json_object_set(ht_field(runtime, c"examples").array_values[0], c"triage", json_parse(triage))
+		vj_write(path, manifest)
+		ht_require(sw_load(path, sh_corpus) == 0 && contains(sw_error, c"triage"), strjoin(c"malformed triage accepted: ", triage))
+	json_object_set(ht_field(runtime, c"examples").array_values[0], c"triage", json_parse(c"{\"classes\":[\"lexer_difference\",\"prediction_budget\"],\"detail\":\"host predicate ignored\"}"))
+	vj_write(path, manifest)
+	ht_require(sw_load(path, sh_corpus) != 0, c"valid triage rejected")
+	for char* bound in ht_split(c"0|-3|\"9\"|1.5", '|'):
+		json_object_set(ht_field(runtime, c"examples").array_values[0], c"work_bound", json_parse(bound))
+		vj_write(path, manifest)
+		ht_require(sw_load(path, sh_corpus) == 0 && contains(sw_error, c"work_bound"), strjoin(c"malformed work bound accepted: ", bound))
+	vj_i(ht_field(runtime, c"examples").array_values[0], c"work_bound", 5)
+	vj_write(path, manifest)
+	ht_require(sw_load(path, sh_corpus) != 0, c"valid work bound rejected")
 	json_array_push(ht_field(manifest, c"cases"), sh_case)
 	vj_write(path, manifest)
 	ht_require(sw_load(path, sh_corpus) == 0 && contains(sw_error, c"duplicate case"), c"duplicate case accepted")
@@ -280,6 +365,19 @@ void sh_selection_tests():
 	unlink(path_join(corpus, c"fz/examples/only.txt"))
 	json_value* fz = sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fz/G.g4\"}]}"), corpus, 10, 100)
 	ht_require(jc_type(ht_field(fz, c"entry"), json_type_null()) && jc_is(ht_field(fz, c"entry_source"), c"first parser rule") && strcmp(join(sh_selected(fz), c" "), c"fz/examples/only.txt=accept") == 0, c"selection without metadata or checkout")
+	# A reviewed corpus defect survives re-pinning only while its bytes do.
+	json_value* old = vj_copy(fx)
+	for json_value* example in ht_field(old, c"examples").array_values:
+		vj_s(example, c"expect", c"reject")
+		vj_s(example, c"corpus_defect", c"ANTLR 4.13.2 rejects it")
+		json_object_set(example, c"triage", json_parse(c"{\"classes\":[\"corpus_defect\"],\"detail\":\"x\"}"))
+		vj_i(example, c"work_bound", 7)
+	vj_s(ht_field(old, c"examples").array_values[2], c"sha256", ht_repeat('0', 64))
+	json_value* repinned = sw_select_runtime(json_parse(c"{\"inputs\":[{\"path\":\"fx/G.g4\"}]}"), corpus, 10, 100)
+	sw_keep_corpus_defects(old, repinned)
+	ht_require(strcmp(join(sh_selected(repinned), c" "), c"fx/examples/a.txt=reject fx/examples/b.txt=reject fx/examples/sub/d.txt=accept fx/examples/z.txt=reject") == 0, strjoin(c"corpus defects not kept: ", join(sh_selected(repinned), c" ")))
+	ht_require(jc_get(ht_field(repinned, c"examples").array_values[2], c"corpus_defect") == 0 && jc_get(ht_field(repinned, c"examples").array_values[2], c"triage") == 0 && jc_is(ht_field(ht_field(repinned, c"examples").array_values[0], c"corpus_defect"), c"ANTLR 4.13.2 rejects it") && jc_get(ht_field(repinned, c"examples").array_values[0], c"triage") != 0, c"stale corpus defect kept")
+	ht_require(ht_number(ht_field(repinned, c"examples").array_values[0], c"work_bound") == 7 && jc_get(ht_field(repinned, c"examples").array_values[2], c"work_bound") == 0, c"work bound not kept with unchanged bytes only")
 	json_value* manifest = json_parse(c"{\"cases\":[{\"name\":\"fx\"}]}")
 	json_object_set(ht_field(manifest, c"cases").array_values[0], c"runtime", fx)
 	ht_require(strcmp(sw_sparse_patterns(manifest), c"/*/*.g4\n/fx/examples/a.txt\n/fx/examples/b.txt\n/fx/examples/sub/d.txt\n/fx/examples/z.txt\n") == 0, c"sparse patterns")

@@ -20,8 +20,8 @@ int main():
 	int status = 0
 	json_value* report = jc_run(path, binary, 10000, &status)
 	ht_require(status == 0 && ht_number(report, c"execution_passes") == 1, c"execution pass count regression")
-	# Every parsed script now lowers; classes are rejected by runtime preflight.
-	list[char*] sources = ht_split(c"let = ;|let x; let x;|class C {}|while(true) {}", '|')
+	# Every parsed script now lowers; `with` is rejected by runtime preflight.
+	list[char*] sources = ht_split(c"let = ;|let x; let x;|with ({}) {}|while(true) {}", '|')
 	list[char*] phases = split(c"parse early execute execute")
 	list[char*] outcomes = split(c"error error unsupported limit")
 	json_value* bounded = json_clone(entry)

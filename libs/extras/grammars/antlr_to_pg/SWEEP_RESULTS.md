@@ -11,14 +11,33 @@ cases and 1118/1190 files (permissive) and 194/200 and 905/913 (strict) to the
 totals below. Prediction metadata ops no longer count against the work budget,
 which also let two AGC files finish. No stage or example verdict regressed.
 
+The 29 cases affected by #915/#916 were then re-measured in all six
+configurations (zero regressions, progressions or infrastructure errors against
+the updated baseline) and their rows replaced in the CSV. Lowering Z's
+predicated `expression` makes Z the 288th exact permissive translation. Verdicts
+from translations that ignored host predicates (28 grammars, permissive modes
+only) are now **unverified** instead of pass or fail (bracketed below; see
+[Unverified verdicts](#unverified-verdicts)), and SPL's examples are corpus
+defects whose reference verdict is ANTLR's rejection.
+
+The #914 prediction caches (a one-token prediction cache per decision and a
+failure cache keyed by rule, position and continuation; see
+[Prediction work](#prediction-work-914)) were measured over the full sweep in
+all six configurations: zero regressions and zero infrastructure errors. Six
+example files that exceeded the prediction budget now finish with the expected
+verdict: agc `ERASABLE_ASSIGNMENTS.agc`, arden `SyntaxTest.mlm`, elixir
+`block.ex` and hypertalk `Script.txt` (exact permissive and exact strict), and
+objc `NetworkRequest.m` and tinyos_nesc `GTSManagementExampleP.nc` (exact
+permissive); cpp `avrc_api.cc`'s unverified verdict now matches too.
+
 | Configuration | Translation | Generation | W compile | W compile `--strict` | Examples: cases | Examples: files |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Default permissive | 218 | 214 | **214** | **214** | 66/194 | 431/913 |
+| Default permissive | 218 | 214 | **214** | **214** | 65/194 | 408/913 [+51 unverified] |
 | Default translator `--strict` | 10 | 10 | 10 | 10 | 8/8 | 39/39 |
-| Stateful permissive | 218 | 214 | 214 | 214 | 95/194 | 523/913 |
+| Stateful permissive | 218 | 214 | 214 | 214 | 93/194 | 495/913 [+51 unverified] |
 | Stateful translator `--strict` | 28 | 28 | 28 | 28 | 27/27 | 105/105 |
-| Exact permissive | 287 | 287 | **287** | **287** | **233/260** | **1216/1304** |
-| Exact translator `--strict` | 232 | 232 | **232** | **232** | **202/211** | **960/978** |
+| Exact permissive | 288 | 288 | **288** | **288** | **226/261** | **1097/1314** [+179 unverified] |
+| Exact translator `--strict` | 232 | 232 | **232** | **232** | **207/211** | **974/978** |
 
 Stage cells are out of 291. Exact means `--exact-lexer --prediction`; stateful
 means `--stateful`. Translator `--strict` refuses reported semantic gaps.
@@ -27,9 +46,15 @@ W compiler `--strict` separately rejects warnings in generated W.
 The examples stage runs the compiled parser on up to ten pinned upstream example
 files per case (1,315 files across 262 cases; 29 cases have no usable examples)
 and checks the accept/reject verdict, not the parse tree. "Cases" counts compiled
-cases with examples whose every example got the expected verdict; "files" counts
-example files. No example hung, crashed or hit an infrastructure error; the
-slowest took 5.7 seconds of its 10-second limit.
+cases with examples whose every example got the expected verdict, verified;
+"files" counts example files. No example hung, crashed or hit an infrastructure error.
+The per-example time limit is now a 30-second hang guard (it was 10 seconds):
+arden's 47 KB `SyntaxTest.mlm`, the slowest, took 8.7 to 9.7 seconds on a loaded
+four-core host, nearly all of it in the exact lexer, and performance is gated
+by deterministic work bounds instead ([Prediction work](#prediction-work-914)).
+
+The paragraph below describes the measurement before #915/#916; the triage of
+the rust, Z, SPL and GVPR examples follows it.
 
 Exact permissive example failures: **10 files in 10 cases** exceed the
 one-million-step parser prediction budget (agc, arden, cpp, elixir, html,
@@ -50,8 +75,8 @@ The newly lowered grammars are also checked tree-for-tree against ANTLR: the
 [parse-tree differential](../../../../tests/grammars/antlr_trees/README.md)
 matches all 149 pinned inputs, and a live run over the sweep's examples for the
 15 newly lowered grammars whose Java compiles without host support produced
-identical trees or identical rejections for 73 of 75 files (the other two exceed
-the prediction budget).
+identical trees or identical rejections for all 75 files (before #914, elixir
+`block.ex` and hypertalk `Script.txt` exceeded the prediction budget).
 Default-mode failures are dominated by its approximate lexer lowering (93 files
 rejected with `invalid character`, e.g. JSON's negative numbers) and ordered-choice
 parsing without continuation (370 syntax errors).
@@ -81,6 +106,85 @@ regressions, so these totals are exactly what the committed baseline expects.
 The complete pre-implementation matrix is retained in
 [sweep_pre_compatibility_results.csv](sweep_pre_compatibility_results.csv).
 
+## Unverified verdicts
+
+Permissive modes ignore host predicates (each is an `AT_HOST_SITE` loss), which
+amounts to assuming that every predicate holds. ANTLR evaluates them, so a
+verdict reached that way is not evidence either way: GVPR accepts `1594.gvpr`,
+which ANTLR rejects because `{this.IsSemiRequired()}?` demands a `;` between
+`0` and `p0p0`. Since #915 the sweep reports every decided example of such a
+configuration as `unverified` ("predicate ignored") instead of pass or fail. Its
+`verdict` field still records whether the outcome matched; `expected_examples`
+gates that verdict, so a changed outcome is still a regression or progression,
+but unverified examples never count as passed and a stage of only unverified
+examples is itself `unverified`. The 28 affected grammars are apex, awk, bcpl,
+bencoding, bnf, c, cpp, dart2, databank, eiffel, gdscript, golang, gvpr,
+javadoc, kirikiri-tjs, langium, lpc, lua, pegen, pgn, php, rex, rexx, rust,
+stringtemplate, v, velocity and z. In exact permissive mode 145 of their 179
+example verdicts match the corpus expectation. Sixteen previously passing
+`examples` stages are recorded under `reclassified` in `sweep_baseline.json`.
+
+## Example triage (#916)
+
+Each failing or differing example below was compared tree for tree with ANTLR
+4.13.2 by `tests/antlr_tree_differential.py --corpus --jar`, which compiles the
+grammar's upstream `Java/` host support. The classification is recorded per
+example as `triage` in `sweep_baseline.json` (`translator_gap`,
+`prediction_budget`, `lexer_difference` or `corpus_defect`).
+
+| Example | Class | Evidence |
+| --- | --- | --- |
+| rust `intellijrust_test_allinone.rs` | lexer difference | Ignored `FloatDotPossible()` lexes `0.foo()` and `2...4` with float `0.`/`2.`; ignored `SOF()` lets SHEBANG swallow later `#![...]` lines, so W rejects it at line 757 (86,992 steps). Neutralized, it is accepted in 131,439 steps (1,244,143 before #914, over the budget) and its tree is identical |
+| rust `leaf_vmessstream.rs` | lexer difference | `0..piece3.len()` lexes float `0.` (method call instead of range); same verdict, otherwise identical |
+| rust `literal.rs` | lexer difference | `#![allow(unused)]` after a leading newline lexes as hidden SHEBANG (`SOF()` ignored); same verdict, otherwise identical |
+| rust `rustls_quic.rs` | lexer difference | `out[4..]` and `self.0.iter()` lex floats; neutralized, identical |
+| rust `ssrust_config.rs` | lexer difference | `sport[1..]` lexes float `1.`; neutralized, identical |
+| Z, all ten examples | lexer difference | Ignored `shouldNL()` keeps NL tokens that ANTLR suppresses after operators such as `\|`; without newline tokens all ten trees are identical, including the lowered `expression` |
+| SPL, all ten examples | corpus defect | ANTLR rejects them from the pinned entry rule `expression`; W rejects them identically. `expect` is now ANTLR's `reject` and `corpus_defect` records why |
+| GVPR `1594.gvpr` | ignored parser predicate | See above; the other nine GVPR trees are identical |
+
+The remaining five rust examples produce identical trees. No rust example is a
+translator gap: every difference comes from the grammar's Java lexer predicates
+(`SOF`, `FloatDotPossible`, `FloatLiteralPossible`), which the translator does
+not execute. The budget failure that #916 recorded was resolved by #914's
+prediction caches.
+
+## Prediction work (#914)
+
+The prediction parser is still ordered depth-first continuation search with
+memoized rule calls, now with two caches that only remove work that cannot
+succeed, so every selected derivation (and every tree above) is the one plain
+depth-first search selects:
+
+- **One-token prediction cache.** Each choice consults a cache keyed by the
+  decision and the lookahead token, filled on first use from static FIRST and
+  nullable sets over the instruction graph. An alternative that is not
+  nullable and cannot start with the token is never entered, and a call whose
+  callee cannot start with it fails before allocating a frame.
+- **Failure cache.** Continuations are interned as (return instruction, caller
+  continuation), so equal return stacks share an id. Once backtracking
+  exhausts a call, its (rule, position, continuation) is recorded as failed,
+  and the same call reached through another derivation of the earlier input
+  fails at once. This bounds rejections, which explore everything.
+
+| Example | Steps before | Steps after |
+| --- | ---: | ---: |
+| elixir `block.ex` | 1,085,279 (over budget) | 61,281 |
+| hypertalk `Script.txt` | 1,300,798 (over budget) | 96,838 |
+| rust `intellijrust_test_allinone.rs`, neutralized | 1,244,143 (over budget) | 131,439 |
+| rust `intellijrust_test_allinone.rs`, as pinned (rejected) | over budget | 86,992 |
+
+("Before" counts are with the budget raised so the parse can finish.) The
+sweep's prediction drivers print their step count (`pg_prediction_work`), and
+each pinned example's `work_bound` in `sweep_baseline.json` bounds it: 1,314 of
+1,315 pinned examples have one (trapc's has no exact translation), recorded as
+`work + work/4 + 64` from the larger exact permissive/strict count. Work above a
+bound fails the gate like a verdict regression; a measured example without a
+bound, or with a bound over twice what `--update-baseline` would record, is a
+progression. Steps are deterministic, so the gate does not depend on host load.
+The largest accepted count is cpp `avrc_api.cc` at 381,014; html
+`metafilter.html` is the only example still over the one-million-step budget.
+
 ## Strict reclassifications
 
 Default strict acceptance is intentionally **15 → 10**. PMMN, PropCalc, Roman
@@ -100,12 +204,11 @@ explicit grammar-size and work limits; exhausted proofs refuse acceptance.
 
 ## Remaining compile coverage
 
-All **4 exact compile misses** fail during translation. There are no remaining
+All **3 exact compile misses** fail during translation. There are no remaining
 exact generator failures or generated-W warning failures in this pinned corpus.
 
 | Grammar | Blocking condition |
 | --- | --- |
-| Z | `expression` and `predicate` left recursion carries host predicates (`AT_LEFT_RECURSION`) |
 | AspectJ | Unresolved Java lexer/parser imports in the selected input/dependency closure |
 | TrapC | Unresolved `OverridesLexer`, `CLexer`, `OverridesParser`, and `CParser` dependencies |
 | SHARC | `StringLiteral` and `CharLiteral` can emit visible tokens without consuming input |
@@ -115,18 +218,21 @@ The 20 grammars that reported unsupported left recursion before #679's lowering
 kirikiri-tjs, peoplecode, plucid, refal, rust, sapf, semver, spl, tl, vb6) now
 translate, generate and compile in exact permissive mode; 14 of them also pass
 exact strict (awk, eiffel, gvpr, kirikiri-tjs, peoplecode and rust have other
-reported gaps). Their direct left recursion is lowered by
+reported gaps). Z, the 21st, translates since #915 lowered its predicated
+precedence alternatives; exact strict refuses it for those host predicates.
+Their direct left recursion is lowered by
 [`normalize_precedence.w`](normalize_precedence.w) from ANTLR's own
 precedence plan (see [LEFT_RECURSION_PLAN.md](LEFT_RECURSION_PLAN.md)); shapes
-the plan cannot prove (indirect or nullable-prefix cycles, semantic sites on
-operators, nullable operator tails) are still refused atomically. Lisp compiles
+the plan cannot prove (indirect or nullable-prefix cycles, actions or options
+on operators, nullable operator tails) are still refused atomically. Lisp compiles
 by retaining its nonproductive fragment as an actual failing call; no productive
 base is invented.
 
 ## Remaining strict coverage
 
-**59 cases fail exact strict translation**, including the 4 compile misses.
-The 55 additional cases compile permissively but have reported semantic gaps.
+**59 cases fail exact strict translation**, including the 3 compile misses.
+The 56 additional cases compile permissively but have reported semantic gaps;
+Z now fails strict only for its host predicates and `@members` code.
 The most frequent finding classes among refused cases are:
 
 | Finding | Grammars affected |
@@ -138,7 +244,6 @@ The most frequent finding classes among refused cases are:
 | Unsupported lexer commands | 5 |
 | Inferred token identities | 3 |
 | Declared tokens without lexer matchers | 3 |
-| Unsupported left recursion | 1 |
 
 Counts overlap. The remaining less frequent findings include missing dependencies,
 undefined symbols, command conflicts, unsupported exact lexer shapes, Unicode,
@@ -152,8 +257,10 @@ The implemented lexer keeps fragment endpoints and enclosing continuations,
 ordered greedy/nongreedy behavior, token priority, Unicode scalar matching,
 lexer modes, custom channels, and EOF/`more` state. The parser uses bounded
 complete-input continuation search with delayed AST replay and source metadata.
-It does not implement ANTLR ALL(*) or its context/listener APIs, and has no DFA
-cache. Search can be exponential up to its explicit work budget. Resource and
+It does not implement ANTLR ALL(*) or its context/listener APIs. A one-token
+prediction cache per decision and a failure cache keyed by rule, position and
+continuation remove doomed work ([Prediction work](#prediction-work-914)), but
+search can still be exponential up to its explicit work budget. Resource and
 provider failures are sticky across backtracking. The input domain is valid UTF-8
 without embedded NUL; malformed UTF-8 and embedded NUL fail explicitly.
 

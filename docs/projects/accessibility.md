@@ -281,10 +281,22 @@ spreadsheet-style navigation need, and every bridge reads it through
   `ui_access_column_headers_of`, `ui_access_table_row_headers`).
 
 `ui_access_tree_same` and `ui_access_tree_clone` cover all of it, so a change in
-geometry, attributes or selections republishes. The widgets' own lists and
-tables stay single-selection: no widget yet publishes multiple selections, a
-multiselectable container, row headers or spans; applications building their
-own snapshot can.
+geometry, attributes or selections republishes. Two widgets publish the
+container depth (#913): `graphics.ui.widgets.listbox`, a list box with
+extended selection (Ctrl/Super+click, Shift+click, Shift+arrows, Ctrl+arrows
+and Space, Ctrl+A) published as a `UI_ACCESS_MULTISELECTABLE` list whose
+items take `UI_ACCESS_SELECT`, and `graphics.ui.widgets.table`, whose header
+row carries `UI_ACCESS_HEADER`, whose `row_header_col` cells are row headers
+and whose `ui_table_cell_span` cells and `header_spans` headers carry
+`row_span` / `col_span`. The widget context queues `UI_ACCESS_SELECT`
+requests (`ui_access_take_select`, up to 256 a frame, so a select-all over
+that many items arrives whole) and lets a focused container name its cursor
+item as the snapshot's focused node (`access_focus_owner` /
+`access_focus_child`). The Mermaid editor uses both: its node list mirrors
+the canvas selection and its compartment grid shows an ER entity's
+attributes (or a class's members, a requirement's properties) with the
+first column heading each row. Multiple text selections remain for
+applications building their own snapshot.
 
 ```
 ui_access_tree* fresh = ui_access_tree_new(4096, 65536)
@@ -299,6 +311,49 @@ when semantics changed; `ui_access_tree_clone` copies one. `graphics_ui_focus_te
 covers tab order and wrap, disabled skipping, the focus ring, keyboard
 activation, text-area Tab, modal hand-off, dropdown/table/tab keys, captured
 semantics and assistive actions reaching the widgets.
+
+### Relations, ranges, compositions and scrolling (#911, #912)
+
+The snapshot carries four more things every bridge reads:
+
+- **Relations**: `ui_access_add_relation(tree, id, kind, target)` with
+  `UI_ACCESS_REL_LABELLED_BY`, `_DESCRIBED_BY`, `_CONTROLLER_FOR` or
+  `_MEMBER_OF` (up to 32 per node, no duplicates or self-relations).
+  `ui_access_related(tree, n, kind, index, &out)` walks a node's targets of
+  one kind, and also the reverse kinds it derives by scanning the tree
+  (`UI_ACCESS_REL_LABEL_FOR`, `_DESCRIPTION_FOR`, `_CONTROLLED_BY`, each the
+  negated forward kind); `ui_access_relation_kinds` lists the kinds a node
+  has either way. An open `ui_dropdown` relates its combobox to its list
+  (controller-for).
+- **Ranges**: `ui_access_set_range(tree, id, now, min, max, step)` (float32,
+  `now` clamped) gives a progress bar or the new `UI_ACCESS_SLIDER` role its
+  number; `ui_progress` publishes 0..100. A slider that takes
+  `UI_ACCESS_SET_VALUE` receives new values as decimal text
+  (`ui_access_number_format`: "7.5", "-2", at most four fraction digits).
+- **IME compositions**: `ui_access_insert_composition(tree, id, at, text,
+  length, boxes, caret, target, target_length)` splices the composing text
+  into the value as the screen shows it (glyph boxes, later selections and
+  attribute runs shift) and records the composition and the clause being
+  converted (`composition_start` / `_length`, `conversion_start` /
+  `_length`). `ui_textbox` and `ui_textarea` call it through
+  `ui_access_publish_preedit` while they show a preview. The platforms
+  report the clause on `GFX_EVENT_PREEDIT_BEGIN` (start in `y`, length in
+  `code`; `ctx.preedit_selection` / `preedit_target_length`): Win32 from
+  `GCS_COMPATTR`'s target attributes (else the `GCS_CURSORPOS` caret),
+  Cocoa from `setMarkedText:selectedRange:` (a `W_TEXTIN_PREEDIT_TARGET`
+  entry ahead of BEGIN). X11 asks XIM for `PreeditNothing`, so it reports
+  no composition and the snapshot has none there.
+- **Scrolling**: `UI_ACCESS_SCROLL_TO` asks a node to bring characters
+  `[start, end)` into view, payload `"start end align"` (`UI_ACCESS_SCROLL_TOP`
+  0, `_BOTTOM` 1, `_ANYWHERE` 2; `ui_access_scroll_format` /
+  `ui_access_scroll_parse`). `ui_textarea` offers it and applies it through
+  `ui_access_scroll_request` without moving its caret. Since the textarea
+  publishes a box for every line, scrolled-out lines lying outside its bounds,
+  `ui_access_visible_ranges(n, ui_access_text_clip(n), ...)` yields the
+  stretches actually on screen.
+
+`graphics_ui_focus_test` covers the textarea's scrolling, the composition in
+both text widgets, the progress range and the dropdown's relation.
 
 ## Live regions and announcements
 
@@ -501,6 +556,48 @@ and column extents, the cell at a covered slot, its span and header cells;
 and libatspi answering its queries over the peer-to-peer bus once it has the
 address. Not yet provided: spelling and other non-font attributes, and Orca
 runs over the new text depth.
+
+#911 and #912 add, on the bridge side: `GetRelationSet` from the snapshot's
+relations in both directions (labelled-by 2 / label-for 1, controller-for 3 /
+controlled-by 4, member-of 5, described-by 18 / description-for 17); the
+`slider` role (51) and a Value interface reading the published range
+(`MinimumValue`, `MaximumValue`, `MinimumIncrement`, `CurrentValue`; a
+progress bar without one still reads 0..100 from its text), whose
+`SetCurrentValue` and `Properties.Set` of `CurrentValue` queue
+`SET_VALUE` for a writable slider inside its range; Text's
+`GetBoundedRanges` (the runs of characters whose glyph boxes meet a
+rectangle, under each axis' `TextClipType`) and `ScrollSubstringTo` /
+`ScrollSubstringToPoint`, which queue `SCROLL_TO` (top and left edges align
+the start at the top, bottom and right ones the end at the bottom; to a point,
+the top or bottom by which half of the node the point is in, since the
+bridge cannot scroll to an exact point). `graphics_ui_accessibility_atspi_test`
+checks them on a private bus, and `access_atspi_depth_test` against
+at-spi2-core 2.52 through libatspi: the relation set and its reverse, the
+slider's range and `set_current_value` round trip, and a four-line log that
+shows two lines, whose bounded ranges follow `scroll_substring_to`.
+libatspi 2.52's `get_bounded_ranges` returns a `GArray` of `AtspiTextRange`
+pointers that its introspection data declares as structs, so reading an
+element from Python crashes; the check makes the same `GetBoundedRanges` call
+on the accessibility bus through Gio instead.
+
+The #913 widgets were qualified against the same stack from the widgets
+themselves rather than a hand-built snapshot: `access_atspi_widgets_test`
+(opt-in; `tools/access_widgets_app.w`, which runs the list box and a grid
+table headless every frame, driven by `tools/access_atspi_widgets_check.py`)
+reads the list box's multiselectable state and selected children and drives
+`select_child`, `select_all`, `deselect_child` and `clear_selection` into the
+widget's flags, and reads the grid's size, spanning column header, row
+headers (one spanning two rows), extents, the cell at a covered slot, its
+span and header cells. `mermaid_editor_atspi_test` adds the editor's node
+list (keyboard Shift+Down and Ctrl+A, and the Selection interface, all
+reaching the canvas selection) and its ER compartment grid (column and row
+headers, picking a row picks the line the inspector edits). On Windows,
+`graphics_ui_widgets_uia_test` (tests_win64, under wine 9.0) reads the same
+widgets through UI Automation: Selection `CanSelectMultiple` and the
+selection array, SelectionItem `AddToSelection`, `RemoveFromSelection` and
+`Select` reaching the flags, and the Grid, GridItem, Table and TableItem
+patterns (row and column header items, spans, the header item control
+type).
 
 ## Windows UI Automation and MSAA
 
@@ -778,7 +875,7 @@ Multiple for nodes offering `UI_ACCESS_SET_SELECTIONS`, whose ranges'
 `AddToSelection` / `RemoveFromSelection` queue the new list. The text
 provider is also `ITextProvider2` (`GetCaretRange`, whether the field has
 focus; `RangeFromAnnotation` finds none) and editable fields offer
-`ITextEditProvider` (no active composition). Multi-selection containers
+`ITextEditProvider` (its compositions are below). Multi-selection containers
 report `CanSelectMultiple` and their items `Select` (`SELECT "only"`),
 `AddToSelection` and `RemoveFromSelection`; MSAA reports
 `STATE_SYSTEM_MULTISELECTABLE | EXTSELECTABLE` and `accSelect` takes, adds,
@@ -797,12 +894,72 @@ it under wine, `AccessibleChildren` through wine's oleacc.
 Narrator, NVDA, JAWS, Accessibility Insights and Inspect on real Windows have
 not been run against the bridge. That is the qualification still owed.
 
+Relations and ranges (#911): `LabeledBy`, `ControllerFor` and `DescribedBy`
+answer from the snapshot's relations; a slider is a Slider control
+(`ROLE_SYSTEM_SLIDER`) and, like a progress bar with a range, offers
+RangeValue (`Value`, `Minimum`, `Maximum`, `SmallChange` the step,
+`LargeChange` ten steps or a tenth of the span, `IsReadOnly` unless it is a
+writable slider; `SetValue` queues `SET_VALUE` inside the range and raises
+`RangeValue.Value` property changes on republish).
+
+Text depth (#912): `TextUnit_Format` is a stretch of uniform attributes (an
+attribute run, or the text between runs) in `ExpandToEnclosingUnit`, `Move`
+and `MoveEndpointByUnit`. `GetVisibleRanges` returns the stretches of
+characters whose boxes meet the field's bounds (so a scrolled `ui_textarea`
+answers its visible lines). A range's `ScrollIntoView` queues `SCROLL_TO`
+(`alignToTop` → top, else bottom) for a node that offers it.
+`ITextEditProvider::GetActiveComposition` and `GetConversionTarget` return
+the published composition and its converted clause; republishing raises
+`TextEdit_TextChanged` (`TextEditChangeType_Composition` with the composing
+text while it changes, `_CompositionFinalized` once it is gone; the
+function is looked up at run time) and `TextEdit_ConversionTargetChanged`
+when the clause moves. `graphics_ui_accessibility_uia_text_test`
+(tests_win64) checks all of it under wine 9: its `UiaAddEvent` client
+receives `ConversionTargetChanged`, while wine's
+`UiaRaiseTextEditTextChangedEvent` is a stub (its FIXME trace shows kinds 2
+then 3), so `TextChanged` delivery is reported, not asserted.
+
+IAccessible2 depth (#911), in `graphics.ui.accessibility_ia2` (part of the
+UIA bridge; NVDA and JAWS reach it through `IServiceProvider`):
+
+- `IAccessible2` (and the `IAccessible2_2` / `_3` IIDs on the same object):
+  `nRelations`, `relation`, `relations` and `relationTargetsOfType` from the
+  snapshot (`labelledBy`, `labelFor`, `describedBy`, `descriptionFor`,
+  `controllerFor`, `controlledBy`, `memberOf`), each relation an
+  `IAccessibleRelation` (`relationType`, `nTargets`, `target`, `targets`);
+  `attributes` with a heading's `level`; `accessibleWithCaret`;
+  `selectionRanges`.
+- `IAccessibleText` over the glyph boxes, attribute runs and selections:
+  characters, text at/before/after an offset by character, word, line,
+  paragraph and all (sentence answers `S_FALSE`), `caretOffset` /
+  `setCaretOffset`, `characterExtents` and `offsetAtPoint` in screen, window
+  or parent coordinates, `attributes` with IA2 text attribute names
+  (`font-family`, `font-size`, `font-weight`, `font-style`,
+  `text-underline-style`, `color` / `background-color` as `rgb()`), the
+  selection calls queuing `SET_SELECTION(S)`, `scrollSubstringTo(Point)`
+  queuing `SCROLL_TO`, and `newText` / `oldText` from the last republish
+  (with `IA2_EVENT_TEXT_INSERTED` / `_REMOVED` / `_CARET_MOVED` /
+  `_SELECTION_CHANGED` WinEvents).
+- `IAccessibleEditableText`: `deleteText`, `insertText` and `replaceText`
+  queue `SET_VALUE`; the clipboard calls and
+  `setAttributes` answer `E_NOTIMPL`.
+- `IAccessibleTable2` and `IAccessibleTableCell`: rows, columns, `cellAt`,
+  row and column descriptions from the header cells, selected rows and cells,
+  `selectRow` / `unselectRow` through `SELECT`; a cell's extents, position,
+  row and column header cells (header rows and spanning row headers) and its
+  table. Column selection answers `E_NOTIMPL`.
+- `IAccessibleValue` on sliders and ranged progress bars: current, minimum
+  and maximum values, and `setCurrentValue` (`VT_R8`, `VT_R4`, `VT_I4` or a
+  numeric `BSTR`) queuing `SET_VALUE`.
+
+`graphics_ui_accessibility_ia2_test` (tests_win64) reaches each through
+IAccessible → IServiceProvider → IAccessible2 → QueryInterface under wine,
+which ships no IAccessible2 proxy, so it exercises the provider in process.
+
 Not yet provided:
 
-- Scrolling in `GetVisibleRanges`, the `Format` text unit by attribute
-  runs, IME compositions in `ITextEditProvider`, annotations.
-- IAccessible2's relations, extended roles and states, and its text, table
-  and value interfaces (`IAccessibleText`, `IAccessibleTable2`, ...).
+- Annotations; IAccessible2's extended roles and states,
+  `IAccessibleHypertext` and `IAccessibleAction`.
 - Embedded fragment roots.
 
 ## One bridge per target, and custom canvases

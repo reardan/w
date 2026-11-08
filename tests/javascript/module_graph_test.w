@@ -153,6 +153,31 @@ void test_module_graph_namespace_names():
 	js_module_graph_free(graph)
 
 
+# ResolveExport's resolved binding, and the local names of default exports.
+void test_module_graph_resolve_binding():
+	graph_fixture* fixture = graph_fixture_new()
+	graph_fixture_add(fixture, c"fn", c"export default function named() {}")
+	graph_fixture_add(fixture, c"cls", c"export default class Named {}")
+	graph_fixture_add(fixture, c"expr", c"export default function () {}")
+	graph_fixture_add(fixture, c"mid", c"export * from 'fn'; export * as ns from 'cls'; export {default as e} from 'expr';")
+	char* root = c"import a from 'fn'; import b from 'cls'; import {e, ns} from 'mid';"
+	js_module_graph* graph = js_module_graph_new(graph_fixture_load, fixture)
+	assert_equal(1, js_module_graph_link(graph, c"root.mjs", root, strlen(root)))
+	js_module_record* mid = graph.records[0].requested[2]
+	js_module_record* module = 0
+	char* binding = 0
+	assert_equal(1, js_module_graph_resolve_binding(graph, graph.records[0].requested[0], c"default", &module, &binding))
+	asserts(c"named default function binds its name", module == graph.records[0].requested[0] && strcmp(binding, c"named") == 0)
+	assert_equal(1, js_module_graph_resolve_binding(graph, graph.records[0].requested[1], c"default", &module, &binding))
+	assert_equal(0, strcmp(binding, c"Named"))
+	assert_equal(1, js_module_graph_resolve_binding(graph, mid, c"e", &module, &binding))
+	asserts(c"anonymous default binds *default*", strcmp(module.identifier, c"expr") == 0 && strcmp(binding, c"*default*") == 0)
+	assert_equal(1, js_module_graph_resolve_binding(graph, mid, c"ns", &module, &binding))
+	asserts(c"export * as ns resolves to a namespace", strcmp(module.identifier, c"cls") == 0 && strcmp(binding, c"*namespace*") == 0)
+	assert_equal(0, js_module_graph_resolve_binding(graph, mid, c"default", &module, &binding))
+	js_module_graph_free(graph)
+
+
 void test_module_graph_file_loader():
 	js_module_file_loader* loader = js_module_file_loader_new(c"tests/javascript")
 	asserts(c"module graph", js_module_file_load(loader, c"lib", c"tests/javascript/root.mjs") == 0)

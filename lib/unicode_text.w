@@ -304,3 +304,174 @@ int ut_compose(int a, int b):
 		if ((x < a) || ((x == a) && (y < b))): lo = mid + 1
 		else: hi = mid - 1
 	return -1
+
+# ---- word boundaries (UAX #29 §4) -----------------------------------------
+#
+# Word_Break values, numbered as tools/generate_text_data.w emits them
+# (from tools/unicode/WordBreakProperty.txt); 0 is Other.
+const int ut_wb_other = 0
+const int ut_wb_cr = 1
+const int ut_wb_lf = 2
+const int ut_wb_newline = 3
+const int ut_wb_extend = 4
+const int ut_wb_zwj = 5
+const int ut_wb_ri = 6
+const int ut_wb_format = 7
+const int ut_wb_katakana = 8
+const int ut_wb_hebrew_letter = 9
+const int ut_wb_aletter = 10
+const int ut_wb_single_quote = 11
+const int ut_wb_double_quote = 12
+const int ut_wb_midnumlet = 13
+const int ut_wb_midletter = 14
+const int ut_wb_midnum = 15
+const int ut_wb_numeric = 16
+const int ut_wb_extendnumlet = 17
+const int ut_wb_wsegspace = 18
+
+# Word_Break of cp.
+int ut_word_break(int cp):
+	return ut_range_value(utd_word_break(), utd_word_break_count(), cp)
+
+# Strict UTF-8 decode of the sequence at s[0], reading at most avail
+# bytes: the same contract as lib/lib.w's utf8_scan (stores *cp, returns
+# 1..4, or 0 for malformed/overlong/surrogate/truncated input). Kept
+# local so this file does not import lib.lib and stays usable from
+# --freestanding code (tests/kernel_codegen_test.w compiles it);
+# tests/word_break_test.w checks the two decoders agree.
+int ut_utf8_scan(char* s, int avail, int* cp):
+	int c = s[0] & 255
+	if (c < 128):
+		*cp = c
+		return 1
+	int need = 0
+	int value = 0
+	int min = 0
+	if ((c >= 194) && (c <= 223)):
+		need = 1
+		value = c & 31
+		min = 128
+	else if ((c >= 224) && (c <= 239)):
+		need = 2
+		value = c & 15
+		min = 2048
+	else if ((c >= 240) && (c <= 244)):
+		need = 3
+		value = c & 7
+		min = 65536
+	else: return 0
+	if (need >= avail): return 0
+	for j in range(1, need + 1):
+		int d = s[j] & 255
+		if ((d < 128) || (d > 191)): return 0
+		value = (value << 6) | (d & 63)
+	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))): return 0
+	*cp = value
+	return need + 1
+
+
+# The codepoint at text[at] (U+FFFD for a malformed byte, which is then
+# one byte long) and its length in len[0].
+int ut_word_decode(char* text, int length, int at, int* len):
+	int cp = 0
+	int n = ut_utf8_scan(&text[at], length - at, &cp)
+	if (n == 0):
+		cp = 65533
+		n = 1
+	len[0] = n
+	return cp
+
+int ut_wb_ahletter(int wb):
+	return (wb == ut_wb_aletter) || (wb == ut_wb_hebrew_letter)
+
+int ut_wb_midnumletq(int wb):
+	return (wb == ut_wb_midnumlet) || (wb == ut_wb_single_quote)
+
+int ut_wb_ignorable(int wb):
+	return (wb == ut_wb_extend) || (wb == ut_wb_format) || (wb == ut_wb_zwj)
+
+int ut_wb_hard(int wb):
+	return (wb == ut_wb_cr) || (wb == ut_wb_lf) || (wb == ut_wb_newline)
+
+# Word_Break of the first codepoint at or after at that WB4 does not
+# fold into its predecessor, or -1 at the end of the text.
+int ut_word_lookahead(char* text, int length, int at):
+	while (at < length):
+		int n = 0
+		int wb = ut_word_break(ut_word_decode(text, length, at, &n))
+		if (ut_wb_ignorable(wb) == 0): return wb
+		at = at + n
+	return 0 - 1
+
+# The next word boundary after byte offset at in text[0..length), which
+# must itself be a boundary (0 always is): length when the text ends
+# first. Boundaries fall between UTF-8 sequences, so every segment is
+# whole characters. The rules are UAX #29's WB3..WB999.
+int ut_word_next(char* text, int length, int at):
+	if (at < 0): at = 0
+	if (at >= length): return length
+	int n = 0
+	int cp = ut_word_decode(text, length, at, &n)
+	# raw: the previous codepoint's class; prev, before: the last two
+	# classes WB4 kept (Extend, Format and ZWJ fold into what precedes
+	# them); ri: the run of Regional_Indicators ending at prev.
+	int raw = ut_word_break(cp)
+	int prev = raw
+	int before = 0 - 1
+	int ri = 0
+	if (raw == ut_wb_ri): ri = 1
+	int i = at + n
+	while (i < length):
+		cp = ut_word_decode(text, length, i, &n)
+		int wb = ut_word_break(cp)
+		int joined = 0
+		if ((raw == ut_wb_cr) && (wb == ut_wb_lf)): joined = 1
+		else if (ut_wb_hard(raw) || ut_wb_hard(wb)): return i
+		else if ((raw == ut_wb_zwj) && ut_extended_pictographic(cp)): joined = 1
+		else if ((raw == ut_wb_wsegspace) && (wb == ut_wb_wsegspace)): joined = 1
+		else if (ut_wb_ignorable(wb)): joined = 1
+		else if (ut_wb_ahletter(prev) && ut_wb_ahletter(wb)): joined = 1
+		else if (ut_wb_ahletter(prev) && ((wb == ut_wb_midletter) || ut_wb_midnumletq(wb)) && ut_wb_ahletter(ut_word_lookahead(text, length, i + n))): joined = 1
+		else if (ut_wb_ahletter(before) && ((prev == ut_wb_midletter) || ut_wb_midnumletq(prev)) && ut_wb_ahletter(wb)): joined = 1
+		else if ((prev == ut_wb_hebrew_letter) && (wb == ut_wb_single_quote)): joined = 1
+		else if ((prev == ut_wb_hebrew_letter) && (wb == ut_wb_double_quote) && (ut_word_lookahead(text, length, i + n) == ut_wb_hebrew_letter)): joined = 1
+		else if ((before == ut_wb_hebrew_letter) && (prev == ut_wb_double_quote) && (wb == ut_wb_hebrew_letter)): joined = 1
+		else if (((prev == ut_wb_numeric) || ut_wb_ahletter(prev)) && (wb == ut_wb_numeric)): joined = 1
+		else if ((prev == ut_wb_numeric) && ut_wb_ahletter(wb)): joined = 1
+		else if ((before == ut_wb_numeric) && ((prev == ut_wb_midnum) || ut_wb_midnumletq(prev)) && (wb == ut_wb_numeric)): joined = 1
+		else if ((prev == ut_wb_numeric) && ((wb == ut_wb_midnum) || ut_wb_midnumletq(wb)) && (ut_word_lookahead(text, length, i + n) == ut_wb_numeric)): joined = 1
+		else if ((prev == ut_wb_katakana) && (wb == ut_wb_katakana)): joined = 1
+		else if ((ut_wb_ahletter(prev) || (prev == ut_wb_numeric) || (prev == ut_wb_katakana) || (prev == ut_wb_extendnumlet)) && (wb == ut_wb_extendnumlet)): joined = 1
+		else if ((prev == ut_wb_extendnumlet) && (ut_wb_ahletter(wb) || (wb == ut_wb_numeric) || (wb == ut_wb_katakana))): joined = 1
+		else if ((prev == ut_wb_ri) && (wb == ut_wb_ri) && ((ri & 1) == 1)): joined = 1
+		if (joined == 0): return i
+		# WB4 folds Extend/Format/ZWJ into a kept predecessor, but not
+		# into the start of the text or a line break.
+		if ((ut_wb_ignorable(wb) == 0) || ut_wb_hard(prev)):
+			if (wb == ut_wb_ri):
+				if (prev == ut_wb_ri): ri = ri + 1
+				else: ri = 1
+			else: ri = 0
+			before = prev
+			prev = wb
+		raw = wb
+		i = i + n
+	return length
+
+# The word segment of text[0..length) that holds byte offset at, as
+# start[0]..end[0] (an offset at the very end picks the last segment):
+# what a double-click selects. A run of spaces, a punctuation mark or a
+# line break is a segment of its own, as UAX #29 has it.
+void ut_word_at(char* text, int length, int at, int* start, int* end):
+	int from = 0
+	int to = ut_word_next(text, length, 0)
+	if (at >= length):
+		while (to < length):
+			from = to
+			to = ut_word_next(text, length, from)
+	else:
+		while (to <= at):
+			from = to
+			to = ut_word_next(text, length, from)
+	start[0] = from
+	end[0] = to

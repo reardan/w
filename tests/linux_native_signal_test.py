@@ -9,12 +9,14 @@ import tempfile
 import time
 
 
-def child_state(stat):
-    """The child's /proc state letter, or None once it has been reaped."""
+def child_gone(stat):
+    """The child is reaped (no /proc entry) or a zombie. The entry can
+    vanish between an exists() check and the read (ENOENT on open,
+    ESRCH on read), so read once."""
     try:
-        return stat.read_text().split()[2]
+        return stat.read_text().split()[2] == 'Z'
     except (FileNotFoundError, ProcessLookupError):
-        return None
+        return True
 
 
 root = Path.cwd()
@@ -39,9 +41,9 @@ for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             assert not lock.exists(), 'termination left its lock behind'
             stat = Path('/proc') / pidfile.read_text().strip() / 'stat'
             deadline = time.monotonic() + 5
-            while child_state(stat) not in (None, 'Z') and time.monotonic() < deadline:
+            while not child_gone(stat) and time.monotonic() < deadline:
                 time.sleep(.01)
-            assert child_state(stat) in (None, 'Z'), 'child survived termination'
+            assert child_gone(stat), 'child survived termination'
         finally:
             if process.poll() is None:
                 process.kill()

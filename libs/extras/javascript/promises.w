@@ -45,8 +45,64 @@ js_value* js_runtime_promise_reaction(js_runtime* rt, js_value* source, js_value
 	return reaction
 
 
+int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value, int rejected);
+
+
+# Resolving functions for a thenable job (NewPromiseResolveThenableJob):
+# context is a kind 12 resolution record whose parent is the promise and
+# whose array_length is the shared alreadyResolved flag. The promise stays
+# in state 4 (following) until one of them is called.
+js_value* js_runtime_thenable_settle(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* callable = cast(js_value*, context)
+	js_value* resolution = callable.parent
+	if (resolution.array_length): return rt.undefined_value
+	resolution.array_length = 1
+	js_value* value = rt.undefined_value
+	if (args.length > 0): value = args[0]
+	js_value* promise = resolution.parent
+	if (promise.promise_state == 4): promise.promise_state = 1
+	js_runtime_promise_settle(rt, promise, value, callable.coroutine_state)
+	return rt.undefined_value
+
+
+js_value* js_runtime_thenable_function(js_runtime* rt, js_value* resolution, int rejected):
+	js_value* callable = js_runtime_host_callable(rt, 0, js_runtime_thenable_settle)
+	if (callable == rt.undefined_value): return 0
+	callable.host_context = callable
+	callable.parent = resolution
+	callable.coroutine_state = rejected
+	return callable
+
+
+# A job calling then on a thenable with fresh resolving functions: getter is
+# then, home_object the thenable, function_object/new_target the functions.
+const int JS_THENABLE_JOB = 20
+
+
+int js_runtime_promise_thenable(js_runtime* rt, js_value* promise, js_value* value, js_value* then):
+	js_value* resolution = js_runtime_alloc(rt, 12)
+	js_value* job = js_runtime_alloc(rt, 5)
+	if (rt.completion.status != 0): return 0
+	resolution.parent = promise
+	js_value* resolve = js_runtime_thenable_function(rt, resolution, 0)
+	js_value* reject = js_runtime_thenable_function(rt, resolution, 1)
+	if (resolve == 0 || reject == 0): return 0
+	job.coroutine_kind = JS_THENABLE_JOB
+	job.getter = then
+	job.home_object = value
+	job.function_object = resolve
+	job.new_target = reject
+	promise.promise_state = 4
+	promise.promise_result = value
+	return js_runtime_enqueue_microtask(rt, job)
+
+
 # Host values must belong to rt. Settlement is first-call-wins, including
-# adoption of a pending native promise. No JS is invoked during settlement.
+# adoption of a pending native promise. During evaluation, resolving with
+# another object reads its then property (which may run a getter) and
+# assimilates a callable then through a queued job. Host settlement between
+# evaluations invokes no JavaScript.
 int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value, int rejected):
 	if (promise == 0 || value == 0 || promise.owner != rt || value.owner != rt || promise.promise_state == 0):
 		js_runtime_fail(rt, 2, c"invalid promise settlement")
@@ -60,6 +116,19 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 		promise.promise_result = value
 		js_runtime_promise_reaction(rt, value, promise, rt.undefined_value, rt.undefined_value)
 		return rt.completion.status == 0
+	# Host settlement (outside evaluation) never runs JavaScript.
+	if (rejected == 0 && rt.running && js_runtime_object(value) && rt.completion.status == 0):
+		js_text* key = js_runtime_key(c"then")
+		js_value* then = js_runtime_member_read(rt, value, key)
+		js_text_free(key)
+		if (rt.completion.status == 2):
+			value = rt.completion.value
+			rt.completion.status = 0
+			rt.completion.message = c""
+			rt.completion.value = rt.undefined_value
+			rejected = 1
+		else if (rt.completion.status != 0): return 0
+		else if (js_runtime_callable(then)): return js_runtime_promise_thenable(rt, promise, value, then)
 	# Reserve the entire fanout before modifying state, avoiding partial delivery.
 	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
 		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
@@ -192,6 +261,23 @@ js_completion* js_runtime_drain_microtasks(js_runtime* rt, int budget):
 		rt.completion.steps = rt.completion.steps + 1
 		js_value* job = rt.microtasks[rt.microtask_head]
 		rt.microtask_head = rt.microtask_head + 1
+		if (job.coroutine_kind == JS_THENABLE_JOB):
+			list[js_value*] resolving = new list[js_value*]
+			resolving.push(job.function_object)
+			resolving.push(job.new_target)
+			rt.depth = 1
+			js_runtime_call_receiver(rt, job.getter, job.home_object, resolving)
+			if (rt.completion.status == 2):
+				js_value* reason = rt.completion.value
+				rt.completion.status = 0
+				rt.completion.message = c""
+				rt.completion.value = rt.undefined_value
+				resolving.clear()
+				resolving.push(reason)
+				js_runtime_call_receiver(rt, job.new_target, rt.undefined_value, resolving)
+			rt.depth = 0
+			__w_list_free(cast(__w_list*, resolving))
+			continue
 		list[js_value*] args = new list[js_value*]
 		js_value* handler = job.getter
 		js_value* value = rt.undefined_value

@@ -14,8 +14,9 @@ not explanations established by the historical generic diagnostic.
 inventoried rule: `lowered_rules` lists rules the plan-driven lowering now
 accepts (their grammar may still refuse for unrelated host findings, recorded in
 `findings`), and every remaining `AT_LEFT_RECURSION` finding keeps its guard
-exits, original source plan/graph and remaining graph. At present 24 rules are
-lowered and only Z's `expression` (predicated precedence alternatives) refuses. `normalization_guards` names the expression/list normalizer,
+exits, original source plan/graph and remaining graph. At present all 25 rules
+are lowered; Z's `expression` (predicated precedence alternatives) lowers with
+its predicates treated as true and still reported as host sites. `normalization_guards` names the expression/list normalizer,
 stable reason code and original source alternative (0 for a rule-wide guard).
 These are observed first guard exits, not inferred root causes or proof that fixing
 one guard is sufficient. The report records its measured translator binary hash
