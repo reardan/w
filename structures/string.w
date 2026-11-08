@@ -102,11 +102,11 @@ void string_append_int(string_builder* s, int v):
 	int negative = v < 0
 	while ((v >= 100) || (v <= -100)):
 		int q = v / 100
-		int pair = v - q * 100
-		if (pair < 0): pair = 0 - pair
+		int digit2 = v - q * 100
+		if (digit2 < 0): digit2 = 0 - digit2
 		i = i - 2
-		buf[i] = pairs[pair * 2]
-		buf[i + 1] = pairs[pair * 2 + 1]
+		buf[i] = pairs[digit2 * 2]
+		buf[i + 1] = pairs[digit2 * 2 + 1]
 		v = q
 	if (v < 0): v = 0 - v
 	if (v >= 10):

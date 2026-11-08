@@ -1806,3 +1806,14 @@ own diff. Direction: declare such generated parsers as target outputs (or
 tag them `generated`) so a fresh worktree can resolve them, let `deps`
 report a missing generated import instead of failing the whole root, and
 print which of the changed paths caused each fallback selection.
+
+## A user type name breaks auto-imported runtime code (2026-11-08, #887)
+
+`structures/string.w` (auto-imported into every program) gained a local
+`int pair = ...`; `tests/regalloc_test.w` declares `struct pair`, so in that
+program `pair = 0 - pair` parsed as a declaration and the runtime failed to
+compile ("';' expected, found '0'"), pointing into `structures/string.w`.
+The runtime's locals share the type namespace of whatever program imports
+it. Direction: resolve a runtime module's identifiers in its own scope (or
+warn when a program type shadows a runtime local), and until then keep
+runtime locals to names no test is likely to declare as a type.
