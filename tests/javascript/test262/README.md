@@ -3,7 +3,7 @@
 From the W repository root:
 
 ```sh
-./wbuild javascript_test262
+./wbuild javascript_test262 javascript_test262_upstream
 bin/test262_conformance --json bin/test262-conformance.json
 bin/test262_conformance --require-all
 ```
@@ -11,7 +11,11 @@ bin/test262_conformance --require-all
 This target executes **unmodified upstream Test262 tests in W's x64 interpreter**,
 with a new process and realm for each variant. Python supervises execution; Node
 is not involved. The default target also runs the adapter's contract tests and writes the full
-report to `bin/test262-conformance.json`. No
+report to `bin/test262-conformance.json`. The wbuild targets split the two
+profiles so they run in parallel: `javascript_test262` runs the native profile
+(`--native-only`) and `javascript_test262_upstream` the upstream-harness profile
+(`--upstream-only`, report in `bin/test262-upstream.json`); a bare
+`bin/test262_conformance` still runs both. No
 network access or third-party Python packages are needed to run it.
 
 The corpus contains 1811 upstream test files (plus module fixtures) expanded

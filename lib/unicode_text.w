@@ -6,7 +6,6 @@
 # This is deliberately much smaller than libs/standard/text/unicodedata:
 # bidi and shaping need only these properties, and the whole table set is
 # about 12 KB of data.
-import lib.lib
 import lib.unicode_text_data
 
 # Bidi classes: the unicode_bidi_* numbering of libs/standard/text/unicodedata.
@@ -334,11 +333,48 @@ const int ut_wb_wsegspace = 18
 int ut_word_break(int cp):
 	return ut_range_value(utd_word_break(), utd_word_break_count(), cp)
 
+# Strict UTF-8 decode of the sequence at s[0], reading at most avail
+# bytes: the same contract as lib/lib.w's utf8_scan (stores *cp, returns
+# 1..4, or 0 for malformed/overlong/surrogate/truncated input). Kept
+# local so this file does not import lib.lib and stays usable from
+# --freestanding code (tests/kernel_codegen_test.w compiles it);
+# tests/word_break_test.w checks the two decoders agree.
+int ut_utf8_scan(char* s, int avail, int* cp):
+	int c = s[0] & 255
+	if (c < 128):
+		*cp = c
+		return 1
+	int need = 0
+	int value = 0
+	int min = 0
+	if ((c >= 194) && (c <= 223)):
+		need = 1
+		value = c & 31
+		min = 128
+	else if ((c >= 224) && (c <= 239)):
+		need = 2
+		value = c & 15
+		min = 2048
+	else if ((c >= 240) && (c <= 244)):
+		need = 3
+		value = c & 7
+		min = 65536
+	else: return 0
+	if (need >= avail): return 0
+	for j in range(1, need + 1):
+		int d = s[j] & 255
+		if ((d < 128) || (d > 191)): return 0
+		value = (value << 6) | (d & 63)
+	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))): return 0
+	*cp = value
+	return need + 1
+
+
 # The codepoint at text[at] (U+FFFD for a malformed byte, which is then
 # one byte long) and its length in len[0].
 int ut_word_decode(char* text, int length, int at, int* len):
 	int cp = 0
-	int n = utf8_scan(&text[at], length - at, &cp)
+	int n = ut_utf8_scan(&text[at], length - at, &cp)
 	if (n == 0):
 		cp = 65533
 		n = 1

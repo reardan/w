@@ -30,6 +30,18 @@ env:
   W_CI_NO_SKIP: "1"
 
 jobs:
+  native-linux-host:
+    name: Native Linux x64 host tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+      - name: Verify native compiler, executor, generators and cache
+        run: WBUILD_HOST=linux-x64 ./wbuild tests_native_host
+
   javascript:
     name: JavaScript compatibility
     runs-on: ubuntu-24.04
