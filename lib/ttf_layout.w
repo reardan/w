@@ -1313,6 +1313,13 @@ struct otl_lookup_entry:
 	int index
 	int mask
 
+# Lookup references otl_collect follows per stage. Real fonts reference
+# a few hundred; a malformed one can repeat a 64K-entry LangSys over
+# 64K-lookup features, which once took minutes (issue #842), so past
+# this many the stage keeps what it has collected (HarfBuzz bounds
+# lookup visits the same way).
+const int otl_collect_budget = 65536
+
 # Collect the lookups of features (tags[k] applied under masks[k]) for
 # one stage, sorted by lookup index with masks of shared lookups merged.
 # Returns the entry count; entries has room for max entries.
@@ -1322,6 +1329,9 @@ int otl_collect(ttf_font* f, int table, int langsys, int* tags, int* masks, int 
 	int feature_total = ttf_u16(f, features)
 	int n = 0
 	int index_count = ttf_u16(f, langsys + 4)
+	# Only indices inside the blob (past it they all read 0).
+	if (index_count > (f.size - langsys) / 2): index_count = (f.size - langsys) / 2
+	int budget = otl_collect_budget
 	for k in range(feature_count):
 		for x in range(index_count + 1):
 			int feature_index = 0
@@ -1336,6 +1346,8 @@ int otl_collect(ttf_font* f, int table, int langsys, int* tags, int* masks, int 
 			int feature = features + ttf_u16(f, rec + 4)
 			int lookups = ttf_u16(f, feature + 2)
 			for l in range(lookups):
+				budget = budget - 1
+				if (budget < 0): return n
 				int lookup = ttf_u16(f, feature + 4 + l * 2)
 				int found = 0
 				for e in range(n):

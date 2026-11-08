@@ -1,0 +1,820 @@
+{
+ "schema": 1,
+ "oracle": {
+  "version": "4.13.2",
+  "jar_sha256": "eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76",
+  "minimum_java_major": 17
+ },
+ "translator_flags": [
+  "--exact-lexer",
+  "--prediction"
+ ],
+ "cases": [
+  {
+   "name": "Adjacent",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/Adjacent.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/Adjacent.g4": "3acd55f9cfbf8d5d90ee008821036135f316d2d74ffa90722f5bcc959c8f2f12"
+   },
+   "java_name": "Adjacent",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a"
+    },
+    {
+     "id": "02",
+     "text": "a b"
+    },
+    {
+     "id": "03",
+     "text": "a b c"
+    },
+    {
+     "id": "04",
+     "text": "a ?"
+    }
+   ]
+  },
+  {
+   "name": "OptionalSeparator",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/OptionalSeparator.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/OptionalSeparator.g4": "923704b652b414eb01c5f8c4534c1b9ce23d40ba7009f3442f55fffee3d0d0cf"
+   },
+   "java_name": "OptionalSeparator",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a"
+    },
+    {
+     "id": "02",
+     "text": "a b"
+    },
+    {
+     "id": "03",
+     "text": "a,b,c"
+    },
+    {
+     "id": "04",
+     "text": "a,"
+    }
+   ]
+  },
+  {
+   "name": "GroupedOwner",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/GroupedOwner.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/GroupedOwner.g4": "205480d62f43ff8a1111d142869783317465881781b36f6a9f43f3e8793f650d"
+   },
+   "java_name": "GroupedOwner",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a"
+    },
+    {
+     "id": "02",
+     "text": "a[b,c]"
+    },
+    {
+     "id": "03",
+     "text": "a[b[c]]"
+    },
+    {
+     "id": "04",
+     "text": "a["
+    }
+   ]
+  },
+  {
+   "name": "GuardedPrimary",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/GuardedPrimary.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/GuardedPrimary.g4": "6a196f35620b663eed0a9de50c7ee65774726762f30e7ef613cac05926ea8764"
+   },
+   "java_name": "GuardedPrimary",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a+a+a"
+    },
+    {
+     "id": "02",
+     "text": "if a then b end+a"
+    },
+    {
+     "id": "03",
+     "text": "if a then b+a end"
+    },
+    {
+     "id": "04",
+     "text": "if a then"
+    }
+   ]
+  },
+  {
+   "name": "ComplexSuffix",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/ComplexSuffix.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/ComplexSuffix.g4": "75a063fca87a5b8053f3b66ba9973e7407b2eb5ce3caa782204f61fd78594382"
+   },
+   "java_name": "ComplexSuffix",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a(b)+c"
+    },
+    {
+     "id": "02",
+     "text": "a+b(c)"
+    },
+    {
+     "id": "03",
+     "text": "a(b(c))"
+    },
+    {
+     "id": "04",
+     "text": "a("
+    }
+   ]
+  },
+  {
+   "name": "NestedAssoc",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/NestedAssoc.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/NestedAssoc.g4": "43bc59316224ffd7c6a96cae40c27370efc6b2d7ca4c04e67432d1ce91580f58"
+   },
+   "java_name": "NestedAssoc",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a=b=c"
+    },
+    {
+     "id": "02",
+     "text": "a:=b=c"
+    },
+    {
+     "id": "03",
+     "text": "a="
+    }
+   ]
+  },
+  {
+   "name": "NullablePrimary",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/NullablePrimary.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/NullablePrimary.g4": "8c4c58fc14825f97b11e559d715f3fe8c1569f361a9011d12d0def5b13aba398"
+   },
+   "java_name": "NullablePrimary",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": ""
+    },
+    {
+     "id": "02",
+     "text": "a"
+    },
+    {
+     "id": "03",
+     "text": ",a"
+    },
+    {
+     "id": "04",
+     "text": ",a,b"
+    },
+    {
+     "id": "05",
+     "text": ","
+    }
+   ]
+  },
+  {
+   "name": "MisplacedAssoc",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/MisplacedAssoc.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/MisplacedAssoc.g4": "47ddda1a6851fa62ac9c92d2884db9f69add960821f1f5caa28c370f0098d0d4"
+   },
+   "java_name": "MisplacedAssoc",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a=b=c"
+    }
+   ]
+  },
+  {
+   "name": "RightAssoc",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/RightAssoc.g4"
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/RightAssoc.g4": "28061f8b5a192c074a94b3854bf84de9d184440ee229561183e04ba1ffa15ba0"
+   },
+   "java_name": "RightAssoc",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a^b^c"
+    },
+    {
+     "id": "02",
+     "text": "-a^b"
+    },
+    {
+     "id": "03",
+     "text": "a^-b"
+    },
+    {
+     "id": "04",
+     "text": "a^"
+    }
+   ]
+  },
+  {
+   "name": "Shapes",
+   "grammars": [
+    "tests/grammars/antlr_trees/Shapes.g4"
+   ],
+   "java_name": "Shapes",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "a"
+    },
+    {
+     "id": "02",
+     "text": "a.b.c"
+    },
+    {
+     "id": "03",
+     "text": "f(x, y).z"
+    },
+    {
+     "id": "04",
+     "text": "f x y"
+    },
+    {
+     "id": "05",
+     "text": "f x + y"
+    },
+    {
+     "id": "06",
+     "text": "f -x"
+    },
+    {
+     "id": "07",
+     "text": "-a b"
+    },
+    {
+     "id": "08",
+     "text": "- a . b"
+    },
+    {
+     "id": "09",
+     "text": "a ^ b ^ c"
+    },
+    {
+     "id": "10",
+     "text": "-a ^ b"
+    },
+    {
+     "id": "11",
+     "text": "a * b ^ c * d"
+    },
+    {
+     "id": "12",
+     "text": "a + b * c + d"
+    },
+    {
+     "id": "13",
+     "text": "a ? b : c ? d : e"
+    },
+    {
+     "id": "14",
+     "text": "a ? b ? c : d : e"
+    },
+    {
+     "id": "15",
+     "text": "not a + b"
+    },
+    {
+     "id": "16",
+     "text": "not a b"
+    },
+    {
+     "id": "17",
+     "text": "return"
+    },
+    {
+     "id": "18",
+     "text": "return a + b"
+    },
+    {
+     "id": "19",
+     "text": "return a b"
+    },
+    {
+     "id": "20",
+     "text": "f(return a) b"
+    },
+    {
+     "id": "21",
+     "text": "a + return b"
+    },
+    {
+     "id": "22",
+     "text": "(a b) c"
+    },
+    {
+     "id": "23",
+     "text": "a b . c"
+    },
+    {
+     "id": "24",
+     "text": "a (b) c"
+    },
+    {
+     "id": "25",
+     "text": "a ? b c : d"
+    },
+    {
+     "id": "26",
+     "text": "a +"
+    },
+    {
+     "id": "27",
+     "text": "+ a"
+    },
+    {
+     "id": "28",
+     "text": "a ^"
+    },
+    {
+     "id": "29",
+     "text": "f(,)"
+    },
+    {
+     "id": "30",
+     "text": "a ? b"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_trees/Shapes.g4": "adb4f10aed34cebb74d075d1e56edb0cf65772e49c75270c3b0b27718a2a10ba"
+   }
+  },
+  {
+   "name": "NullableList",
+   "grammars": [
+    "tests/grammars/antlr_trees/NullableList.g4"
+   ],
+   "java_name": "NullableList",
+   "start": "start",
+   "inputs": [
+    {
+     "id": "01",
+     "text": ""
+    },
+    {
+     "id": "02",
+     "text": "a"
+    },
+    {
+     "id": "03",
+     "text": "a b"
+    },
+    {
+     "id": "04",
+     "text": ",a"
+    },
+    {
+     "id": "05",
+     "text": "a;b"
+    },
+    {
+     "id": "06",
+     "text": "a,b;c d"
+    },
+    {
+     "id": "07",
+     "text": "!"
+    },
+    {
+     "id": "08",
+     "text": "a!!b"
+    },
+    {
+     "id": "09",
+     "text": "(a b) c"
+    },
+    {
+     "id": "10",
+     "text": "(),a"
+    },
+    {
+     "id": "11",
+     "text": "(,;a!)"
+    },
+    {
+     "id": "12",
+     "text": ";"
+    },
+    {
+     "id": "13",
+     "text": "a,"
+    },
+    {
+     "id": "14",
+     "text": "a;;b"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_trees/NullableList.g4": "e9ade3fb8443d1ab329237281115dece624e2b9f83b859821bb176a38087e50f"
+   }
+  },
+  {
+   "name": "tl",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/tl/tl.g4"
+   ],
+   "java_name": "tl",
+   "start": "file_",
+   "inputs": [
+    {
+     "id": "01",
+     "text": ""
+    },
+    {
+     "id": "02",
+     "text": "a"
+    },
+    {
+     "id": "03",
+     "text": "a \u2228 b"
+    },
+    {
+     "id": "04",
+     "text": "a \u2228 b \u2228 c"
+    },
+    {
+     "id": "05",
+     "text": "\u2310 a \u2228 b"
+    },
+    {
+     "id": "06",
+     "text": "G a \u2228 b"
+    },
+    {
+     "id": "07",
+     "text": "H \u2310 a"
+    },
+    {
+     "id": "08",
+     "text": "(a \u2228 b) \u2228 c"
+    },
+    {
+     "id": "09",
+     "text": "\u2228"
+    },
+    {
+     "id": "10",
+     "text": "a \u2228"
+    },
+    {
+     "id": "11",
+     "text": "\u22a5 \u2228 G"
+    },
+    {
+     "id": "12",
+     "text": "G"
+    },
+    {
+     "id": "13",
+     "text": "( )"
+    },
+    {
+     "id": "14",
+     "text": "a b"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/tl/tl.g4": "a47651aa1b08cc3c7f429754f2f3b0f0e0e15cfa8407fa1342a0b48b0596fb66"
+   }
+  },
+  {
+   "name": "semver",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/semver/SemanticVersionLexer.g4",
+    "tests/grammars/antlr_left_recursion/upstream/semver/SemanticVersionParser.g4"
+   ],
+   "java_name": "SemanticVersion",
+   "start": "semver",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "1.0.0"
+    },
+    {
+     "id": "02",
+     "text": "1.0.0-alpha"
+    },
+    {
+     "id": "03",
+     "text": "1.0.0-alpha.1"
+    },
+    {
+     "id": "04",
+     "text": "1.0.0-alpha1"
+    },
+    {
+     "id": "05",
+     "text": "1.0.0-alpha.beta.rc"
+    },
+    {
+     "id": "06",
+     "text": "1.0.0-x.y-z+build.5"
+    },
+    {
+     "id": "07",
+     "text": "1.2.3-rc.1+abc-def.7"
+    },
+    {
+     "id": "08",
+     "text": "1.0.0-1.2.3"
+    },
+    {
+     "id": "09",
+     "text": "1.0.0-alpha-1-beta"
+    },
+    {
+     "id": "10",
+     "text": "1.0.0-0.3.7"
+    },
+    {
+     "id": "11",
+     "text": "1.0.0+20130313144700"
+    },
+    {
+     "id": "12",
+     "text": "1.0.0-beta+exp.sha.5114f85"
+    },
+    {
+     "id": "13",
+     "text": "1.0.0-"
+    },
+    {
+     "id": "14",
+     "text": "1.0.0+"
+    },
+    {
+     "id": "15",
+     "text": "1.0.0--"
+    },
+    {
+     "id": "16",
+     "text": "1.0.0-release-candidate.2"
+    },
+    {
+     "id": "17",
+     "text": "1.0.0-a..b"
+    },
+    {
+     "id": "18",
+     "text": "01.0.0"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/semver/SemanticVersionLexer.g4": "31cb467a6c68b636ccbae5c394fec105a48bcd729a17600631ba201fdb193adb",
+    "tests/grammars/antlr_left_recursion/upstream/semver/SemanticVersionParser.g4": "206479166a65155520e632ad251d8a2f1e3b05b4b75785a46db9ecd6970ba64a"
+   }
+  },
+  {
+   "name": "cayenne",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/cayenne/cayenne.g4"
+   ],
+   "java_name": "cayenne",
+   "start": "file_",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "f"
+    },
+    {
+     "id": "02",
+     "text": "f x"
+    },
+    {
+     "id": "03",
+     "text": "f x y"
+    },
+    {
+     "id": "04",
+     "text": "f x . l"
+    },
+    {
+     "id": "05",
+     "text": "f . l x"
+    },
+    {
+     "id": "06",
+     "text": "\\ (x :: t) -> f x"
+    },
+    {
+     "id": "07",
+     "text": "(x :: t) -> f x y"
+    },
+    {
+     "id": "08",
+     "text": "case x of y -> z ; :: t"
+    },
+    {
+     "id": "09",
+     "text": "data a b | c |"
+    },
+    {
+     "id": "10",
+     "text": "sig l :: t ; m :: t = f x ;"
+    },
+    {
+     "id": "11",
+     "text": "struct private l :: t = x ;"
+    },
+    {
+     "id": "12",
+     "text": "c @ t"
+    },
+    {
+     "id": "13",
+     "text": "#"
+    },
+    {
+     "id": "14",
+     "text": "f # g"
+    },
+    {
+     "id": "15",
+     "text": "f x ."
+    },
+    {
+     "id": "16",
+     "text": "data"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/cayenne/cayenne.g4": "ead90c709bd80a35ee83367ba2610a1424b3f067a40480d6bf330efc40b4b21f"
+   }
+  },
+  {
+   "name": "sapf",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/sapf/sapf.g4"
+   ],
+   "java_name": "sapf",
+   "start": "file_",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "1"
+    },
+    {
+     "id": "02",
+     "text": "1 2 +"
+    },
+    {
+     "id": "03",
+     "text": "1 2 3 + *"
+    },
+    {
+     "id": "04",
+     "text": "1 2 + 3 *"
+    },
+    {
+     "id": "05",
+     "text": "1 2 3 4 + - *"
+    },
+    {
+     "id": "06",
+     "text": "(1 2) 3 +"
+    },
+    {
+     "id": "07",
+     "text": "- 1"
+    },
+    {
+     "id": "08",
+     "text": "1 2 + +"
+    },
+    {
+     "id": "09",
+     "text": "1 +"
+    },
+    {
+     "id": "10",
+     "text": "1 2 3 +"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/sapf/sapf.g4": "9d6118eb7a936221844b046c3acd1f19520c7213c539d2fb0653468a56df5616"
+   }
+  },
+  {
+   "name": "peoplecode",
+   "grammars": [
+    "tests/grammars/antlr_left_recursion/upstream/peoplecode/PeopleCode.g4"
+   ],
+   "java_name": "PeopleCode",
+   "start": "expr",
+   "inputs": [
+    {
+     "id": "01",
+     "text": "&a + &b * &c"
+    },
+    {
+     "id": "02",
+     "text": "&a And &b Or &c"
+    },
+    {
+     "id": "03",
+     "text": "&a Or &b And &c"
+    },
+    {
+     "id": "04",
+     "text": "-&a.b"
+    },
+    {
+     "id": "05",
+     "text": "Not &a = &b"
+    },
+    {
+     "id": "06",
+     "text": "&a[1, 2](3)"
+    },
+    {
+     "id": "07",
+     "text": "&a | &b | &c"
+    },
+    {
+     "id": "08",
+     "text": "f(1, 2).x"
+    },
+    {
+     "id": "09",
+     "text": "&a <= &b = &c"
+    },
+    {
+     "id": "10",
+     "text": "@&a.b"
+    },
+    {
+     "id": "11",
+     "text": "(&a + &b) * 2"
+    },
+    {
+     "id": "12",
+     "text": "&a - -&b"
+    },
+    {
+     "id": "13",
+     "text": "&a +"
+    },
+    {
+     "id": "14",
+     "text": "&a And"
+    }
+   ],
+   "grammar_sha256": {
+    "tests/grammars/antlr_left_recursion/upstream/peoplecode/PeopleCode.g4": "5f110ad58a772b92d7e8bf0aa6aacbe797941a22510c17a473dbec72e452aec3"
+   }
+  }
+ ]
+}

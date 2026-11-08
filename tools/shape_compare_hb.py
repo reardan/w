@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare the portable shaper (tools/shape_dump.w) with HarfBuzz.
 
-    pip install uharfbuzz
+    pip install uharfbuzz unicodedata2
     bin/wv2 tools/shape_dump.w -o bin/shape_dump
     python3 tools/shape_compare_hb.py font.ttf lines.txt [more fonts...]
 
@@ -14,6 +14,13 @@ import subprocess
 import sys
 
 import uharfbuzz as hb
+
+try:
+    # Unicode 18.0, as tools/unicode/ and HarfBuzz 15 have it; the
+    # standard module follows the Python version.
+    import unicodedata2 as unicodedata
+except ImportError:
+    import unicodedata
 
 
 def font_bytes(spec):
@@ -46,7 +53,7 @@ def harfbuzz(path, lines):
         # direction, else the script's own direction.
         strong = None
         for ch in text:
-            bidi = __import__("unicodedata").bidirectional(ch)
+            bidi = unicodedata.bidirectional(ch)
             if bidi == "L":
                 strong = "ltr"
                 break

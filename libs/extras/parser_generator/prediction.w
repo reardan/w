@@ -258,7 +258,8 @@ void pg_prediction_close(pg_prediction_state* state):
 
 # The caller chooses an explicit work budget. Each step allocates a bounded
 # amount of memory (a frame, branch, event or memo record), and replaying a
-# further memoized derivation is charged as a step; all temporary memory is
+# further memoized derivation is charged as a step; metadata ops (one bounded
+# event each, after a charged enter or child) are not. All temporary memory is
 # released on every exit. Fixed tokenization is required: generation refuses parser goals
 # and actions.
 pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry, pg_token_stream* stream, pg_diagnostics* diagnostics, int limit):
@@ -305,11 +306,18 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 				else: free(branch)
 			continue
 		if (stream.resource_failed): break
+		pg_prediction_op* op = program.ops[pc]
+		if ((op.kind == 8) || (op.kind == 9)):
+			# Metadata ops are straight-line bookkeeping after an enter or a
+			# child; they never branch or consume, so they are not search
+			# work and adding metadata cannot change a budget verdict.
+			tail = pg_prediction_event(state, 0, pc, position, tail)
+			pc = op.next
+			continue
 		steps++
 		if (steps > limit):
 			pg_prediction_resource(stream, diagnostics, position)
 			break
-		pg_prediction_op* op = program.ops[pc]
 		if (op.kind == 0):
 			accepted = 1
 			break
@@ -380,7 +388,7 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 			pc = frames[frame]
 			frame = frames[frame + 1]
 			continue
-		if ((op.kind == 5) || (op.kind == 6) || (op.kind == 8) || (op.kind == 9)):
+		if ((op.kind == 5) || (op.kind == 6)):
 			tail = pg_prediction_event(state, 0, pc, position, tail)
 			pc = op.next
 			continue

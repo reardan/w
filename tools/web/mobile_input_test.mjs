@@ -425,4 +425,64 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   h.canvas.fire('pointerup');
   assert.equal(h.canvas.fire('contextmenu', { pointerType: 'mouse' }).prevented, undefined);
 }
-console.log('mobile_input_test OK (34 scenarios)');
+// Clipboard: copy/cut/paste DOM events run W's frame inside the gesture,
+// so copied text lands in clipboardData and a paste reaches W's read
+// without navigator.clipboard; outside them the async API is the fallback.
+{
+  const h = setup();
+  const data = { set: null, setData(type, text) { this.set = [type, text]; }, getData: () => 'pasted ✓' };
+  h.frame(() => h.input.clipboardWrite('copied é'));
+  const copy = h.doc.fire('copy', { type: 'copy', clipboardData: data });
+  assert.deepEqual(data.set, ['text/plain', 'copied é']);
+  assert.equal(copy.prevented, true, 'W text replaces the browser copy');
+  let read = null;
+  h.frame(() => { read = h.input.clipboardRead(); });
+  const paste = h.doc.fire('paste', { type: 'paste', clipboardData: data, target: h.editor });
+  assert.equal(read, 'pasted ✓', 'the paste event text answers the read synchronously');
+  assert.equal(paste.prevented, true);
+  assert.deepEqual(h.chars(), [], 'a paste W read is not also typed into the sink');
+  // A paste nothing in W asked for (context menu into the sink) is typed.
+  h.frame(() => {});
+  h.doc.fire('paste', { type: 'paste', clipboardData: { getData: () => 'ab' }, target: h.editor });
+  assert.deepEqual(h.chars(), [0x61, 0x62]);
+  // A copy in which W wrote nothing leaves the browser default alone.
+  assert.equal(h.doc.fire('copy', { type: 'copy', clipboardData: data }).prevented, undefined);
+}
+{
+  const writes = [];
+  const nav = { clipboard: { writeText: async t => { writes.push(t); }, readText: async () => 'async text' } };
+  const canvas = new Target(), editor = new Target(), doc = new Target();
+  canvas.doc = editor.doc = doc;
+  const input = createInput({ canvas, editor, document: doc, window: new Target(), navigator: nav,
+    state: { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 }, pushEvent: () => {} });
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const env = makeEnv({ memory: () => memory, gl: {},
+    host: { clipboardWrite: t => input.clipboardWrite(t), clipboardRead: () => input.clipboardRead() } });
+  const mem = new Uint8Array(memory.buffer);
+  const text = new TextEncoder().encode('outside ü');
+  mem.set(text, 100);
+  env.gfx_host_clipboard_write(100, text.length);
+  assert.deepEqual(writes, ['outside ü'], 'writes outside a copy event use navigator.clipboard');
+  env.gfx_host_clipboard_read();
+  assert.equal(env.gfx_host_clipboard_read_poll(), -1, 'the async read is pending');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const n = env.gfx_host_clipboard_read_poll();
+  assert.equal(n, new TextEncoder().encode('async text').length);
+  env.gfx_host_clipboard_read_copy(200);
+  assert.equal(new TextDecoder().decode(mem.subarray(200, 200 + n)), 'async text');
+  assert.equal(env.gfx_host_clipboard_read_poll(), 0, 'the read was consumed');
+  // A refused read settles as empty text rather than hanging.
+  nav.clipboard.readText = async () => { throw new Error('denied'); };
+  const quiet = createInput({ canvas, editor, document: doc, window: new Target(), navigator: nav,
+    state: { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 }, pushEvent: () => {}, log: () => {} });
+  const denied = makeEnv({ memory: () => memory, gl: {}, host: { clipboardRead: () => quiet.clipboardRead() } });
+  denied.gfx_host_clipboard_read();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(denied.gfx_host_clipboard_read_poll(), 0);
+  // Hosts without a clipboard keep an in-memory one.
+  const plain = makeEnv({ memory: () => memory, gl: {}, host: {} });
+  plain.gfx_host_clipboard_write(100, text.length);
+  plain.gfx_host_clipboard_read();
+  assert.equal(plain.gfx_host_clipboard_read_poll(), text.length);
+}
+console.log('mobile_input_test OK (36 scenarios)');

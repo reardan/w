@@ -17,7 +17,11 @@ characters insert as UTF-8, backspace and delete remove whole
 characters, return inserts a newline.
 Arrows, page up/down, home/end move the caret; with shift held they
 extend the selection from its anchor, and with ctrl held home/end go to
-the ends of the buffer.
+the ends of the buffer. Dragging selects and Shift+click extends;
+Ctrl/Cmd+A selects all and Ctrl/Cmd+C/X/V copy, cut and paste through
+the context's clipboard (ui_clipboard_*; ui_begin_window connects it to
+the platform). A paste lands a frame or more after the keypress, when
+the platform answers.
 
 Only the visible line range is drawn, so a long document costs the
 vertices of the lines on screen.
@@ -35,6 +39,7 @@ import graphics.ui.widgets.buffer
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.scroll
+import graphics.ui.widgets.access_text
 
 
 struct ui_textarea_state:
@@ -101,7 +106,7 @@ int ui_textarea_line_height(ui_context* ctx):
 
 # 1 when a selection exists and is not empty.
 int ui_textarea_has_selection(ui_textarea_state* st):
-	if (st.sel_anchor < 0): return 0
+	if ((st.sel_anchor < 0) || (st.sel_anchor > st.buf.length)): return 0
 	if (st.sel_anchor == ui_textarea_caret_offset(st)): return 0
 	return 1
 
@@ -209,6 +214,52 @@ void ui_textarea_type(ui_textarea_state* st, int ch):
 	st.caret_goal_col = st.caret_col
 
 
+# Insert pasted text at the caret, replacing any selection. Control
+# characters other than newline and tab are dropped.
+void ui_textarea_insert_text(ui_textarea_state* st, char* s):
+	int offset = ui_textarea_caret_offset(st)
+	if (ui_textarea_has_selection(st)): offset = ui_textarea_sel_start(st)
+	ui_textarea_delete_selection(st)
+	int length = strlen(s)
+	char* clean = cast(char*, malloc(length + 1))
+	int n = 0
+	for i in range(length):
+		int c = s[i] & 255
+		if ((c >= 32) || (c == 10) || (c == 9)):
+			clean[n] = c
+			n = n + 1
+	clean[n] = 0
+	ui_text_buffer_insert_text(&st.buf, offset, clean)
+	free(clean)
+	ui_textarea_set_caret(st, ui_grapheme_ceil(st.buf.data, offset + n))
+	st.caret_goal_col = st.caret_col
+
+
+# Copy the selection to the context's clipboard; returns 1 when there
+# was one.
+int ui_textarea_copy(ui_context* ctx, ui_textarea_state* st):
+	if (ui_textarea_has_selection(st) == 0): return 0
+	int start = ui_textarea_sel_start(st)
+	ui_clipboard_copy(ctx, &st.buf.data[start], ui_textarea_sel_end(st) - start)
+	return 1
+
+
+# The caret position under a point in the text view: line from y, the
+# nearest glyph boundary from x.
+void ui_textarea_caret_at(ui_textarea_state* st, int scale, float32 line_h, ui_rect view, float32 px, float32 py):
+	int line = cast(int, (py - view.y + st.scroll.offset_y) / line_h)
+	if (py < view.y): line = cast(int, st.scroll.offset_y / line_h) - 1
+	if (line < 0): line = 0
+	if (line >= st.buf.line_count): line = st.buf.line_count - 1
+	st.caret_line = line
+	int start = ui_text_buffer_line_start(&st.buf, line)
+	st.caret_col = ui_text_caret_from_x(&st.buf.data[start], scale, cast(int, px - view.x + st.scroll.offset_x))
+	int len = ui_text_buffer_line_length(&st.buf, line)
+	if (st.caret_col < 0): st.caret_col = 0
+	if (st.caret_col > len): st.caret_col = len
+	st.caret_goal_col = st.caret_col
+
+
 void ui_textarea_backspace(ui_textarea_state* st):
 	if (ui_textarea_delete_selection(st)):
 		st.caret_goal_col = st.caret_col
@@ -219,6 +270,36 @@ void ui_textarea_backspace(ui_textarea_state* st):
 	ui_text_buffer_delete(&st.buf, from, offset - from)
 	ui_textarea_set_caret(st, ui_grapheme_floor(st.buf.data, from))
 	st.caret_goal_col = st.caret_col
+
+
+# The area's glyph boxes and text attributes for the accessibility
+# snapshot (#863), from the layout ui_textarea draws: line k at
+# origin_y + k * line_h (origin_x, origin_y: the scrolled content
+# origin), each newline a zero-width box at its line's end. Past
+# ui_access_text_max_boxes characters only the attributes.
+void ui_textarea_access_layout(ui_context* ctx, ui_access_node* node, ui_textarea_state* st, float32 origin_x, float32 origin_y):
+	if ((node == 0) || (ctx.access == 0)): return
+	int scale = ctx.theme.text_scale
+	float32 line_h = cast(float32, ui_textarea_line_height(ctx))
+	int total = ui_access_char_count(st.buf.data, st.buf.length)
+	if (total <= ui_access_text_max_boxes):
+		# A box per byte at most, whatever the bytes decode to.
+		ui_rect* boxes = cast(ui_rect*, malloc((st.buf.length + 1) * sizeof(ui_rect)))
+		int count = 0
+		for line in range(st.buf.line_count):
+			float32 ly = origin_y + cast(float32, line) * line_h
+			int start = ui_text_buffer_line_start(&st.buf, line)
+			int len = ui_text_buffer_line_length(&st.buf, line)
+			char* text = &st.buf.data[start]
+			count = count + ui_access_line_boxes(text, len, scale, origin_x, ly, line_h, 1000000.0, &boxes[count])
+			if (line + 1 < st.buf.line_count):
+				float32 end_x = origin_x + cast(float32, ui_text_prefix_width(text, len, scale))
+				boxes[count] = ui_rect_new(end_x, ly, 0.0, line_h)
+				count = count + 1
+		ui_access_publish_boxes(ctx, node, boxes, count)
+	ui_color fill = ctx.theme.widget
+	if (ctx.disabled): fill = ctx.theme.disabled_widget
+	ui_access_field_attrs(ctx, node, scale, ui_text_color(ctx), fill)
 
 
 # The multi-line edit surface. Returns 1 on frames the buffer changed.
@@ -262,18 +343,23 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		float32 px = cast(float32, ctx.input.press_x)
 		float32 py = cast(float32, ctx.input.press_y)
 		if (ui_pointer_inside(ctx, area, px, py)):
+			# Shift+click in the focused field extends the selection;
+			# any other press anchors a new one that a drag stretches.
+			int extend = (ctx.focus == id) && ((ctx.input.mods & GFX_MOD_SHIFT) != 0)
 			ctx.focus = id
-			int line = cast(int, (py - view.y + st.scroll.offset_y) / line_h)
-			if (line < 0): line = 0
-			if (line >= st.buf.line_count): line = st.buf.line_count - 1
-			st.caret_line = line
-			int start = ui_text_buffer_line_start(&st.buf, line)
-			st.caret_col = ui_text_caret_from_x(&st.buf.data[start], scale, cast(int, px - view.x + st.scroll.offset_x))
-			int len = ui_text_buffer_line_length(&st.buf, line)
-			if (st.caret_col > len): st.caret_col = len
-			st.caret_goal_col = st.caret_col
-			st.sel_anchor = 0 - 1
+			ctx.active = id
+			if (extend): ui_textarea_anchor(st, 1)
+			ui_textarea_caret_at(st, scale, line_h, view, px, py)
+			if (extend == 0): st.sel_anchor = ui_textarea_caret_offset(st)
 		else if (ctx.focus == id): ctx.focus = 0
+	else if (ctx.input.mouse_down && (ctx.active == id) && (ctx.focus == id) && (ctx.disabled == 0)):
+		# Drag selection: the caret follows the pointer (above or below
+		# the view it walks a line at a time, scrolling), the anchor stays.
+		ctx.pointer_mode = 1
+		ui_textarea_caret_at(st, scale, line_h, view, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
+		ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
+	# A click that selected nothing leaves no anchor behind once released.
+	if ((ctx.input.mouse_down == 0) && (st.sel_anchor >= 0) && (ui_textarea_has_selection(st) == 0)): st.sel_anchor = 0 - 1
 
 	# Behind an open popup the keys are the popup's (see ui_textbox).
 	if ((ctx.focus == id) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
@@ -281,10 +367,18 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
 			int mods = ctx.char_mods[i]
-			if ((mods & (GFX_MOD_CTRL | GFX_MOD_SUPER)) && (mods & GFX_MOD_ALT) == 0 && (ch == 1 || ch == 'a' || ch == 'A')):
+			int command = ui_clipboard_command(ch, mods)
+			if (command == 'a'):
 				st.sel_anchor = 0
 				ui_textarea_set_caret(st, st.buf.length)
 				st.caret_goal_col = st.caret_col
+			else if (command == 'c'): ui_textarea_copy(ctx, st)
+			else if (command == 'x'):
+				if (ui_textarea_copy(ctx, st)):
+					ui_textarea_delete_selection(st)
+					st.caret_goal_col = st.caret_col
+					changed = 1
+			else if (command == 'v'): ui_clipboard_paste_request(ctx, id)
 			else if (ui_utf8_is_text(ch) && ui_char_is_typing(mods)):
 				ui_textarea_type(st, ch)
 				changed = 1
@@ -307,6 +401,12 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 			ui_textarea_nav(st, ctx.navs[i], ctx.nav_mods[i], page_lines)
 			if (st.buf.length != before): changed = 1
 			i = i + 1
+		char* pasted = ui_clipboard_paste_take(ctx, id)
+		if (pasted != 0):
+			ui_textarea_insert_text(st, pasted)
+			free(pasted)
+			changed = 1
+			ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
 
 	# Keep the caret in view after typing or motion.
 	if ((ctx.focus == id) && ((ctx.char_count > 0) || (ctx.nav_count > 0) || ctx.input.mouse_pressed)):
@@ -362,4 +462,5 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	int anchor = caret
 	if (st.sel_anchor >= 0): anchor = st.sel_anchor
 	ui_access_set_caret(ctx, node, anchor, caret)
+	ui_textarea_access_layout(ctx, node, st, origin_x, origin_y)
 	return changed

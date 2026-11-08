@@ -1042,3 +1042,385 @@ void test_atspi_paths_cover_widget_root_ids():
 	assert_equal(2147483647, ui_atspi_path_id(c"/org/a11y/atspi/accessible/2147483647"))
 	assert_equal(0 - 1, ui_atspi_path_id(c"/org/a11y/atspi/accessible/21474836470"))
 	assert_equal(0, ui_atspi_path_id(c"/org/a11y/atspi/accessible/root"))
+
+
+# An a{ss} at the reader as "key=value;" pairs.
+char* atspi_test_pairs(dbus_reader* r):
+	int bytes = dbus_read_u32(r)
+	dbus_read_align(r, 8)
+	int end = r.pos + bytes
+	atspi_test_client pairs
+	pairs.log_length = 0
+	pairs.log[0] = 0
+	while ((r.pos < end) && (r.failed == 0)):
+		dbus_read_align(r, 8)
+		atspi_test_log(&pairs, dbus_read_string(r, 0))
+		atspi_test_log(&pairs, c"=")
+		atspi_test_log(&pairs, dbus_read_string(r, 0))
+		atspi_test_log(&pairs, c";")
+	return dbus_strdup(&pairs.log[0])
+
+
+# The #863 depth: a two-line editor with glyph boxes, attributes and
+# two selections; a multi-selection list; a table with an explicit
+# header row, a row header spanning two rows and a cell spanning two
+# columns.
+ui_access_tree* depth_tree(atspi_test_app* app):
+	ui_access_tree* tree = ui_access_tree_new(32, 512)
+	ui_rect r = ui_rect_new(0.0, 0.0, 300.0, 300.0)
+	ui_access_add(tree, 1, 0, UI_ACCESS_DOCUMENT, r)
+	ui_access_node* editor = ui_access_add(tree, 2, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 10.0, 200.0, 40.0))
+	editor.states = UI_ACCESS_FOCUSABLE
+	editor.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION | UI_ACCESS_SET_SELECTIONS
+	ui_access_set_text(tree, 2, UI_ACCESS_VALUE, c"ab\ncd", 5)
+	ui_rect[5] boxes
+	boxes[0] = ui_rect_new(14.0, 12.0, 10.0, 16.0)
+	boxes[1] = ui_rect_new(24.0, 12.0, 10.0, 16.0)
+	boxes[2] = ui_rect_new(34.0, 12.0, 0.0, 16.0)
+	boxes[3] = ui_rect_new(14.0, 30.0, 10.0, 16.0)
+	boxes[4] = ui_rect_new(24.0, 30.0, 12.0, 16.0)
+	ui_access_set_char_boxes(tree, 2, &boxes[0], 5)
+	ui_access_text_attrs* base = ui_access_default_attrs(tree, 2)
+	ui_access_attrs_set_family(base, c"Liberation Sans", 15)
+	base.size = 12
+	base.weight = 400
+	base.fg = 0x102030
+	base.bg = 0xffffff
+	ui_access_text_attrs* bold = ui_access_add_attr_run(tree, 2, 3, 5)
+	bold.weight = 700
+	ui_access_set_selection(tree, 2, 0, 1)
+	ui_access_add_selection(tree, 2, 3, 5)
+	ui_access_node* list = ui_access_add(tree, 3, 1, UI_ACCESS_LIST, ui_rect_new(10.0, 60.0, 100.0, 60.0))
+	list.states = UI_ACCESS_MULTISELECTABLE
+	for k in range(3):
+		ui_access_node* item = ui_access_add(tree, 4 + k, 3, UI_ACCESS_LIST_ITEM, ui_rect_new(10.0, 60.0 + cast(float32, k) * 20.0, 100.0, 20.0))
+		item.actions = UI_ACCESS_SELECT | UI_ACCESS_ACTIVATE
+		if (k == 1): item.states = UI_ACCESS_SELECTED
+	ui_access_add(tree, 10, 1, UI_ACCESS_TABLE, ui_rect_new(10.0, 130.0, 200.0, 80.0))
+	ui_access_node* head = ui_access_add(tree, 11, 10, UI_ACCESS_ROW, r)
+	head.states = UI_ACCESS_HEADER
+	ui_access_add(tree, 12, 11, UI_ACCESS_CELL, r)
+	ui_access_set_text(tree, 12, UI_ACCESS_NAME, c"Kind", 4)
+	ui_access_node* item_head = ui_access_add(tree, 13, 11, UI_ACCESS_CELL, r)
+	item_head.col_span = 2
+	ui_access_set_text(tree, 13, UI_ACCESS_NAME, c"Item", 4)
+	ui_access_add(tree, 20, 10, UI_ACCESS_ROW, r)
+	ui_access_node* fruit = ui_access_add(tree, 21, 20, UI_ACCESS_CELL, r)
+	fruit.states = UI_ACCESS_HEADER
+	fruit.row_span = 2
+	ui_access_set_text(tree, 21, UI_ACCESS_NAME, c"Fruit", 5)
+	ui_access_add(tree, 22, 20, UI_ACCESS_CELL, r)
+	ui_access_add(tree, 23, 20, UI_ACCESS_CELL, r)
+	ui_access_add(tree, 30, 10, UI_ACCESS_ROW, r)
+	ui_access_node* cherry = ui_access_add(tree, 31, 30, UI_ACCESS_CELL, r)
+	cherry.col_span = 2
+	ui_access_set_text(tree, 31, UI_ACCESS_NAME, c"Cherry", 6)
+	tree.focused_id = 2
+	tree.action = atspi_test_action
+	tree.context = app
+	return tree
+
+
+# Four ints from an (iiii)-less "iiii" reply.
+void atspi_test_iiii(dbus_message* reply, int* v):
+	dbus_reader r
+	dbus_message_reader(reply, &r)
+	for i in range(4): v[i] = dbus_read_i32(&r)
+
+
+# A direct (no bus, no Hello) connection, authenticated with SASL
+# EXTERNAL as libdbus opens a private connection to a peer; the bridge
+# is pumped meanwhile, since it answers on this thread.
+dbus_conn* atspi_test_p2p_open(char* address, ui_atspi_bridge* b, ui_access_tree* tree):
+	int fd = dbus_connect_address(address)
+	if (fd < 0): return 0
+	dbus_conn* conn = new dbus_conn()
+	conn.fd = fd
+	conn.serial = 0
+	conn.unique_name = 0
+	conn.failed = 0
+	dbus_buf_init(&conn.in)
+	dbus_buf_init(&conn.head)
+	dbus_buf_init(&conn.body)
+	socket_set_nonblocking(fd)
+	char* uid = itoa(getuid())
+	dbus_buf line
+	dbus_buf_init(&line)
+	dbus_put_byte(&line, 0)
+	dbus_put_bytes(&line, c"AUTH EXTERNAL ", 14)
+	char* hex = c"0123456789abcdef"
+	for i in range(strlen(uid)):
+		dbus_put_byte(&line, hex[(uid[i] >> 4) & 15])
+		dbus_put_byte(&line, hex[uid[i] & 15])
+	dbus_put_bytes(&line, c"\r\nNEGOTIATE_UNIX_FD\r\n", 21)
+	dbus_write_all(conn, line.data, line.length)
+	dbus_buf_free(&line)
+	# "OK <guid>" and "ERROR" (no fd passing) come back.
+	int lines = 0
+	for i in range(400):
+		ui_access_atspi_dispatch(b, tree)
+		dbus_fill(conn)
+		lines = 0
+		for k in range(conn.in.length):
+			if (conn.in.data[k] == 10): lines = lines + 1
+		if (lines >= 2): break
+		poll_single(fd, poll_in, 5)
+	if ((lines < 2) || (conn.in.data[0] != 'O') || (conn.in.data[1] != 'K')):
+		dbus_close(conn)
+		return 0
+	conn.in.length = 0
+	dbus_write_all(conn, c"BEGIN\r\n", 7)
+	return conn
+
+
+void check_depth(char* address):
+	atspi_test_client client
+	client.log_length = 0
+	client.log[0] = 0
+	client.embeds = 0
+	client.conn = dbus_open(address)
+	asserts(c"client connects", client.conn != 0)
+	atspi_test_client* c = &client
+	dbus_message reply
+	dbus_buf* out = dbus_body(c.conn)
+	dbus_put_string(out, c"type='signal',interface='org.a11y.atspi.Event.Object'")
+	assert_equal(1, dbus_call_sync(c.conn, &reply, 2000, c"org.freedesktop.DBus", c"/org/freedesktop/DBus", c"org.freedesktop.DBus", c"AddMatch", c"s"))
+	dbus_message_free(&reply)
+	atspi_test_app app
+	app.calls = 0
+	ui_access_tree* tree = depth_tree(&app)
+	ui_atspi_bridge* b = ui_access_atspi_open_at(address, c"Depth")
+	asserts(c"bridge connects", b != 0)
+	ui_access_atspi_set_origin(b, 100, 200)
+	assert_equal(1, ui_access_atspi_publish(b, tree))
+	char* text = c"org.a11y.atspi.Text"
+	dbus_reader r
+	int[4] v
+
+	# Glyph geometry: a character in window and screen coordinates, a
+	# range over two lines, and the character at a point.
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 4)
+	dbus_put_u32(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetCharacterExtents", c"iu", &reply))
+	atspi_test_iiii(&reply, &v[0])
+	dbus_message_free(&reply)
+	assert_equal(24, v[0])
+	assert_equal(30, v[1])
+	assert_equal(12, v[2])
+	assert_equal(16, v[3])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	dbus_put_u32(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetCharacterExtents", c"iu", &reply))
+	atspi_test_iiii(&reply, &v[0])
+	dbus_message_free(&reply)
+	assert_equal(114, v[0])
+	assert_equal(212, v[1])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	dbus_put_i32(out, 5)
+	dbus_put_u32(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetRangeExtents", c"iiu", &reply))
+	atspi_test_iiii(&reply, &v[0])
+	dbus_message_free(&reply)
+	assert_equal(14, v[0])
+	assert_equal(12, v[1])
+	assert_equal(22, v[2])
+	assert_equal(34, v[3])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 125)
+	dbus_put_i32(out, 235)
+	dbus_put_u32(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetOffsetAtPoint", c"iiu", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(4, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+
+	# Attributes: the defaults, a run's own attributes alone, and with
+	# the defaults included.
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetDefaultAttributes", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	char* pairs = atspi_test_pairs(&r)
+	dbus_message_free(&reply)
+	assert_strings_equal(c"family-name=Liberation Sans;size=12;weight=400;style=normal;underline=none;fg-color=4112,8224,12336;bg-color=65535,65535,65535;", pairs)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 4)
+	dbus_put_bool(out, 0)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributeRun", c"ib", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"weight=700;", atspi_test_pairs(&r))
+	assert_equal(3, dbus_read_i32(&r))
+	assert_equal(5, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	dbus_put_bool(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributeRun", c"ib", &reply))
+	dbus_message_reader(&reply, &r)
+	asserts(c"defaults included", contains(atspi_test_pairs(&r), c"family-name=Liberation Sans;"))
+	assert_equal(0, dbus_read_i32(&r))
+	assert_equal(3, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 4)
+	dbus_put_string(out, c"weight")
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetAttributeValue", c"is", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_strings_equal(c"700", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetDefaultAttributeSet", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	dbus_read_u32(&r)
+	assert_strings_equal(c"family-name:Liberation Sans", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+
+	# Two selections; adding a third and removing the first go out as
+	# one SET_SELECTIONS request each, keeping the primary's caret.
+	assert_equal(2, atspi_test_u32(c, b, tree, 2, text, c"GetNSelections"))
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	assert_equal(1, atspi_test_call(c, b, tree, 2, text, c"GetSelection", c"i", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(3, dbus_read_i32(&r))
+	assert_equal(5, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 2)
+	dbus_put_i32(out, 3)
+	asserts(c"add a selection", atspi_test_bool(c, b, tree, 2, text, c"AddSelection", c"ii"))
+	assert_equal(UI_ACCESS_SET_SELECTIONS, app.last_action)
+	assert_strings_equal(c"0 1 3 5 2 3", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 0)
+	asserts(c"remove the first", atspi_test_bool(c, b, tree, 2, text, c"RemoveSelection", c"i"))
+	assert_strings_equal(c"1 1 3 5", &app.last_value[0])
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 1)
+	dbus_put_i32(out, 0)
+	dbus_put_i32(out, 2)
+	asserts(c"replace the second", atspi_test_bool(c, b, tree, 2, text, c"SetSelection", c"iii"))
+	assert_strings_equal(c"0 1 0 2", &app.last_value[0])
+
+	# The multi-selection list: its state, adding, removing, all, none.
+	char* sel = c"org.a11y.atspi.Selection"
+	int lo = 0
+	int hi = 0
+	atspi_test_state(c, b, tree, 3, &lo, &hi)
+	asserts(c"multiselectable", atspi_test_has(lo, ATSPI_STATE_MULTISELECTABLE))
+	app.calls = 0
+	assert_equal(1, atspi_test_i32_ii(c, b, tree, 3, sel, c"SelectChild", 0, 0, 0))
+	assert_equal(UI_ACCESS_SELECT, app.last_action)
+	assert_strings_equal(c"add", &app.last_value[0])
+	assert_equal(4, app.last_id)
+	assert_equal(1, atspi_test_i32_ii(c, b, tree, 3, sel, c"DeselectSelectedChild", 0, 0, 0))
+	assert_strings_equal(c"remove", &app.last_value[0])
+	assert_equal(5, app.last_id)
+	assert_equal(0, atspi_test_i32_ii(c, b, tree, 3, sel, c"DeselectChild", 0, 0, 0))
+	assert_equal(2, app.calls)
+	dbus_body(c.conn)
+	asserts(c"select all", atspi_test_bool(c, b, tree, 3, sel, c"SelectAll", 0))
+	assert_equal(4, app.calls)
+	assert_equal(6, app.last_id)
+	dbus_body(c.conn)
+	asserts(c"clear", atspi_test_bool(c, b, tree, 3, sel, c"ClearSelection", 0))
+	assert_equal(5, app.calls)
+	assert_strings_equal(c"remove", &app.last_value[0])
+
+	# The table: explicit header row, a row header over two rows and a
+	# cell over two columns.
+	char* table = c"org.a11y.atspi.Table"
+	char* cell = c"org.a11y.atspi.TableCell"
+	assert_equal(2, atspi_test_int_property(c, b, tree, 10, table, c"NRows"))
+	assert_equal(3, atspi_test_int_property(c, b, tree, 10, table, c"NColumns"))
+	assert_strings_equal(c"/org/a11y/atspi/accessible/31", atspi_test_ref_ii(c, b, tree, 10, table, c"GetAccessibleAt", 1, 2, 1))
+	assert_strings_equal(c"/org/a11y/atspi/accessible/21", atspi_test_ref_ii(c, b, tree, 10, table, c"GetRowHeader", 1, 0, 0))
+	assert_strings_equal(c"/org/a11y/atspi/accessible/13", atspi_test_ref_ii(c, b, tree, 10, table, c"GetColumnHeader", 2, 0, 0))
+	assert_equal(2, atspi_test_i32_ii(c, b, tree, 10, table, c"GetColumnExtentAt", 1, 2, 1))
+	assert_equal(2, atspi_test_i32_ii(c, b, tree, 10, table, c"GetRowExtentAt", 1, 0, 1))
+	assert_equal(ATSPI_ROLE_TABLE_ROW_HEADER, atspi_test_u32(c, b, tree, 21, c"org.a11y.atspi.Accessible", c"GetRole"))
+	assert_equal(2, atspi_test_int_property(c, b, tree, 31, cell, c"ColumnSpan"))
+	assert_equal(2, atspi_test_int_property(c, b, tree, 21, cell, c"RowSpan"))
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 31, cell, c"GetRowColumnSpan", 0, &reply))
+	atspi_test_iiii(&reply, &v[0])
+	dbus_message_free(&reply)
+	assert_equal(1, v[0])
+	assert_equal(1, v[1])
+	assert_equal(1, v[2])
+	assert_equal(2, v[3])
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 31, cell, c"GetRowHeaderCells", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	dbus_read_u32(&r)
+	dbus_read_align(&r, 8)
+	dbus_read_string(&r, 0)
+	assert_strings_equal(c"/org/a11y/atspi/accessible/21", dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+	out = dbus_body(c.conn)
+	dbus_put_i32(out, 4)
+	assert_equal(1, atspi_test_call(c, b, tree, 10, table, c"GetRowColumnExtentsAtIndex", c"i", &reply))
+	dbus_message_reader(&reply, &r)
+	assert_equal(1, dbus_read_bool(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(1, dbus_read_i32(&r))
+	assert_equal(2, dbus_read_i32(&r))
+	dbus_message_free(&reply)
+
+	# Republishing with other selections and attributes announces both.
+	c.log_length = 0
+	c.log[0] = 0
+	ui_access_tree* next = depth_tree(&app)
+	ui_access_find(next, 2).selections[0] = 4
+	ui_access_find(next, 2).runs[0].attrs.italic = 1
+	ui_access_atspi_publish(b, next)
+	ui_access_tree_free(tree)
+	tree = next
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
+	dbus_message_free(&reply)
+	asserts(c"selection event", contains(&c.log[0], c"TextSelectionChanged  /org/a11y/atspi/accessible/2\n"))
+	asserts(c"attributes event", contains(&c.log[0], c"TextAttributesChanged  /org/a11y/atspi/accessible/2\n"))
+
+	# The peer-to-peer bus: the address the application hands out takes
+	# a direct connection, which answers queries without the bus.
+	dbus_body(c.conn)
+	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.a11y.atspi.Application", c"GetApplicationBusAddress", 0, &reply))
+	dbus_message_reader(&reply, &r)
+	char* p2p = dbus_strdup(dbus_read_string(&r, 0))
+	dbus_message_free(&reply)
+	asserts(c"p2p address", starts_with(p2p, c"unix:abstract=w-atspi-"))
+	dbus_conn* direct = atspi_test_p2p_open(p2p, b, tree)
+	asserts(c"p2p connects", direct != 0)
+	dbus_body(direct)
+	int serial = dbus_call(direct, 0, c"/org/a11y/atspi/accessible/21", c"org.a11y.atspi.Accessible", c"GetRole", 0)
+	int got = 0
+	for i in range(400):
+		ui_access_atspi_dispatch(b, tree)
+		dbus_message m
+		if ((got == 0) && (dbus_wait(direct, &m, 5) == 1)):
+			if ((m.type == DBUS_METHOD_RETURN) && (m.reply_serial == serial)):
+				dbus_message_reader(&m, &r)
+				got = dbus_read_u32(&r)
+			dbus_message_free(&m)
+	assert_equal(ATSPI_ROLE_TABLE_ROW_HEADER, got)
+	assert_equal(1, ui_access_atspi_p2p_calls(b))
+	dbus_close(direct)
+	ui_access_atspi_dispatch(b, tree)
+	assert_equal(0, b.peer_count)
+
+	ui_access_atspi_close(b)
+	ui_access_tree_free(tree)
+	dbus_close(c.conn)
+
+
+void test_atspi_glyphs_attributes_selections_tables_and_p2p():
+	dbus_test_bus bus
+	if (!dbus_test_bus_start(&bus)):
+		test_skip(c"SKIP: dbus-daemon not available")
+		return
+	check_depth(bus.address)
+	dbus_test_bus_stop(&bus)

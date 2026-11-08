@@ -591,7 +591,12 @@ void ttf_color_line(ttf_color_font* cf, int at, int var, ttf_color_fill* fill):
 	int n = ttf_u16(f, at + 1)
 	int stride = 6
 	if (var): stride = 10
-	if (n > (f.size - at) / stride): n = (f.size - at) / stride
+	# Only whole records inside the blob. An offset past its end made
+	# this bound negative, leaving a negative stop count over no arrays
+	# (issue #842).
+	int room = f.size - at - 3
+	if (room < 0): room = 0
+	if (n > room / stride): n = room / stride
 	fill.stops = n
 	if (n == 0): return
 	fill.offsets = cast(float32*, malloc(n * 4))

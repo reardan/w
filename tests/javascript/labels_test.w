@@ -95,14 +95,15 @@ void test_label_limits():
 	assert_equal(0, result.status)
 	assert1(result.value.number == 42.0)
 	assert1(rt.jump_target == 0)
-	# Annex B labelled functions fail before any effects, as documented.
-	source = c"final=99; label: function f() {}"
+	# Annex B.3.2 labelled function declarations declare like ordinary ones.
+	source = c"final=99; label: function f() { return 7; } f();"
 	result = js_runtime_eval(rt, source, strlen(source), 100)
-	assert_equal(6, result.status)
+	assert_equal(0, result.status)
+	assert1(result.value.number == 7.0)
 	source = c"final;"
 	result = js_runtime_eval(rt, source, strlen(source), 100)
 	assert_equal(0, result.status)
-	assert1(result.value.number != 99.0)
+	assert1(result.value.number == 99.0)
 	source = c"final=0; outer: try { for(;;) { continue; } } finally { final=99; }"
 	result = js_runtime_eval(rt, source, strlen(source), 30)
 	assert_equal(5, result.status)

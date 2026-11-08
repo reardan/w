@@ -165,6 +165,1666 @@
       "path": "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
       "upstream_path": "test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
       "sha256": "528ca7f5a56663c102c4489c7fa6285d85ad77333994401c48497f174870b94d"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-extended-pattern-char.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-extended-pattern-char.js",
+      "sha256": "e959a2cb395812e5ee1d0bd65a82e24bc08b1c9e9c7f688f6d0a79b38ff2f5b8"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-identity-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-identity-escape.js",
+      "sha256": "e71e2f6427457ff783f88f0edd362891dffb2700042b76cb95b12e1f4656a4f4"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-legacy-octal-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-legacy-octal-escape.js",
+      "sha256": "0b0c6d6b35f6d28fef51da46681d7f62a1d9206f2b9a4dd246e2650da1e3f61b"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges.js",
+      "sha256": "279ab973429737924c192d98c7bfe8cb3b7c126c6be7233bc0493341701fbae9"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js",
+      "sha256": "2e5dcf8884883d47a63661bf4d14c31426a3d71871f0ed30dc531ea460ee4504"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-ab.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-ab.js",
+      "sha256": "fc91c92d3575fa83c2de5afbc463c57af85f2c54508e4f1220ba97dec83920c6"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-b.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-b.js",
+      "sha256": "220427005be06fdf37b8f9af69103daadfd27486864088f0b9c223793bc32552"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-oob-decimal-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-oob-decimal-escape.js",
+      "sha256": "6bd47816181efebd06d840eba5f5371a49b6640872de637d819c28e6abd395b5"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-optional-lookahead.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-optional-lookahead.js",
+      "sha256": "7b0551e1e2bd99125944ba80fa62cb57a62390fe7cbdbb7584d56b0da42beda8"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-optional-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-optional-lookbehind.js",
+      "sha256": "38b120a3a0fee9076c7f1904246bdf6199e9ea17d563dc89a1f2d471bdb12eeb"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookahead.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-optional-negative-lookahead.js",
+      "sha256": "c09600233bc74369afccd0887c8ba0bf5e855c2c407d6b82458a955d8d995057"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-optional-negative-lookbehind.js",
+      "sha256": "a5429460891d4602e89d1c794e5bda55f6e9e75e8073ade11b3bdf5ccaffdc14"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-range-lookahead.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-range-lookahead.js",
+      "sha256": "7128381b80cae6275459abc548db6341bb57d9d1b9a7df8c09bf4b3819d7586f"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-range-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-range-lookbehind.js",
+      "sha256": "0d3f0a255ffa18948a5bb70355879146fab949855876c99b1c4e82027290dcd2"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-range-negative-lookahead.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-range-negative-lookahead.js",
+      "sha256": "581f76bfd8a4dc6ac171569e06e7b30f1b086dcf5ad6a89c014ce13af2ae32c4"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-range-negative-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-range-negative-lookbehind.js",
+      "sha256": "a9c75c54c9c89834f4df3a69422456901addca186dbb32ea3c3febd8a9bec924"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-unicode-esc-bounds.js",
+      "upstream_path": "test/language/literals/regexp/u-unicode-esc-bounds.js",
+      "sha256": "66a2419b30d855c4fccfc19ab984dfed6311848808860c0345b0168dafd087a2"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-unicode-esc-non-hex.js",
+      "upstream_path": "test/language/literals/regexp/u-unicode-esc-non-hex.js",
+      "sha256": "2e26e9aeb0676886c5bf30def9746876f4ea389ee512a0ddc55c478e466e767d"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-unicode-esc.js",
+      "upstream_path": "test/language/literals/regexp/u-unicode-esc.js",
+      "sha256": "0854b86cb7dda47ed9ad2102c62304d1b62a7da9c30da9c5d04420f70ab868fb"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-astral.js",
+      "upstream_path": "test/language/literals/regexp/u-astral.js",
+      "sha256": "ca0ea1abc3bcf73177a080fbd09ec6d642403972f8f9b9c08799b51af7e23881"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-case-mapping.js",
+      "upstream_path": "test/language/literals/regexp/u-case-mapping.js",
+      "sha256": "bd69976a69600c0c4af390db7673534e2becbbe9f264e9d63e8822148edcc59f"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-surrogate-pairs.js",
+      "upstream_path": "test/language/literals/regexp/u-surrogate-pairs.js",
+      "sha256": "ddc3e4614a1e8face99283b576341593a3a83b89d7d5df8c56ad70b8df495b89"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-char-class.js",
+      "upstream_path": "test/language/literals/regexp/u-surrogate-pairs-atom-char-class.js",
+      "sha256": "3987ec1fbe0435dddf42f5b8ae535dcc2e2395b33a2eaa030b3cdf47bc3dce47"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-char-class.js",
+      "upstream_path": "test/language/literals/regexp/u-surrogate-pairs-atom-escape-char-class.js",
+      "sha256": "00f48e6668ee9e212845d5bbdc22821eefbb5157e21604d0ccba678000139a54"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-decimal.js",
+      "upstream_path": "test/language/literals/regexp/u-surrogate-pairs-atom-escape-decimal.js",
+      "sha256": "293be6d46ff77d878ecd7a49617b7bd9e2c8645d1d4b82b1b5a246bc360aa0a1"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-dot.js",
+      "upstream_path": "test/language/literals/regexp/u-surrogate-pairs-atom-dot.js",
+      "sha256": "1170445c4a3fdbc48454481a91ee516ddb9eb492631d1529a0f4291580379f9b"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/early-err-pattern.js",
+      "upstream_path": "test/language/literals/regexp/early-err-pattern.js",
+      "sha256": "490aa2b3818420989eb2d01c50bebe81bc774c6af995e78eb1bbd1409978d2b4"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-braced-quantifier-exact.js",
+      "upstream_path": "test/language/literals/regexp/invalid-braced-quantifier-exact.js",
+      "sha256": "72d1b32866e362734c90cc57b1bce90f55ecb8eb2045950ec9b4f99e23047ba3"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-braced-quantifier-lower.js",
+      "upstream_path": "test/language/literals/regexp/invalid-braced-quantifier-lower.js",
+      "sha256": "4c64940ee4e79aef94bbd971320590d46f990785732295471268bf4434505615"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-braced-quantifier-range.js",
+      "upstream_path": "test/language/literals/regexp/invalid-braced-quantifier-range.js",
+      "sha256": "6e8280acd2076c2e7bdbf1c476864bfde14e6bcc33156735f12cdae694b34171"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-optional-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/invalid-optional-lookbehind.js",
+      "sha256": "b9c1bdf3b4b6caad21c38e21027fde413d701afa1a679443491f0ca75f302228"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-optional-negative-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/invalid-optional-negative-lookbehind.js",
+      "sha256": "853daa202c521345f4fd62fa3c2fcb2d444ab23585b77cc346c3bac36b13a903"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-range-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/invalid-range-lookbehind.js",
+      "sha256": "7123390e8442a21e38d2eb1401029ed10c1d0b508016cab88daaf18481799dea"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/invalid-range-negative-lookbehind.js",
+      "upstream_path": "test/language/literals/regexp/invalid-range-negative-lookbehind.js",
+      "sha256": "650a8132000813856b16e4c5e4680cfa7eb2376288ba91f36cc28d82a00eb477"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/u-invalid-class-escape.js",
+      "upstream_path": "test/language/literals/regexp/u-invalid-class-escape.js",
+      "sha256": "bf90f6b2af67f2ea4fcc9118d50ee0d577007be9985255c229895d351a030818"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/y-assertion-start.js",
+      "upstream_path": "test/language/literals/regexp/y-assertion-start.js",
+      "sha256": "d46fe01b6f9c30f6ecea14b1429d56bd7f9509e3f0e8fd75ee04abb63c477eae"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/S7.8.5_A1.4_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A1.4_T1.js",
+      "sha256": "e5a02a0c91faea716ae5842f48530b7402a91344d95d7e35002e5d5d506b7799"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/S7.8.5_A2.4_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A2.4_T1.js",
+      "sha256": "247f5f585de46c6d59a1bb83bb51e30e7f3e2817e7e50fbc18dc743c2a2c51db"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/S7.8.5_A3.1_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A3.1_T1.js",
+      "sha256": "553aca433612e1cf064b42be38c96c7d8bcd01a17958762456b7cbf8080ab3c8"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/S7.8.5_A4.2.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A4.2.js",
+      "sha256": "6374a74200f728f72bd697d47a64fcf6071896bd21bdbe03d3cd33998fbd0f1c"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/S7.8.5_A1.3_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A1.3_T1.js",
+      "sha256": "712e6b1eb358c593fab45ef1c2aa9e0ac4dbff3abe5d4f443623ab1b27d1fe5c"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname.js",
+      "sha256": "81db46f07549161fad37f335df904697bdd9edcfdf07e45ea06621c547569c4f"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-u.js",
+      "sha256": "9ba7982fa3c6814ce130efb27f20ce0a2966c5dd27f325b1e10e9d98d280dd60"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-2.js",
+      "sha256": "ef8531ba39d431109d0a80ee39295660ec84c69e8f94093d40de529d66fd19e9"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-2-u.js",
+      "sha256": "0bd8a9dd120a019317b34c6406884ebff6280b6b85379aea14112bc1ddf1e82b"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-3.js",
+      "sha256": "8290dec632753a0516c4619d1b6e036f9404475ecae6f7424eb124e2d2083ed9"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-3-u.js",
+      "sha256": "7df7da61f203387b157c91f3766cad2c3ea6c858398c8ccf4d28dcb8dc4cb6ac"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-4.js",
+      "sha256": "c07c9e0d1972da63cac6709c60504cf3ad7d030868677e46ae53e4175f46e40e"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-4-u.js",
+      "sha256": "6a0ab5b3031b2a2df727490b8757f00c0e088bd72f9ab584afb89163795ad878"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-5.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-5.js",
+      "sha256": "110d523f21567d5c95f843a67201ba74f36287dbd0ea47f3b17f7148a34aaff6"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js",
+      "sha256": "3311462fff8a2570ad60ff19d1865ff07ba075bb59d8c731fa6820b0121b0e62"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js",
+      "sha256": "78d33a5a7a70b7ade2d25a3968279e36fb7292e79877aed56cea16ae1ec0ce4a"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-u.js",
+      "sha256": "6dae1c7c1a9bc40c4ce6f3342579c9c1f612d8848a607b765dd0ba7dc23c8b5e"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2.js",
+      "sha256": "92aeefe071858a9346aa36e7c25bf9abcbd3d9cc765ebf9ee858ba7c0e4be588"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2-u.js",
+      "sha256": "c1294d1be1c98a3aec974b1830abb37849dfae726210d8ec995c1f97dd6f32fb"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-empty-groupspecifier.js",
+      "sha256": "cc1b65d7c9ca562ba9e804650a747d00e21f37323a8d133f6f8f318f79966550"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-empty-groupspecifier-u.js",
+      "sha256": "9adbb5dc944b32a614ffa6f0db956269ec6db230f2f4a08a57926e3eaebc740a"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-identity-escape-in-capture-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-identity-escape-in-capture-u.js",
+      "sha256": "edf3755c846f3e1f071be7d8a534845ca9d9ba1391b5b8401efbf09f3ec7fc92"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname.js",
+      "sha256": "4ac1944caae54683fce3d36644c63819f43de59fd3afaedae5eb2ecf50986c11"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-u.js",
+      "sha256": "39fad8473c26645e5fc557ad1df2984cd66bcfa26f36dec00b52b5229d31aedf"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2.js",
+      "sha256": "5e536ee5ba25e463476b121271a6b52109a3968b903c91c8a87c1a86b7f80f74"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2-u.js",
+      "sha256": "7b476730c33cc29bde3ccb9dedc501b48a6874942bde646820e9a798226717f2"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3.js",
+      "sha256": "0305223fc5c7d697d56d8659fa0743f05c8af7c439e144af3c1c0c951278d18d"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3-u.js",
+      "sha256": "b4a9bfd430aade5f75bedea31be1dfdf985578908117c70b464f8d79638c3108"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js",
+      "sha256": "3ade2b599cb603dd6dab6d1fa3fd95336ab7e5b9e10d4a642f94c6c6cf3096cc"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-5.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-5.js",
+      "sha256": "7ecdf4122b40f0e7b76cb31a7c023703abf31357f84644479b6be12b4f563a82"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-6.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-6.js",
+      "sha256": "571bc7d4434988c26cc195490234ff030c134fa36fc7de2a408eedf1d7ab01b0"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-u.js",
+      "sha256": "a4cac0800e58128fe2ae52db343ce36d18d746c6f010d1cce48f898a596e0df1"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-2-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-2-u.js",
+      "sha256": "314431cbec3e67f9ad503bedf473d016723a4575b317603655cb77359ce9fa16"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-3-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-3-u.js",
+      "sha256": "f49e55dd211eeab5639c6087a67ab4f0eca9328c014cc02a92db5f82cc2407df"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier.js",
+      "sha256": "09a6b29585d35195142a82ffce9c1a52dd467b6575688f9037756af90fb5d0f1"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4.js",
+      "sha256": "3861e7a93c4a9476c02103dde1b47265c60cb5a95162ea2e2525539f36ff9558"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4-u.js",
+      "sha256": "79792a48679853f34595769cd120a764983a9400e9012a152f6fb305892cbcce"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier.js",
+      "sha256": "c3b16656d907ac5f3860e135ca732a00f067622e0f34a034f778302ee35f7682"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-u.js",
+      "sha256": "2f26c67478a03bfe1ab4a34069854922058d113e587d23cf16bd39b118227bb2"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2.js",
+      "sha256": "45d95c355e55bd6ff8e75e3a53b47e1c1f17cdfcd2489d1befd5e9a191cf6fe0"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2-u.js",
+      "sha256": "85e90500309e1b9d7310e0ebcf1a339c9c375539cafb57b7019f844545c64929"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js",
+      "sha256": "7933a79f9e4e3147731e9cd4d59ae947085d4988c7ff8dc6125621d700cbb5af"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4.js",
+      "sha256": "66f61c92a8095b8a95c296459ba6c70c142bcf911f5a718f83d7f8a391f0bbc1"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4-u.js",
+      "sha256": "3dc86a1a6ce051d6578aeedcdc65a6db451588e3dac8003b1593d22ba5b85d3b"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5.js",
+      "sha256": "5c59c2ead4475f126478a9043307f2b18760aeb05774d75d1870a91a2256f7b7"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5-u.js",
+      "sha256": "ca749b1518bed0412594df1b9f6d34ea6f7edcd1c4167af07148ff6f4494bb76"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js",
+      "sha256": "37f4b5e30f3daf7d546ceb62b0ffbf3b90a1ec63d963261a3209a81382e97877"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-7.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-7.js",
+      "sha256": "d4413e15faf1799321e7a8af36cf76f98025d26ecf141310922f2d67ef18a297"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8.js",
+      "sha256": "450a366ea87608322078ec317a6c6a1be8b9491cbd5efe56aa0276d2b1032fa9"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8-u.js",
+      "sha256": "35c00923daa50dbcdedc346bd9b96bc537fcf0a0afcdf0aa981c0ee2e38c3d65"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-9-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-9-u.js",
+      "sha256": "d02e3529bd7fcead18f2165db41d15df8853446acb451562628804118b58260e"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier.js",
+      "sha256": "5545a2d3a4f8f7b097238843dd6884148f4223483dae8350ee781c942eedd409"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier-u.js",
+      "sha256": "c98d2152e3d9319ca0bac0093059f5eeae7f071d69f50140b212385b20bfd801"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier.js",
+      "sha256": "e8570e2cc42d7a3b9dc45613b2fa571b40a7c04cc0c3bb7f83d228bac7b6514c"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier-u.js",
+      "sha256": "dc58f9b39c33dadc771978418748c71c71b2862fb1a4176e1b0bab68d2b42513"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier.js",
+      "sha256": "981c957f7fbec018e4cc1536fbc81a65d5fef3d3f9b79c8869aef692fa550083"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier-u.js",
+      "sha256": "78dd6b0c60b5069ca68252f0ff5db0074a065bdb43f6bc9f4d2b7b248fb5bfe1"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier.js",
+      "sha256": "c816f9bd1c58897a6154d7c6cbc74301f92751f20e0ddea432532bd9821c9978"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier-u.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier-u.js",
+      "sha256": "0ec4cdfc74229ad8dbe83e8df72c57030cda4dcb0542c5be135439d971acbb5c"
+    },
+    {
+      "path": "upstream/test/language/literals/regexp/named-groups/forward-reference.js",
+      "upstream_path": "test/language/literals/regexp/named-groups/forward-reference.js",
+      "sha256": "c360c48d481892158f920b1afc6032549d123b3bbfe0a711e1c9ad389fcc4bd2"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Block-implicit.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Block-implicit.js",
+      "sha256": "c1d7330332acf52292f9560d7c402d86e8b02032ada51cedf57507c4bf15476a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js",
+      "sha256": "2c69a3a262a34c1dbab89fd26aa8e1108a46702adc0e96048c918ccb731e7c28"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script-implicit.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script-implicit.js",
+      "sha256": "c1d7330332acf52292f9560d7c402d86e8b02032ada51cedf57507c4bf15476a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-Is-prefix-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-Is-prefix-Script.js",
+      "sha256": "5d36534be35443d6d4b26250bcd215a64193f8f7503131074ed1356bd1d5b570"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation.js",
+      "sha256": "07776191492f64a0bde5d34e85224db52d3edb2c18e02119df91ec1bf721d3fb"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation-negated.js",
+      "sha256": "ff000a27eb98e7862d412735f8cf4d464ffd248a885a46e8c220f98e67e398aa"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-empty.js",
+      "sha256": "38d60b16aaa991c97242fa67e08bd211ba151ac29c6d299e07038c775b9a151c"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-empty-negated.js",
+      "sha256": "9211bed1ce775b59eb6adedd888a67cb302743d7824a2e8d7e1a26fbf629d9ca"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-invalid.js",
+      "sha256": "60da291a1189e5df21537d93634c0a1f367844ac343aea7430eb3f9084565c0a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-invalid-negated.js",
+      "sha256": "1f72890132fef2ea47871c593cb9f43b9fe8803bb174917777b9b1eaf0922550"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-no-braces.js",
+      "sha256": "4a5876ff0d9927e6f9d6d2cde4a90f9fae6e8e0a67064edf42087afaecbb2857"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-negated.js",
+      "sha256": "258cbfcc9a6dc3ffbff9aa551c69b071665d0842f0185fcbb0704ea8c9ff8a98"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js",
+      "sha256": "bc7aded897988a7362b316b708480cece750c59a8759828c688aaed19434f92d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value-negated.js",
+      "sha256": "21823c61b293c82a388bbd5cd7940b8c42eef0419523ebbf191efa19bc36a39c"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator.js",
+      "sha256": "30d10eec32838c83ec58494549bbb902db2f6fc644bccbd12d7ea403b65b3200"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator-negated.js",
+      "sha256": "da68dbf828c80c9638e3fb4cf02561c9c054f197ec1bf3412ebb05d267d48b3d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only.js",
+      "sha256": "8cd72daa11b82dcbc0582820881c8e3d043f13f291574f162b2d734b1a2bfa20"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only-negated.js",
+      "sha256": "6152da95a620953867344ed2f9640f920836b71f5a9b225e8beba7c7342b243a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator-only.js",
+      "sha256": "33c697bb6e7823adbd8678674e1b59ee0be197e7b7b1314488f4b61021b1f103"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-separator-only-negated.js",
+      "sha256": "115150861427d74367018462719f146520c693dacae60372981733cb15557087"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-unclosed.js",
+      "sha256": "b483cd773dd5ba37df18550d2e739b4eafdc3df1ea8cad8f76813e65e67ebdec"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-unclosed-negated.js",
+      "sha256": "377ca195784743e0ef2a811cf1e85509b87ceb3efcbd97db8c58a9edfac37a0e"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-unopened.js",
+      "sha256": "336af71c992144647dcd03c188b552baaec59c545e9451280734b787d4378aaa"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/grammar-extension-unopened-negated.js",
+      "sha256": "8cc7ed6c59cd54a36cb8e752b9d3bb58b38216330e65ba2251fda60e7de652a2"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-01.js",
+      "sha256": "28031b4a3b4319409c672740e6def8a609b48d103ce2fcfb3ee2b3875d023495"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-01-negated.js",
+      "sha256": "ea9ed69c95e985489d27f8ed50648b29458c10adc621667ac81d0350c8e59830"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-02.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-02.js",
+      "sha256": "e1a26697bbef1083ffd332abfa170534698dcb4cc4c796c34c5979ab3c260bfb"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-03.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-03.js",
+      "sha256": "06655209d11a2d4eb8476977cbe94f025613540a9ed04765f4c3a9f77286b947"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-04.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-04.js",
+      "sha256": "18e95762241f7b43b05810b1d308c233a6874fdd942487b40e6db9ed03ba5185"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-05.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-05.js",
+      "sha256": "42e1c57911a54c623a5b84a075bf3e20a33301a21a64ced816167a05cb53dbbd"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-06.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-06.js",
+      "sha256": "069168a6d69e5310007a3e352cec266dafb7c8b3b9d7360e8100d3bfd4fdc3f8"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-07.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-07.js",
+      "sha256": "e5924640cc9155f6356db1c6ab1f784efff151540372dfc91727ea6ec38328ed"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-08.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-08.js",
+      "sha256": "5f50703bdcfa4e02a6f253a4d42baaca4a2649337b5dbe8ae643b00659363a7d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-09.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-09.js",
+      "sha256": "60dae070a03a4ac70cb2d2236a5e7811c58ce5253386c500521009e0f430da1b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-10.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-10.js",
+      "sha256": "ce064b65339f5c118038235eeed79f298086dfce25fed0287791303f3582621d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-11.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-11.js",
+      "sha256": "a077df09f46f91bfc263df1618aeb53c072e477ed9d122c1b97bb9129a95699c"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-12.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-12.js",
+      "sha256": "62940707dbb184fc881622a00955d8b67cdc259c6e28aecf9870d61f106af73e"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-13.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-13.js",
+      "sha256": "ecfc44397a2c465698ea7b85388a196f8c3da2136bec5d75a7323ae28e4a5d0d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/loose-matching-14.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/loose-matching-14.js",
+      "sha256": "ecfc44397a2c465698ea7b85388a196f8c3da2136bec5d75a7323ae28e4a5d0d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category.js",
+      "sha256": "fddc5fc69dcb58a64ec12d1eab3adb5218cbe4841054577ccc5e6b53d8778609"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals.js",
+      "sha256": "611e00ab6c685c51d9b4d87fc17219785660171d4ddfd68ba5c7d008af331542"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals-negated.js",
+      "sha256": "91197cf72e3f8fb42d57ba6e31422cdb7beff8f37674807a0748ac8d9ba4613e"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-negated.js",
+      "sha256": "84808f31f24718580bb737e0d4ede6a7b8d44223d4da9a134eaf54e212ff00f6"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js",
+      "sha256": "a356fa585a30e284c8618e2429a5d3d443fffa49055d04f572b4ea63855ae0a9"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script-equals.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script-equals.js",
+      "sha256": "c5ad41b60d0874691630ee3b6989eafb51ce57166fe83913b164ff051281599b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions.js",
+      "sha256": "f780bcf296d1fb2960e00c1297f3ed72e6541148700ed778e205ef99a11e1cc0"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions-equals.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions-equals.js",
+      "sha256": "f2315974478866fa6986db4c9b50531119d20d85387aca3d117e4434fc635f77"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-binary-property.js",
+      "sha256": "8c145ece3c758a15cf9a4c4a7ec4a247832c553bbca278de49d79a63dc1d9509"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-binary-property-negated.js",
+      "sha256": "e89c819adfdf51ceb6e2b2db13b20cebcbd2b69fecfece967d489a4371878d9b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-and-value.js",
+      "sha256": "a4c9ef2d24bd08c88ff41b10df186bf9a9e63e7ce491a7cf6518a17d1a187494"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-and-value-negated.js",
+      "sha256": "22ec0d1be2272bb6a35b6cd237fd7f6c427e64d9741b2a4be78c2a61b6cd9af7"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-existing-value.js",
+      "sha256": "b4a891beaf737d893ca18c8398e7d42a491b7dcafbc023a4baed4c2571274e2a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-existing-value-negated.js",
+      "sha256": "431788de37e8728a4d3f8790208ecd78bf71c50b3f35deb8c59e7c9b874c3eb6"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-General_Category-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-General_Category-negated.js",
+      "sha256": "60322fde5e6a2b9e597c954d23f98e2e9b87177dddf741893569b8313b61515b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-Script.js",
+      "sha256": "ad809bce086545fbdb20ef9d97b14af353e89928f1a01e1f3ac9ce8a8bbe10d3"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-Script-negated.js",
+      "sha256": "cef9ee5625f70b7e907c1aa72e9dba38e7e282f23c5ee70ff8e31716eae86690"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions.js",
+      "sha256": "2e4327d97d58f342d3965468498681b66d4167cdbb7e35d8832e98fbbe07fb5c"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions-negated.js",
+      "sha256": "8bdb67dee6acf7c3bab2ab8657f198bb0c0c17356d725e6e0cf4760e9a58f35b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js",
+      "sha256": "b11b14c7867bb6438040d3c1423327bd225388821b8e0192789a5378bd7d3e49"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/character-class-range-end.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/character-class-range-end.js",
+      "sha256": "f8a4c77e4e738fdfe912a9ec0061aafe1199b8562f5e4524e63daeab4fccd029"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-end.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/character-class-range-no-dash-end.js",
+      "sha256": "6517daea44635d52c7f91ad0593f257482f4613057799705187f84345dd62562"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js",
+      "sha256": "3b7835d9be130811811c3e5269b47f91601ca8ce8295ef923693e4835742dd0d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/character-class-range-start.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/character-class-range-start.js",
+      "sha256": "1dd2fce44d8208288aaba6a7edbc03d08aeb3c796258a3c01b34e1113ee75dc8"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value.js",
+      "sha256": "ce342a96489cd1535f23016083921926fa7fb8e4ab641bcefbb58adeddbd378f"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value-negated.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value-negated.js",
+      "sha256": "8570a2489ad70ae741ae769c900bf4ed18dc622cf513fe0c59233af5e8fc2f66"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-FC_NFKC_Closure.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-property-FC_NFKC_Closure.js",
+      "sha256": "746969373511b2841d175d6b29636c456b765e8ef2af3d79a9c039e530fd6621"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break.js",
+      "sha256": "70c2617ff813985f01ac080a5fa8a5844bb3ec18000eb77b7734c7b641638542"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break-with-value.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break-with-value.js",
+      "sha256": "a0a95b5049b59864cf878f61376b823e40035a020c00ce655f39fa35d48dd2cb"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Composition_Exclusion.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Composition_Exclusion.js",
+      "sha256": "ec42b977fcd7ae93b2a5dc8a647774a15c33dca6175ed1b6a1d6deb805f19694"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js",
+      "sha256": "8afe3f2069489b50e5d533e7a098ae438a846640ea2e9a13005dd75a751eaebc"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Grapheme_Link.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Grapheme_Link.js",
+      "sha256": "663a4dd21f90b16a399aa3db536ae802b1f3dda514b48e03a5e1c0f38598013a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Alphabetic.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Alphabetic.js",
+      "sha256": "cbae1aff0fe8767c64bc2e1dd58caba0da11fda3ad8d8a07b7549c9fece55204"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Prepended_Concatenation_Mark.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Prepended_Concatenation_Mark.js",
+      "sha256": "7164b38486fba15ccbe6b575ca3b698f5f42037d2bd48ad9a7c84951d3449217"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFC.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFC.js",
+      "sha256": "7e22b355350f2cf5e8c983499e583b78e1f47e768a34ca50a6f7cae7334546ce"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-FC_NFKC_Closure.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-FC_NFKC_Closure.js",
+      "sha256": "163b0ccc3aaf991848008e2ba1b3ad34db93dcfa2949d3d9b93c17d659f41492"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Full_Composition_Exclusion.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Full_Composition_Exclusion.js",
+      "sha256": "af5dbd3137bd295e2e95c06e4a828345677ad6b103a43b4baed2362b85fde2eb"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Start.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Start.js",
+      "sha256": "b67a11bbf5194daa53cfec0dc5b1171d0454aa0aff1ab1a08aa10ed0a5fdbc13"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Math.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Math.js",
+      "sha256": "db252a87e1d0c03e3917108584bedbad0502b90333c889502ff56120bc20c5c1"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Uppercase.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Uppercase.js",
+      "sha256": "d0d3e990f8ccd272135f9da10030c93e99129d8280d056a814f325dad97ac25d"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Lowercase.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Lowercase.js",
+      "sha256": "1509c7bc028330ad1137f1e0c2f7f7553a7a62e2c1edce514678c95a851eaa6b"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Grapheme_Extend.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Grapheme_Extend.js",
+      "sha256": "b7181c0567cd110dc345b0c34e3f2b545059e7d8ee51a9572f36b4b0cf5b5141"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Default_Ignorable_Code_Point.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Default_Ignorable_Code_Point.js",
+      "sha256": "ef03c8499467dfbb80fa7e402b1f592eaed5a26cb00bb196b156a668308f7ada"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js",
+      "sha256": "65a82bca70f958801ffa884f26feb7c43f4b9faa21c41840a5793a29ff7b24b4"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js",
+      "sha256": "913dfd3392a3e789f3971a15d09f2b52411e18dbb38a31ce154eaf24eac802f6"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js",
+      "sha256": "0c99176b58441318a3994b802f713180b02ee2e02589980d070e9b232a7d7f2a"
+    },
+    {
+      "path": "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
+      "upstream_path": "test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
+      "sha256": "7277e14847d7317fb1a106adbd2a1abd83dd9473d04ea62fd13e3927cc2c7d87"
+    },
+    {
+      "path": "upstream/harness/tcoHelper.js",
+      "upstream_path": "harness/tcoHelper.js",
+      "sha256": "a533b07378e41044c98199e250e1c78a28610a783ad0814cb467e9ea2f5de8fa"
+    },
+    {
+      "path": "upstream/harness/compareArray.js",
+      "upstream_path": "harness/compareArray.js",
+      "sha256": "3330423fe116cd96db70077d194471319ae9767ba1c8e2f73d7c133c5204509d"
+    },
+    {
+      "path": "upstream/test/language/module-code/export-star-as-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/export-star-as-dflt_FIXTURE.js",
+      "sha256": "630349bb17477e095abdc188b14a85a02bc228caa11f3a257f7f052148dff40c"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+      "sha256": "82f2c9993a54e9146b81d59b46a1c9e44fe0d783477229546815e63c6e3e06cd"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+      "sha256": "8ccc6f24d7dc34ff10fc2b1faab3615fb8b1942ccdda29671b4968223a7d09d4"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+      "sha256": "6a03aa54b062423aa34603115850dca21fa74544eaebe90c7f0c8bb4709551b2"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+      "sha256": "0dedef607742bf6eab5f5f24a487a8f0f23a972114194862340c41ff5f7e4192"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A3.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A3.js",
+      "sha256": "7933b62fe63ce21bf7375d20f863ce245ff71d551d28738aa11c9a3fb86642b4"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+      "sha256": "f22f2eefb11117a96baa43cc72b5b975ed891b487bbcd6d51180d158a05a6c88"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+      "sha256": "be45fdba1ab1364e5d9bc86dac1fb64170f7ab7c069e7bff1ffe27557a2ceff9"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+      "sha256": "23a4b3a7bebcf7cfa89ae09c95d20edd4e3b76bea1e7e92ddceee2ac3bb982e1"
+    },
+    {
+      "path": "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+      "upstream_path": "test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+      "sha256": "4cd485a2a37a4c1cf20fd0ff69d9da647c9ef0cab9d5e29fe1a5786571ad05b9"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T1.js",
+      "sha256": "f2e41a32eb72b90d8c45b848ea9a97e0a4942b039d9f19d1e82ee006af309eb7"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T3.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T3.js",
+      "sha256": "83be074016845171f7b6b168657fbd2928b9cf41992df5f3f842d42211ffb963"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A4_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A4_T1.js",
+      "sha256": "0bd5c02dec302cc551ede955b52293d3aa78871cc6c32c407c5defcb5346abc5"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A2_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A2_T1.js",
+      "sha256": "587d6e776266d8f51f77c747ea81951b29417c24495dbf8125af01787b79f5de"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A3_T1.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A3_T1.js",
+      "sha256": "c34de5c81e7f758720f8cc9553d2c2c9067243c3830482c6f7582712ab4f191a"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A3_T2.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A3_T2.js",
+      "sha256": "b3c13d4d1e6f3a52aa2d71574639e07977ce270068404b4e34b0ecd05a400c43"
+    },
+    {
+      "path": "upstream/test/language/statements/switch/S12.11_A1_T2.js",
+      "upstream_path": "test/language/statements/switch/S12.11_A1_T2.js",
+      "sha256": "d53b52dddfd8e4cc91e75f08e3c4be5c94ddf16ebab6b8773b1688053d35a29a"
+    },
+    {
+      "path": "upstream/test/language/module-code/eval-this.js",
+      "upstream_path": "test/language/module-code/eval-this.js",
+      "sha256": "044874d01e501861c9c1d451ddd67e1c224a768045be75c5c49e0eb182d998c2"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-bndng-const.js",
+      "upstream_path": "test/language/module-code/instn-iee-bndng-const.js",
+      "sha256": "161efc81e1d3344fc905d4c813c1166877897fd9bc80ee47da16f6d42be4749e"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-bndng-const_FIXTURE.js",
+      "sha256": "dfb36bd8ef0a744c256685d61645fd3686999c414791ddb74b860e591bea5987"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star.js",
+      "sha256": "c0d32ab7ca2682ce77e5cfefd9a72fcd371fc70c5a0ee553a9b710e5964b2f70"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star-int_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star-int_FIXTURE.js",
+      "sha256": "52f6800be916aba38d70ec388015cb91686900ef40525123ce9bb368d31bd2a9"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-dflt-thru-star-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-dflt-thru-star-dflt_FIXTURE.js",
+      "sha256": "2c51cc1863b9a1c6b1043a6a46258752acf39fc2640733ce8d47895be318a986"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-not-found.js",
+      "sha256": "5865740fe209c1c54a57c4d4f2afc4ef62021736ae05f87818b108b31892c733"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found.js",
+      "sha256": "76526a3cfcbcaa2bd29fc6dade11d7ff9f0cc6d77f95695a31ec024786a9fab4"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found-faulty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found-faulty_FIXTURE.js",
+      "sha256": "9744f0bb7d671516434dd11cb579826d2acf5d5c0f4502fa0440a67023d700dd"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-star-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-star-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-not-found.js",
+      "upstream_path": "test/language/module-code/instn-named-err-not-found.js",
+      "sha256": "b4bc3230fa4c5057b10ed26d1e373c41779bdafbcffd02e891e02671ee680e72"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-not-found-empty_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-not-found-empty_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+      "sha256": "8969afda03d04ba65fb428016f4cfd070882b915bf5508b338d5950ca9a0cb07"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-int_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-int_FIXTURE.js",
+      "sha256": "2e50d471452af4e2edbdf2b8c5423677c1400cb6386d48dec493792ac7718131"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-named-err-dflt-thru-star-dflt_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-named-err-dflt-thru-star-dflt_FIXTURE.js",
+      "sha256": "2c51cc1863b9a1c6b1043a6a46258752acf39fc2640733ce8d47895be318a986"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-circular.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-circular.js",
+      "sha256": "484faea3f4bd09e44ee0a1ad8457ddb2ffa441d774c53ba883bff00cabbabb97"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-iee-err-circular_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-iee-err-circular_FIXTURE.js",
+      "sha256": "f77197d7a2012a88fab84846ee900b2340ee38228785b21d9fb72ecf32c79d45"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-1.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-1.js",
+      "sha256": "f3140ef3b4dd185b9d034e0d525a9fd34bedbeba3b1f52182fa4c5d9eed54075"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-1_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-1_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-2.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-2.js",
+      "sha256": "7bd714bc6bf20123d96b37b4375977431c5576634ce07f6d9643a019352e1167"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-err-syntax-2_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-err-syntax-2_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth.js",
+      "sha256": "d6c9cdc83fddc62086874da0090135cf163f162a5166e6269db2f9b87dc2b7ee"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-child_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-child_FIXTURE.js",
+      "sha256": "1d1c46a6831ae315ac1099bd23525c7c9b476074a928ff8de374c56c85e6869e"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-reference_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-reference_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-depth-syntax_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-depth-syntax_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src.js",
+      "sha256": "608ccd08e98c2c60a4495bd8570cabdf793ccd0cea7c863ec449bf71b7499bbc"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-valid_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-valid_FIXTURE.js",
+      "sha256": "2d326e77199c7b7def6df453731bddee1732fba0635344e7e47d161d7aa17dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-reference_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-reference_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-order-src-syntax_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-order-src-syntax_FIXTURE.js",
+      "sha256": "622c5b04e3d615cf970fd2b96548a9a1ee75aad879d3933cf13a43be3137ca25"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-export.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-export.js",
+      "sha256": "bf31ec4c14ee0db34f218b4ab77af2efcbb96997a432b89fa6a5bdc8fdc31b6a"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-export_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-export_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-import.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-import.js",
+      "sha256": "88161e79a99ef0372dddb122e6dc2e545961bf0d4775f53ba48531b3fcc3fadb"
+    },
+    {
+      "path": "upstream/test/language/module-code/instn-resolve-empty-import_FIXTURE.js",
+      "upstream_path": "test/language/module-code/instn-resolve-empty-import_FIXTURE.js",
+      "sha256": "d019396c51ec65b57af8edc64bcc7b969df709c1f0a11a6b5220bc5f09545e80"
+    },
+    {
+      "path": "upstream/test/language/module-code/early-export-unresolvable.js",
+      "upstream_path": "test/language/module-code/early-export-unresolvable.js",
+      "sha256": "b1fd3fd7568179bb4dff65c65bab75feaac235b933ee0c048062c3091ca7df25"
+    },
+    {
+      "path": "upstream/test/language/module-code/early-export-global.js",
+      "upstream_path": "test/language/module-code/early-export-global.js",
+      "sha256": "93d50d0d347b0dc2c2e25a7d57a093b166b358f83da7afb36091cea3b73242c4"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+      "sha256": "4a5856a5a51db64a8894b0002eb953c055cfca5aa3dfc5a7d5e8e11a0eece314"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-param.js",
+      "sha256": "c44a1d8839662c4263c7ffd4cbf2508b532762e78ca0b75af4ae90ab559ad074"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+      "sha256": "4166b2031160e974e6cfd63147cb64cbad73ff4a1b00833e1de3e52cd7e7d291"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+      "sha256": "35422a157d736bcb7fcd04fb79da9d50bc2863081ec73cdb84f73f4f8c56eeb1"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-update.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-update.js",
+      "sha256": "8a690572e19921004cba1372c40e1131f7849c9a570fefba1262d2415829c82f"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+      "sha256": "83c12b9e0966e1ee76e0d51c8c1b9a6861881807a579c769629ce672d2e0c729"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/switch-case-func-init.js",
+      "upstream_path": "test/annexB/language/function-code/switch-case-func-init.js",
+      "sha256": "71ddefa847fa59b5e9b98d1ea5c7e6ec2c94b4f080741fc4cc2165519ae718cf"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-block-scoping.js",
+      "sha256": "19d7713b693780189c70c14df23117cf9d13416e45cc42209d80626e4ddfa6ed"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+      "sha256": "6a23262d38ff6daacc42e13d7b14d44a9e58dba8239bffd6b42151268dbcdb56"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+      "sha256": "63a36ccb4170886e4d03fce8af7d4fe132d74ffd5709393ece80b69b98c75af9"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+      "upstream_path": "test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+      "sha256": "161b1e86998c06a8fb6cff6e5872027d81b52045863c4d40186a6f5ccad6be21"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/function-redeclaration-block.js",
+      "upstream_path": "test/annexB/language/function-code/function-redeclaration-block.js",
+      "sha256": "8d4a3f259dabceeee101959aac117a19f5bfe9e374e1178b45f45a1142195d9e"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/function-redeclaration-switch.js",
+      "upstream_path": "test/annexB/language/function-code/function-redeclaration-switch.js",
+      "sha256": "780859b6d92926f14a7aff5df1baadc06cf5fd535929a0de88bc1a4d2bad4d24"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+      "upstream_path": "test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+      "sha256": "ed6c489d73feab4475761b0c7be336b15bed1be1a489b657d3676b7750914a53"
+    },
+    {
+      "path": "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+      "upstream_path": "test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+      "sha256": "7f839488e478a2435602e31c622cdc85170bf8d617ddb150b1d67aaa4dfd77ce"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-open.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-open.js",
+      "sha256": "f98a148529a7526df321e117713d05d9e3ccaa31274f5d422b8019e834af2477"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close.js",
+      "sha256": "08c1ac363be762e6f52fb7fb16cddb89a386f2ea437579bf8aa259b7c9b5121c"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+      "sha256": "58286011a02d66ee70dbebaef25e1744e9938b7618a3204e49d5ed280a7bef01"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/multi-line-html-close.js",
+      "upstream_path": "test/annexB/language/comments/multi-line-html-close.js",
+      "sha256": "d07c9b1501f3dcbf1257172c7741760a4db90d54446361b7dbe4329a2522fa30"
+    },
+    {
+      "path": "upstream/test/annexB/language/comments/single-line-html-close-asi.js",
+      "upstream_path": "test/annexB/language/comments/single-line-html-close-asi.js",
+      "sha256": "c625d6507352b7bd469b7ba3f3b20d775a02b13eca4db5e2ca6f9b1356df33ca"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-lhs-async-invalid.js",
+      "upstream_path": "test/language/statements/for-of/head-lhs-async-invalid.js",
+      "sha256": "396db167822bcc739e13284d6843e48f6b58b4de31f4eb6df04995fb647d7ab0"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-lhs-let.js",
+      "upstream_path": "test/language/statements/for-of/head-lhs-let.js",
+      "sha256": "d8bd1092c94bd1feada388d3495210b6f38746ad36de6852d124298f7f2224ff"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-expr-no-expr.js",
+      "upstream_path": "test/language/statements/for-of/head-expr-no-expr.js",
+      "sha256": "4bc67b737e5402ed9050fcd0266f2630fc5de8250ef3b790395c22b8a3732121"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-expr.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-expr.js",
+      "sha256": "6aa92894955c9090fa6dea98385ab45e56c6d0506f893efe3fb723478935be98"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-let.js",
+      "sha256": "4d0a0b60b5d3efbea344ecbfe872d7e42b7260557b1b14398c362cc0394a674b"
+    },
+    {
+      "path": "upstream/test/language/statements/for/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for/labelled-fn-stmt-var.js",
+      "sha256": "9a46508c14022c8d1db0d65a814cffcc5e138761db71de94bda6d9511a319e79"
+    },
+    {
+      "path": "upstream/test/language/statements/do-while/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/do-while/labelled-fn-stmt.js",
+      "sha256": "9c6f8c1f9fef86889da1daf4493ede93364909dab441490f710a71d7047a735b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-let.js",
+      "sha256": "3997c380a431d706904d619f84a2d4572943a3c5dd9a810d2d1e77c461375e03"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-var.js",
+      "sha256": "fc5fbcdd6ae0c41a3f5af5dedbf10295983b5c16619eeb72b9792102f2bc941d"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+      "upstream_path": "test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+      "sha256": "a3fc06b8d18737d7f84925224333354bcf79b8e9b7cdd7181503fc55a020125f"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-let.js",
+      "sha256": "152a3131e59a7c77e2a186a885adc4c638eb395f2f2344887c5721bd2198f8cc"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-var.js",
+      "sha256": "822425bc9a6e1279d261d9e4e159a9394f2cfe446577ec06d51402adc9f6d666"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+      "upstream_path": "test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+      "sha256": "3e249e18a17238780dfee1b0fb07b3ae70b3b893ba501e71758b9718a50e040b"
+    },
+    {
+      "path": "upstream/test/language/statements/with/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/with/labelled-fn-stmt.js",
+      "sha256": "25c595cc8af2510112fc0095be1c66288bf39495e8588efe9fe7cd7872d1f0ff"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-first.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-first.js",
+      "sha256": "dc9c0f59237114d8879a348d07d7fbd48d24dc669bf4931a4ef6d4337b4548b8"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-lone.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-lone.js",
+      "sha256": "1f0e5dd126003f5011f45cfa401d1d7f382718f6a6f9b1376a2b1cd09a505368"
+    },
+    {
+      "path": "upstream/test/language/statements/if/labelled-fn-stmt-second.js",
+      "upstream_path": "test/language/statements/if/labelled-fn-stmt-second.js",
+      "sha256": "563a7ddd03c5cebc8cd17f41deb61243161d241900ea877c788829fe989270df"
+    },
+    {
+      "path": "upstream/test/language/statements/while/labelled-fn-stmt.js",
+      "upstream_path": "test/language/statements/while/labelled-fn-stmt.js",
+      "sha256": "2a823de5f945aad5324d7c70988a73b40fdd88ffb75c1de911063948e8260016"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-yield-non-strict.js",
+      "upstream_path": "test/language/statements/labeled/value-yield-non-strict.js",
+      "sha256": "be8ae0d296fd6d1c2f359e238c256bcefc89f05067d187ac7975f914ad16105c"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-await-non-module.js",
+      "upstream_path": "test/language/statements/labeled/value-await-non-module.js",
+      "sha256": "606f6d76ab554e6b6db1c9a02f60ae177e2ff24e4a65ca28d320087d7a9befa2"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-yield-strict.js",
+      "upstream_path": "test/language/statements/labeled/value-yield-strict.js",
+      "sha256": "658f508b07a24bc1f7833736713878452041f2c5316fbe29a42747bb3af2e363"
+    },
+    {
+      "path": "upstream/test/language/statements/labeled/value-await-module.js",
+      "upstream_path": "test/language/statements/labeled/value-await-module.js",
+      "sha256": "39de9daf4b36b4f9644b1b92a5203d306d8ad0c9f70d82f6467713d9149c02d9"
+    },
+    {
+      "path": "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+      "upstream_path": "test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+      "sha256": "051f5d9f59ab3df1ea71fa81f09e921c73f3c6d7f488a947a0748214bf8958c6"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/head-let-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-in/head-let-bound-names-let.js",
+      "sha256": "0204e38540ba7b4dd90d90c33a023ca03ae96f289c3f3533b9893ff76cecbc9b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-let-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-of/head-let-bound-names-let.js",
+      "sha256": "b4c8585a036f845e79916b2ec271f41dfae42d4cb35f18581a7acdbed3a5a4aa"
+    },
+    {
+      "path": "upstream/test/language/statements/for-of/head-const-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-of/head-const-bound-names-let.js",
+      "sha256": "ff79389657b7e8835afbcd423dc22fb3b648501834ad3fca2f8a4c4d90ef7a8b"
+    },
+    {
+      "path": "upstream/test/language/statements/for-in/head-const-bound-names-let.js",
+      "upstream_path": "test/language/statements/for-in/head-const-bound-names-let.js",
+      "sha256": "6f0fd856aa4d6d8a0144692162ef2b29f0491c7a8cf42e5e4a8a34721e55b29f"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-identifier-non-strict.js",
+      "upstream_path": "test/language/statements/generators/yield-identifier-non-strict.js",
+      "sha256": "d2d09c86898aa4a7e2c9274f90d708789c7e79e3e7110976b8672175ea4a19f2"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-identifier-strict.js",
+      "upstream_path": "test/language/statements/generators/yield-identifier-strict.js",
+      "sha256": "3fed7a8d83f6dc113dd7072c15a0527cd938b7d5761243a5ae24fd991bb0a8c2"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+      "upstream_path": "test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+      "sha256": "0f88fe4005d50e13a6b091682341c546982db7a42f75274c08d7cd3129677595"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+      "sha256": "847f6c81f964ef912e5ff771b9be6c80d5fab70cb26d1f341adcd372fce81ebe"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-binding-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-binding-identifier.js",
+      "sha256": "69479d42525a0b843eefc070b33212636b3fae004438fd6ad816efdd20adcd4f"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-identifier-reference.js",
+      "upstream_path": "test/language/statements/generators/yield-as-identifier-reference.js",
+      "sha256": "0e2385276ff58a6d9e624395c42ec3548f2ed0d6832502025cde575ffab660ff"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-label-identifier.js",
+      "upstream_path": "test/language/statements/generators/yield-as-label-identifier.js",
+      "sha256": "739ccb8d5ef5df3ffa658f3f0c19422fba9ce1258583a5aeee9eaa4d75c50215"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-parameter.js",
+      "upstream_path": "test/language/statements/generators/yield-as-parameter.js",
+      "sha256": "53fbfa129640971308fd19572c6d77746ad6a2ba8b7b049bb0df22e9f5ff2729"
+    },
+    {
+      "path": "upstream/test/language/statements/generators/yield-as-logical-or-expression.js",
+      "upstream_path": "test/language/statements/generators/yield-as-logical-or-expression.js",
+      "sha256": "e1b9b94b368a424547d82e5678d3f476582f5654f7ef0689a599bcec5ace8d4a"
+    },
+    {
+      "path": "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+      "upstream_path": "test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+      "sha256": "fa865441ce71ec59319db2f32c62ca905e2d9e60568727fa739285c81f4f4cd5"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-duplicate.js",
+      "upstream_path": "test/language/expressions/object/__proto__-duplicate.js",
+      "sha256": "a8b222172ed348f9c984d97c43f3d8ccb03ed310641d380856bc02132490c7ae"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-duplicate-computed.js",
+      "upstream_path": "test/language/expressions/object/__proto__-duplicate-computed.js",
+      "sha256": "ba74409e0f165c14ffab43b84d7ab90b34676b79e9a3fcc9f1c8d00ab70d0ce8"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/__proto__-permitted-dup.js",
+      "upstream_path": "test/language/expressions/object/__proto__-permitted-dup.js",
+      "sha256": "22d27f287beaf1fa64a9700f591be84c6c3d0af1a200f2d948abc6c7b06c9d94"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/yield-non-strict-access.js",
+      "upstream_path": "test/language/expressions/object/yield-non-strict-access.js",
+      "sha256": "b3cd9a45bf610907cb8f1c8c2cd27882bc7dc3ac75e7084baf8f21ecfe335175"
+    },
+    {
+      "path": "upstream/test/language/expressions/object/yield-non-strict-syntax.js",
+      "upstream_path": "test/language/expressions/object/yield-non-strict-syntax.js",
+      "sha256": "e61e69829fd093d715141cc6b5da1d6a72794489adbd2b5101e32e4e42ed1ea1"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js",
+      "upstream_path": "test/language/expressions/await/await-BindingIdentifier-in-global.js",
+      "sha256": "72b401f72957c32f450c0f62e736ce06ed5295f36069815a4e1975eaaaff294b"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js",
+      "upstream_path": "test/language/expressions/await/await-BindingIdentifier-nested.js",
+      "sha256": "57ba2291d9cfb3c9abcc5c2f04754e586892665d3fa65462f6d3b676adb53902"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-nested-function.js",
+      "upstream_path": "test/language/expressions/await/await-in-nested-function.js",
+      "sha256": "d47da4de69ca362a341f60176be42d0f44eff79ba5994020d8b70552b0f34557"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-nested-generator.js",
+      "upstream_path": "test/language/expressions/await/await-in-nested-generator.js",
+      "sha256": "4a5cd53d8b6a8236e8515e9dcbd5942f60de911791190f5fe7aef423f1681aa4"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/await-in-global.js",
+      "upstream_path": "test/language/expressions/await/await-in-global.js",
+      "sha256": "2ca438078065facb2f597eea04c29d9176ad35a25688ef8f306ed4228440fc55"
+    },
+    {
+      "path": "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+      "upstream_path": "test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+      "sha256": "20c0d3affae170b9d284f51da598fc416d68d153c59765da050fdd02738e255a"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+      "sha256": "36ea6f2a5872cc00d9d6c44ab79d37bb615e1d1006d1af4f7de28d3a1df4bec6"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+      "sha256": "4d139c1371ad9c89bde5a6d2921ff42b800a33288e3fa2320013308477361b85"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-identifier-non-strict.js",
+      "upstream_path": "test/language/expressions/generators/yield-identifier-non-strict.js",
+      "sha256": "4ff41d80626699c2cb750b873ffdf28e7f979a692d9c2dbae2b5ac75860521dc"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-identifier-strict.js",
+      "upstream_path": "test/language/expressions/generators/yield-identifier-strict.js",
+      "sha256": "3fa730ad512ad2cceaac10434b5e0cfbc2e36f1e42ec05bcd63af0b19072dc44"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-binding-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-binding-identifier.js",
+      "sha256": "9238d104b788ed439e5e5f60105dca539cabfccee906eb98f3748837e73439e7"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-identifier-reference.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-identifier-reference.js",
+      "sha256": "89d2b0b3d902797ff787eb11e3a770daa950a40e0ed45744d9c4d2ffb89d95de"
+    },
+    {
+      "path": "upstream/test/language/expressions/generators/yield-as-label-identifier.js",
+      "upstream_path": "test/language/expressions/generators/yield-as-label-identifier.js",
+      "sha256": "17dcab0988bef2b9adb735c343b657ba8864d43a6e3552118d629d832cb48fa7"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+      "sha256": "9700d4c2915c2b755057c30848bf4e46465e52abb97604824a0de964e954b334"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+      "sha256": "f09310cd6c55f9ae129db1919cdd7c6042efafae149d9fec854abdc6ce31de6e"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+      "sha256": "070b729c46fef1eb2973a35363ef2bc33d088ec7fea2cb28c7bf0615ee06482e"
+    },
+    {
+      "path": "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+      "upstream_path": "test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+      "sha256": "2b9151cac9f2fa1d9eec531814b29ded598edf8eead085f0adbbb92480928730"
+    },
+    {
+      "path": "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+      "upstream_path": "test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+      "sha256": "3fbcf59dd3a3975804641ed37bd1d80e51043b8ff863b7a6c31c0ecc072dd0e4"
+    },
+    {
+      "path": "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+      "upstream_path": "test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+      "sha256": "bbba0a611851cd7b8bea56040752de40de13a7524637239427e7909518f13dea"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/legacy-octal-integer.js",
+      "upstream_path": "test/language/literals/numeric/legacy-octal-integer.js",
+      "sha256": "e1f20b170d9d1f49bd7498ab672c17b07a8417f317d8167d416edd5c5653f969"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js",
+      "upstream_path": "test/language/literals/numeric/legacy-octal-integer-strict.js",
+      "sha256": "1f4d61d873c444bcc1e459c733d5c3852d692eb27e8c9719254fea99785c1de1"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/non-octal-decimal-integer.js",
+      "upstream_path": "test/language/literals/numeric/non-octal-decimal-integer.js",
+      "sha256": "e02131b1c8af4d2159e28a0a76935ac34bdbcdd6ea7fa4f4eeff4402db15015f"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+      "upstream_path": "test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+      "sha256": "836487f2921c64de0cbfd5204b19be75e808c22d91b1a3ed31020e0f105f8026"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-octal-escape-sequence.js",
+      "upstream_path": "test/language/literals/string/legacy-octal-escape-sequence.js",
+      "sha256": "b958f764dc5de806c67cbde5ba23da31c410d1caa6f03e0158363d994d9d1384"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+      "upstream_path": "test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+      "sha256": "92f885dc7451767ad6aaed842442d0d8f08bff80976ef37847a509672077ec5a"
+    },
+    {
+      "path": "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+      "upstream_path": "test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+      "sha256": "fc5572b46973fcf3b8daa8e7aa4ad1aed8a277eaf8ba66fc196c96e1bd4e2cea"
+    },
+    {
+      "path": "upstream/test/language/literals/numeric/numeric-followed-by-ident.js",
+      "upstream_path": "test/language/literals/numeric/numeric-followed-by-ident.js",
+      "sha256": "9c15ea8dcad644ec09513a8b5217feecc4149ffb4861830458470bd2626b7dba"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-single-line-html-open.js",
+      "upstream_path": "test/language/module-code/comment-single-line-html-open.js",
+      "sha256": "789641728f7d8496801f145059d329c8b3c9cc1d2901ecbe893ff70e5e426d11"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-single-line-html-close.js",
+      "upstream_path": "test/language/module-code/comment-single-line-html-close.js",
+      "sha256": "3b43fff901f4d1cac508995fdc369375b621ce3842fa29cc2f39cb9ae51524c1"
+    },
+    {
+      "path": "upstream/test/language/module-code/comment-multi-line-html-close.js",
+      "upstream_path": "test/language/module-code/comment-multi-line-html-close.js",
+      "sha256": "fc3fae0f513b1db887ec33ec7fc35fe698248bdfe20df2cc6380592033080faf"
+    },
+    {
+      "path": "upstream/test/annexB/language/statements/labeled/function-declaration.js",
+      "upstream_path": "test/annexB/language/statements/labeled/function-declaration.js",
+      "sha256": "d0b59b52ca9f3db2d5519f7f7d18974cb0c50e739693c2c80d82e02ff625aed7"
+    },
+    {
+      "path": "upstream/test/language/reserved-words/await-script.js",
+      "upstream_path": "test/language/reserved-words/await-script.js",
+      "sha256": "db28c5449114ecbde80c342447ada982a9b421bad0f96eec41a6789af38a9003"
+    },
+    {
+      "path": "upstream/test/language/reserved-words/await-module.js",
+      "upstream_path": "test/language/reserved-words/await-module.js",
+      "sha256": "44edf8299f089ae5a58c536e57d8796867171da8237c93c6e28a752661c86a62"
     }
   ],
   "cases": [
@@ -195,7 +1855,316 @@
     "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
     "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
     "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
-    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js"
+    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
+    "upstream/test/language/literals/regexp/u-invalid-extended-pattern-char.js",
+    "upstream/test/language/literals/regexp/u-invalid-identity-escape.js",
+    "upstream/test/language/literals/regexp/u-invalid-legacy-octal-escape.js",
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges.js",
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js",
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-ab.js",
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-b.js",
+    "upstream/test/language/literals/regexp/u-invalid-oob-decimal-escape.js",
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookahead.js",
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookbehind.js",
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookahead.js",
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookbehind.js",
+    "upstream/test/language/literals/regexp/u-invalid-range-lookahead.js",
+    "upstream/test/language/literals/regexp/u-invalid-range-lookbehind.js",
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookahead.js",
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookbehind.js",
+    "upstream/test/language/literals/regexp/u-unicode-esc-bounds.js",
+    "upstream/test/language/literals/regexp/u-unicode-esc-non-hex.js",
+    "upstream/test/language/literals/regexp/u-unicode-esc.js",
+    "upstream/test/language/literals/regexp/u-astral.js",
+    "upstream/test/language/literals/regexp/u-case-mapping.js",
+    "upstream/test/language/literals/regexp/u-surrogate-pairs.js",
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-char-class.js",
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-char-class.js",
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-decimal.js",
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-dot.js",
+    "upstream/test/language/literals/regexp/early-err-pattern.js",
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-exact.js",
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-lower.js",
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-range.js",
+    "upstream/test/language/literals/regexp/invalid-optional-lookbehind.js",
+    "upstream/test/language/literals/regexp/invalid-optional-negative-lookbehind.js",
+    "upstream/test/language/literals/regexp/invalid-range-lookbehind.js",
+    "upstream/test/language/literals/regexp/invalid-range-negative-lookbehind.js",
+    "upstream/test/language/literals/regexp/u-invalid-class-escape.js",
+    "upstream/test/language/literals/regexp/y-assertion-start.js",
+    "upstream/test/language/literals/regexp/S7.8.5_A1.4_T1.js",
+    "upstream/test/language/literals/regexp/S7.8.5_A2.4_T1.js",
+    "upstream/test/language/literals/regexp/S7.8.5_A3.1_T1.js",
+    "upstream/test/language/literals/regexp/S7.8.5_A4.2.js",
+    "upstream/test/language/literals/regexp/S7.8.5_A1.3_T1.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-5.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-identity-escape-in-capture-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-5.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-6.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-2-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-3-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-7.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-9-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier.js",
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier-u.js",
+    "upstream/test/language/literals/regexp/named-groups/forward-reference.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Block-implicit.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script-implicit.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-Is-prefix-Script.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened.js",
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-02.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-03.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-04.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-05.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-06.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-07.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-08.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-09.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-10.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-11.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-12.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-13.js",
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-14.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script-equals.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions-equals.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-General_Category-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js",
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-end.js",
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-end.js",
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js",
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-start.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value-negated.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-FC_NFKC_Closure.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break-with-value.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Composition_Exclusion.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Grapheme_Link.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Alphabetic.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Prepended_Concatenation_Mark.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFC.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-FC_NFKC_Closure.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Full_Composition_Exclusion.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Start.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Math.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Uppercase.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Lowercase.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Grapheme_Extend.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Default_Ignorable_Code_Point.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js",
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js",
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js",
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js",
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js",
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js",
+    "upstream/test/language/module-code/eval-this.js",
+    "upstream/test/language/module-code/instn-iee-bndng-const.js",
+    "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js",
+    "upstream/test/language/module-code/instn-iee-err-not-found.js",
+    "upstream/test/language/module-code/instn-star-err-not-found.js",
+    "upstream/test/language/module-code/instn-named-err-not-found.js",
+    "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js",
+    "upstream/test/language/module-code/instn-iee-err-circular.js",
+    "upstream/test/language/module-code/instn-resolve-err-syntax-1.js",
+    "upstream/test/language/module-code/instn-resolve-err-syntax-2.js",
+    "upstream/test/language/module-code/instn-resolve-order-depth.js",
+    "upstream/test/language/module-code/instn-resolve-order-src.js",
+    "upstream/test/language/module-code/instn-resolve-empty-export.js",
+    "upstream/test/language/module-code/instn-resolve-empty-import.js",
+    "upstream/test/language/module-code/early-export-unresolvable.js",
+    "upstream/test/language/module-code/early-export-global.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-update.js",
+    "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js",
+    "upstream/test/annexB/language/function-code/switch-case-func-init.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js",
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js",
+    "upstream/test/annexB/language/function-code/function-redeclaration-block.js",
+    "upstream/test/annexB/language/function-code/function-redeclaration-switch.js",
+    "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js",
+    "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js",
+    "upstream/test/annexB/language/comments/single-line-html-open.js",
+    "upstream/test/annexB/language/comments/single-line-html-close.js",
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js",
+    "upstream/test/annexB/language/comments/multi-line-html-close.js",
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js",
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js",
+    "upstream/test/language/statements/for-of/head-lhs-let.js",
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js",
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js",
+    "upstream/test/language/statements/with/labelled-fn-stmt.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js",
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js",
+    "upstream/test/language/statements/while/labelled-fn-stmt.js",
+    "upstream/test/language/statements/labeled/value-yield-non-strict.js",
+    "upstream/test/language/statements/labeled/value-await-non-module.js",
+    "upstream/test/language/statements/labeled/value-yield-strict.js",
+    "upstream/test/language/statements/labeled/value-await-module.js",
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js",
+    "upstream/test/language/statements/for-in/head-let-bound-names-let.js",
+    "upstream/test/language/statements/for-of/head-let-bound-names-let.js",
+    "upstream/test/language/statements/for-of/head-const-bound-names-let.js",
+    "upstream/test/language/statements/for-in/head-const-bound-names-let.js",
+    "upstream/test/language/statements/generators/yield-identifier-non-strict.js",
+    "upstream/test/language/statements/generators/yield-identifier-strict.js",
+    "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js",
+    "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js",
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js",
+    "upstream/test/language/statements/generators/yield-as-parameter.js",
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js",
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js",
+    "upstream/test/language/expressions/object/__proto__-duplicate.js",
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js",
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js",
+    "upstream/test/language/expressions/object/yield-non-strict-access.js",
+    "upstream/test/language/expressions/object/yield-non-strict-syntax.js",
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js",
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js",
+    "upstream/test/language/expressions/await/await-in-nested-function.js",
+    "upstream/test/language/expressions/await/await-in-nested-generator.js",
+    "upstream/test/language/expressions/await/await-in-global.js",
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js",
+    "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js",
+    "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js",
+    "upstream/test/language/expressions/generators/yield-identifier-non-strict.js",
+    "upstream/test/language/expressions/generators/yield-identifier-strict.js",
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js",
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js",
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js",
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js",
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js",
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js",
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js",
+    "upstream/test/language/literals/numeric/legacy-octal-integer.js",
+    "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js",
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer.js",
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js",
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence.js",
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js",
+    "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js",
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js",
+    "upstream/test/language/module-code/comment-single-line-html-open.js",
+    "upstream/test/language/module-code/comment-single-line-html-close.js",
+    "upstream/test/language/module-code/comment-multi-line-html-close.js",
+    "upstream/test/annexB/language/statements/labeled/function-declaration.js",
+    "upstream/test/language/reserved-words/await-script.js",
+    "upstream/test/language/reserved-words/await-module.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -307,12 +2276,10 @@
       "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
       "status": "UNSUPPORTED",
@@ -367,6 +2334,1715 @@
       "status": "PASS"
     },
     "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-extended-pattern-char.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-extended-pattern-char.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-identity-escape.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-identity-escape.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-legacy-octal-escape.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-legacy-octal-escape.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-a.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-ab.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-ab.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-b.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-non-empty-class-ranges-no-dash-b.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-oob-decimal-escape.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-oob-decimal-escape.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-optional-negative-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-range-negative-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc-bounds.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc-bounds.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc-non-hex.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc-non-hex.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-unicode-esc.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-astral.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-astral.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-case-mapping.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-case-mapping.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-char-class.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-char-class.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-char-class.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-char-class.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-decimal.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-escape-decimal.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-dot.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-surrogate-pairs-atom-dot.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/early-err-pattern.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/early-err-pattern.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-exact.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-exact.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-lower.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-lower.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-range.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-braced-quantifier-range.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-optional-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-optional-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-optional-negative-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-optional-negative-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-range-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-range-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-range-negative-lookbehind.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/invalid-range-negative-lookbehind.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-class-escape.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/u-invalid-class-escape.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/y-assertion-start.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/y-assertion-start.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A1.4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A1.4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A2.4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A2.4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A3.1_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A3.1_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A4.2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A4.2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A1.3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/S7.8.5_A1.3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-2-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-3-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-4-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-5.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-5.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-dangling-groupname-without-group-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-duplicate-groupspecifier-2-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-empty-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-identity-escape-in-capture-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-identity-escape-in-capture-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-2-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-3-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-5.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-5.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-6.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-6.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-2-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-2-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-3-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-incomplete-groupname-without-group-3-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-continue-groupspecifier-4-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-2-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-4-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-5-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-6.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-7.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-7.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-8-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-9-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-non-id-start-groupspecifier-9-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-numeric-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-starting-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-punctuator-within-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier-u.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/invalid-unterminated-groupspecifier-u.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/forward-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/regexp/named-groups/forward-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Block-implicit.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Block-implicit.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script-implicit.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-In-prefix-Script-implicit.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-Is-prefix-Script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-Is-prefix-Script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-circumflex-negation-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-empty-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-invalid-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-no-braces-value-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-and-value-only-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-separator-only-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unclosed-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/grammar-extension-unopened-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-01-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-02.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-02.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-03.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-03.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-04.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-04.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-05.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-05.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-06.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-06.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-07.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-07.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-08.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-08.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-09.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-09.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-10.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-10.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-11.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-11.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-12.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-12.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-13.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-13.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-14.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/loose-matching-14.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-equals-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-General_Category-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script-equals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script-equals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions-equals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-binary-property-without-value-Script_Extensions-equals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-binary-property-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-and-value-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-existing-value-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-General_Category-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-General_Category-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-Script_Extensions-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/non-existent-property-value-general-category.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-end.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-end.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-end.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-end.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-no-dash-start.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-start.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/character-class-range-start.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value-negated.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Block-with-value-negated.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-FC_NFKC_Closure.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-FC_NFKC_Closure.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break-with-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-property-Line_Break-with-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Composition_Exclusion.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Composition_Exclusion.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Hyphen.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Grapheme_Link.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Grapheme_Link.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Alphabetic.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Alphabetic.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Prepended_Concatenation_Mark.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Prepended_Concatenation_Mark.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFC.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFC.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-FC_NFKC_Closure.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-FC_NFKC_Closure.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Full_Composition_Exclusion.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Full_Composition_Exclusion.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Start.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Start.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Math.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Math.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Uppercase.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Uppercase.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Lowercase.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Lowercase.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Grapheme_Extend.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Grapheme_Extend.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Default_Ignorable_Code_Point.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_Default_Ignorable_Code_Point.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Other_ID_Continue.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFD.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKC.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/RegExp/property-escapes/unsupported-binary-property-Expands_On_NFKD.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.1_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A2.4_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A5_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Global this evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/expressions/instanceof/S11.8.6_A6_T1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Global this evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A2_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A3_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Primitive wrapper constructors (new Number/new String) are outside the implemented runtime subset."
+    },
+    "upstream/test/language/statements/switch/S12.11_A1_T2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Primitive wrapper constructors (new Number/new String) are outside the implemented runtime subset."
+    },
+    "upstream/test/language/module-code/eval-this.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-iee-bndng-const.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/module-code/instn-iee-err-dflt-thru-star.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-iee-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-star-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-named-err-not-found.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-named-err-dflt-thru-star-as.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-iee-err-circular.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-err-syntax-1.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-err-syntax-2.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-order-depth.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-order-src.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-empty-export.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/instn-resolve-empty-import.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/early-export-unresolvable.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/early-export-global.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-existing-fn-update.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-dft-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-update.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-nested-blocks-with-fun-decl.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/switch-case-func-init.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-block-scoping.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-no-skip-try.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-switch.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/block-decl-func-skip-early-err-try.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/annexB/language/function-code/function-redeclaration-block.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/function-redeclaration-switch.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/if-decl-else-decl-a-func-skip-early-err.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/function-code/if-decl-no-else-func-skip-param.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-open.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-open.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-unicode-separators.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/multi-line-html-close.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/multi-line-html-close.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/annexB/language/comments/single-line-html-close-asi.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported native constructor"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-async-invalid.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-lhs-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-expr-no-expr.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-expr.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/do-while/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/labelled-fn-stmt-lhs.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-let.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-var.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/labelled-fn-stmt-lhs.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/with/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/with/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-first.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-lone.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/if/labelled-fn-stmt-second.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/while/labelled-fn-stmt.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/while/labelled-fn-stmt.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-yield-non-strict.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-non-module.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-non-module.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-yield-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/labeled/value-await-module.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/syntax/identifier-let-disallowed-as-boundname.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/head-let-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-let-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-of/head-const-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/for-in/head-const-bound-names-let.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-identifier-non-strict.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-identifier-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-parameter.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-parameter.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/generators/yield-as-logical-or-expression.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/async-function/early-errors-declaration-await-in-formals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/object/__proto__-duplicate-computed.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: __proto__, async-iteration"
+    },
+    "upstream/test/language/expressions/object/__proto__-permitted-dup.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: __proto__, async-iteration"
+    },
+    "upstream/test/language/expressions/object/yield-non-strict-access.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/object/yield-non-strict-syntax.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-in-global.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-BindingIdentifier-nested.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-function.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-generator.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-nested-generator.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/await/await-in-global.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/await-in-global.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/await/early-errors-await-not-simple-assignment-target.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-function-expression-binding-identifier.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-in-nested-function.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-identifier-non-strict.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported"
+    },
+    "upstream/test/language/expressions/generators/yield-identifier-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/generators/yield-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-binding-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-identifier-reference.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/await-as-label-identifier.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/async-arrow-function/early-errors-arrow-await-in-formals.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/early-errors-tail-position-op-template-string.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/optional-chaining/punctuator-decimal-lookahead.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/legacy-octal-integer.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/legacy-octal-integer-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/non-octal-decimal-integer-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-octal-escape-sequence-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/string/legacy-non-octal-escape-sequence-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/literals/numeric/numeric-followed-by-ident.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-single-line-html-open.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-single-line-html-close.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/comment-multi-line-html-close.js#module": {
+      "status": "PASS"
+    },
+    "upstream/test/annexB/language/statements/labeled/function-declaration.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-script.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-script.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/reserved-words/await-module.js#module": {
       "status": "PASS"
     }
   },

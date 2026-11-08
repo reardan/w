@@ -1,0 +1,4 @@
+# wfuzz_test --dict fixture: the two keywords tests/wcoverage/fuzz_target_fixture.w needs
+if (
+while (
+\x00\t

@@ -5,7 +5,8 @@
 # multi-selection (Space, Ctrl+A, rubber band), C4 geometry, block cell
 # (single and multi-selection) and kanban card moves, inspector line
 # typing, and external-change detection with refused saves, Keep mine,
-# reload and deletion.
+# reload and deletion, and the clipboard (copy, cut and paste in the source,
+# and paste from another X client).
 #
 # --wine runs the same workflows against the Windows build
 # (bin/wmermaid_editor_win.exe) under wine's X11 driver: the XTest events
@@ -595,6 +596,156 @@ void mu_flowchart(char* work):
 char* mu_only
 
 # --only <name> runs one workflow (for debugging a failure).
+# ---- clipboard (checklist step 2.10) ---------------------------------------
+# The driver is a second X client: it reads the editor's CLIPBOARD through
+# XConvertSelection, and owns CLIPBOARD itself to serve text the editor
+# pastes, exactly as another application would. Under wine the editor's
+# Win32 clipboard reaches X11 through wine's own CLIPBOARD bridge.
+int mu_clip_window
+int mu_atom(char* name): return XInternAtom(mu_display, name, 0)
+
+void mu_clip_open():
+	if (mu_clip_window != 0): return
+	x_set_window_attributes attributes
+	attributes.event_mask = PropertyChangeMask
+	mu_clip_window = XCreateWindow(mu_display, mu_root, 0, 0, 1, 1, 0, 0, InputOutput, 0, CWEventMask, &attributes)
+
+# One read of the CLIPBOARD as UTF8_STRING; 0 when nobody answered in time.
+char* mu_clip_read_once():
+	mu_clip_open()
+	int property = mu_atom(c"W_DRIVER_CLIP")
+	XConvertSelection(mu_display, mu_atom(c"CLIPBOARD"), mu_atom(c"UTF8_STRING"), property, mu_clip_window, 0)
+	XFlush(mu_display)
+	int deadline = process_monotonic_ms() + 2000
+	while (process_monotonic_ms() < deadline):
+		while (XPending(mu_display) > 0):
+			x_event event
+			XNextEvent(mu_display, &event)
+			if (event.event_type == SelectionNotify && event.selection.requestor == mu_clip_window):
+				if (event.selection.property == 0): return c""
+				int kind = 0
+				int32 format = 0
+				int count = 0
+				int after = 0
+				char* data = 0
+				XGetWindowProperty(mu_display, mu_clip_window, property, 0, 1048576, 1, 0, &kind, &format, &count, &after, &data)
+				char* text = cast(char*, malloc(count + 1))
+				for i in range(count): text[i] = data[i]
+				text[count] = 0
+				if (data != 0): XFree(cast(int, data))
+				return text
+		process_sleep_ms(10)
+	return 0
+
+# Wait until the editor's CLIPBOARD holds expected (a copy may take a frame,
+# and wine claims the selection asynchronously).
+void mu_clip_expect(char* expected, char* message):
+	int deadline = process_monotonic_ms() + mu_patience
+	char* got = 0
+	while (process_monotonic_ms() < deadline):
+		got = mu_clip_read_once()
+		if (got != 0 && strcmp(got, expected) == 0): return
+		process_sleep_ms(60)
+	if (got != 0): println(strjoin(c"clipboard holds: ", got))
+	ht_require(0, message)
+
+void mu_clip_reply(x_selection_request_event* r, int property):
+	x_event reply
+	reply.selection.event_type = SelectionNotify
+	reply.selection.send_event = 1
+	reply.selection.display = mu_display
+	reply.selection.requestor = r.requestor
+	reply.selection.selection = r.selection
+	reply.selection.target = r.target
+	reply.selection.property = property
+	reply.selection.time = r.time
+	XSendEvent(mu_display, r.requestor, 0, 0, &reply)
+	XFlush(mu_display)
+
+# Own CLIPBOARD with text, press Ctrl+V in the editor and answer its
+# requests until it has received the text.
+void mu_clip_paste(char* text, char* message):
+	mu_clip_open()
+	int clipboard = mu_atom(c"CLIPBOARD")
+	int utf8 = mu_atom(c"UTF8_STRING")
+	int targets = mu_atom(c"TARGETS")
+	int plain = mu_atom(c"text/plain;charset=utf-8")
+	XSetSelectionOwner(mu_display, clipboard, mu_clip_window, 0)
+	ht_require(XGetSelectionOwner(mu_display, clipboard) == mu_clip_window, c"driver could not own CLIPBOARD")
+	XFlush(mu_display)
+	# A native editor asks when Ctrl+V arrives. wine's clipboard bridge
+	# notices the new owner on its own and may import the text before
+	# that, so keep serving for a moment before pressing Ctrl+V.
+	int start = process_monotonic_ms()
+	int pressed = 0
+	if (mu_wine == 0):
+		mu_key(c"v", c"Control_L")
+		pressed = start
+	int served = 0
+	int deadline = start + mu_patience
+	while ((served == 0 || pressed == 0 || process_monotonic_ms() < pressed + 300) && process_monotonic_ms() < deadline):
+		if (pressed == 0 && process_monotonic_ms() > start + 1500):
+			mu_key(c"v", c"Control_L")
+			pressed = process_monotonic_ms()
+		while (XPending(mu_display) > 0):
+			x_event event
+			XNextEvent(mu_display, &event)
+			if (event.event_type != SelectionRequest): continue
+			x_selection_request_event* r = &event.selection_request
+			int property = r.property
+			if (property == 0): property = r.target
+			if (r.target == targets):
+				int[4] offered
+				offered[0] = targets
+				offered[1] = utf8
+				offered[2] = plain
+				offered[3] = 31
+				XChangeProperty(mu_display, r.requestor, property, 4, 32, 0, cast(char*, &offered[0]), 4)
+			else if (r.target == utf8 || r.target == plain || r.target == 31):
+				XChangeProperty(mu_display, r.requestor, property, r.target, 8, 0, text, strlen(text))
+				served = 1
+			else: property = 0
+			mu_clip_reply(r, property)
+		process_sleep_ms(10)
+	ht_require(served, message)
+	# Let the text land in the field before the next key.
+	process_sleep_ms(200)
+
+# Step 2.10: select and copy in the source (whole and partial), cut, paste
+# back inside the editor, and paste non-ASCII text from another client.
+void mu_clipboard(char* work):
+	char* path = path_join(work, c"clipboard.mmd")
+	char* source = c"flowchart LR\nA[Café] --> B[Beta]\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_key(c"e", c"Control_L")
+	mu_key(c"a", c"Control_L")
+	mu_key(c"c", c"Control_L")
+	mu_clip_expect(source, c"clipboard: Ctrl+A, Ctrl+C did not copy the source")
+	mu_key(c"Home", c"Control_L")
+	mu_key(c"End", c"Shift_L")
+	mu_key(c"c", c"Control_L")
+	mu_clip_expect(c"flowchart LR", c"clipboard: Shift+End selection was not copied")
+	char* pasted = c"%% from another app: ü 世界\n"
+	mu_key(c"Home", c"Control_L")
+	mu_clip_paste(pasted, c"clipboard: the editor never asked for the pasted text")
+	char* with_paste = strjoin(pasted, source)
+	mu_save()
+	mu_wait(with_paste, 0, c"clipboard: text pasted from another client was not inserted")
+	# Cut the pasted line out again, then paste it at the end.
+	mu_key(c"Home", c"Control_L")
+	mu_key(c"Down", c"Shift_L")
+	mu_key(c"x", c"Control_L")
+	mu_clip_expect(pasted, c"clipboard: Ctrl+X did not copy the cut line")
+	mu_save()
+	mu_wait(source, 0, c"clipboard: Ctrl+X did not remove the selection")
+	mu_key(c"End", c"Control_L")
+	mu_key(c"v", c"Control_L")
+	process_sleep_ms(300)
+	mu_save()
+	mu_wait(strjoin(source, pasted), 0, c"clipboard: pasting the editor's own cut failed")
+	mu_quit(editor)
+
 int mu_runs(char* name):
 	return (mu_only == 0) || (strcmp(mu_only, name) == 0)
 
@@ -625,6 +776,7 @@ int main(int argc, char** argv):
 	if (mu_runs(c"inspector")): mu_inspector(work)
 	if (mu_runs(c"conflicts")): mu_conflicts(work)
 	if (mu_runs(c"files")): mu_files(work)
+	if (mu_runs(c"clipboard")): mu_clipboard(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()
 	if (mu_wine): println(c"Mermaid Windows editor workflow under wine passed")

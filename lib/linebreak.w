@@ -1,4 +1,4 @@
-# The Unicode Line Breaking Algorithm (UAX #14, Unicode 15.0.0) in W, with
+# The Unicode Line Breaking Algorithm (UAX #14, Unicode 18.0.0) in W, with
 # no native dependency (issue #826). graphics/ui/itemize.w uses it to wrap
 # paragraphs; any program can call it directly.
 #
@@ -90,6 +90,7 @@ const int lb_class_ri = 44
 const int lb_class_sa = 45
 const int lb_class_vf = 46
 const int lb_class_vi = 47
+const int lb_class_hh = 48
 
 # Break actions: breaks[i] is the action before character i.
 const int lb_break_none = 0         # x: no break
@@ -103,7 +104,7 @@ const int lb_tailor_east_asian = 4
 const int lb_tailor_sa_clusters = 8
 
 # Property-value flags of the generated table.
-const int lb_flag_wide = 64           # an OP or CP with East_Asian_Width F, W or H
+const int lb_flag_wide = 64           # East_Asian_Width F, W or H (LB19a, LB30)
 const int lb_flag_pictographic = 128  # an unassigned Extended_Pictographic code point
 
 # The Line_Break property of cp as generated: the class with the two
@@ -177,7 +178,10 @@ lb_units* lb_make_units(int32* cps, int count, int flags, char* breaks):
 		u.base_cp[k] = cps[i]
 		u.last_cp[k] = cps[i]
 		base = c
-		if ((c == lb_class_cm) || (c == lb_class_zwj)): c = lb_class_al
+		if ((c == lb_class_cm) || (c == lb_class_zwj)):
+			# LB10: a lone mark or joiner is AL, never East Asian.
+			c = lb_class_al
+			u.flags[k] = property & lb_flag_pictographic
 		u.cls[k] = c
 		u.count = k + 1
 	return u
@@ -237,10 +241,22 @@ int lb_sa_cluster_break(lb_units* u, int k):
 	if ((next == 0x0e33) || (next == 0x0eb3) || (next == 0x0e46) || (next == 0x0ec6)): return lb_break_none
 	return lb_break_allowed
 
+# Whether unit j is an unresolved quotation mark (QU) of General_Category
+# Pi (initial) or Pf (final): cat is ut_cat_pi or ut_cat_pf.
+int lb_quote_of(lb_units* u, int j, int cat):
+	if ((j < 0) || (j >= u.count) || (u.cls[j] != lb_class_qu)): return 0
+	return ut_category(u.base_cp[j]) == cat
+
+# Whether unit j is East Asian (East_Asian_Width F, W or H) for LB19a.
+int lb_east_asian(lb_units* u, int j):
+	return (u.flags[j] & lb_flag_wide) != 0
+
 # Rules LB4-LB31 between unit k - 1 and unit k.
 int lb_pair(lb_units* u, int k, int flags):
 	int a = u.cls[k - 1]
 	int b = u.cls[k]
+	int after = -1     # the class of the unit after b (-1 at the end)
+	if (k + 1 < u.count): after = u.cls[k + 1]
 	if (a == lb_class_bk): return lb_break_mandatory
 	if ((a == lb_class_cr) && (b == lb_class_lf)): return lb_break_none
 	if (lb_in3(a, lb_class_cr, lb_class_lf, lb_class_nl)): return lb_break_mandatory
@@ -255,17 +271,44 @@ int lb_pair(lb_units* u, int k, int flags):
 	if (u.last[k - 1] == lb_class_zwj): return lb_break_none
 	if (lb_in2(lb_class_wj, a, b)): return lb_break_none
 	if (a == lb_class_gl): return lb_break_none
-	if ((b == lb_class_gl) && !lb_in3(a, lb_class_sp, lb_class_ba, lb_class_hy)): return lb_break_none
-	if (lb_in3(b, lb_class_cl, lb_class_cp, lb_class_ex) || lb_in2(b, lb_class_is, lb_class_sy)): return lb_break_none
+	if ((b == lb_class_gl) && !lb_in3(a, lb_class_sp, lb_class_hy, lb_class_hh)): return lb_break_none
+	if (lb_in3(b, lb_class_cl, lb_class_cp, lb_class_ex) || (b == lb_class_sy)): return lb_break_none
 	if (before == lb_class_op): return lb_break_none
-	if ((before == lb_class_qu) && (b == lb_class_op)): return lb_break_none
+	# LB15a: an initial quotation mark at the start of a line, after a
+	# space, an opening, a glue or another quotation mark.
+	if (lb_quote_of(u, j, ut_cat_pi)):
+		if (j == 0): return lb_break_none
+		int c = u.cls[j - 1]
+		if (lb_is_hard(c) || lb_in3(c, lb_class_op, lb_class_qu, lb_class_gl) || lb_in2(c, lb_class_sp, lb_class_zw)): return lb_break_none
+	# LB15b: a final quotation mark before a space, a prohibited break or
+	# the end.
+	if (lb_quote_of(u, k, ut_cat_pf)):
+		if ((after < 0) || lb_is_hard(after) || lb_in3(after, lb_class_sp, lb_class_gl, lb_class_wj)): return lb_break_none
+		if (lb_in3(after, lb_class_cl, lb_class_qu, lb_class_cp) || lb_in3(after, lb_class_ex, lb_class_is, lb_class_sy) || (after == lb_class_zw)): return lb_break_none
+	# LB15c-LB15d: a decimal mark after a space starts a number.
+	if ((a == lb_class_sp) && (b == lb_class_is) && (after == lb_class_nu)): return lb_break_allowed
+	if (b == lb_class_is): return lb_break_none
 	if (lb_in2(before, lb_class_cl, lb_class_cp) && (b == lb_class_ns)): return lb_break_none
 	if ((before == lb_class_b2) && (b == lb_class_b2)): return lb_break_none
 	if (a == lb_class_sp): return lb_break_allowed
-	if (lb_in2(lb_class_qu, a, b)): return lb_break_none
+	# LB19: quotation marks other than initial/final punctuation.
+	if ((b == lb_class_qu) && !lb_quote_of(u, k, ut_cat_pi)): return lb_break_none
+	if ((a == lb_class_qu) && !lb_quote_of(u, k - 1, ut_cat_pf)): return lb_break_none
+	# LB19a: other quotation marks unless East Asian on both sides.
+	if (b == lb_class_qu):
+		if (!lb_east_asian(u, k - 1)): return lb_break_none
+		if ((after < 0) || !lb_east_asian(u, k + 1)): return lb_break_none
+	if (a == lb_class_qu):
+		if (!lb_east_asian(u, k)): return lb_break_none
+		if ((k < 2) || !lb_east_asian(u, k - 2)): return lb_break_none
 	if (lb_in2(lb_class_cb, a, b)): return lb_break_allowed
-	if (lb_in3(b, lb_class_ba, lb_class_hy, lb_class_ns) || (a == lb_class_bb)): return lb_break_none
-	if (lb_in2(a, lb_class_hy, lb_class_ba) && (k >= 2) && (u.cls[k - 2] == lb_class_hl)): return lb_break_none
+	# LB20a: a word-initial hyphen.
+	if (lb_in2(a, lb_class_hy, lb_class_hh) && lb_ahl(b)):
+		if (k < 2): return lb_break_none
+		int c = u.cls[k - 2]
+		if (lb_is_hard(c) || lb_in3(c, lb_class_sp, lb_class_zw, lb_class_cb) || (c == lb_class_gl)): return lb_break_none
+	if (lb_in3(b, lb_class_ba, lb_class_hh, lb_class_hy) || (b == lb_class_ns) || (a == lb_class_bb)): return lb_break_none
+	if (lb_in2(a, lb_class_hy, lb_class_hh) && (k >= 2) && (u.cls[k - 2] == lb_class_hl) && (b != lb_class_hl)): return lb_break_none
 	if ((a == lb_class_sy) && (b == lb_class_hl)): return lb_break_none
 	if (b == lb_class_in): return lb_break_none
 	if ((lb_ahl(a) && (b == lb_class_nu)) || ((a == lb_class_nu) && lb_ahl(b))): return lb_break_none
@@ -273,12 +316,14 @@ int lb_pair(lb_units* u, int k, int flags):
 	if (lb_in3(a, lb_class_id, lb_class_eb, lb_class_em) && (b == lb_class_po)): return lb_break_none
 	if (lb_in2(a, lb_class_pr, lb_class_po) && lb_ahl(b)): return lb_break_none
 	if (lb_ahl(a) && lb_in2(b, lb_class_pr, lb_class_po)): return lb_break_none
-	# LB25, tailored as in Example 7 (and LineBreakTest.txt).
+	# LB25, as UAX #14 states it (the regular expression of its Example 7).
 	if (lb_in2(a, lb_class_pr, lb_class_po)):
 		if (b == lb_class_nu): return lb_break_none
-		if (lb_in2(b, lb_class_op, lb_class_hy) && (k + 1 < u.count) && (u.cls[k + 1] == lb_class_nu)): return lb_break_none
-	if (lb_in2(a, lb_class_op, lb_class_hy) && (b == lb_class_nu)): return lb_break_none
-	if ((lb_num_part(b) || lb_in2(b, lb_class_cl, lb_class_cp)) && lb_number_before(u, k - 1)): return lb_break_none
+		if (b == lb_class_op):
+			if (after == lb_class_nu): return lb_break_none
+			if ((after == lb_class_is) && (k + 2 < u.count) && (u.cls[k + 2] == lb_class_nu)): return lb_break_none
+	if (lb_in2(a, lb_class_hy, lb_class_is) && (b == lb_class_nu)): return lb_break_none
+	if ((b == lb_class_nu) && lb_number_before(u, k - 1)): return lb_break_none
 	if (lb_in2(b, lb_class_po, lb_class_pr)):
 		j = k - 1
 		if (lb_in2(u.cls[j], lb_class_cl, lb_class_cp)): j = j - 1
@@ -294,7 +339,7 @@ int lb_pair(lb_units* u, int k, int flags):
 	if ((a == lb_class_ap) && lb_aksara(u, k)): return lb_break_none
 	if (lb_aksara(u, k - 1) && lb_in2(b, lb_class_vf, lb_class_vi)): return lb_break_none
 	if ((a == lb_class_vi) && lb_aksara(u, k - 2) && ((b == lb_class_ak) || (u.base_cp[k] == 0x25cc))): return lb_break_none
-	if (lb_aksara(u, k - 1) && lb_aksara(u, k) && (k + 1 < u.count) && (u.cls[k + 1] == lb_class_vf)): return lb_break_none
+	if (lb_aksara(u, k - 1) && lb_aksara(u, k) && (after == lb_class_vf)): return lb_break_none
 	if ((a == lb_class_is) && lb_ahl(b)): return lb_break_none
 	if ((lb_ahl(a) || (a == lb_class_nu)) && (b == lb_class_op) && ((u.flags[k] & lb_flag_wide) == 0)): return lb_break_none
 	if ((a == lb_class_cp) && ((u.flags[k - 1] & lb_flag_wide) == 0) && (lb_ahl(b) || (b == lb_class_nu))): return lb_break_none

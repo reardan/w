@@ -242,9 +242,12 @@ int ers_slot_reg(int disp):
 
 # The real esp displacement of a logical one that names a stack word.
 # Nothing the emitter addresses lies below esp (no red zone), which
-# --kernel-codegen relies on: an interrupt overwrites that memory.
+# --kernel-codegen relies on: an interrupt overwrites that memory. A lea
+# only computes an address: '&p' in p's own initializer names the word
+# the initializer's value is about to be pushed to (esp_lea_below).
+int esp_lea_below
 int esp_disp(int disp):
-	if (kernel_codegen && (disp < 0)): ers_internal(c"stack word below rsp")
+	if (kernel_codegen && (disp < 0) && (esp_lea_below == 0)): ers_internal(c"stack word below rsp")
 	if (ers_count == 0): return disp
 	if (ers_slot_reg(disp) != 0): ers_internal(c"word used by an unhandled path")
 	return disp - ers_bias()
@@ -3214,7 +3217,9 @@ void lea_eax_esp_plus(int v):
 		int start = codepos
 		emit_x64_opcode()
 		emit(1, c"\x8d")
+		esp_lea_below = 1
 		emit_eax_esp_disp(v)
+		esp_lea_below = 0
 		lea_note_start = start
 		lea_note_end = codepos
 		lea_note_disp = v

@@ -75,8 +75,8 @@ grammars describe the two formats involved, run through
   (written against an earlier layout, so its paths are historical).
 - [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the implementation plan and
   capability ledger for the exact lexer and imported parser prediction engines.
-- [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the next implementation plan,
-  with parallel agent ownership and validation gates for 21 grammars / 25 rules.
+- [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the left-recursion lowering
+  plan and its implementation status (24 of the 25 inventoried rules lowered).
 
 ## Why w, not a scripting language
 
@@ -188,11 +188,20 @@ parser nongreedy decisions.
 The expression fallback supports direct-recursive ternaries, compound/optional
 operators, interleaved postfix levels, labels, and proved keyword-delimited
 lists. Existing safe normalization runs first to preserve established AST shapes.
+When those refuse a direct-recursive rule, a plan-driven lowering
+(`normalize_precedence.w`) follows ANTLR 4.13.2's own classification and operand
+bindings, including adjacent operands, optional separators, undelimited ordinary
+owner calls, ignored nested associativity options and nullable primaries; see
+[the left-recursion plan](LEFT_RECURSION_PLAN.md#implementation-status).
 Arbitrary indirect/hidden left recursion remains unsupported. Parser wildcard
 and token complements operate on whole token identities, exclude EOF, and include
 implicit literals; they do not manufacture character matchers in prediction mode.
 
-`node_meta` and `term_meta` preserve source rule/alternative coordinates and labels
+`antlr_tree:context`, `antlr_tree:fold` and `antlr_tree:list` node metadata let a
+client rebuild ANTLR's parse tree from the normalized AST
+([`canonical_tree.w`](canonical_tree.w)); the
+[parse-tree differential](../../../../tests/grammars/antlr_trees/README.md) compares
+the result with ANTLR's trees. `node_meta` and `term_meta` preserve source rule/alternative coordinates and labels
 through generated helpers. `antlr_rule:<name>`, `antlr_alt:<label>`,
 `antlr_label:<name>=`/`+=`, and `antlr_lhs_label:<name>=` describe the normalized W
 AST; they do not recreate ANTLR's generated context/listener API. See
@@ -235,8 +244,9 @@ operator decisions have separate one-based priority indices. Plans borrow source
 nodes and must be treated as immutable; the diagnostic snapshot is taken before
 normalization. `complete` means candidate analysis finished, not that ANTLR
 transforms or accepts the rule: a prefix-only rule, for example, is not a direct
-left-recursion candidate. An incomplete plan cannot authorize lowering. This first delivery
-does not enable any previously refused grammar or alter the six sweep baselines.
+left-recursion candidate. An incomplete plan cannot authorize lowering; the
+plan-driven lowering records its own refusals under the `prediction_plan`
+normalizer.
 
 The interfaces are `at_lr_plan_build(rule, work_limit)` and
 `at_progress_analyze(rules, limits)`. `at_lr_plan_free` releases owned descriptors

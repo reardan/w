@@ -1,0 +1,16 @@
+import lib.file
+import libs.extras.grammars.antlr_to_pg.canonical_tree
+
+# Prints the TreeOracle.java observation for one input file.
+int main(int argc, char** argv):
+	if (argc != 2): return 2
+	char* source = file_read_text(argv[1])
+	if (source == 0): return 2
+	pg_parse_result* result = oracle_parse_owned(source, strlen(source), c"input")
+	if ((result.success == 0) || (result.root == 0)):
+		println(c"{\"accepted\":false,\"tree\":null}")
+		return 0
+	char* tree = at_tree_json(result.root)
+	if (tree == 0): return 3
+	println(f"{{\"accepted\":true,\"tree\":{tree}}}")
+	return 0

@@ -1,6 +1,8 @@
 # wbuild: binary=antlr_left_recursion_refusals
-# Current observed guards are separate from the pinned historical oracle.
-import tools.javascript_conformance_lib
+# Current observed lowering and guards, separate from the pinned historical oracle.
+# Each inventoried rule is either lowered (no AT_LEFT_RECURSION finding; the
+# grammar may still refuse for other reasons) or refused with recorded guards.
+import tools.antlr_sweep_lib
 import libs.standard.cli.argparse
 
 char* lr_root
@@ -53,6 +55,8 @@ int main(int argc, int argv):
 	char* before = lr_digest(tool)
 	char* work = ht_temp()
 	json_value* rows = json_array()
+	int lowered_rules = 0
+	int refused_rules = 0
 	for json_value* entry in cases.array_values:
 		char* output = path_join(work, c"grammar.pg")
 		char* audit = path_join(work, c"audit.json")
@@ -62,8 +66,10 @@ int main(int argc, int argv):
 		for json_value* input in ht_field(entry, c"inputs").array_values: command.push(path_join(path_join(lr_root, c"upstream"), ht_text(input, c"path")))
 		for char* arg in ht_argv(c"--exact-lexer", c"--prediction", c"-o", output, c"--audit-json", audit): command.push(arg)
 		process_result* result = ht_run(command, 0, 0, 90000)
-		ht_require(result.status == 1, c"expected atomic translation refusal")
-		ht_equal_file(output, c"unchanged sentinel\n")
+		# Refusal is atomic; a lowered grammar may still translate (exit 0).
+		ht_require((result.status == 0) || (result.status == 1), c"translator crashed or timed out")
+		if (result.status == 1): ht_equal_file(output, c"unchanged sentinel\n")
+		else: ht_require(strcmp(ht_read(output).data, c"unchanged sentinel\n") != 0, c"successful translation left output unchanged")
 		json_value* report = lr_normalize(ht_json(audit))
 		json_value* findings = ht_field(report, c"findings")
 		set[char*] expected = new set[char*]
@@ -74,27 +80,36 @@ int main(int argc, int argv):
 			actual.add(ht_text(finding, c"rule"))
 			json_value* details = ht_field(finding, c"details")
 			ht_require(ht_field(details, c"normalization_guards").array_values.length > 0 && ht_field(ht_field(ht_field(details, c"source"), c"plan"), c"complete").int_value, c"missing observed guards or complete source plan")
-		ht_require(actual.length == expected.length, c"original rule inventory changed")
 		for char* rule in actual: ht_require(rule in expected, c"unexpected recursion rule")
-		json_value* row = json_parse(c"{\"exit_code\":1,\"output_preserved\":true}")
+		json_value* lowered = json_array()
+		for json_value* rule in ht_field(entry, c"rules").array_values:
+			if ((ht_text(rule, c"name") in actual) == 0):
+				json_array_push(lowered, json_string(ht_text(rule, c"name")))
+				lowered_rules++
+			else: refused_rules++
+		json_value* row = json_object()
 		json_object_set(row, c"name", ht_field(entry, c"name"))
+		json_object_set(row, c"exit_code", json_int(result.status))
+		json_object_set(row, c"output_preserved", json_bool(result.status == 1))
+		json_object_set(row, c"lowered_rules", lowered)
 		json_object_set(row, c"findings", findings)
 		json_array_push(rows, row)
 	ht_require(strcmp(lr_digest(tool), before) == 0, c"translator changed during measurement")
 	char* report_path = path_join(lr_root, c"current_refusals.json")
 	if (argparse_get_bool(args, c"refresh")):
 		char* tool_root = path_dirname(path_dirname(tool))
-		json_value* provenance = json_parse(c"{\"configuration\":[\"--exact-lexer\",\"--prediction\"],\"interpretation\":\"Current instrumented guard exits, separate from historical generic findings. No acceptance promotion.\"}")
+		json_value* provenance = json_parse(c"{\"configuration\":[\"--exact-lexer\",\"--prediction\"],\"interpretation\":\"Current lowering status and instrumented guard exits, separate from historical generic findings.\"}")
 		json_object_set(provenance, c"translator_sha256", json_string(before))
 		json_object_set(provenance, c"source_base", json_string(strip(ht_checked(ht_argv(c"git", c"-C", tool_root, c"rev-parse", c"HEAD")).stdout_text)))
 		json_object_set(provenance, c"source_dirty", json_bool(ht_checked(ht_argv(c"git", c"-C", tool_root, c"status", c"--porcelain")).stdout_length != 0))
 		json_value* report = json_parse(c"{\"schema\":1}")
 		json_object_set(report, c"provenance", provenance)
 		json_object_set(report, c"cases", rows)
-		char* text = strjoin(json_stringify(report), c"\n")
+		char* text = sw_pretty(report)
 		ht_write(report_path, text, strlen(text))
 		map[char*, json_value*] files = new map[char*, json_value*]
-		for json_value* entry in ht_field(manifest, c"files").array_values: files[ht_text(entry, c"path")] = entry
+		# Copy entries: replacing the "files" array releases the old values.
+		for json_value* entry in ht_field(manifest, c"files").array_values: files[ht_text(entry, c"path")] = vj_copy(entry)
 		json_value* record = json_parse(c"{\"path\":\"current_refusals.json\"}")
 		json_object_set(record, c"sha256", json_string(lr_digest(report_path)))
 		files[c"current_refusals.json"] = record
@@ -103,9 +118,9 @@ int main(int argc, int argv):
 		json_value* ordered = json_array()
 		for char* name in names: json_array_push(ordered, files[name])
 		json_object_set(manifest, c"files", ordered)
-		text = strjoin(json_stringify(manifest), c"\n")
+		text = sw_pretty(manifest)
 		ht_write(manifest_path, text, strlen(text))
-	else: ht_require(jc_equal(rows, ht_field(ht_json(report_path), c"cases")), c"current refusal evidence differs from pinned Wave 0 findings")
+	else: ht_require(jc_equal(rows, ht_field(ht_json(report_path), c"cases")), c"current lowering/refusal evidence differs from the pinned report")
 	ht_cleanup()
-	println(c"Observed normalization guards: 21 roots / 25 rules; every refusal preserved output")
+	println(f"Original inventory 21 roots / 25 rules: {lowered_rules} lowered, {refused_rules} refused with guards; every refusal preserved output")
 	return 0

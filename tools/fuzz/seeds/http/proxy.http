@@ -1,0 +1,5 @@
+GET http://user@[::1]:8080/p?q#f HTTP/1.1
+Host: [::1]:8080
+X-A: 1
+X-A: 2
+
