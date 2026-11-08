@@ -45,6 +45,7 @@ modules:
 	graphics.ui.widgets.email
 	graphics.ui.widgets.form
 	graphics.ui.widgets.layout
+	graphics.ui.widgets.listbox
 	graphics.ui.widgets.menu
 	graphics.ui.widgets.modal
 	graphics.ui.widgets.overlay
