@@ -362,6 +362,23 @@ void ui_textarea_access_layout(ui_context* ctx, ui_access_node* node, ui_textare
 	ui_access_field_attrs(ctx, node, scale, ui_text_color(ctx), fill)
 
 
+# Scroll characters [start, end) of the area into view for an
+# assistive technology's SCROLL_TO (#912): the first line to the top,
+# the last to the bottom, or the smallest move that shows both ends
+# (the start winning when they do not fit together). The caret stays.
+void ui_textarea_scroll_range(ui_textarea_state* st, int start, int end, int align, float32 line_h):
+	int first = ui_text_buffer_offset_to_line(&st.buf, ui_access_char_byte(st.buf.data, st.buf.length, start))
+	int last = first
+	if (end > start): last = ui_text_buffer_offset_to_line(&st.buf, ui_access_char_byte(st.buf.data, st.buf.length, end - 1))
+	float32 top = cast(float32, first) * line_h
+	float32 bottom = cast(float32, last + 1) * line_h
+	if (align == UI_ACCESS_SCROLL_TOP): ui_scroll_to(&st.scroll, top)
+	else if (align == UI_ACCESS_SCROLL_BOTTOM): ui_scroll_to(&st.scroll, bottom - st.scroll.view_h)
+	else:
+		ui_scroll_reveal(&st.scroll, cast(float32, last) * line_h, line_h)
+		ui_scroll_reveal(&st.scroll, top, line_h)
+
+
 # The multi-line edit surface. Returns 1 on frames the buffer changed.
 int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	int id = ctx.next_id
@@ -385,7 +402,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	# Plain Tab indents here, so the focus stop claims it; Ctrl+Tab
 	# still leaves the field.
 	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TEXTBOX, area, 0)
-	if (node != 0): node.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION
+	if (node != 0): node.actions = UI_ACCESS_SET_VALUE | UI_ACCESS_SET_SELECTION | UI_ACCESS_SCROLL_TO
 	ui_focus_stop(ctx, id, area, 1)
 	int changed = 0
 	char* requested = ui_access_value_request(ctx, id)
@@ -507,6 +524,10 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	# Keep the caret in view after typing or motion.
 	if ((ctx.focus == id) && ((ctx.char_count > 0) || (ctx.nav_count > 0) || ctx.input.mouse_pressed)):
 		ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
+	int scroll_start = 0
+	int scroll_end = 0
+	int scroll_align = 0
+	if (ui_access_scroll_request(ctx, id, &scroll_start, &scroll_end, &scroll_align)): ui_textarea_scroll_range(st, scroll_start, scroll_end, scroll_align, line_h)
 
 	ui_scroll_begin(ctx, view, &st.scroll)
 	ui_layout* lo = ui_layout_top(ctx)
@@ -559,4 +580,9 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	if (st.sel_anchor >= 0): anchor = st.sel_anchor
 	ui_access_set_caret(ctx, node, anchor, caret)
 	ui_textarea_access_layout(ctx, node, st, origin_x, origin_y)
+	if (ui_text_preedit_showing(ctx, id)):
+		int pstart = ui_text_buffer_line_start(&st.buf, st.caret_line)
+		float32 px = origin_x + cast(float32, ui_text_prefix_width(&st.buf.data[pstart], st.caret_col, scale))
+		float32 py = origin_y + cast(float32, st.caret_line) * line_h
+		ui_access_publish_preedit(ctx, node, caret, px, py, line_h)
 	return changed

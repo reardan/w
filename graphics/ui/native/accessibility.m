@@ -103,6 +103,7 @@ static NSString *role(NSInteger code) {
     case 19: return NSAccessibilityRadioButtonRole; // AppKit tabs are radio buttons
     case 20: return NSAccessibilityProgressIndicatorRole;
     case 21: return NSAccessibilityGroupRole; // dialog subrole set in w_access_add
+    case 22: return NSAccessibilitySliderRole;
     default: return NSAccessibilityUnknownRole;
     }
 }

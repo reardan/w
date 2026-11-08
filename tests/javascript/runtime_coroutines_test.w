@@ -75,6 +75,14 @@ void test_resumable_constructs():
 	co_true(rt, c"function B() {} function* g() { class C extends (B) { [yield 'k']() { return 3; } } var o = { *extends() { yield 4; } }; return new C().m() + o.extends().next().value; } var i = g(); i.next(); i.next('m').value === 7;")
 	co_true(rt, c"async function await() { return 1; } await instanceof Function && (function* () {}) instanceof Function && (async () => 1) instanceof Function && Function.prototype.constructor === Function;")
 	co_status(rt, c"Function('return 1');", 6)
+	# for-in, var/assignment-target for-of heads and destructuring assignment (#907) inside generators.
+	co_true(rt, c"function* g() { var r = ''; for (var k in {a: 1, b: 2, c: 3}) { r += k; yield k; } return r; } var i = g(); i.next(); i.next(); i.next(); i.next().value === 'abc';")
+	co_true(rt, c"function* g() { var o = {a: 1, b: 2}; var r = []; for (let k in o) { if (k === 'a') delete o.b; r.push(yield k); } return r.length; } var i = g(); i.next(); i.next(9).value === 1;")
+	co_true(rt, c"function* g() { for (var k in (yield 'subject')) return k; } var i = g(); i.next(); i.next({z: 1}).value === 'z';")
+	co_true(rt, c"function* g() { var x; var s = 0; for (x of [1, 2]) s += yield x; return s; } var i = g(); i.next(); i.next(10); i.next(20).value === 30;")
+	co_true(rt, c"function* g() { var a, b; [a, b] = [yield 1, 2]; return a + b; } var i = g(); i.next(); i.next(5).value === 7;")
+	co_status(rt, c"function* g() { var o = {}; for (o[yield 1] of [5]) ; } g().next();", 6)
+	co_status(rt, c"function* g() { var a; [a = yield] = []; } g().next();", 6)
 	# Array binding patterns use the iterator protocol and close what they leave open.
 	co_true(rt, c"function* g() { yield 1; yield 2; yield 3; } var [a, , ...r] = g(); var closed = 0; var o = {}; o[Symbol.iterator] = function () { return { next: function () { return {value: 5, done: false}; }, return: function () { closed = closed + 1; return {}; } }; }; var [x] = o; var [] = o; a === 1 && r.length === 1 && r[0] === 3 && x === 5 && closed === 2;")
 	co_true(rt, c"var saved = Array.prototype[Symbol.iterator]; Array.prototype[Symbol.iterator] = function* () { yield 7; }; var [p, q] = [1, 2]; Array.prototype[Symbol.iterator] = saved; p === 7 && q === undefined;")

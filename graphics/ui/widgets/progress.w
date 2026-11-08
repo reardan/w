@@ -30,6 +30,8 @@ void ui_progress(ui_context* ctx, float32 w, float32 fraction):
 		pct[k] = '0' + v % 10
 		pct[k + 1] = '%'
 		ui_access_set_value(ctx, n, &pct[0], k + 2)
+		# And the number, for RangeValue / IAccessibleValue / Value (#911).
+		ui_access_set_range(ctx.access, n.id, fraction * 100.0, 0.0, 100.0, 0.0)
 	# A thin fully-rounded track with a matching accent fill.
 	float32 bar_h = 6.0
 	ui_rect track = ui_rect_new(r.x, r.y + (r.h - bar_h) * 0.5, r.w, bar_h)

@@ -185,7 +185,7 @@ int js_coroutine_async_generator_code(js_value* env):
 # suspends. Structural children (declarators, catch, case, spread, property
 # parts and template text) are resumed by their parent construct.
 int js_coroutine_resumable(js_node* node):
-	char* kinds = c"yield await block variable declarator expression_statement return throw label if conditional while do_while for for_of for_await_of try catch switch case default binary unary assignment member computed_member call construct array object spread property computed_property computed_key template class class_expression method static_method"
+	char* kinds = c"yield await block variable declarator expression_statement return throw label if conditional while do_while for for_of for_await_of for_in try catch switch case default binary unary assignment member computed_member call construct array object spread property computed_property computed_key template class class_expression method static_method"
 	int found = 0
 	int start = 0
 	int length = strlen(node.kind)
@@ -202,7 +202,7 @@ int js_coroutine_resumable(js_node* node):
 	if ((js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"call")) && js_kind(node.children[0], c"super")): return 0
 	if (js_kind(node, c"call") && (js_kind(node.children[0], c"member") || js_kind(node.children[0], c"computed_member")) && js_kind(node.children[0].children[0], c"super")): return 0
 	if (js_kind(node, c"call") && js_kind(node.children[0], c"optional_chain")): return 0
-	if (js_kind(node, c"assignment") && js_kind(node.children[0], c"identifier") == 0 && js_kind(node.children[0], c"member") == 0 && js_kind(node.children[0], c"computed_member") == 0): return 0
+	if (js_kind(node, c"assignment") && js_kind(node.children[0], c"identifier") == 0 && js_kind(node.children[0], c"member") == 0 && js_kind(node.children[0], c"computed_member") == 0 && (strcmp(node.text, c"=") != 0 || js_runtime_assignment_pattern(node.children[0]) == 0)): return 0
 	if (js_kind(node, c"assignment") && js_kind(node.children[0], c"identifier") == 0 && js_kind(node.children[0].children[0], c"super")): return 0
 	return 1
 
@@ -218,6 +218,12 @@ int js_coroutine_scan(js_node* node, int* ok):
 	if (suspends && js_kind(node, c"declarator") && node.children.length == 2):
 		int pattern_ok = 1
 		if (js_coroutine_scan(node.children[0], &pattern_ok)): *ok = 0
+	# Loop heads and destructuring-assignment patterns bind without frames,
+	# so they may not suspend themselves (their expressions and bodies may).
+	int head = js_kind(node, c"for_of") || js_kind(node, c"for_await_of") || js_kind(node, c"for_in") || (js_kind(node, c"assignment") && js_runtime_assignment_pattern(node.children[0]))
+	if (suspends && head):
+		int head_ok = 1
+		if (js_coroutine_scan(node.children[0], &head_ok)): *ok = 0
 	if (suspends && js_coroutine_resumable(node) == 0): *ok = 0
 	return suspends
 
@@ -1083,20 +1089,6 @@ js_value* js_async_from_sync_method(void* runtime, void* context, js_value* rece
 	js_async_from_sync_continue(rt, result, promise, sync, mode != JS_RESUME_RETURN)
 	if (rt.completion.status != 0): return rt.undefined_value
 	return promise
-
-
-# `in` (RelationalExpression): HasProperty on an object.
-js_value* js_runtime_in(js_runtime* rt, js_value* key, js_value* object):
-	if (js_runtime_object(object) == 0): return js_runtime_type_error(rt, c"right-hand side of in is not an object")
-	js_text* name = js_runtime_property_key(rt, key)
-	if (name == 0): return rt.undefined_value
-	int found = 0
-	if (object.kind == 6 && js_runtime_key_is(name, c"length")): found = 1
-	else:
-		if (object.kind == 7): js_runtime_function_prototype(rt, object, name)
-		found = js_runtime_has_property(rt, object, name)
-	js_text_free(name)
-	return js_runtime_boolean(rt, found)
 
 
 # Intrinsics -------------------------------------------------------------

@@ -203,7 +203,8 @@ void js_runtime_install_builtins(js_runtime* rt):
 	js_builtin_constant(rt, math, c"E", 2.718281828459045)
 	js_builtin_constant(rt, math, c"SQRT2", 1.4142135623730951)
 	js_runtime_set(rt, rt.global, c"Math", math)
-	js_value* number = js_runtime_alloc(rt, 5)
+	# Number is callable and constructible (runtime_wrappers.w).
+	js_value* number = js_runtime_host_callable(rt, 0, js_number_function)
 	js_builtin_method(rt, number, c"isFinite", js_builtin_number, 1)
 	js_builtin_method(rt, number, c"isInteger", js_builtin_number, 2)
 	js_builtin_method(rt, number, c"isNaN", js_builtin_number, 3)

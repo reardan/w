@@ -102,6 +102,7 @@ struct ui_context:
 	int32 preedit_focus
 	int32 preedit_active
 	int32 preedit_selection
+	int32 preedit_target_length   # the conversion target's length from preedit_selection (#912)
 	# Layout regions, innermost at layout_depth - 1. ui_begin seeds
 	# depth 1 with the window, so the plain vertical stack is the
 	# root-region case.
@@ -155,6 +156,10 @@ struct ui_context:
 	int32 access_selection_id
 	int32 access_selection_anchor
 	int32 access_selection_active
+	int32 access_scroll_id        # a pending SCROLL_TO (#912): characters [start, end) and an alignment
+	int32 access_scroll_start
+	int32 access_scroll_end
+	int32 access_scroll_align
 	# Item selection requests (UI_ACCESS_SELECT) for multi-selection
 	# containers: the item's id and its UI_ACCESS_SELECT_* mode.
 	int32[256] access_selects

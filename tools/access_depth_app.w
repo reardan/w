@@ -6,8 +6,10 @@
 # publishes a snapshot with a two-line editor (glyph boxes, text
 # attributes, two selections), a multi-selection list and a table with
 # an explicit header row, a row header spanning two rows and a cell
-# spanning two columns, then applies the client's requests to its model
-# and republishes, as an application would. Every request and, once a
+# spanning two columns, and (#911/#912) a slider labelled by a label
+# and a four-line log that shows two lines and scrolls on SCROLL_TO,
+# then applies the client's requests to its model and republishes, as
+# an application would. Every request and, once a
 # second, the number of calls answered over the peer-to-peer bus are
 # printed on stdout ("request <id> <action> <payload>", "p2p <n>").
 import lib.lib
@@ -21,6 +23,8 @@ struct depth_model:
 	int[16] ranges              # editor selections: primary anchor, caret, then start/end pairs
 	int range_count
 	int changed
+	float32 volume
+	int top_line                # the log's first visible line
 
 
 depth_model model
@@ -28,6 +32,23 @@ depth_model model
 
 void say(char* s):
 	write(1, s, strlen(s))
+
+
+# A SET_VALUE payload ("7.5", "-2") as a number.
+float32 depth_number(char* data, int length):
+	float32 v = 0.0
+	float32 scale = 0.0
+	int negative = 0
+	for i in range(length):
+		if ((i == 0) && (data[i] == '-')): negative = 1
+		else if (data[i] == '.'): scale = 1.0
+		else if ((data[i] >= '0') && (data[i] <= '9')):
+			if (scale > 0.0):
+				scale = scale / 10.0
+				v = v + scale * cast(float32, data[i] - '0')
+			else: v = v * 10.0 + cast(float32, data[i] - '0')
+	if negative: return 0.0 - v
+	return v
 
 
 int depth_action(void* context, int id, int action, char* data, int length):
@@ -57,6 +78,29 @@ int depth_action(void* context, int id, int action, char* data, int length):
 		ui_access_selection_parse(data, length, &model.ranges[0], &model.ranges[1])
 		model.range_count = 1
 		model.changed = 1
+	if ((action == UI_ACCESS_SET_VALUE) && (id == 41)):
+		model.volume = depth_number(data, length)
+		model.changed = 1
+	if ((action == UI_ACCESS_SCROLL_TO) && (id == 42)):
+		int start = 0
+		int end = 0
+		int align = 0
+		if ui_access_scroll_parse(data, length, &start, &end, &align):
+			int first = start / 3
+			int last = first
+			if (end > start): last = (end - 1) / 3
+			# Two lines show: the top alignment puts the first line at
+			# the top, the bottom one the last at the bottom, anywhere
+			# moves the least.
+			int top = model.top_line
+			if (align == UI_ACCESS_SCROLL_TOP): top = first
+			else if (align == UI_ACCESS_SCROLL_BOTTOM): top = last - 1
+			else if (first < top): top = first
+			else if (last > top + 1): top = last - 1
+			if (top < 0): top = 0
+			if (top > 2): top = 2
+			model.top_line = top
+			model.changed = 1
 	return 1
 
 
@@ -118,6 +162,27 @@ ui_access_tree* depth_tree():
 	ui_access_node* cherry = ui_access_add(tree, 31, 30, UI_ACCESS_CELL, r)
 	cherry.col_span = 2
 	ui_access_set_text(tree, 31, UI_ACCESS_NAME, c"Cherry", 6)
+	ui_access_add(tree, 40, 1, UI_ACCESS_TEXT, ui_rect_new(220.0, 10.0, 60.0, 20.0))
+	ui_access_set_text(tree, 40, UI_ACCESS_NAME, c"Volume", 6)
+	ui_access_node* slider = ui_access_add(tree, 41, 1, UI_ACCESS_SLIDER, ui_rect_new(220.0, 30.0, 70.0, 20.0))
+	slider.states = UI_ACCESS_FOCUSABLE
+	slider.actions = UI_ACCESS_SET_VALUE
+	char[40] number
+	int digits = ui_access_number_format(&number[0], model.volume)
+	ui_access_set_text(tree, 41, UI_ACCESS_VALUE, &number[0], digits)
+	ui_access_set_range(tree, 41, model.volume, 0.0, 10.0, 0.5)
+	ui_access_add_relation(tree, 41, UI_ACCESS_REL_LABELLED_BY, 40)
+	ui_access_node* log = ui_access_add(tree, 42, 1, UI_ACCESS_TEXTBOX, ui_rect_new(10.0, 220.0, 100.0, 40.0))
+	log.states = UI_ACCESS_FOCUSABLE | UI_ACCESS_READONLY
+	log.actions = UI_ACCESS_SCROLL_TO
+	ui_access_set_text(tree, 42, UI_ACCESS_NAME, c"Log", 3)
+	ui_access_set_text(tree, 42, UI_ACCESS_VALUE, c"ab\ncd\nef\ngh", 11)
+	ui_rect[11] lines
+	for k in range(11):
+		float32 w = 10.0
+		if ((k % 3) == 2): w = 0.0
+		lines[k] = ui_rect_new(10.0 + cast(float32, k % 3) * 10.0, 220.0 + cast(float32, k / 3 - model.top_line) * 20.0, w, 20.0)
+	ui_access_set_char_boxes(tree, 42, &lines[0], 11)
 	tree.focused_id = 2
 	tree.action = depth_action
 	tree.context = 0
@@ -131,6 +196,8 @@ int main():
 	model.ranges[2] = 3
 	model.ranges[3] = 5
 	model.range_count = 2
+	model.volume = 4.0
+	model.top_line = 1
 	ui_atspi_bridge* b = ui_access_atspi_open(c"W depth")
 	if (b == 0):
 		say(c"no accessibility bus\n")

@@ -53,6 +53,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.preedit_focus = 0
 	ctx.preedit_active = 0
 	ctx.preedit_selection = 0
+	ctx.preedit_target_length = 0
 	ctx.popup_depth = 0
 	ctx.scope = 0
 	ctx.bracket_depth = 0
@@ -76,6 +77,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_value_id = 0
 	ctx.access_value_length = 0
 	ctx.access_selection_id = 0
+	ctx.access_scroll_id = 0
 	ctx.access_select_count = 0
 	ctx.access_focus_owner = 0
 	ctx.access_focus_child = 0
@@ -303,6 +305,7 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		if (ctx.preedit_focus == 0): ctx.preedit_focus = ctx.focus
 		ctx.preedit_active = 1
 		ctx.preedit_selection = e.y
+		ctx.preedit_target_length = e.code
 	else if (e.kind == GFX_EVENT_PREEDIT_TEXT):
 		if (ctx.preedit_active && ((e.x == 0) || (e.x == ctx.preedit_focus))):
 			int cp = e.code
@@ -481,6 +484,7 @@ void ui_end(ui_context* ctx):
 	ctx.access_activation_count = 0
 	ctx.access_value_id = 0
 	ctx.access_selection_id = 0
+	ctx.access_scroll_id = 0
 	ctx.access_select_count = 0
 	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
@@ -691,6 +695,18 @@ int ui_access_selection_request(ui_context* ctx, int id, int* anchor, int* activ
 	return 1
 
 
+# A pending scroll-into-view request for id this frame (#912): 1 with
+# the character range [start, end) of its value and the alignment
+# (UI_ACCESS_SCROLL_TOP, _BOTTOM or _ANYWHERE), else 0.
+int ui_access_scroll_request(ui_context* ctx, int id, int* start, int* end, int* align):
+	if ((ctx.access_scroll_id != id) || (id == 0) || ctx.disabled || ui_scope_blocked(ctx)): return 0
+	ctx.access_scroll_id = 0
+	start[0] = ctx.access_scroll_start
+	end[0] = ctx.access_scroll_end
+	align[0] = ctx.access_scroll_align
+	return 1
+
+
 # Record a text widget's caret and selection on its node, given as byte
 # offsets into the value it set (ui_access_set_value first).
 void ui_access_set_caret(ui_context* ctx, ui_access_node* n, int anchor_byte, int caret_byte):
@@ -728,6 +744,16 @@ int ui_access_widget_action(void* context, int id, int action, char* data, int l
 		ctx.access_selection_anchor = anchor
 		ctx.access_selection_active = active
 		ctx.access_selection_id = id
+		return 1
+	if (action == UI_ACCESS_SCROLL_TO):
+		int start = 0
+		int end = 0
+		int align = 0
+		if (!ui_access_scroll_parse(data, length, &start, &end, &align)): return 0
+		ctx.access_scroll_start = start
+		ctx.access_scroll_end = end
+		ctx.access_scroll_align = align
+		ctx.access_scroll_id = id
 		return 1
 	if (action == UI_ACCESS_SELECT):
 		# Select-all and clear arrive as one request per item.

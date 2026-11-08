@@ -20,6 +20,11 @@ const int GFX_COCOA_TEXTIN_COMMIT = 1
 const int GFX_COCOA_TEXTIN_PREEDIT_BEGIN = 2
 const int GFX_COCOA_TEXTIN_PREEDIT_TEXT = 3
 const int GFX_COCOA_TEXTIN_PREEDIT_END = 4
+const int GFX_COCOA_TEXTIN_PREEDIT_TARGET = 5
+
+# The conversion target's length (code points) the bridge sent before
+# the next PREEDIT_BEGIN, which carries it in its code (#912).
+int gfx_cocoa_preedit_target
 
 
 # Queue one bridge entry as window events for field focus. Commits keep
@@ -27,8 +32,11 @@ const int GFX_COCOA_TEXTIN_PREEDIT_END = 4
 void gfx_cocoa_text_input_event(gfx_window* win, int kind, int code, int mods):
 	if (kind == GFX_COCOA_TEXTIN_COMMIT):
 		gfx_cocoa_push(win, GFX_EVENT_CHAR, code, mods & (GFX_MOD_SHIFT | GFX_MOD_ALT))
+	else if (kind == GFX_COCOA_TEXTIN_PREEDIT_TARGET):
+		gfx_cocoa_preedit_target = code
 	else if (kind == GFX_COCOA_TEXTIN_PREEDIT_BEGIN):
-		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, 0, win.text_focus, code, 0)
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, gfx_cocoa_preedit_target, win.text_focus, code, 0)
+		gfx_cocoa_preedit_target = 0
 	else if (kind == GFX_COCOA_TEXTIN_PREEDIT_TEXT):
 		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_TEXT, code, win.text_focus, 0, 0)
 	else if (kind == GFX_COCOA_TEXTIN_PREEDIT_END):

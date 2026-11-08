@@ -90,24 +90,32 @@ void string_append_bytes(string_builder* s, char* data, int length):
 
 # Decimal digits formatted on the stack and appended: no itoa
 # allocation, strlen or copy (every int an f-string interpolates comes
-# through here, docs/projects/scripting.md Phase R3). Like itoa, digits
-# come off v itself, negative or not, so INT_MIN works, and one division
-# per digit yields both quotient and remainder.
+# through here, docs/projects/scripting.md Phase R3). Two digits per
+# division, from a "00".."99" pair table, so a 7-digit value costs four
+# divisions rather than seven (the 32-bit idiv dominates on x86). Like
+# itoa, digits come off v itself, negative or not, so INT_MIN works.
 void string_append_int(string_builder* s, int v):
 	# Filled from the end; 20 digits and a sign cover a 64-bit INT_MIN.
 	char[24] buf
+	char* pairs = c"00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"
 	int i = 24
 	int negative = v < 0
-	if (v == 0):
-		i = i - 1
-		buf[i] = '0'
-	while (v != 0):
-		int q = v / 10
-		int digit = v - q * 10
-		if (digit < 0): digit = 0 - digit
-		i = i - 1
-		buf[i] = digit + '0'
+	while ((v >= 100) || (v <= -100)):
+		int q = v / 100
+		int pair = v - q * 100
+		if (pair < 0): pair = 0 - pair
+		i = i - 2
+		buf[i] = pairs[pair * 2]
+		buf[i + 1] = pairs[pair * 2 + 1]
 		v = q
+	if (v < 0): v = 0 - v
+	if (v >= 10):
+		i = i - 2
+		buf[i] = pairs[v * 2]
+		buf[i + 1] = pairs[v * 2 + 1]
+	else:
+		i = i - 1
+		buf[i] = v + '0'
 	if (negative):
 		i = i - 1
 		buf[i] = '-'
@@ -138,8 +146,14 @@ filled in by the deferred import at the end of compilation.
 */
 
 
+# 32 bytes up front: most f-strings ("item-{i}-{i * 7}", a short label
+# and a number or two) then never reallocate before __w_template_finish
+# (scripting.md R3: 16 bytes cost one realloc per f-string, ~12% of the
+# strings(1M) loop). The compiler cannot pass an exact size: the
+# streaming front end, which must emit byte-identical images, emits this
+# call before it has read the rest of the template.
 string_builder* __w_template_new():
-	return string_new()
+	return string_new_sized(32)
 
 
 void __w_template_bytes(string_builder* s, char* data, int length):

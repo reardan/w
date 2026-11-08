@@ -165,7 +165,7 @@ char* t262_unsupported(json_value* meta):
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
-		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining Symbol Symbol.iterator Symbol.match Symbol.matchAll Symbol.replace Symbol.search Symbol.species Symbol.split Symbol.toPrimitive String.prototype.matchAll arrow-function class computed-property-names new.target default-parameters rest-parameters destructuring-binding async-iteration Symbol.asyncIterator")): features.push(item.string_value)
+		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining Symbol Symbol.iterator Symbol.match Symbol.matchAll Symbol.replace Symbol.search Symbol.species Symbol.split Symbol.toPrimitive String.prototype.matchAll arrow-function class computed-property-names new.target default-parameters rest-parameters destructuring-binding export-star-as-namespace-from-module let const Symbol.toStringTag async-iteration Symbol.asyncIterator")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
 	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution") && !t262_upstream && !t262_has(jc_get(meta, c"flags"), c"module")): return c"module resolution is unsupported"
@@ -300,7 +300,11 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 		json_object_set(report, c"harness_error", json_string(jc_error))
 		*status = 2
 		return report
-	if (t262_builtins == 0): t262_builtins = new set[char*]
+	# Capability inventory for builtins_required: complete built-ins the
+	# runtime provides (reardan/w#907). Tests replace it to withhold one.
+	if (t262_builtins == 0):
+		t262_builtins = new set[char*]
+		for char* builtin in split(c"eval Number isNaN"): t262_builtins.add(builtin)
 	char* directory = ht_temp()
 	json_value* results = json_array()
 	json_value* changes = json_array()
@@ -383,3 +387,21 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 	json_object_set(report, c"results", results)
 	*status = ht_number(counts, c"FAIL") != 0 || ht_number(counts, c"ERROR") != 0 || changes.array_values.length != 0
 	return report
+
+# Pinned run evidence for the gate targets: "KEY=VALUE,..." where a key
+# names a count (PASS FAIL UNSUPPORTED ERROR) or a report field
+# (execution_passes assertions variants files pass_rate). Returns 0 when
+# every value matches, else a message naming the first mismatch.
+char* t262_expect(json_value* report, char* spec):
+	for char* item in split(spec, ','):
+		list[char*] pair = split(item, '=')
+		if (pair.length != 2 || strlen(pair[0]) == 0): return strjoin(c"invalid expectation: ", item)
+		if (!jc_choice(json_string(pair[0]), c"PASS FAIL UNSUPPORTED ERROR execution_passes assertions variants files pass_rate")): return strjoin(c"unknown expectation: ", pair[0])
+		json_value* actual = jc_get(jc_get(report, c"counts"), pair[0])
+		if (actual == 0): actual = jc_get(report, pair[0])
+		if (actual == 0): return strjoin(c"report has no ", pair[0])
+		char* text = 0
+		if (actual.type == json_type_string()): text = actual.string_value
+		else: text = itoa(actual.int_value)
+		if (strcmp(text, pair[1]) != 0): return strjoin(strjoin(strjoin(c"expected ", item), c", got "), text)
+	return 0

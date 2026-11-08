@@ -149,8 +149,8 @@ An omitted for clause/catch/finally uses an `empty` node with offset -1;
 source-backed nodes preserve byte spans. The printer handles loop, `with` and
 label wrappers when protecting against a dangling `else`. The interpreter's
 preflight rejects the lowered shapes it does not execute (`super` outside
-class methods, `for-in`, `var`/target `for-of`, catch patterns, holes,
-destructuring assignment, modules through the script API) with status 6.
+class methods, compound assignment to a pattern, modules through the script
+API) with status 6.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
 UTF-16 code units in `units`. `js_text_decode(bytes, byte_length)` decodes a
@@ -244,10 +244,13 @@ The initial semantic subset is deliberately explicit:
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
   function expressions, synchronous arrows with expression or block bodies,
-  object/array binding patterns and default/rest parameters, recursive calls, captured mutable environments and
+  object/array binding patterns (array patterns take arrays and strings by
+  index and other iterables through the iterator protocol, closing an
+  unfinished iterator) and default/rest parameters, recursive calls, captured mutable environments and
   per-iteration `for (let ...)` environments, including a separate initializer
   environment for captured bindings.
-- Dense array literals, bounded index writes and writable `length`; plain data
+- Array literals with holes (an elision extends `length` without creating the
+  index), bounded index writes and writable `length`; plain data
   objects, shorthand properties and methods, dot/computed property access,
   optional chains and mutation. Array/call spread accepts arrays and strings;
   object spread copies enumerable own properties. Shared non-enumerable array
@@ -258,10 +261,68 @@ The initial semantic subset is deliberately explicit:
   accessors receive the original receiver. Read-only writes are ignored in
   sloppy code and throw in strict code. Function values expose `name`/`length`.
   Method calls pass `this`; arrows retain their enclosing receiver.
-- Lexical `for (let/const pattern of value)` over arrays and strings. Arrays read
-  their live length each iteration; holes yield undefined. Strings iterate Unicode
-  code points, preserving lone surrogates. Each iteration creates a fresh binding
-  for captured closures; the iterable expression sees the binding in its TDZ.
+- `for (let/const/var pattern of value)` and `for (target of value)` over arrays
+  and strings. Arrays read their live length each iteration; holes yield
+  undefined. Strings iterate Unicode code points, preserving lone surrogates.
+  Each `let`/`const` iteration creates a fresh binding for captured closures;
+  the iterable expression sees the binding in its TDZ. `var` heads bind the
+  hoisted variable, and an assignment target (identifier, member, or array or
+  object destructuring target) is evaluated and assigned on each iteration.
+- `for-in` (reardan/w#907, `runtime_global.w`) with the same heads, plus the
+  Annex B.3.6 `for (var x = init in o)` initializer. It enumerates own keys
+  (integer indices ascending, then string keys in creation order; never
+  symbols), then each prototype's, skipping keys already seen on a nearer
+  object whether or not they were enumerable, and skips a key whose property is
+  deleted before it is reached. Keys are collected when the loop starts, so
+  properties added during enumeration are not visited. `null`/`undefined`
+  produce no iterations; strings and String wrappers enumerate their indices.
+- The `in` operator (HasProperty through the prototype chain with
+  ToPropertyKey, a TypeError for a non-object right operand) and `delete`:
+  member deletion honours `configurable` (array `length` and String wrapper
+  indices are not deletable; a strict failure throws a TypeError), deleting a
+  sloppy identifier removes a configurable global property or an
+  eval-created variable and returns false for other bindings, and other
+  operands are evaluated and yield true.
+- Destructuring assignment `[a, , b = 1, ...rest] = v` and
+  `({a, b: t.x, [k]: c = 2, ...rest} = v)`, nested patterns, and
+  destructured `catch ({a, b})` / `catch ([x])` parameters. Targets are
+  evaluated before the value they receive, defaults name anonymous
+  functions, array targets use the array/string fast path or the iterator
+  protocol (closing an unfinished iterator), and object rest copies the
+  remaining enumerable own string and symbol keys.
+- The global object (reardan/w#907): global `this`, `globalThis`, built-ins
+  as non-enumerable properties, and global `var`/function declarations as
+  non-configurable enumerable properties visible through `this`. Global
+  `let`/`const`/`class` live in a separate declarative record and do not
+  become properties; a lexical declaration conflicting with a global
+  `var`/function or a non-configurable global property (`undefined`, `NaN`,
+  `Infinity`) is a SyntaxError, and a global function over a non-writable
+  property a TypeError. Global accessor properties run for identifier reads
+  and writes; assignment to a non-writable global is ignored in sloppy code
+  and throws in strict code. Sloppy assignment to an unresolvable name creates
+  a global property; strict code throws a ReferenceError. Sloppy functions
+  receive the global object for an undefined/null `this` and a wrapper object
+  for other primitives.
+- Primitive wrappers (`runtime_wrappers.w`): `Number(value)`/`new Number`,
+  `Boolean(value)`/`new Boolean`, `new String` and `Object(value)` (ToObject
+  for every primitive except BigInt; a new object for undefined/null).
+  `Number.prototype` (`valueOf`, `toString(radix)`, `toLocaleString`) and
+  `Boolean.prototype` (`valueOf`, `toString`) are themselves wrappers of `+0`
+  and `false`, `String.prototype` wraps `""`, and number/boolean property
+  reads go through these prototypes. `Number.MAX_VALUE`/`MIN_VALUE` and the
+  global `isNaN`/`isFinite` (with ToNumber) are installed.
+- Direct and indirect `eval` (`runtime_eval.w`) reuse `js_parse`, `js_lower`
+  and preflight. A parse or early error throws a catchable SyntaxError;
+  unsupported eval code stops with status 6. Indirect eval (`(0, eval)(s)`,
+  `var e = eval; e(s)`) runs as global code; direct eval runs in a new
+  declarative environment inside the caller's, with its `this`. Sloppy eval
+  code declares `var` and function names in the caller's variable
+  environment (or as configurable global properties), where they are
+  deletable; a name lexically declared in between is a SyntaxError, except a
+  simple catch parameter (Annex B.3.5), and Annex B.3.3 block functions apply.
+  Strict eval code, and every direct eval from strict code, keeps its
+  declarations in its own environment. Non-string arguments are returned
+  unchanged.
 - Cooked templates normalize raw CR/CRLF, decode escapes into UTF-16, and
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
@@ -323,11 +384,13 @@ Unsupported syntax is rejected before execution, including module declarations
 through the script API, tagged templates,
 prototype-literal `__proto__`, loose equality and additional numeric
 operators. Implicit operator coercions (`+`, relational and unary operators on
-non-numbers) remain outside this subset. Destructuring assignment, computed binding
-keys and catch patterns remain unsupported. Global `this`, sloppy receiver
-substitution/boxing, `super` outside class methods and ordinary functions' implicit `arguments` object
-are not implemented; accessing these receiver/arguments features reports
-unsupported status. Explicit `arguments` parameters remain ordinary bindings.
+non-numbers) remain outside this subset. Computed binding-pattern keys remain
+unsupported. `super` outside class methods and ordinary functions' implicit
+`arguments` object are not implemented; accessing them reports unsupported
+status. Explicit `arguments` parameters remain ordinary bindings. The global
+object has no `Object.prototype` (no intrinsic exists), so it and every plain
+object inherit nothing; `with` and BigInt wrapper objects are outside the
+subset.
 
 Native Promise, binary buffers/views and text-codec constructors are supported;
 other constructor capabilities depend on installed host hooks. The runtime also
@@ -335,9 +398,11 @@ installs bounded Number, Math and Date operations; this is not a complete standa
 library. BigInt literals lower to a distinct node for the bounded binary-boundary
 implementation; arbitrary-precision arithmetic is not implemented. No DOM, timer
 task queue or browser authority is installed by the runtime. The separate
-[module API](javascript_modules.md) provides bounded acyclic graph loading with
-named const/function exports and live read-only imports. Browser module loading
-does not yet support top-level await.
+[module API](javascript_modules.md) links and evaluates ES2020 module graphs,
+cyclic ones included, on `module_graph.w`'s records. It supports default,
+namespace and named imports, `export *` and `export * as ns` live bindings,
+and TDZ for bindings that are not initialized yet. Browser module loading does
+not yet support top-level await.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
@@ -476,7 +541,8 @@ declarations, expressions and class/object-literal methods
 **Design: a resumable evaluator, not a CPS transform.** The interpreter stays a
 recursive tree walker. A `yield` or `await` returns the internal completion
 status 7 (suspension); while it unwinds, every construct with local progress
-(blocks and programs, `var`/`let` declarators, `if`, loops including for-of and
+(blocks and programs, `var`/`let` declarators, `if`, loops including for-in
+(the remaining keys are kept in the frame), for-of and
 for-await, `switch`, `try`/`catch`/`finally`, calls and `new` with their
 evaluated callee, receiver and arguments, member reads, assignments, binary and
 conditional operators, array/object literals including spreads and computed
@@ -492,9 +558,10 @@ second form and the AST would have to be rewritten per function; the resumable
 approach keeps a single evaluator with only local save/restore code in the
 constructs above. Preflight (`js_coroutine_supported`) rejects, with status 6,
 a coroutine body that uses a construct without resume support where a
-suspension could occur (for example `super` member forms, optional-call chains
-or destructuring assignment targets), so a missing frame is never discovered
-mid-execution.
+suspension could occur (for example `super` member forms, optional-call chains,
+a `yield` inside a for-in/for-of head or inside a destructuring-assignment
+pattern; the right operand of a destructuring assignment may suspend), so a
+missing frame is never discovered mid-execution.
 
 Generator objects implement `next`/`return`/`throw` on %GeneratorPrototype%
 (states suspended-start, suspended-yield, executing and completed; a reentrant
@@ -513,8 +580,7 @@ iterator on early exit. Array binding patterns over non-array iterables (and
 arrays whose `Symbol.iterator` was replaced) step the iterator protocol and
 close an iterator they leave open. A `Function` global (`Function.prototype`
 and its `constructor`) makes `f instanceof Function` hold for every function
-kind; calling it with source text reports unsupported. The `in` operator is now supported
-(ToPropertyKey on the left, TypeError for a non-object right side).
+kind; calling it with source text reports unsupported.
 
 **Budget and limits for suspended frames.** A suspended activation holds no
 native stack: it is a heap record (function node, environment, frames, request
@@ -662,8 +728,9 @@ passes when its version pin is bypassed under v22.
   "default is never star-exported" and indirect re-export cycles. Failures are
   SyntaxErrors at the "resolution" phase (unloadable specifiers are
   ReferenceErrors). `js_module_namespace_names` lists a namespace's keys without
-  ambiguous names. The runtime loader (`modules.w`) is unchanged; the Test262
-  adapter runs this static linker for every module test.
+  ambiguous names. The runtime loader (`modules.w`) links and evaluates
+  graphs on these records (see [javascript_modules.md](javascript_modules.md)),
+  and the Test262 adapter also runs this static linker for every module test.
 - **Annex B.1.1 and B.1.3.** Sloppy legacy octal literals (`010` is 8) and
   NonOctalDecimal literals (`08`, `019.5`) evaluate; a legacy octal literal
   takes no fraction, exponent or BigInt suffix (`07.5` is an error). Strict
@@ -676,13 +743,11 @@ passes when its version pin is bypassed under v22.
   declaration is evaluated, unless a parameter, an enclosing let/const/class or
   an enclosing block function of that name would make `var f` an early error;
   `if (x) function f() {}` acts as a braced block (`runtime_annexb.w`). Strict
-  code keeps block functions block-scoped. Switch statements and non-simple
-  catch parameters are outside the lowering subset, so those Test262 variants
-  stay UNSUPPORTED.
+  code keeps block functions block-scoped.
 - **Function-call assignment targets.** Decision: follow the Annex B web-compat
   rule for non-strict code. `f() = 1`, `f() += 1`, `f()++`, `--f()` and
   `for (f() in/of o)` parse in sloppy scripts and evaluate the call, then throw
-  a ReferenceError (the for-in/of form is outside the lowering subset). Strict
+  a ReferenceError (the for-in/of form on its first iteration). Strict
   code and modules keep the ES2020 early SyntaxError; V8 defers those too, so
   this is a deliberate difference from Node. Optional calls, `new`, tagged
   templates, `import()` and destructuring targets stay early errors, as in Node.
