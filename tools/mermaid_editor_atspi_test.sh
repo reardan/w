@@ -6,6 +6,8 @@
 # Needs: xvfb at-spi2-core python3-pyatspi gir1.2-atspi-2.0 libxtst6 (and orca
 # speech-dispatcher for --orca). Run from the repository root after
 # `./wbuild wmermaid_editor`; `./wbuild mermaid_editor_atspi_test` does both.
+# APP and CHECK swap in another application and check script (the
+# #863 depth fixture: access_atspi_depth_test).
 # Fails when anything is missing: a skipped run is never counted as a pass.
 set -eu
 ORCA=0
@@ -65,5 +67,5 @@ cd "$ROOT"
 if [ "$ORCA" = 1 ]; then
 	"$PYTHON" -I tools/mermaid_editor_atspi_check.py "$ROOT/bin/wmermaid_editor" "$WORK/diagram.mmd" --orca "$ORCA_LOG"
 else
-	"$PYTHON" -I ${CHECK:-tools/mermaid_editor_atspi_check.py} "$ROOT/bin/wmermaid_editor" "$WORK/diagram.mmd"
+	"$PYTHON" -I ${CHECK:-tools/mermaid_editor_atspi_check.py} "$ROOT/${APP:-bin/wmermaid_editor}" "$WORK/diagram.mmd"
 fi

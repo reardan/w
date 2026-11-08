@@ -40,6 +40,7 @@ import lib.env
 import lib.dbus
 import graphics.ui.accessibility
 import graphics.ui.accessibility_table
+import graphics.ui.accessibility_text
 
 
 const int ui_atspi_max_requests = 64
@@ -62,6 +63,7 @@ const int ATSPI_ROLE_RADIO_BUTTON = 44
 const int ATSPI_ROLE_TABLE = 55
 const int ATSPI_ROLE_TABLE_CELL = 56
 const int ATSPI_ROLE_TABLE_COLUMN_HEADER = 57
+const int ATSPI_ROLE_TABLE_ROW_HEADER = 58
 const int ATSPI_ROLE_TOGGLE_BUTTON = 62
 const int ATSPI_ROLE_APPLICATION = 75
 const int ATSPI_ROLE_ENTRY = 79
@@ -81,6 +83,7 @@ const int ATSPI_STATE_EXPANDED = 10
 const int ATSPI_STATE_FOCUSABLE = 11
 const int ATSPI_STATE_FOCUSED = 12
 const int ATSPI_STATE_MODAL = 16
+const int ATSPI_STATE_MULTISELECTABLE = 18
 const int ATSPI_STATE_PRESSED = 20
 const int ATSPI_STATE_SELECTABLE = 22
 const int ATSPI_STATE_SELECTED = 23
@@ -101,8 +104,28 @@ struct ui_atspi_request:
 	int length
 
 
+# A client connected straight to the application (the AT-SPI
+# peer-to-peer bus, #863): authenticating until BEGIN, then served like
+# the accessibility bus.
+struct ui_atspi_peer:
+	dbus_conn* conn
+	int authed
+	int greeted                 # the leading NUL byte has arrived
+
+
+const int ui_atspi_max_peers = 16
+
+
 struct ui_atspi_bridge:
 	dbus_conn* bus
+	# The peer-to-peer server: a listening unix socket whose address
+	# Application.GetApplicationBusAddress hands out, so screen readers
+	# can skip the bus daemon for queries (events still go over the bus).
+	int listen_fd
+	char* p2p_address
+	ui_atspi_peer[16] peers
+	int peer_count
+	int p2p_calls               # method calls answered on peer connections
 	ui_access_tree* published   # owned copy of the last publication
 	char* app_name
 	char* desktop_name          # the registry's desktop, once embedded
@@ -250,6 +273,7 @@ int ui_atspi_role(ui_access_node* n):
 	if (r == UI_ACCESS_ROW): return ATSPI_ROLE_TABLE_ROW
 	if (r == UI_ACCESS_CELL):
 		if (ui_atspi_is_header_row(n.parent)): return ATSPI_ROLE_TABLE_COLUMN_HEADER
+		if (ui_access_is_row_header(n)): return ATSPI_ROLE_TABLE_ROW_HEADER
 		return ATSPI_ROLE_TABLE_CELL
 	if (r == UI_ACCESS_RADIO): return ATSPI_ROLE_RADIO_BUTTON
 	# AT-SPI 2.52 has no switch role; a toggle button with CHECKED and
@@ -279,6 +303,7 @@ char* ui_atspi_role_name(int role):
 	if (role == ATSPI_ROLE_TABLE_ROW): return c"table row"
 	if (role == ATSPI_ROLE_TABLE_CELL): return c"table cell"
 	if (role == ATSPI_ROLE_TABLE_COLUMN_HEADER): return c"table column header"
+	if (role == ATSPI_ROLE_TABLE_ROW_HEADER): return c"table row header"
 	if (role == ATSPI_ROLE_RADIO_BUTTON): return c"radio button"
 	if (role == ATSPI_ROLE_TOGGLE_BUTTON): return c"toggle button"
 	if (role == ATSPI_ROLE_COMBO_BOX): return c"combo box"
@@ -323,6 +348,7 @@ void ui_atspi_states_for(ui_access_node* n, int focused_id, int* lo, int* hi):
 		else: t = t | (1 << (ATSPI_STATE_READ_ONLY - 32))
 		if ((n.actions & UI_ACCESS_SET_SELECTION) != 0): t = t | (1 << (ATSPI_STATE_SELECTABLE_TEXT - 32))
 	if (role == UI_ACCESS_DIALOG): s = s | (1 << ATSPI_STATE_MODAL)
+	if (ui_access_is_selection_container(n) && ui_access_is_multiselectable(n)): s = s | (1 << ATSPI_STATE_MULTISELECTABLE)
 	if ((n.parent == 0) && (role == UI_ACCESS_DOCUMENT)): s = s | (1 << ATSPI_STATE_ACTIVE)
 	lo[0] = s
 	hi[0] = t
@@ -343,6 +369,7 @@ char* ui_atspi_state_nick(int k):
 	if (k == ATSPI_STATE_EXPANDED): return c"expanded"
 	if (k == ATSPI_STATE_FOCUSABLE): return c"focusable"
 	if (k == ATSPI_STATE_MODAL): return c"modal"
+	if (k == ATSPI_STATE_MULTISELECTABLE): return c"multiselectable"
 	if (k == ATSPI_STATE_PRESSED): return c"pressed"
 	if (k == ATSPI_STATE_SELECTABLE): return c"selectable"
 	if (k == ATSPI_STATE_SELECTED): return c"selected"
@@ -655,9 +682,13 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 		int row = 0
 		int col = 0
 		ui_atspi_cell_position(n, &row, &col)
+		int row_span = 1
+		int col_span = 1
+		ui_access_cell_slot(n, &row, &col, &row_span, &col_span)
 		if ((strcmp(prop, c"ColumnSpan") == 0) || (strcmp(prop, c"RowSpan") == 0)):
 			dbus_put_sig(out, c"i")
-			dbus_put_i32(out, 1)
+			if (strcmp(prop, c"RowSpan") == 0): dbus_put_i32(out, row_span)
+			else: dbus_put_i32(out, col_span)
 			return 1
 		if (strcmp(prop, c"Position") == 0):
 			dbus_put_sig(out, c"(ii)")
@@ -929,8 +960,11 @@ int ui_atspi_call_accessible(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 
 int ui_atspi_call_application(ui_atspi_bridge* b, dbus_message* m):
 	if (ui_atspi_member(m, c"GetLocale")): return ui_atspi_reply_string(b, m, c"")
-	# No peer-to-peer server: clients keep using the bus.
-	if (ui_atspi_member(m, c"GetApplicationBusAddress")): return ui_atspi_reply_string(b, m, c"")
+	# The peer-to-peer server's address ("" without one: clients keep
+	# using the bus).
+	if (ui_atspi_member(m, c"GetApplicationBusAddress")):
+		if (b.p2p_address == 0): return ui_atspi_reply_string(b, m, c"")
+		return ui_atspi_reply_string(b, m, b.p2p_address)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1046,6 +1080,142 @@ int ui_atspi_select_text(ui_atspi_bridge* b, ui_access_node* n, int start, int e
 	return ui_atspi_enqueue(b, n, UI_ACCESS_SET_SELECTION, &payload[0], length)
 
 
+# Replace selection k of a node that takes several with [start, end)
+# (k == the current count adds one; start < 0 removes k), queued as one
+# UI_ACCESS_SET_SELECTIONS (ui_access_selections_edit).
+int ui_atspi_edit_selections(ui_atspi_bridge* b, ui_access_node* n, int k, int start, int end):
+	char* payload = 0
+	int length = ui_access_selections_edit(n, k, start, end, &payload)
+	if (length <= 0): return 0
+	int ok = ui_atspi_enqueue(b, n, UI_ACCESS_SET_SELECTIONS, payload, length)
+	free(payload)
+	return ok
+
+
+# A snapshot box (window coordinates) in coord_type coord, as for
+# ui_atspi_extents: screen, window, or relative to n's parent.
+void ui_atspi_box_extents(ui_atspi_bridge* b, ui_access_node* n, ui_rect box, int coord, int* x, int* y, int* w, int* h):
+	x[0] = cast(int, box.x)
+	y[0] = cast(int, box.y)
+	w[0] = cast(int, box.w)
+	h[0] = cast(int, box.h)
+	if (coord == 0):
+		x[0] = x[0] + b.origin_x
+		y[0] = y[0] + b.origin_y
+	else if ((coord == 2) && (n.parent != 0)):
+		x[0] = x[0] - cast(int, n.parent.bounds.x)
+		y[0] = y[0] - cast(int, n.parent.bounds.y)
+
+
+# A point in coord_type coord back into snapshot coordinates.
+void ui_atspi_point_local(ui_atspi_bridge* b, ui_access_node* n, int px, int py, int coord, float32* x, float32* y):
+	int lx = px
+	int ly = py
+	if (coord == 0):
+		lx = lx - b.origin_x
+		ly = ly - b.origin_y
+	else if ((coord == 2) && (n.parent != 0)):
+		lx = lx + cast(int, n.parent.bounds.x)
+		ly = ly + cast(int, n.parent.bounds.y)
+	x[0] = cast(float32, lx)
+	y[0] = cast(float32, ly)
+
+
+# ATK's "u,u,u" colour (16-bit channels) for 0xRRGGBB.
+void ui_atspi_color(int rgb, char* out):
+	int n = 0
+	for k in range(3):
+		int channel = ((rgb >> (16 - k * 8)) & 255) * 257
+		char* digits = itoa(channel)
+		int d = 0
+		while (digits[d] != 0):
+			out[n] = digits[d]
+			n = n + 1
+			d = d + 1
+		free(digits)
+		if (k < 2):
+			out[n] = ','
+			n = n + 1
+	out[n] = 0
+
+
+# The value of ATK text attribute name in a (empty when a does not set
+# it); family-name is read from a.family by the callers.
+void ui_atspi_attr_value(ui_access_text_attrs* a, char* name, char* out):
+	out[0] = 0
+	char* text = 0
+	if ((strcmp(name, c"size") == 0) && (a.size > 0)): text = itoa(a.size)
+	if ((strcmp(name, c"weight") == 0) && (a.weight > 0)): text = itoa(a.weight)
+	if (text != 0):
+		strcpy(out, text)
+		free(text)
+		return
+	if (strcmp(name, c"style") == 0):
+		if (a.italic): strcpy(out, c"italic")
+		else: strcpy(out, c"normal")
+	if (strcmp(name, c"underline") == 0):
+		if (a.underline): strcpy(out, c"single")
+		else: strcpy(out, c"none")
+	if ((strcmp(name, c"fg-color") == 0) && (a.fg >= 0)): ui_atspi_color(a.fg, out)
+	if ((strcmp(name, c"bg-color") == 0) && (a.bg >= 0)): ui_atspi_color(a.bg, out)
+
+
+char* ui_atspi_attr_name(int k):
+	if (k == 0): return c"family-name"
+	if (k == 1): return c"size"
+	if (k == 2): return c"weight"
+	if (k == 3): return c"style"
+	if (k == 4): return c"underline"
+	if (k == 5): return c"fg-color"
+	return c"bg-color"
+
+
+# The a{ss} entries of a's known attributes; with base set, only those
+# whose value differs from base's.
+void ui_atspi_put_text_attrs(dbus_buf* out, ui_access_text_attrs* a, ui_access_text_attrs* base):
+	char[48] value
+	char[48] was
+	for k in range(7):
+		char* name = ui_atspi_attr_name(k)
+		if (k == 0):
+			if ((a.family.length > 0) && ((base == 0) || !ui_access_text_same(&a.family, &base.family))):
+				dbus_put_struct(out)
+				dbus_put_string(out, name)
+				ui_atspi_put_text(out, &a.family)
+			continue
+		ui_atspi_attr_value(a, name, &value[0])
+		if (value[0] == 0): continue
+		if (base != 0):
+			ui_atspi_attr_value(base, name, &was[0])
+			if (strcmp(&value[0], &was[0]) == 0): continue
+		ui_atspi_put_attribute(out, name, &value[0])
+
+
+# The names of the attributes a sets ("name:value" strings, as
+# GetDefaultAttributeSet answers).
+void ui_atspi_put_attr_set(dbus_buf* out, ui_access_text_attrs* a):
+	char[48] value
+	char[128] entry
+	for k in range(7):
+		char* name = ui_atspi_attr_name(k)
+		if (k == 0):
+			if ((a.family.length > 0) && (a.family.length < 100)):
+				strcpy(&entry[0], name)
+				int at = strlen(name)
+				entry[at] = ':'
+				for i in range(a.family.length): entry[at + 1 + i] = a.family.data[i]
+				entry[at + 1 + a.family.length] = 0
+				dbus_put_string(out, &entry[0])
+			continue
+		ui_atspi_attr_value(a, name, &value[0])
+		if (value[0] == 0): continue
+		strcpy(&entry[0], name)
+		int at = strlen(name)
+		entry[at] = ':'
+		strcpy(&entry[at + 1], &value[0])
+		dbus_put_string(out, &entry[0])
+
+
 int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
@@ -1081,17 +1251,18 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_put_i32(out, start)
 		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"sii")
-	# One selection at most: the snapshot's [selection_start,
-	# selection_end) when it is not empty.
-	int selected = ui_access_has_selection(n)
-	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, selected)
+	# The selections: the snapshot's primary [selection_start,
+	# selection_end) when it is not empty, then the further ones.
+	int total = ui_access_selection_total(n)
+	int multiple = (n.actions & UI_ACCESS_SET_SELECTIONS) != 0
+	if (ui_atspi_member(m, c"GetNSelections")): return ui_atspi_reply_i32(b, m, total)
 	if (ui_atspi_member(m, c"GetSelection")):
 		int k = dbus_read_i32(&r)
 		int start = 0
 		int end = 0
-		if ((k == 0) && selected && (r.failed == 0)):
-			start = n.selection_start
-			end = n.selection_end
+		if (r.failed || !ui_access_selection_range(n, k, &start, &end)):
+			start = 0
+			end = 0
 		dbus_put_i32(out, start)
 		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"ii")
@@ -1100,50 +1271,111 @@ int ui_atspi_call_text(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		if (r.failed): return ui_atspi_reply_bool(b, m, 0)
 		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, k, k))
 	if (ui_atspi_member(m, c"AddSelection")):
-		# A second selection is not supported; an empty one says nothing.
+		# An empty selection says nothing. A second one needs a node
+		# that takes several (UI_ACCESS_SET_SELECTIONS).
 		int start = dbus_read_i32(&r)
 		int end = dbus_read_i32(&r)
-		if (r.failed || selected || (start == end)): return ui_atspi_reply_bool(b, m, 0)
-		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+		if (r.failed || (start == end)): return ui_atspi_reply_bool(b, m, 0)
+		if (total == 0): return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+		if (!multiple): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_edit_selections(b, n, total, start, end))
 	if (ui_atspi_member(m, c"SetSelection")):
 		int k = dbus_read_i32(&r)
 		int start = dbus_read_i32(&r)
 		int end = dbus_read_i32(&r)
-		if (r.failed || (k != 0)): return ui_atspi_reply_bool(b, m, 0)
-		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+		if (r.failed): return ui_atspi_reply_bool(b, m, 0)
+		if ((k == 0) && (total <= 1)): return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, start, end))
+		if (!multiple || (k < 0) || (k >= total) || (start == end)): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_edit_selections(b, n, k, start, end))
 	if (ui_atspi_member(m, c"RemoveSelection")):
-		# Removing the selection leaves the caret where it was.
+		# Removing the only selection leaves the caret where it was.
 		int k = dbus_read_i32(&r)
-		if (r.failed || (k != 0) || !selected): return ui_atspi_reply_bool(b, m, 0)
-		int caret = ui_atspi_caret(n)
-		return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, caret, caret))
-	# Text attributes: the bridge knows no fonts or colours, so every
-	# set is empty and the whole text is one run.
+		if (r.failed || (k < 0) || (k >= total)): return ui_atspi_reply_bool(b, m, 0)
+		if (total == 1):
+			int caret = ui_atspi_caret(n)
+			return ui_atspi_reply_bool(b, m, ui_atspi_select_text(b, n, caret, caret))
+		if (!multiple): return ui_atspi_reply_bool(b, m, 0)
+		return ui_atspi_reply_bool(b, m, ui_atspi_edit_selections(b, n, k, 0 - 1, 0 - 1))
+	# Text attributes (#863): the node's defaults and its runs, with the
+	# names and value formats ATK and GTK use.
 	if (ui_atspi_member(m, c"GetDefaultAttributes")):
-		ui_atspi_put_attributes(out)
+		int mark = dbus_array_begin(out, 8)
+		if (n.attrs != 0): ui_atspi_put_text_attrs(out, n.attrs, 0)
+		dbus_array_end(out, mark, 8)
 		return dbus_reply(b.bus, m, c"a{ss}")
 	if (ui_atspi_member(m, c"GetDefaultAttributeSet")):
 		int mark = dbus_array_begin(out, 4)
+		if (n.attrs != 0): ui_atspi_put_attr_set(out, n.attrs)
 		dbus_array_end(out, mark, 4)
 		return dbus_reply(b.bus, m, c"as")
 	if (ui_atspi_member(m, c"GetAttributes") || ui_atspi_member(m, c"GetAttributeRun")):
-		ui_atspi_put_attributes(out)
-		dbus_put_i32(out, 0)
-		dbus_put_i32(out, count)
+		# Without include_defaults (and always for GetAttributes) only
+		# the attributes that differ from the defaults are listed.
+		int k = dbus_read_i32(&r)
+		int defaults = 0
+		if (ui_atspi_member(m, c"GetAttributeRun")): defaults = dbus_read_bool(&r)
+		if (r.failed): k = 0
+		if (k < 0): k = 0
+		int start = 0
+		int end = 0
+		ui_access_text_attrs* a = ui_access_attrs_at(n, k, &start, &end)
+		int mark = dbus_array_begin(out, 8)
+		if (a != 0):
+			if (defaults): ui_atspi_put_text_attrs(out, a, 0)
+			else if (a != n.attrs): ui_atspi_put_text_attrs(out, a, n.attrs)
+		dbus_array_end(out, mark, 8)
+		dbus_put_i32(out, start)
+		dbus_put_i32(out, end)
 		return dbus_reply(b.bus, m, c"a{ss}ii")
 	if (ui_atspi_member(m, c"GetAttributeValue")):
-		return ui_atspi_reply_string(b, m, c"")
+		int k = dbus_read_i32(&r)
+		char* name = dbus_read_string(&r, 0)
+		int start = 0
+		int end = 0
+		ui_access_text_attrs* a = 0
+		if (r.failed == 0): a = ui_access_attrs_at(n, k, &start, &end)
+		if (a == 0): return ui_atspi_reply_string(b, m, c"")
+		char[48] value
+		ui_atspi_attr_value(a, name, &value[0])
+		if (strcmp(name, c"family-name") == 0):
+			ui_atspi_put_text(out, &a.family)
+			return dbus_reply(b.bus, m, c"s")
+		return ui_atspi_reply_string(b, m, &value[0])
+	# Glyph geometry (#863): a character's or a range's box from the
+	# node's layout; the field's box when it publishes none.
 	if (ui_atspi_member(m, c"GetCharacterExtents") || ui_atspi_member(m, c"GetRangeExtents")):
+		int start = dbus_read_i32(&r)
+		int end = start + 1
+		if (ui_atspi_member(m, c"GetRangeExtents")): end = dbus_read_i32(&r)
+		int coord = dbus_read_u32(&r)
+		if (r.failed): coord = 0
 		int x = 0
 		int y = 0
 		int w = 0
 		int h = 0
-		ui_atspi_extents(b, n, 0, &x, &y, &w, &h)
+		ui_rect box
+		int found = 0
+		if (ui_access_has_glyphs(n)):
+			if (ui_atspi_member(m, c"GetCharacterExtents")): found = (start >= 0) && (start < count) && ui_access_char_box(n, start, &box)
+			else: found = ui_access_range_box(n, start, end, &box)
+			if (found): ui_atspi_box_extents(b, n, box, coord, &x, &y, &w, &h)
+		else: ui_atspi_extents(b, n, coord, &x, &y, &w, &h)
 		dbus_put_i32(out, x)
 		dbus_put_i32(out, y)
 		dbus_put_i32(out, w)
 		dbus_put_i32(out, h)
 		return dbus_reply(b.bus, m, c"iiii")
+	if (ui_atspi_member(m, c"GetOffsetAtPoint")):
+		int px = dbus_read_i32(&r)
+		int py = dbus_read_i32(&r)
+		int coord = dbus_read_u32(&r)
+		int k = 0 - 1
+		if (r.failed == 0):
+			float32 lx = 0.0
+			float32 ly = 0.0
+			ui_atspi_point_local(b, n, px, py, coord, &lx, &ly)
+			k = ui_access_offset_at_point(n, lx, ly)
+		return ui_atspi_reply_i32(b, m, k)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1214,68 +1446,125 @@ int ui_atspi_reply_ref(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	return dbus_reply(b.bus, m, c"(so)")
 
 
-# Select a child by queueing its activation (what a click does).
-int ui_atspi_select(ui_atspi_bridge* b, ui_access_node* c):
+# Select (mode UI_ACCESS_SELECT_ADD or _ONLY) or deselect (_REMOVE) a
+# child of a selection container: UI_ACCESS_SELECT when the child
+# offers it, else activation (what a click does) to select. Selecting
+# a selected child in a single-selection container, or deselecting an
+# unselected one, succeeds without a request.
+int ui_atspi_select_mode(ui_atspi_bridge* b, ui_access_node* c, int mode):
 	if (!ui_atspi_selectable_child(c)): return 0
-	if ((c.states & UI_ACCESS_SELECTED) != 0): return 1
+	int selected = (c.states & UI_ACCESS_SELECTED) != 0
+	int multiple = ui_access_is_multiselectable(c.parent)
+	if ((mode == UI_ACCESS_SELECT_REMOVE) && !selected): return 1
+	if ((mode == UI_ACCESS_SELECT_ADD) && selected): return 1
+	if ((mode == UI_ACCESS_SELECT_ONLY) && selected && !multiple): return 1
+	if (!multiple && (mode != UI_ACCESS_SELECT_REMOVE)): mode = UI_ACCESS_SELECT_ONLY
+	if ((c.actions & UI_ACCESS_SELECT) != 0):
+		if (!multiple && (mode == UI_ACCESS_SELECT_REMOVE)): return 0
+		char* word = ui_access_select_word(mode)
+		return ui_atspi_enqueue(b, c, UI_ACCESS_SELECT, word, strlen(word))
+	if (mode == UI_ACCESS_SELECT_REMOVE): return 0
 	return ui_atspi_enqueue(b, c, UI_ACCESS_ACTIVATE, c"", 0)
+
+
+int ui_atspi_select(ui_atspi_bridge* b, ui_access_node* c):
+	return ui_atspi_select_mode(b, c, UI_ACCESS_SELECT_ADD)
+
+
+# The cell at a table index (row * columns + column), or 0.
+ui_access_node* ui_atspi_cell_at_index(ui_access_node* table, int index, int* row, int* col):
+	int columns = ui_atspi_table_columns(table)
+	if ((index < 0) || (columns == 0) || (index >= ui_atspi_table_rows(table) * columns)): return 0
+	row[0] = index / columns
+	col[0] = index % columns
+	return ui_access_table_cell_at(table, row[0], col[0])
+
+
+# The first row header of data row row, or 0.
+ui_access_node* ui_atspi_row_header(ui_access_node* table, int row):
+	int columns = ui_atspi_table_columns(table)
+	for col in range(columns):
+		ui_access_node* c = ui_access_table_cell_at(table, row, col)
+		if ((c != 0) && ui_access_is_row_header(c)): return c
+	return 0
+
+
+# The column header over column col: the header cell covering it.
+ui_access_node* ui_atspi_column_header(ui_access_node* table, int col):
+	ui_access_node* header = ui_atspi_header_row(table)
+	if ((header == 0) || (col < 0)): return 0
+	ui_access_node* c = header.first_child
+	while (c != 0):
+		int hc = 0
+		int hs = 0
+		if (ui_access_header_cell_column(c, &hc, &hs) && (col >= hc) && (col < hc + hs)): return c
+		c = c.next_sibling
+	return 0
 
 
 int ui_atspi_call_table(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	dbus_reader r
 	dbus_message_reader(m, &r)
 	int columns = ui_atspi_table_columns(n)
-	int cells = ui_atspi_table_rows(n) * columns
 	if (ui_atspi_member(m, c"GetAccessibleAt")):
 		int row = dbus_read_i32(&r)
 		int col = dbus_read_i32(&r)
-		return ui_atspi_reply_ref(b, m, ui_atspi_row_cell(ui_atspi_table_row(n, row), col))
+		return ui_atspi_reply_ref(b, m, ui_access_table_cell_at(n, row, col))
 	if (ui_atspi_member(m, c"GetIndexAt")):
 		int row = dbus_read_i32(&r)
 		int col = dbus_read_i32(&r)
 		int index = 0 - 1
-		if (ui_atspi_row_cell(ui_atspi_table_row(n, row), col) != 0): index = row * columns + col
+		if (ui_access_table_cell_at(n, row, col) != 0): index = row * columns + col
 		return ui_atspi_reply_i32(b, m, index)
 	if (ui_atspi_member(m, c"GetRowAtIndex") || ui_atspi_member(m, c"GetColumnAtIndex")):
-		int index = dbus_read_i32(&r)
-		int v = 0 - 1
-		if ((index >= 0) && (index < cells)):
-			if (ui_atspi_member(m, c"GetRowAtIndex")): v = index / columns
-			else: v = index % columns
-		return ui_atspi_reply_i32(b, m, v)
-	if (ui_atspi_member(m, c"GetRowColumnExtentsAtIndex")):
-		int index = dbus_read_i32(&r)
-		int ok = (index >= 0) && (index < cells)
 		int row = 0
 		int col = 0
+		int v = 0 - 1
+		if (ui_atspi_cell_at_index(n, dbus_read_i32(&r), &row, &col) != 0):
+			if (ui_atspi_member(m, c"GetRowAtIndex")): v = row
+			else: v = col
+		return ui_atspi_reply_i32(b, m, v)
+	if (ui_atspi_member(m, c"GetRowColumnExtentsAtIndex")):
+		# The slot's cell: where it starts and how far it spans.
+		int row = 0
+		int col = 0
+		int row_span = 0
+		int col_span = 0
 		int selected = 0
-		if ok:
-			row = index / columns
-			col = index % columns
-			selected = (ui_atspi_table_row(n, row).states & UI_ACCESS_SELECTED) != 0
+		ui_access_node* cell = ui_atspi_cell_at_index(n, dbus_read_i32(&r), &row, &col)
+		int ok = (cell != 0) && ui_access_cell_slot(cell, &row, &col, &row_span, &col_span)
+		if ok: selected = (cell.parent.states & UI_ACCESS_SELECTED) != 0
 		dbus_buf* out = dbus_body(b.bus)
 		dbus_put_bool(out, ok)
 		dbus_put_i32(out, row)
 		dbus_put_i32(out, col)
-		dbus_put_i32(out, ok)
-		dbus_put_i32(out, ok)
+		dbus_put_i32(out, row_span)
+		dbus_put_i32(out, col_span)
 		dbus_put_bool(out, selected)
 		return dbus_reply(b.bus, m, c"biiiib")
 	if (ui_atspi_member(m, c"GetRowDescription")):
-		return ui_atspi_reply_string(b, m, c"")
+		ui_access_node* header = ui_atspi_row_header(n, dbus_read_i32(&r))
+		if (header == 0): return ui_atspi_reply_string(b, m, c"")
+		ui_atspi_put_text(dbus_body(b.bus), &header.name)
+		return dbus_reply(b.bus, m, c"s")
 	if (ui_atspi_member(m, c"GetColumnDescription")):
-		ui_access_node* header = ui_atspi_row_cell(ui_atspi_header_row(n), dbus_read_i32(&r))
+		ui_access_node* header = ui_atspi_column_header(n, dbus_read_i32(&r))
 		if (header == 0): return ui_atspi_reply_string(b, m, c"")
 		ui_atspi_put_text(dbus_body(b.bus), &header.name)
 		return dbus_reply(b.bus, m, c"s")
 	if (ui_atspi_member(m, c"GetRowExtentAt") || ui_atspi_member(m, c"GetColumnExtentAt")):
 		int row = dbus_read_i32(&r)
 		int col = dbus_read_i32(&r)
-		return ui_atspi_reply_i32(b, m, ui_atspi_row_cell(ui_atspi_table_row(n, row), col) != 0)
+		int row_span = 0
+		int col_span = 0
+		ui_access_node* cell = ui_access_table_cell_at(n, row, col)
+		if (cell != 0): ui_access_cell_slot(cell, &row, &col, &row_span, &col_span)
+		if (ui_atspi_member(m, c"GetRowExtentAt")): return ui_atspi_reply_i32(b, m, row_span)
+		return ui_atspi_reply_i32(b, m, col_span)
 	if (ui_atspi_member(m, c"GetRowHeader")):
-		return ui_atspi_reply_ref(b, m, 0)
+		return ui_atspi_reply_ref(b, m, ui_atspi_row_header(n, dbus_read_i32(&r)))
 	if (ui_atspi_member(m, c"GetColumnHeader")):
-		return ui_atspi_reply_ref(b, m, ui_atspi_row_cell(ui_atspi_header_row(n), dbus_read_i32(&r)))
+		return ui_atspi_reply_ref(b, m, ui_atspi_column_header(n, dbus_read_i32(&r)))
 	if (ui_atspi_member(m, c"GetSelectedRows") || ui_atspi_member(m, c"GetSelectedColumns")):
 		dbus_buf* out = dbus_body(b.bus)
 		int mark = dbus_array_begin(out, 4)
@@ -1285,15 +1574,21 @@ int ui_atspi_call_table(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 		dbus_array_end(out, mark, 4)
 		return dbus_reply(b.bus, m, c"ai")
 	if (ui_atspi_member(m, c"IsRowSelected") || ui_atspi_member(m, c"IsSelected")):
-		ui_access_node* row = ui_atspi_table_row(n, dbus_read_i32(&r))
-		if (ui_atspi_member(m, c"IsSelected") && (ui_atspi_row_cell(row, dbus_read_i32(&r)) == 0)): row = 0
-		return ui_atspi_reply_bool(b, m, (row != 0) && ((row.states & UI_ACCESS_SELECTED) != 0))
+		int row = dbus_read_i32(&r)
+		ui_access_node* selected = ui_atspi_table_row(n, row)
+		if (ui_atspi_member(m, c"IsSelected")):
+			ui_access_node* cell = ui_access_table_cell_at(n, row, dbus_read_i32(&r))
+			selected = 0
+			if (cell != 0): selected = cell.parent
+		return ui_atspi_reply_bool(b, m, (selected != 0) && ((selected.states & UI_ACCESS_SELECTED) != 0))
 	if (ui_atspi_member(m, c"IsColumnSelected")):
 		return ui_atspi_reply_bool(b, m, 0)
-	if (ui_atspi_member(m, c"AddRowSelection")):
+	if (ui_atspi_member(m, c"AddRowSelection") || ui_atspi_member(m, c"RemoveRowSelection")):
 		ui_access_node* row = ui_atspi_table_row(n, dbus_read_i32(&r))
-		return ui_atspi_reply_bool(b, m, (row != 0) && ui_atspi_select(b, row))
-	if (ui_atspi_member(m, c"AddColumnSelection") || ui_atspi_member(m, c"RemoveRowSelection") || ui_atspi_member(m, c"RemoveColumnSelection")):
+		int mode = UI_ACCESS_SELECT_ADD
+		if (ui_atspi_member(m, c"RemoveRowSelection")): mode = UI_ACCESS_SELECT_REMOVE
+		return ui_atspi_reply_bool(b, m, (row != 0) && ui_atspi_select_mode(b, row, mode))
+	if (ui_atspi_member(m, c"AddColumnSelection") || ui_atspi_member(m, c"RemoveColumnSelection")):
 		return ui_atspi_reply_bool(b, m, 0)
 	return ui_atspi_unknown(b, m)
 
@@ -1301,20 +1596,27 @@ int ui_atspi_call_table(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 int ui_atspi_call_table_cell(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	int row = 0
 	int col = 0
-	ui_atspi_cell_position(n, &row, &col)
+	int row_span = 1
+	int col_span = 1
+	ui_access_cell_slot(n, &row, &col, &row_span, &col_span)
 	if (ui_atspi_member(m, c"GetRowColumnSpan")):
 		dbus_buf* out = dbus_body(b.bus)
 		dbus_put_i32(out, row)
 		dbus_put_i32(out, col)
-		dbus_put_i32(out, 1)
-		dbus_put_i32(out, 1)
+		dbus_put_i32(out, row_span)
+		dbus_put_i32(out, col_span)
 		return dbus_reply(b.bus, m, c"iiii")
 	if (ui_atspi_member(m, c"GetRowHeaderCells") || ui_atspi_member(m, c"GetColumnHeaderCells")):
 		dbus_buf* out = dbus_body(b.bus)
 		int mark = dbus_array_begin(out, 8)
-		if (ui_atspi_member(m, c"GetColumnHeaderCells")):
-			ui_access_node* header = ui_atspi_row_cell(ui_atspi_header_row(n.parent.parent), col)
-			if (header != 0): ui_atspi_put_ref(b, out, header.id)
+		ui_access_node* header = 0
+		int count = 0
+		if (ui_atspi_member(m, c"GetColumnHeaderCells")): count = ui_access_column_headers_of(n, 0, &header)
+		else: count = ui_access_row_headers_of(n, 0, &header)
+		for i in range(count):
+			if (ui_atspi_member(m, c"GetColumnHeaderCells")): ui_access_column_headers_of(n, i, &header)
+			else: ui_access_row_headers_of(n, i, &header)
+			ui_atspi_put_ref(b, out, header.id)
 		dbus_array_end(out, mark, 8)
 		return dbus_reply(b.bus, m, c"a(so)")
 	return ui_atspi_unknown(b, m)
@@ -1331,10 +1633,26 @@ int ui_atspi_call_selection(ui_atspi_bridge* b, dbus_message* m, ui_access_node*
 	if (ui_atspi_member(m, c"IsChildSelected")):
 		ui_access_node* c = ui_atspi_child_at(b, n, dbus_read_i32(&r))
 		return ui_atspi_reply_bool(b, m, ui_atspi_selectable_child(c) && ((c.states & UI_ACCESS_SELECTED) != 0))
-	# Single selection driven by activation: nothing can be deselected
-	# or selected wholesale.
-	if (ui_atspi_member(m, c"DeselectSelectedChild") || ui_atspi_member(m, c"DeselectChild") || ui_atspi_member(m, c"SelectAll") || ui_atspi_member(m, c"ClearSelection")):
-		return ui_atspi_reply_bool(b, m, 0)
+	# Deselection and wholesale selection need a multi-selection
+	# container (UI_ACCESS_MULTISELECTABLE); a single-selection one
+	# owns that policy and refuses.
+	int multiple = ui_access_is_multiselectable(n)
+	if (ui_atspi_member(m, c"DeselectSelectedChild") || ui_atspi_member(m, c"DeselectChild")):
+		int k = dbus_read_i32(&r)
+		ui_access_node* c = 0
+		if (ui_atspi_member(m, c"DeselectSelectedChild")): c = ui_atspi_selected_at(n, k)
+		else: c = ui_atspi_child_at(b, n, k)
+		return ui_atspi_reply_bool(b, m, multiple && (c != 0) && ((c.states & UI_ACCESS_SELECTED) != 0) && ui_atspi_select_mode(b, c, UI_ACCESS_SELECT_REMOVE))
+	if (ui_atspi_member(m, c"SelectAll") || ui_atspi_member(m, c"ClearSelection")):
+		if (!multiple): return ui_atspi_reply_bool(b, m, 0)
+		int mode = UI_ACCESS_SELECT_ADD
+		if (ui_atspi_member(m, c"ClearSelection")): mode = UI_ACCESS_SELECT_REMOVE
+		int ok = 1
+		ui_access_node* c = n.first_child
+		while (c != 0):
+			if (ui_atspi_selectable_child(c) && !ui_atspi_select_mode(b, c, mode)): ok = 0
+			c = c.next_sibling
+		return ui_atspi_reply_bool(b, m, ok)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1519,6 +1837,32 @@ int ui_atspi_has_child(ui_access_node* parent, int id):
 	return 0
 
 
+# 1 when two versions of a text node select the same ranges (the
+# primary one compared only while one of them is not empty).
+int ui_atspi_selections_same(ui_access_node* n, ui_access_node* was):
+	int total = ui_access_selection_total(n)
+	if (total != ui_access_selection_total(was)): return 0
+	for k in range(total):
+		int a = 0
+		int b = 0
+		int c = 0
+		int d = 0
+		ui_access_selection_range(n, k, &a, &b)
+		ui_access_selection_range(was, k, &c, &d)
+		if ((a != c) || (b != d)): return 0
+	return 1
+
+
+# 1 when two versions of a text node carry the same text attributes.
+int ui_atspi_attrs_same(ui_access_node* n, ui_access_node* was):
+	if ((n.attrs == 0) != (was.attrs == 0)): return 0
+	if ((n.attrs != 0) && !ui_access_attrs_same(n.attrs, was.attrs)): return 0
+	if (n.run_count != was.run_count): return 0
+	for i in range(n.run_count):
+		if ((n.runs[i].start != was.runs[i].start) || (n.runs[i].end != was.runs[i].end) || !ui_access_attrs_same(&n.runs[i].attrs, &was.runs[i].attrs)): return 0
+	return 1
+
+
 # Announce what changed from old to new (new is already published).
 void ui_atspi_emit_cache_add(ui_atspi_bridge* b, ui_access_node* n):
 	ui_atspi_put_cache_item(b, dbus_body(b.bus), n)
@@ -1600,8 +1944,10 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 		# selected text on the first and the moved-over text on the
 		# second).
 		if (ui_atspi_has_text(n)):
-			if ((ui_access_has_selection(n) || ui_access_has_selection(was)) && ((n.selection_start != was.selection_start) || (n.selection_end != was.selection_end))):
+			if (!ui_atspi_selections_same(n, was)):
 				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextSelectionChanged", c"", 0, 0)
+			if (!ui_atspi_attrs_same(n, was)):
+				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextAttributesChanged", c"", 0, 0)
 			if ((n.caret != was.caret) && (n.caret >= 0)):
 				ui_atspi_emit(b, id, c"org.a11y.atspi.Event.Object", c"TextCaretMoved", c"", n.caret, 0)
 	# One SelectionChanged per container whose selected children changed,
@@ -1627,6 +1973,185 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 			walk = ui_atspi_preorder_next(walk)
 	if ((fresh.announcement.length > 0) && (fresh.root != 0)):
 		ui_atspi_emit_announcement(b, fresh.root.id, &fresh.announcement, fresh.announcement_live)
+
+
+/* The peer-to-peer bus (#863). Like atk-bridge, the application listens
+on a private unix socket (an abstract one here) and hands its address
+out through Application.GetApplicationBusAddress; libatspi then sends
+its queries straight to the application. Clients authenticate with SASL
+EXTERNAL and must run as the application's user (checked with
+SO_PEERCRED); no unix fds are passed. Signals keep going over the
+accessibility bus. */
+
+int ui_atspi_p2p_counter
+
+
+# Listen on a fresh abstract unix socket; sets b.p2p_address. 0 when
+# the socket cannot be set up (the bridge then works over the bus only).
+int ui_atspi_p2p_listen(ui_atspi_bridge* b):
+	b.listen_fd = 0 - 1
+	b.p2p_address = 0
+	if (env_get(c"W_ATSPI_NO_P2P") != 0): return 0
+	ui_atspi_p2p_counter = ui_atspi_p2p_counter + 1
+	char[64] name
+	strcpy(&name[0], c"w-atspi-")
+	char* pid = itoa(getpid())
+	strcpy(&name[strlen(&name[0])], pid)
+	free(pid)
+	strcpy(&name[strlen(&name[0])], c"-")
+	char* serial = itoa(ui_atspi_p2p_counter)
+	strcpy(&name[strlen(&name[0])], serial)
+	free(serial)
+	int n = strlen(&name[0])
+	char* addr = cast(char*, malloc(SOCKADDR_UN_SIZE))
+	for i in range(SOCKADDR_UN_SIZE): addr[i] = 0
+	save_int16(addr, socket_abi_family_word(af_unix))
+	for i in range(n): addr[3 + i] = name[i]
+	int fd = socket_unix_stream()
+	if (fd < 0):
+		free(addr)
+		return 0
+	int err = sys_bind(fd, cast(int, addr), 3 + n)
+	free(addr)
+	if ((err < 0) || (socket_listen(fd, 8) < 0)):
+		close(fd)
+		return 0
+	socket_set_nonblocking(fd)
+	b.listen_fd = fd
+	char* prefix = c"unix:abstract="
+	b.p2p_address = cast(char*, malloc(strlen(prefix) + n + 1))
+	strcpy(b.p2p_address, prefix)
+	strcpy(&b.p2p_address[strlen(prefix)], &name[0])
+	return 1
+
+
+void ui_atspi_peer_close(ui_atspi_bridge* b, int k):
+	ui_atspi_peer* p = &b.peers[k]
+	dbus_close(p.conn)
+	b.peer_count = b.peer_count - 1
+	if (k != b.peer_count): b.peers[k] = b.peers[b.peer_count]
+
+
+# Accept waiting clients run by this user.
+void ui_atspi_p2p_accept(ui_atspi_bridge* b):
+	if (b.listen_fd < 0): return
+	for i in range(8):
+		int fd = socket_accept_connection(b.listen_fd)
+		if (fd < 0): return
+		net_peer_credentials who
+		io_result result
+		int same = (socket_peer_credentials_checked(fd, &who, &result) == IO_OK) && (who.uid == getuid())
+		if (!same || (b.peer_count >= ui_atspi_max_peers)):
+			close(fd)
+			continue
+		socket_set_nonblocking(fd)
+		dbus_conn* c = new dbus_conn()
+		c.fd = fd
+		c.serial = 0
+		c.failed = 0
+		c.unique_name = dbus_strdup(b.bus.unique_name)
+		dbus_buf_init(&c.in)
+		dbus_buf_init(&c.head)
+		dbus_buf_init(&c.body)
+		ui_atspi_peer* p = &b.peers[b.peer_count]
+		p.conn = c
+		p.authed = 0
+		p.greeted = 0
+		b.peer_count = b.peer_count + 1
+
+
+int ui_atspi_line_is(char* line, int n, char* word):
+	int k = strlen(word)
+	if (n < k): return 0
+	for i in range(k):
+		if (line[i] != word[i]): return 0
+	return (n == k) || (line[k] == ' ')
+
+
+# The server side of SASL EXTERNAL over the bytes received so far.
+# Returns 0 once the client must be dropped.
+int ui_atspi_peer_auth(ui_atspi_peer* p):
+	dbus_conn* c = p.conn
+	if (dbus_fill(c) < 0): return 0
+	if (!p.greeted && (c.in.length > 0)):
+		if (c.in.data[0] != 0): return 0
+		for i in range(c.in.length - 1): c.in.data[i] = c.in.data[i + 1]
+		c.in.length = c.in.length - 1
+		p.greeted = 1
+	while (p.greeted && !p.authed):
+		int end = 0 - 1
+		for i in range(c.in.length - 1):
+			if ((end < 0) && (c.in.data[i] == 13) && (c.in.data[i + 1] == 10)): end = i
+		if (end < 0):
+			if (c.in.length > 1024): return 0
+			return 1
+		char* line = c.in.data
+		char* reply = c"ERROR\r\n"
+		if (ui_atspi_line_is(line, end, c"AUTH")):
+			reply = c"REJECTED EXTERNAL\r\n"
+			if (ui_atspi_line_is(line, end, c"AUTH EXTERNAL")):
+				# The connection's credentials were checked at accept; the
+				# claimed identity is not trusted for anything.
+				reply = c"OK 5720617473706920703270206775696e\r\n"
+		else if (ui_atspi_line_is(line, end, c"DATA")): reply = c"OK 5720617473706920703270206775696e\r\n"
+		else if (ui_atspi_line_is(line, end, c"BEGIN")):
+			p.authed = 1
+			reply = 0
+		else if (ui_atspi_line_is(line, end, c"CANCEL")): reply = c"REJECTED EXTERNAL\r\n"
+		int rest = c.in.length - (end + 2)
+		for i in range(rest): c.in.data[i] = c.in.data[end + 2 + i]
+		c.in.length = rest
+		if ((reply != 0) && !dbus_write_all(c, reply, strlen(reply))): return 0
+	return 1
+
+
+# Answer what the peer connections have sent; the bridge's calls reply
+# on the connection a call came from.
+void ui_atspi_p2p_pump(ui_atspi_bridge* b):
+	ui_atspi_p2p_accept(b)
+	int k = 0
+	while (k < b.peer_count):
+		ui_atspi_peer* p = &b.peers[k]
+		int keep = 1
+		if (!p.authed): keep = ui_atspi_peer_auth(p)
+		if (keep && p.authed):
+			int handled = 0
+			while (keep && (handled < 256)):
+				dbus_message m
+				int got = dbus_next(p.conn, &m)
+				if (got < 0): keep = 0
+				if (got <= 0): break
+				if (m.type == DBUS_METHOD_CALL):
+					dbus_conn* bus = b.bus
+					b.bus = p.conn
+					ui_atspi_handle_call(b, &m)
+					b.bus = bus
+					b.p2p_calls = b.p2p_calls + 1
+				dbus_message_free(&m)
+				handled = handled + 1
+			if (p.conn.failed): keep = 0
+		if (keep): k = k + 1
+		else: ui_atspi_peer_close(b, k)
+
+
+void ui_atspi_p2p_close(ui_atspi_bridge* b):
+	while (b.peer_count > 0): ui_atspi_peer_close(b, b.peer_count - 1)
+	if (b.listen_fd >= 0): close(b.listen_fd)
+	b.listen_fd = 0 - 1
+	free(b.p2p_address)
+	b.p2p_address = 0
+
+
+# The peer-to-peer address clients are given ("" without one), and the
+# number of calls answered over it.
+char* ui_access_atspi_p2p_address(ui_atspi_bridge* b):
+	if ((b == 0) || (b.p2p_address == 0)): return c""
+	return b.p2p_address
+
+
+int ui_access_atspi_p2p_calls(ui_atspi_bridge* b):
+	if (b == 0): return 0
+	return b.p2p_calls
 
 
 /* Connection. */
@@ -1682,7 +2207,10 @@ ui_atspi_bridge* ui_access_atspi_open_at(char* address, char* app_name):
 	b.origin_x = 0
 	b.origin_y = 0
 	b.queued = 0
+	b.peer_count = 0
+	b.p2p_calls = 0
 	dbus_buf_init(&b.scratch)
+	ui_atspi_p2p_listen(b)
 	ui_atspi_embed(b)
 	return b
 
@@ -1740,6 +2268,7 @@ int ui_access_atspi_dispatch(ui_atspi_bridge* b, ui_access_tree* tree):
 				b.desktop_path = dbus_strdup(path)
 		dbus_message_free(&m)
 		handled = handled + 1
+	ui_atspi_p2p_pump(b)
 	int count = 0
 	for i in range(b.queued):
 		ui_atspi_request* r = &b.queue[i]
@@ -1762,6 +2291,7 @@ void ui_access_atspi_close(ui_atspi_bridge* b):
 	if ((b.published != 0) && (b.published.root != 0) && (b.bus.failed == 0)):
 		ui_atspi_emit_children(b, 0, c"remove", 0, b.published.root.id)
 	ui_atspi_clear_queue(b)
+	ui_atspi_p2p_close(b)
 	ui_access_tree_free(b.published)
 	dbus_close(b.bus)
 	free(b.app_name)
