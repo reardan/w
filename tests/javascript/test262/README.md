@@ -14,12 +14,12 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 337 upstream test files (plus module fixtures) expanded
-into 611 variants. The native profile reports **566 PASS, 0 FAIL, 45
-UNSUPPORTED, 0 ERROR**; 111 passes reach runtime execution and the rest verify
+The corpus contains 673 upstream test files (plus module fixtures) expanded
+into 1282 variants. The native profile reports **1033 PASS, 0 FAIL, 249
+UNSUPPORTED, 0 ERROR**; 578 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **579 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (94.76%)**. The positive
-cases execute 515 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+reports **1250 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (97.50%)**. The positive
+cases execute 1798 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
 incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
@@ -33,6 +33,29 @@ includes. Tests that need `eval` or other harness includes
 (`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
+
+### String and RegExp Symbol methods (reardan/w#902)
+
+336 of the files are the `test/built-ins/String/prototype/{match,matchAll,
+replace,search,split}/` and `test/built-ins/RegExp/prototype/Symbol.{match,
+matchAll,replace,search,split}/` tests that pass in at least one profile with no
+FAIL in either: Symbol dispatch, coercion order, `lastIndex` handling for
+global/sticky RegExps, RegExpExec with user `exec`, GetSubstitution, species
+construction, the RegExp String Iterator and result shapes. The `Symbol`,
+`Symbol.iterator`, `Symbol.match`, `Symbol.matchAll`, `Symbol.replace`,
+`Symbol.search`, `Symbol.species`, `Symbol.split`, `Symbol.toPrimitive`,
+`String.prototype.matchAll` and `arrow-function` feature tags are enabled.
+The native profile reports `assert.throws` and includes such as `compareArray.js`
+as UNSUPPORTED; the upstream-harness profile passes most of those. Not pinned
+(174 files): tests needing `propertyHelper.js`, `isConstructor.js`/`Reflect`,
+`compareIterator.js`, other built-ins (`Number.prototype`, `Boolean`,
+`Object.prototype`, `Function.prototype.bind`, `lastIndexOf`, `charAt`,
+`Math.pow`, `eval`), the `arguments` object, global `this`, implicit `+`
+coercion, `v`-flag or duplicate-named-group syntax, and tests of post-ES2020
+algorithm changes (`matchAll` rejecting non-global RegExps, `Symbol.match`/
+`Symbol.replace` reading `flags`, primitive arguments skipping `Symbol.*`
+lookup; see "String and RegExp Symbol methods" in
+`docs/projects/javascript.md`).
 
 ### Static semantics, module linking and Annex B (reardan/w#840)
 
@@ -132,8 +155,9 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
   `coalesce-expression`, `regexp-named-groups`,
-  `regexp-unicode-property-escapes`, `async-functions`, `generators` and
-  `optional-chaining` feature tags are currently enabled; untagged cases still
+  `regexp-unicode-property-escapes`, `async-functions`, `generators`,
+  `optional-chaining`, `arrow-function`, `String.prototype.matchAll`, `Symbol`
+  and the `Symbol.*` tags listed above are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.
