@@ -1,4 +1,4 @@
-# wbuild: tool=tools/test262_conformance.w tool=tools/test262_runtime_runner.w
+# wbuild: tool=tools/test262_conformance.w tool=tools/test262_runtime_runner.w timeout=2700000
 import tools.test262_conformance_lib
 
 char* tc_directory
@@ -44,10 +44,10 @@ void tc_upstream():
 	t262_upstream = 1
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3066,\"FAIL\":0,\"UNSUPPORTED\":484,\"ERROR\":0}")), c"upstream-harness counts changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":4682,\"FAIL\":0,\"UNSUPPORTED\":473,\"ERROR\":0}")), c"upstream-harness counts changed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"86.36%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 1993 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	tc_eq(c"90.82%", ht_text(report, c"pass_rate"))
+	ht_require(ht_number(report, c"execution_passes") == 3609 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -67,20 +67,20 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3301,\"FAIL\":0,\"UNSUPPORTED\":249,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 2228 && ht_number(report, c"assertions") == 9368 && ht_number(report, c"variants") == 3550 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":4916,\"FAIL\":0,\"UNSUPPORTED\":239,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 3843 && ht_number(report, c"assertions") == 13731 && ht_number(report, c"variants") == 5155 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 3300
-		int unsupported = 250
+		int passes = 4915
+		int unsupported = 240
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 3302
-			unsupported = 248
+			passes = 4917
+			unsupported = 238
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")
@@ -91,8 +91,23 @@ int main():
 	tc_mutation = 0
 	json_value* manifest = t262_load(c"tests/javascript/test262/manifest.json")
 	json_value* requirements = jc_get(manifest, c"builtins_required")
-	ht_require(requirements.object_values.length == 3, c"built-in requirement inventory changed")
+	ht_require(requirements.object_values.length == 514, c"built-in requirement inventory changed")
 	for json_value* result in jc_get(report, c"results").array_values:
+		char* name = split(ht_text(result, c"id"), '#')[0]
+		json_value* required = jc_get(requirements, name)
+		if (required == 0): continue
+		tc_eq(c"PASS", ht_text(result, c"status"))
+		tc_eq(c"execute", ht_text(jc_get(result, c"actual"), c"phase"))
+	json_value* missing = tc_execute(c"unknownUserVariable;")
+	tc_eq(c"ReferenceError", ht_text(missing, c"error_type"))
+	tc_eq(c"FAIL", t262_classify(json_object(), missing))
+	for char* source in ht_split(c"assert.sameValue(eval(\"1 + 1\"), 2);|assert.sameValue(isNaN(\"x\"), true);|assert.sameValue(Number(\"2\"), 2);|assert.sameValue(Number.isFinite(1), true);", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
+	# A withheld capability is a metadata UNSUPPORTED reason, never a skip
+	# that hides an executable case: the baseline change fails the gate.
+	t262_builtins = new set[char*]
+	json_value* withheld = tc_run(&status)
+	ht_require(status == 1 && jc_get(withheld, c"baseline_changes").array_values.length == 721, c"withheld builtin support did not change the baseline")
+	for json_value* result in jc_get(withheld, c"results").array_values:
 		char* name = split(ht_text(result, c"id"), '#')[0]
 		json_value* required = jc_get(requirements, name)
 		if (required == 0): continue
@@ -101,15 +116,7 @@ int main():
 		list[char*] names = new list[char*]
 		for json_value* item in required.array_values: names.push(item.string_value)
 		tc_eq(strjoin(c"unsupported required built-ins: ", join(names, c", ")), ht_text(jc_get(result, c"actual"), c"message"))
-	for char* source in ht_split(c"unknownUserVariable;|eval(\"1 + 1\");|isNaN(0);", '|'):
-		json_value* actual = tc_execute(source)
-		tc_eq(c"ReferenceError", ht_text(actual, c"error_type"))
-		tc_eq(c"FAIL", t262_classify(json_object(), actual))
-	tc_eq(c"normal", ht_text(tc_execute(c"assert.sameValue(Number.isFinite(1), true);"), c"outcome"))
-	for char* name in split(c"eval Number isNaN"): t262_builtins.add(name)
-	json_value* promoted = tc_run(&status)
-	ht_require(status == 1 && ht_number(jc_get(promoted, c"counts"), c"FAIL") == 6 && jc_get(promoted, c"baseline_changes").array_values.length == 6, c"declared builtin support hid runtime failures")
-	t262_builtins = new set[char*]
+	t262_builtins = 0
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.notSameValue(0, -0);|assert.sameValue();", '|'):
 		json_value* actual = tc_execute(source)
 		tc_eq(c"normal", ht_text(actual, c"outcome"))

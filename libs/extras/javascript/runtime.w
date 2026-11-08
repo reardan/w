@@ -1110,6 +1110,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	int update = js_kind(node, c"assignment") == 0
 	int read = update || strcmp(node.text, c"=") != 0
 	int identifier = js_kind(target, c"identifier")
+	int unresolvable = 0
 	# Destructuring assignment (runtime_global.w) yields the right operand.
 	if (read == 0 && js_runtime_assignment_pattern(target)):
 		js_value* source = js_runtime_eval_node(rt, node.children[1], env)
@@ -1118,6 +1119,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	if (identifier):
 		# A plain assignment resolves its binding when it stores the value,
 		# so an unresolvable sloppy reference creates a global property.
+		if (read == 0): unresolvable = js_runtime_binding(env, target.text) == 0
 		if (read):
 			binding = js_runtime_binding(env, target.text)
 			if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
@@ -1152,7 +1154,9 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 				value = js_runtime_binary(rt, op, old, value)
 				free(op)
 	if (rt.completion.status == 0):
-		if (identifier): js_runtime_identifier_put(rt, env, target.text, value)
+		# A reference unresolvable before the right operand stays so in strict code.
+		if (identifier && unresolvable && env.strict): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+		else if (identifier): js_runtime_identifier_put(rt, env, target.text, value)
 		else if (receiver != 0):
 			if (js_runtime_write_receiver(rt, object, key, value, receiver) == 0 && rt.completion.status == 0): js_runtime_fail(rt, 2, c"property write rejected")
 		else if (js_runtime_member_write(rt, object, key, value) == 0 && env.strict):

@@ -18,13 +18,13 @@ profiles so they run in parallel: `javascript_test262` runs the native profile
 `bin/test262_conformance` still runs both. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 1811 upstream test files (plus module fixtures) expanded
-into 3550 variants. The native profile reports **3301 PASS, 0 FAIL, 249
-UNSUPPORTED, 0 ERROR**; 2228 passes reach runtime execution and the rest verify
+The corpus contains 2832 upstream test files (plus module fixtures) expanded
+into 5155 variants. The native profile reports **4916 PASS, 0 FAIL, 239
+UNSUPPORTED, 0 ERROR**; 3843 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **3066 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (86.36%)**; the 452
+reports **4682 PASS, 0 FAIL, 473 UNSUPPORTED, 0 ERROR (90.82%)**; the 452
 property-escape variants (below) are UNSUPPORTED there because
-`regExpUtils.js` is not pinned. The positive cases execute 9368 assertions
+`regExpUtils.js` is not pinned. The positive cases execute 13731 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
@@ -35,11 +35,35 @@ escapes, astral characters, case mapping, surrogate pairs, sticky `^` and
 forward named references. reardan/w#841 added `instanceof` and `switch` tests
 (`test/language/expressions/instanceof/`, `test/language/statements/switch/`),
 two module tests with their fixtures, and the `tcoHelper.js`/`compareArray.js`
-includes. Tests that need `eval` or other harness includes
+includes. Tests that need other harness includes
 (`propertyHelper.js`, `regExpUtils.js`) were not vendored (the property-escape
 files below use native `regExpUtils.js` overrides instead). These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
+
+### Global object, for-in, destructuring, wrappers and eval (reardan/w#907)
+
+1021 of the files pass once the interpreter executes `for-in`, `var` and
+assignment-target `for-in`/`for-of` heads, `in`, `delete`, destructuring
+assignment, array holes, destructured `catch` parameters, the global object
+and global `this`, Number/Boolean wrappers with `Object(value)`, and direct
+and indirect `eval`: `test/language/statements/{for-in,for-of,for,try,variable}/`
+(including `dstr/` heads and binding patterns over iterators),
+`test/language/expressions/{assignment,in,delete,this,typeof,array,object}/`,
+`test/language/eval-code/{direct,indirect}/`, `test/annexB/language/eval-code/`
+(Annex B.3.3 functions declared by eval code), `test/language/function-code/`
+(`this` substitution and boxing), `test/language/global-code/`,
+`test/language/types/`, `test/language/identifier-resolution/` and
+`test/built-ins/{Number,Boolean,eval,global}/`. They were selected by running
+all 4741 not-yet-pinned files of those directories (plus
+`test/built-ins/Object/prototype/`) at the pinned revision and keeping each
+file whose native variants all PASS, whose upstream-harness variants PASS or
+are UNSUPPORTED, and which did not already pass before #907. The rest need
+`Object.prototype` (`hasOwnProperty`, `Object.create`, ...), the `Function`
+constructor, `propertyHelper.js`, the `arguments` object, separate parameter
+scopes for `eval` in parameter initializers, implicit `+`/relational
+coercions, generators, or `with`. Files naming `eval`, `Number` or `isNaN`
+record them in `builtins_required`.
 
 ### Classes (reardan/w#905)
 
@@ -175,16 +199,19 @@ outside this profile. Constructor syntax now lowers, allowing unreachable
 `new Test262Error` branches in the two newly passing short-circuit variants;
 executing that constructor remains unsupported.
 
-Manifest version 2 records built-in requirements for three hash-pinned addition
-cases: `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
-`Number` and `isNaN`. The adapter capability inventory does not yet advertise
-these complete capabilities (the bounded Number helpers do not provide the
-required Number constants or global `isNaN`), so those six variants report an explicit metadata UNSUPPORTED
-reason before execution. This is a declared capability boundary, not an exception
-filter: unknown identifiers and direct uses of missing built-ins still throw
-ReferenceError and classify as FAIL. A regression test advertises all three
-capabilities and verifies that execution exposes all six failures. Source bytes
-and hashes are unchanged. The `instanceof` addition case now executes.
+Manifest version 2 records built-in requirements (`builtins_required`) for
+cases that need `eval`, `Number` or `isNaN` without a feature tag: the three
+`S11.6.1` addition cases and every file pinned for reardan/w#907 whose body
+names one of them. The adapter capability inventory (`t262_builtins` in
+`tools/test262_conformance_lib.w`) advertises all three since #907 (the
+runtime provides `eval`, the Number constructor and constants, and the global
+`isNaN`), so these cases execute. A case whose required built-in is withheld
+from the inventory reports an explicit metadata UNSUPPORTED reason before
+execution; this is a declared capability boundary, not an exception filter,
+and the regression test withholds the inventory to check that every such
+variant changes the baseline. Unknown identifiers and direct uses of missing
+built-ins still throw ReferenceError and classify as FAIL. Source bytes and
+hashes are unchanged.
 
 The native callbacks count real assertion invocations. Contract tests verify
 both passing and failing assertion paths, signed zero, NaN, boolean strictness,

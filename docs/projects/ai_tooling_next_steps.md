@@ -1757,3 +1757,15 @@ CLAUDE.md warns about). The declaration itself is accepted, so the error
 points away from the cause. Direction: reject (or warn on) declaring a local
 whose name is a built-in type name, and mention the type-name reading in the
 statement-position parse error.
+
+## Test262 candidate surveys need hand-built manifests (2026-11-08, #907)
+
+Choosing which upstream Test262 files to pin means running thousands of
+not-yet-pinned files through `bin/test262_conformance`, which only accepts a
+complete manifest (every file hashed, every variant in the baseline) and
+runs serially. Surveying 4741 candidate files took hand-written scripts to
+build throwaway manifests, split them into parts to stay under the agent
+background-task time limit (one serial pass exceeded 30 minutes on a shared
+box), merge reruns, and pick files. Direction: a `--survey DIR` mode that
+runs every test under an upstream checkout without a baseline, in parallel
+(`--jobs N`), and emits per-file native/upstream statuses ready for pinning.

@@ -269,7 +269,11 @@ json_value* t262_run(char* manifest_path, char* binary, int timeout, int budget,
 		json_object_set(report, c"harness_error", json_string(jc_error))
 		*status = 2
 		return report
-	if (t262_builtins == 0): t262_builtins = new set[char*]
+	# Capability inventory for builtins_required: complete built-ins the
+	# runtime provides (reardan/w#907). Tests replace it to withhold one.
+	if (t262_builtins == 0):
+		t262_builtins = new set[char*]
+		for char* builtin in split(c"eval Number isNaN"): t262_builtins.add(builtin)
 	char* directory = ht_temp()
 	json_value* results = json_array()
 	json_value* changes = json_array()

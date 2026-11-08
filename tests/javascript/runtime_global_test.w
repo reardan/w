@@ -131,6 +131,8 @@ void global_for_in():
 	global_true(c"var n = 0; outer: for (var k in {a: 1, b: 2}) { for (var j in {c: 1}) { n++; continue outer; } } n === 2;")
 	global_true(c"var n = 0; for (var k in {a: 1, b: 2}) { n++; break; } n === 1;")
 	global_string(c"function f() { for (var k in {r: 1}) return k; } f();", c"r")
+	global_true(c"var key; for (key in {a: 1}) { function inLoop() {} } key === 'a' && typeof inLoop === 'function';")
+	global_true(c"function f() { try { throw {}; } catch ({g}) { { function g() {} } } return typeof g; } f() === 'undefined';")
 	global_error(c"for (const k in {a: 1, b: 2}) k = 1;", c"TypeError")
 	global_error(c"let t = {}; for (let t in t);", c"ReferenceError")
 

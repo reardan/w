@@ -229,6 +229,9 @@ void js_runtime_remove_binding(js_value* env, js_text* key):
 js_value* js_runtime_delete_operator(js_runtime* rt, js_node* operand, js_value* env):
 	if (js_kind(operand, c"identifier")):
 		# Sloppy code only: deleting an identifier is a strict early error.
+		# Resolving first reports an implicit arguments object as unsupported.
+		js_runtime_binding(env, operand.text)
+		if (rt.completion.status != 0): return rt.undefined_value
 		js_text* key = js_runtime_key(operand.text)
 		int deleted = 1
 		js_value* scope = env
