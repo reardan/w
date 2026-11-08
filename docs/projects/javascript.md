@@ -148,8 +148,8 @@ distinct), and prints anonymous declarations only under `export default`.
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
 source-backed nodes preserve byte spans. The printer handles loop, `with` and
 label wrappers when protecting against a dangling `else`. The interpreter's
-preflight rejects the lowered shapes it does not execute (generator/async
-class methods, `super` outside class methods, async/generators, `for-in`, `var`/target `for-of`, catch patterns, holes,
+preflight rejects the lowered shapes it does not execute (`super` outside
+class methods, `for-in`, `var`/target `for-of`, catch patterns, holes,
 destructuring assignment, modules through the script API) with status 6.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
@@ -311,14 +311,16 @@ The initial semantic subset is deliberately explicit:
   rest. The realm has no `Object.prototype` intrinsic, so a class without
   heritage has a null-prototype prototype object; constructors inherit
   `Function.prototype`. Class fields, private
-  names, static blocks and generator/async methods remain unsupported.
+  names and static blocks remain unsupported; generator, async and async
+  generator methods (class and object-literal) run as described in
+  "Generators and async functions" below.
 - RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
   or RegExp arguments create objects with own `lastIndex` and the shared
   `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
   "RegExp patterns" below).
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, generators/async (including class methods), tagged templates, `in`,
+through the script API, tagged templates,
 prototype-literal `__proto__`, loose equality and additional numeric
 operators. Implicit operator coercions (`+`, relational and unary operators on
 non-numbers) remain outside this subset. Destructuring assignment, computed binding
@@ -451,12 +453,80 @@ pending promise's reactions. Queue storage compacts consumed entries.
 `js_runtime_clear_microtasks(rt)` cancels queued jobs between executions; it does
 not remove reactions attached to still-pending promises.
 
-This is a native-promise subset: arbitrary thenable assimilation, Promise
-combinators/finally, subclass/species behavior, unhandled-rejection reporting,
-async/await, and general constructor semantics are not implemented. In particular,
-objects with a `then` property are currently fulfilled as ordinary objects.
+During evaluation (including microtask jobs), resolving a promise with an
+object reads its `then` property, which may run a getter (a throw rejects), and
+assimilates a callable `then` through a queued NewPromiseResolveThenableJob with
+fresh first-call-wins resolving functions. Host settlement through
+`js_runtime_promise_settle` between evaluations still invokes no JavaScript and
+fulfills with the object itself. `Promise.prototype.constructor` is `Promise`.
+
+This is a native-promise subset: Promise combinators/finally, subclass/species
+behavior, unhandled-rejection reporting and general constructor semantics are
+not implemented. Async functions await on this queue (next section).
 Constructor syntax is lowered and printed as `construct` AST nodes, with tests
 for member callees and trailing method calls.
+
+## Generators and async functions
+
+reardan/w#906 adds generator functions, async functions and async arrows, async
+generators, `yield`/`yield*`, `await` and `for await (let/const x of ...)`, in
+declarations, expressions and class/object-literal methods
+(`runtime_coroutines.w`).
+
+**Design: a resumable evaluator, not a CPS transform.** The interpreter stays a
+recursive tree walker. A `yield` or `await` returns the internal completion
+status 7 (suspension); while it unwinds, every construct with local progress
+(blocks and programs, `var`/`let` declarators, `if`, loops including for-of and
+for-await, `switch`, `try`/`catch`/`finally`, calls and `new` with their
+evaluated callee, receiver and arguments, member reads, assignments, binary and
+conditional operators, array/object literals including spreads and computed
+keys, templates, class heritage and computed member keys, and `return`/`throw`)
+saves a small heap frame: its node, a phase and the values and scope it already
+computed. Frames are pushed innermost-first onto the activation record. On
+resume the body is evaluated again from the top; each construct pops its frame
+(`js_frame_resume`, which checks it belongs to that node), skips the work it
+already did and descends into the suspended child, and the innermost `yield` or
+`await` receives the resumption (`next` value, `throw`, or `return`). A CPS or
+state-machine lowering was rejected because every evaluator path would need a
+second form and the AST would have to be rewritten per function; the resumable
+approach keeps a single evaluator with only local save/restore code in the
+constructs above. Preflight (`js_coroutine_supported`) rejects, with status 6,
+a coroutine body that uses a construct without resume support where a
+suspension could occur (for example `super` member forms, optional-call chains
+or destructuring assignment targets), so a missing frame is never discovered
+mid-execution.
+
+Generator objects implement `next`/`return`/`throw` on %GeneratorPrototype%
+(states suspended-start, suspended-yield, executing and completed; a reentrant
+call throws a TypeError, and `return`/`throw` run pending `finally` blocks).
+`yield*` delegates to any iterable through the iterator protocol, forwarding
+`throw`/`return` and closing the inner iterator as the specification requires;
+arrays and strings get built-in iterators, and %IteratorPrototype% provides
+`[Symbol.iterator]`. Async functions return a native promise and suspend on
+`await` with PromiseResolve plus a reaction on the existing microtask queue, so
+await order matches engines (a native promise is awaited in one tick).
+Async generators keep the specification's request queue (AsyncGeneratorEnqueue,
+drain, AwaitReturn, `return` resumption awaiting its value) and `yield` awaits
+its operand. `for await` uses `Symbol.asyncIterator` or wraps a sync iterator
+with %AsyncFromSyncIteratorPrototype%, awaits each result and closes the
+iterator on early exit. The `in` operator is now supported
+(ToPropertyKey on the left, TypeError for a non-object right side).
+
+**Budget and limits for suspended frames.** A suspended activation holds no
+native stack: it is a heap record (function node, environment, frames, request
+queue, promise) traced by collection from the generator object or from pending
+promise reactions, so suspended generators survive `js_runtime_collect` and
+are reclaimed once unreachable. Frames are ordinary heap values counted
+against `max_values`; if the heap is full while a suspension saves its frames,
+the evaluation ends with status 5 instead. Steps are charged per host entry
+(each `js_runtime_eval`, host invocation or `js_runtime_drain_microtasks`
+checkpoint has its own budget), and a resume charges the normal per-node steps
+for the descent back to the suspension point, so deeply nested suspensions
+cost proportionally to their depth on every resume. A limit (status 5) or an
+unsupported operation (status 6) while a coroutine runs completes it: the
+generator is closed (later `next` calls return `{value: undefined, done: true}`)
+or the async function's promise stays pending, and the status propagates to
+the host. Status 5/6 never run `finally` blocks, as elsewhere.
 
 ## Preserve source during edits
 
@@ -561,7 +631,9 @@ passes when its version pin is bypassed under v22.
   `{` (memoized on the opener), so `m(a = yield) {}` in a generator takes
   the method's context; a line break before that `{` reads as a call and a
   block unless the name follows an object literal's `,`. Method computed
-  keys are validated in the enclosing context.
+  keys are validated in the enclosing context. A parenthesized class
+  heritage (`class C extends (B) {`) is never a function head, so the class
+  body keeps the enclosing context.
 - **`[~In]` and `let` substatements (reardan/w#903).** `js_relational_in`
   rejects a relational `in` at the top level of a for head's first clause,
   which gives both `for (var x = a in b;;)` its early error and Annex B.3.6
