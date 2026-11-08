@@ -14,13 +14,13 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 899 upstream test files (plus module fixtures) expanded
-into 1734 variants. The native profile reports **1485 PASS, 0 FAIL, 249
-UNSUPPORTED, 0 ERROR**; 1030 passes reach runtime execution and the rest verify
+The corpus contains 1811 upstream test files (plus module fixtures) expanded
+into 3550 variants. The native profile reports **3301 PASS, 0 FAIL, 249
+UNSUPPORTED, 0 ERROR**; 2228 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **1250 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (72.08%)**; the 452
+reports **3066 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (86.36%)**; the 452
 property-escape variants (below) are UNSUPPORTED there because
-`regExpUtils.js` is not pinned. The positive cases execute 5390 assertions
+`regExpUtils.js` is not pinned. The positive cases execute 9368 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
@@ -39,7 +39,7 @@ the report rather than being removed to improve the result.
 
 ### Classes (reardan/w#905)
 
-902 of the files are the `test/language/statements/class/` and
+912 of the files are the `test/language/statements/class/` and
 `test/language/expressions/class/` tests that pass in both profiles once the
 interpreter executes classes: declarations/expressions, accessors, static and
 computed keys (`cpn-*`, `accessor-name-*`), method definitions and their
@@ -52,8 +52,8 @@ the rest are left out because they need class fields, private names, static
 blocks, generator/async methods, `propertyHelper.js`/`compareArray.js`, or
 built-ins outside the bounded realm (`Object.prototype`, `Function.prototype.bind`,
 `eval`, primitive wrapper and Array/Date/Map/... subclassing), or hit
-non-class gaps (generator-context `yield` in computed keys, numeric separators,
-separate parameter scopes). The `class`, `computed-property-names`,
+non-class gaps (generator execution for `yield` in computed keys, numeric
+separators, separate parameter scopes). The `class`, `computed-property-names`,
 `new.target`, `default-parameters`, `rest-parameters`, `arrow-function` and
 `destructuring-binding` feature tags are enabled for them.
 

@@ -9145,6 +9145,56 @@
       "path": "upstream/test/language/statements/class/syntax/escaped-static.js",
       "upstream_path": "test/language/statements/class/syntax/escaped-static.js",
       "sha256": "09ed76471cf3e8c0698ca34fd23b5a91c7297ec4b19fd1dd59e794ec29824e4e"
+    },
+    {
+      "path": "upstream/test/language/expressions/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/expressions/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "d3b645a97bf5f63d1d27b44dd581e0377bd2667589e27d2a0a43a5363042010e"
+    },
+    {
+      "path": "upstream/test/language/expressions/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/expressions/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "cc26747eea700da28cbac96e104887ec11826e98a074d7d8805464e40b5a6f00"
+    },
+    {
+      "path": "upstream/test/language/expressions/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/expressions/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "46a26f8c42a48e48684a5294f6603e84428cd39aa198fecfde6236a981c93efd"
+    },
+    {
+      "path": "upstream/test/language/expressions/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/expressions/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "a9e43817532505baf3daa4c10b18e0ffc17bfb6bd5b9e1ab5279f4876fc94ad6"
+    },
+    {
+      "path": "upstream/test/language/statements/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/statements/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "328362c02e296d13fa1b9a3bd571f42b3427848039cb81c7fd1ed423e238d3e4"
+    },
+    {
+      "path": "upstream/test/language/statements/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/statements/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "e4e81307747254f48799ed5aa4c5d84eecee9768d6d599e669ff598ca3325769"
+    },
+    {
+      "path": "upstream/test/language/statements/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/statements/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "ee93e0eaf3a06f29475a6588373ab412640e74a95e2e79429a13352a82d9ca32"
+    },
+    {
+      "path": "upstream/test/language/statements/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+      "upstream_path": "test/language/statements/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+      "sha256": "d4c57330ce396c92794be9f280c1483f5e30ef756d0702e2cc9ff2366fd0aa4d"
+    },
+    {
+      "path": "upstream/test/language/statements/class/subclass/builtin-objects/Symbol/symbol-valid-as-extends-value.js",
+      "upstream_path": "test/language/statements/class/subclass/builtin-objects/Symbol/symbol-valid-as-extends-value.js",
+      "sha256": "020081e78b883da0ab0196ffb08333fdf8e0b205d42c4c86a8d647b7152afefb"
+    },
+    {
+      "path": "upstream/test/language/statements/class/subclass/default-constructor-spread-override.js",
+      "upstream_path": "test/language/statements/class/subclass/default-constructor-spread-override.js",
+      "sha256": "4e15b3eb84bc6b869246c6dd2dcd87edc178d58d26306682050e4060112bc1fb"
     }
   ],
   "cases": [
@@ -10948,7 +10998,17 @@
     "upstream/test/language/statements/class/syntax/class-method-propname-constructor.js",
     "upstream/test/language/statements/class/syntax/early-errors/class-definition-evaluation-block-duplicate-binding.js",
     "upstream/test/language/statements/class/syntax/early-errors/class-definition-evaluation-scriptbody-duplicate-binding.js",
-    "upstream/test/language/statements/class/syntax/escaped-static.js"
+    "upstream/test/language/statements/class/syntax/escaped-static.js",
+    "upstream/test/language/expressions/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/expressions/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/expressions/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/expressions/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/statements/class/dstr/meth-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/statements/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/statements/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/statements/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js",
+    "upstream/test/language/statements/class/subclass/builtin-objects/Symbol/symbol-valid-as-extends-value.js",
+    "upstream/test/language/statements/class/subclass/default-constructor-spread-override.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -21788,6 +21848,66 @@
       "status": "PASS"
     },
     "upstream/test/language/statements/class/syntax/escaped-static.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-dflt-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-static-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/dstr/meth-static-dflt-ary-ptrn-rest-id-exhausted.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/subclass/builtin-objects/Symbol/symbol-valid-as-extends-value.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/subclass/builtin-objects/Symbol/symbol-valid-as-extends-value.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/subclass/default-constructor-spread-override.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/class/subclass/default-constructor-spread-override.js#strict": {
       "status": "PASS"
     }
   },
