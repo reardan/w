@@ -419,13 +419,25 @@ to `examples/**`. `*.errors`/`*.tree` files, hidden paths, unusual path
 characters, files over 64 KiB and files with NUL bytes are skipped, and the first
 ten remaining paths in byte order are pinned. An example with a non-empty
 upstream `.errors` file must be rejected; every other example must be accepted.
-The translator receives the start rule as `--start RULE`.
+The translator receives the start rule as `--start RULE`. Where ANTLR 4.13.2
+itself contradicts that expectation (checked with the live
+[tree differential](../../../../tests/grammars/antlr_trees/README.md)'s
+`--corpus` mode), the example records ANTLR's verdict in `expect` and the
+reason in `corpus_defect`, which `--select-examples` keeps while the example's
+path and hash are unchanged; SPL's ten examples are such corpus defects.
 
 Each example runs in its own process with a 10-second limit. A wrong verdict, a
 hang or a crash is a measured failure of the generated parser, not an
 infrastructure error; only an unrunnable driver or unreadable input is. A
 configuration's `examples` stage passes when every pinned example of the case
-gets the expected verdict; per-example outcomes, exit codes, timings and
+gets the expected verdict. When the configuration's translation ignored host
+predicates (an `AT_HOST_SITE` predicate finding, which only permissive modes
+allow), no verdict is evidence: ANTLR may decide differently wherever a
+predicate is false. Each decided example is then reported as `unverified`
+("predicate ignored") rather than pass or fail, and is not counted as passed; a
+stage with only such examples is `unverified`. Its `verdict` still records
+whether the outcome matched, and `expected_examples` gates that, so a changed
+verdict remains a regression or progression. Per-example outcomes, exit codes, timings and
 diagnostic logs are in `results.json` and in an `examples/` directory beside each configuration's artifacts.
 `bin/antlr_sweep --sparse-patterns` prints the sparse-checkout patterns for the
 grammars plus exactly the pinned examples (CI uses it).

@@ -52,6 +52,7 @@ int main(int argc, int argv):
 		json_object_set(pinned, c"runtime_selection", rule)
 		for json_value* pinned_case in ht_field(pinned, c"cases").array_values:
 			json_value* runtime = sw_select_runtime(pinned_case, corpus, max_examples, max_bytes)
+			sw_keep_corpus_defects(jc_get(pinned_case, c"runtime"), runtime)
 			json_object_set(pinned_case, c"runtime", runtime)
 			json_value* expected = jc_get(pinned_case, c"expected_examples")
 			if (expected == 0): continue
