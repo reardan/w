@@ -83,6 +83,8 @@ int sw_check_runtime(json_value* entry, char* corpus):
 			json_value* defect = jc_get(example, c"corpus_defect")
 			if (!sw_check(defect == 0 || (jc_type(defect, json_type_string()) && strip(defect.string_value)[0] != 0), c"runtime example corpus_defect must explain the reference verdict")): return 0
 			if (!sw_check_triage(jc_get(example, c"triage"))): return 0
+			json_value* bound = jc_get(example, c"work_bound")
+			if (!sw_check(bound == 0 || (jc_type(bound, json_type_int()) && bound.int_value > 0), c"runtime example work_bound must be a positive integer")): return 0
 			char* path = ht_text(example, c"path")
 			if (!sw_check(!(path in paths), c"duplicate runtime example")): return 0
 			paths.add(path)
@@ -210,7 +212,8 @@ int sw_blob_size(char* corpus, char* path, char* object):
 	return atoi(strip(result.stdout_text))
 
 # Re-pinning keeps a reviewed corpus_defect (and the ANTLR verdict it
-# records) and triage for an example whose path and bytes are unchanged.
+# records), triage and work_bound for an example whose path and bytes are
+# unchanged.
 void sw_keep_corpus_defects(json_value* old_runtime, json_value* runtime):
 	json_value* old_examples = jc_get(old_runtime, c"examples")
 	if (!jc_type(old_examples, json_type_array())): return
@@ -222,6 +225,7 @@ void sw_keep_corpus_defects(json_value* old_runtime, json_value* runtime):
 				json_object_set(example, c"expect", vj_copy(ht_field(old, c"expect")))
 				json_object_set(example, c"corpus_defect", vj_copy(defect))
 			if (jc_get(old, c"triage") != 0): json_object_set(example, c"triage", vj_copy(ht_field(old, c"triage")))
+			if (jc_get(old, c"work_bound") != 0): json_object_set(example, c"work_bound", vj_copy(ht_field(old, c"work_bound")))
 
 json_value* sw_select_runtime(json_value* entry, char* corpus, int max_examples, int max_bytes):
 	char* first = ht_text(ht_field(entry, c"inputs").array_values[0], c"path")
@@ -371,11 +375,29 @@ char* sw_runtime_entry(json_value* entry):
 
 # The compile harness's main parses one file with the generated start rule:
 # exit 0 accepts, 1 rejects (diagnostics printed), 2 cannot read the input.
-char* sw_driver(char* parser_name):
+# A prediction parser also prints `SWEEP: work N`, the deterministic search
+# steps (pg_prediction_work) the example used.
+char* sw_driver(char* parser_name, int prediction = 0):
 	string_builder* text = string_from(c"\nimport lib.file\n\nint main(int argc, char** argv):\n\tif (argc != 2): return 2\n\tchar* source = file_read_text(argv[1])\n\tif (source == 0): return 2\n\tpg_diagnostics* diagnostics = pg_diagnostics_new()\n\tpg_ast_node* root = ")
 	string_append(text, parser_name)
-	string_append(text, c"_parse(source, argv[1], diagnostics)\n\tif ((root == 0) || (pg_diagnostics_count(diagnostics) != 0)):\n\t\tpg_diagnostics_print(diagnostics)\n\t\treturn 1\n\treturn 0\n")
+	string_append(text, c"_parse(source, argv[1], diagnostics)\n")
+	if (prediction): string_append(text, c"\tprintln(f\"SWEEP: work {pg_prediction_work}\")\n")
+	string_append(text, c"\tif ((root == 0) || (pg_diagnostics_count(diagnostics) != 0)):\n\t\tpg_diagnostics_print(diagnostics)\n\t\treturn 1\n\treturn 0\n")
 	return text.data
+
+# Work units: the `SWEEP: work N` line of an example log, or -1.
+int sw_work(char* log):
+	char* marker = c"SWEEP: work "
+	char* text = ht_read(log).data
+	int at = index_of(text, marker)
+	if (at < 0): return -1
+	char* digits = text + at + strlen(marker)
+	if (!isdigit(digits[0])): return -1
+	return atoi(digits)
+
+# The bound --update-baseline records for a measured work count: a quarter
+# of headroom plus a constant, so small translation changes stay inside it.
+int sw_work_limit(int work): return work + work / 4 + 64
 
 # Runs every pinned example through the compiled driver. A wrong verdict,
 # hang or crash is a measured failure of the generated parser; only an
@@ -440,6 +462,8 @@ json_value* sw_examples(json_value* runtime, char* corpus, char* binary, char* o
 		json_object_set(row, c"exit_code", code)
 		json_object_set(row, c"seconds", ht_field(run, c"seconds"))
 		vj_s(row, c"log", ht_text(run, c"log"))
+		int work = sw_work(ht_text(run, c"log"))
+		if (work >= 0): vj_i(row, c"work", work)
 		json_array_push(rows, row)
 	vj_i(stage, c"passed", passed)
 	vj_i(stage, c"unverified", unverified)
@@ -524,7 +548,7 @@ json_value* sw_case(json_value* entry, char* corpus, char* work, json_value* too
 		string_append(text, ht_read(matchers).data)
 		string_append(text, c"\n")
 		string_append(text, ht_read(generated).data)
-		string_append(text, sw_driver(parser_name))
+		string_append(text, sw_driver(parser_name, sw_has(ht_field(configurations, configuration), c"--prediction")))
 		ht_write(program, text.data, text.length)
 		for char* stage in ht_command(c"compile compiler_strict"):
 			char* binary = path_join(output, strjoin(stage, c".bin"))
@@ -550,6 +574,45 @@ json_value* sw_example_row(json_value* rows, char* path):
 		if (jc_is(jc_get(row, c"path"), path)): return row
 	return 0
 
+# Pinned per-example work bounds (`work_bound`, in prediction steps) gate
+# performance like verdicts: work above the bound in any configuration that
+# measured it is a regression; a measured example without a bound, or one
+# whose recorded bound would be under half the current one, is a
+# progression that --update-baseline records.
+void sw_compare_work(json_value* entry, json_value* row, json_value* out, int progressions):
+	json_value* pinned = jc_get(jc_get(entry, c"runtime"), c"examples")
+	json_value* measured = jc_get(row, c"configurations")
+	if (!jc_type(pinned, json_type_array()) || measured == 0): return
+	for json_value* example in pinned.array_values:
+		char* path = ht_text(example, c"path")
+		json_value* bound = jc_get(example, c"work_bound")
+		for char* configuration in measured.object_values.keys():
+			json_value* rows = jc_get(jc_get(jc_get(ht_field(measured, configuration), c"stages"), c"examples"), c"examples")
+			json_value* got = jc_get(sw_example_row(rows, path), c"work")
+			if (got == 0): continue
+			char* prefix = strjoin(strjoin(ht_text(entry, c"name"), c": "), strjoin(strjoin(configuration, c"/examples "), strjoin(path, strjoin(c" work ", itoa(got.int_value)))))
+			if (progressions):
+				if (bound == 0): json_array_push(out, json_string(strjoin(prefix, c" has no bound")))
+				elif (2 * sw_work_limit(got.int_value) < bound.int_value): json_array_push(out, json_string(strjoin(prefix, strjoin(c" is under half its bound ", itoa(bound.int_value)))))
+			elif (bound != 0 && got.int_value > bound.int_value): json_array_push(out, json_string(strjoin(prefix, strjoin(c" exceeds its bound ", itoa(bound.int_value)))))
+
+# Records a bound for every measured example that has none, and tightens a
+# bound once the work falls under half of it. Bounds are never loosened
+# here: work above a bound stays a regression until a reviewed edit.
+void sw_accept_work(json_value* entry, json_value* row):
+	json_value* pinned = jc_get(jc_get(entry, c"runtime"), c"examples")
+	json_value* measured = jc_get(row, c"configurations")
+	if (!jc_type(pinned, json_type_array()) || measured == 0): return
+	for json_value* example in pinned.array_values:
+		int most = -1
+		for char* configuration in measured.object_values.keys():
+			json_value* rows = jc_get(jc_get(jc_get(ht_field(measured, configuration), c"stages"), c"examples"), c"examples")
+			json_value* got = jc_get(sw_example_row(rows, ht_text(example, c"path")), c"work")
+			if (got != 0 && got.int_value > most): most = got.int_value
+		if (most < 0): continue
+		json_value* bound = jc_get(example, c"work_bound")
+		if (bound == 0 || 2 * sw_work_limit(most) < bound.int_value): vj_i(example, c"work_bound", sw_work_limit(most))
+
 json_value* sw_compare(json_value* manifest, json_value* results):
 	map[char*, json_value*] actual = new map[char*, json_value*]
 	for json_value* row in results.array_values: actual[ht_text(row, c"name")] = row
@@ -562,6 +625,7 @@ json_value* sw_compare(json_value* manifest, json_value* results):
 		for json_value* stage in ht_field(entry, c"expected_pass").array_values:
 			char* status = ht_text(ht_field(ht_field(actual[name], c"stages"), stage.string_value), c"status")
 			if (strcmp(status, c"pass") != 0): json_array_push(regressions, json_string(strjoin(strjoin(name, c": "), strjoin(stage.string_value, strjoin(c" regressed to ", status)))))
+		sw_compare_work(entry, actual[name], regressions, 0)
 		json_value* configs = jc_get(entry, c"expected_configurations")
 		if (configs == 0): continue
 		for char* configuration in configs.object_values.keys():
@@ -594,6 +658,7 @@ json_value* sw_progressions(json_value* manifest, json_value* results):
 		char* name = ht_text(entry, c"name")
 		if (!(name in actual)): continue
 		json_value* row = actual[name]
+		sw_compare_work(entry, row, progressions, 1)
 		for char* stage in sw_stages():
 			if (sw_pass(jc_get(jc_get(row, c"stages"), stage)) && !sw_has(jc_get(entry, c"expected_pass"), stage)): json_array_push(progressions, json_string(strjoin(strjoin(name, c": "), strjoin(stage, c" progressed to pass"))))
 		json_value* measured = jc_get(row, c"configurations")
@@ -629,6 +694,7 @@ json_value* sw_accept(json_value* manifest, json_value* results):
 		char* name = ht_text(entry, c"name")
 		if (!(name in actual)): continue
 		json_value* row = actual[name]
+		sw_accept_work(entry, row)
 		set[char*] passing = new set[char*]
 		for char* stage in sw_stages():
 			if (sw_pass(jc_get(jc_get(row, c"stages"), stage))): passing.add(stage)
