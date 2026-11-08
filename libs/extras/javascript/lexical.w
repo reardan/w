@@ -123,6 +123,46 @@ int pg_lexer_matcher_js_hashbang(char* input, int index):
 	return i - index
 
 
+# Whether only whitespace and comments precede index on its line, or a
+# multi-line comment containing a line terminator does (Annex B.1.3).
+int js_html_close_position(char* input, int index):
+	int i = index - 1
+	while (i >= 0):
+		int ch = input[i] & 255
+		if (ch == 10 || ch == 13): return 1
+		if (ch == 32 || ch == 9 || ch == 11 || ch == 12): i = i - 1
+		else if (ch == '/' && i > 0 && input[i - 1] == '*'):
+			int open = i - 2
+			int line = 0
+			while (open > 0 && !(input[open - 1] == '/' && input[open] == '*')):
+				if (js_line_terminator(input, open)): line = 1
+				open = open - 1
+			if (open <= 0): return 0
+			if (line): return 1
+			i = open - 2
+		else if (ch >= 128):
+			# U+2028/U+2029 end a line; other non-ASCII spaces are rare here.
+			int start = i
+			while (start > 0 && (input[start] & 192) == 128): start = start - 1
+			if (js_line_terminator(input, start)): return 1
+			if (pg_lexer_matcher_js_space(input, start) == 0): return 0
+			i = start - 1
+		else: return 0
+	return 1
+
+
+# Annex B.1.3 HTML-like comments: `<!--` anywhere and `-->` at the start of
+# a line run to the end of the line. Script goal only; the validator rejects
+# them in modules.
+int pg_lexer_matcher_js_html_comment(char* input, int index):
+	int open = input[index] == '<' && input[index + 1] == '!' && input[index + 2] == '-' && input[index + 3] == '-'
+	int close = input[index] == '-' && input[index + 1] == '-' && input[index + 2] == '>' && js_html_close_position(input, index)
+	if (open == 0 && close == 0): return 0
+	int i = index + 3
+	while (input[i] != 0 && js_line_terminator(input, i) == 0): i = i + 1
+	return i - index
+
+
 int js_string_escape(char* input, int index):
 	if (input[index] != 92 || input[index + 1] == 0): return 0
 	int i = index + 1
@@ -166,6 +206,16 @@ int pg_lexer_matcher_js_string(char* input, int index):
 	return 0
 
 
+# 0 followed by one or more digits, all of them octal.
+int js_legacy_octal_literal(char* input, int index):
+	int i = index + 1
+	if (js_digit(input[i]) == 0): return 0
+	while (js_digit(input[i])):
+		if (input[i] > '7'): return 0
+		i = i + 1
+	return 1
+
+
 int pg_lexer_matcher_js_number(char* input, int index):
 	int i = index
 	int base = 10
@@ -180,6 +230,13 @@ int pg_lexer_matcher_js_number(char* input, int index):
 		int start = i
 		while (js_hex(input[i]) >= 0 && js_hex(input[i]) < base): i = i + 1
 		if (i == start): return 0
+	else if (input[i] == '0' && js_legacy_octal_literal(input, i)):
+		# Annex B LegacyOctalIntegerLiteral: no fraction, exponent or BigInt
+		# suffix follows it, so `07.5` is `07` then `.5` (strict mode rejects
+		# the literal itself during validation).
+		i = i + 1
+		while (js_digit(input[i])): i = i + 1
+		if (input[i] == 'n'): return 0
 	else:
 		while (js_digit(input[i])): i = i + 1
 		if (input[i] == '.'):

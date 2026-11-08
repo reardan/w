@@ -13,12 +13,13 @@ missing parser, missing Node, wrong version, changed source hash, unsupported
 metadata, timeout, or oracle disagreement fails the command. Normal runs never
 fetch data. The JSON report defaults to `bin/javascript-compatibility.json`.
 
-The manifest vendors 18 unmodified Test262 files at commit
+The manifest vendors 42 unmodified Test262 files at commit
 `2e0a56762801e275a9fdf96dc49d90ba0cddcf63`, with the upstream BSD license and
 individual SHA-256 hashes. This is a deliberately small syntax regression
 subset covering nullish-coalescing restrictions, nested templates, regex
-boundaries, optional chaining, exponentiation, strict assignment targets,
-destructuring and module exports. It is not a Test262 conformance claim.
+boundaries, RegExp pattern early errors (escape values, class ranges, named
+groups and Unicode property escapes), optional chaining, exponentiation, strict
+assignment targets, destructuring and module exports. It is not a Test262 conformance claim.
 
 The runner reads each original Test262 frontmatter block. Default script tests
 run in both sloppy and strict mode; `onlyStrict`, `noStrict`, `module` and

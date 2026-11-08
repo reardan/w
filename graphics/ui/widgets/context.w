@@ -72,6 +72,110 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_value_id = 0
 	ctx.access_value_length = 0
 	ctx.access_selection_id = 0
+	ctx.clip_out = 0
+	ctx.clip_out_ready = 0
+	ctx.clip_paste_id = 0
+	ctx.clip_paste_sent = 0
+	ctx.clip_paste_frames = 0
+	ctx.clip_in = 0
+	ctx.clip_window = 0
+
+
+# ---- clipboard (docs/projects/ui_clipboard.md) ---------------------------
+
+# The clipboard command a CHAR is, or 0: 'a' select all, 'c' copy,
+# 'x' cut, 'v' paste. Keyed on the modifiers, not the code, because the
+# backends disagree on the code: X11 and Win32 report Ctrl+C as the
+# control character 3, the web host as 'c', and Cocoa's Command+C as 'c'
+# with GFX_MOD_SUPER. Ctrl+Alt is AltGr text on many layouts, so Alt
+# held means typing.
+int ui_clipboard_command(int ch, int mods):
+	if ((mods & (GFX_MOD_CTRL | GFX_MOD_SUPER)) == 0): return 0
+	if (mods & GFX_MOD_ALT): return 0
+	if ((ch >= 1) && (ch <= 26)): ch = ch + 96
+	if ((ch >= 'A') && (ch <= 'Z')): ch = ch + 32
+	if ((ch == 'a') || (ch == 'c') || (ch == 'x') || (ch == 'v')): return ch
+	return 0
+
+
+# Queue text[0..length) for the platform clipboard (copy and cut).
+void ui_clipboard_copy(ui_context* ctx, char* text, int length):
+	if (ctx.clip_out != 0): free(ctx.clip_out)
+	ctx.clip_out = cast(char*, malloc(length + 1))
+	for i in range(length): ctx.clip_out[i] = text[i]
+	ctx.clip_out[length] = 0
+	ctx.clip_out_ready = 1
+
+
+# The text a widget copied since the last call (owned by ctx), or 0.
+# ui_begin_window calls it for the platform; headless tests call it
+# directly.
+char* ui_clipboard_copied(ui_context* ctx):
+	if (ctx.clip_out_ready == 0): return 0
+	ctx.clip_out_ready = 0
+	return ctx.clip_out
+
+
+# Widget id starts waiting for paste text (Ctrl+V), replacing any
+# earlier wait.
+void ui_clipboard_paste_request(ui_context* ctx, int id):
+	if (ctx.clip_in != 0): free(ctx.clip_in)
+	ctx.clip_in = 0
+	ctx.clip_paste_id = id
+	ctx.clip_paste_sent = 0
+	ctx.clip_paste_frames = 0
+
+
+# Hand the waiting widget its paste text (copied). The pump calls it
+# when the platform answers; a headless test calls it to play the
+# platform. Ignored when no widget is waiting.
+void ui_clipboard_deliver(ui_context* ctx, char* text):
+	if (ctx.clip_paste_id == 0): return
+	if (ctx.clip_in != 0): free(ctx.clip_in)
+	int length = strlen(text)
+	ctx.clip_in = cast(char*, malloc(length + 1))
+	for i in range(length + 1): ctx.clip_in[i] = text[i]
+
+
+# The paste text that arrived for widget id (the caller frees it), or 0
+# while it has not.
+char* ui_clipboard_paste_take(ui_context* ctx, int id):
+	if ((id == 0) || (ctx.clip_paste_id != id) || (ctx.clip_in == 0)): return 0
+	char* text = ctx.clip_in
+	ctx.clip_in = 0
+	ctx.clip_paste_id = 0
+	return text
+
+
+# Pump calls a paste may wait for the platform before it is dropped (an
+# X11 owner that never answers): two a frame, so about five seconds at
+# 60 frames a second.
+const int ui_clipboard_paste_patience = 600
+
+
+# Move the clipboard between the widgets and the window: publish the
+# latest copy, and drive a pending paste (request once, then take until
+# the text arrives). ui_begin_window and ui_end both call it, so a copy
+# reaches the platform in the frame it happened and a paste from a
+# synchronous clipboard lands in the next frame. A paste whose widget
+# lost focus is abandoned.
+void ui_clipboard_pump(ui_context* ctx, gfx_window* win):
+	char* copied = ui_clipboard_copied(ctx)
+	if (copied != 0): gfx_clipboard_set(win, copied)
+	if (ctx.clip_paste_id == 0): return
+	if (ctx.clip_paste_id != ctx.focus):
+		ctx.clip_paste_id = 0
+		return
+	if (ctx.clip_in != 0): return
+	if (ctx.clip_paste_sent == 0):
+		gfx_clipboard_request(win)
+		ctx.clip_paste_sent = 1
+	char* text = gfx_clipboard_take(win)
+	if (text != 0):
+		ctx.clip_in = text
+		return
+	ctx.clip_paste_frames = ctx.clip_paste_frames + 1
+	if (ctx.clip_paste_frames > ui_clipboard_paste_patience): ctx.clip_paste_id = 0
 
 
 # Fold one queued event into the per-frame input edges. Only button 1
@@ -234,6 +338,7 @@ void ui_begin(ui_context* ctx, int width, int height):
 	ctx.text_input_rect = ui_rect_new(0.0, 0.0, 0.0, 0.0)
 	ctx.text_input_clip = ctx.text_input_rect
 	ctx.pointer_mode = 0
+	ctx.clip_window = 0
 	ui_render_begin(ctx.rndr, width, height)
 	if (ctx.rndr.gl_ready):
 		glClearColor(ctx.theme.background.r, ctx.theme.background.g, ctx.theme.background.b, 1.0)
@@ -241,15 +346,18 @@ void ui_begin(ui_context* ctx, int width, int height):
 
 
 # Drain the window's event queue and refresh the pointer snapshot,
-# then start the frame at the window's current size. The one function
-# in this module that touches gfx_window.
+# pump the clipboard, then start the frame at the window's current
+# size. With ui_clipboard_pump, the functions in this module that touch
+# gfx_window.
 void ui_begin_window(ui_context* ctx, gfx_window* win):
 	gfx_event e
 	while (gfx_window_next_event(win, &e)): ui_feed_event(ctx, &e)
+	ui_clipboard_pump(ctx, win)
 	ctx.input.mouse_x = win.mouse_x
 	ctx.input.mouse_y = win.mouse_y
 	ui_render_set_pixel_scale(ctx.rndr, gfx_window_pixel_ratio(win))
 	ui_begin(ctx, win.width, win.height)
+	ctx.clip_window = cast(char*, win)
 
 
 # Revalidate after the whole frame: a later widget may open a popup over
@@ -267,6 +375,9 @@ int ui_text_input_active(ui_context* ctx):
 # the press owner once the release has been seen by every widget.
 void ui_end(ui_context* ctx):
 	ui_render_end(ctx.rndr)
+	# Publish this frame's copy and send a new paste request now rather
+	# than next frame (see clip_window).
+	if (ctx.clip_window != 0): ui_clipboard_pump(ctx, cast(gfx_window*, ctx.clip_window))
 	if (ctx.preedit_focus != ctx.focus):
 		ctx.preedit_active = 0
 		ctx.preedit_length = 0

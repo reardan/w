@@ -37,6 +37,8 @@ applies, so the files stay small.
 | `NotoSansCJKkr-subset.otf` | Noto Sans CJK KR 2.004, font 1 of `NotoSansCJK-Regular.ttc` (Ubuntu `fonts-noto-cjk`), CID-keyed CFF |
 | `NotoSans-symbol-subset.ttf` | `NotoSans-subset.ttf` above, its U+0020..U+00FF re-encoded as a symbol (3,0) cmap at U+F020..U+F0FF |
 | `NotoSansGujarati-nogdef-subset.ttf` | `NotoSansGujarati-Regular.ttf` 2.001 (Ubuntu `fonts-noto-core`), without its GDEF table |
+| `NotoSerifAhom-subset.ttf` | `NotoSerifAhom-Regular.ttf` 2.003 (Ubuntu `fonts-noto-core`) |
+| `NotoMusic-subset.ttf` | `NotoMusic-Regular.ttf` 2.000 (Ubuntu `fonts-noto-core`) |
 
 The fonts are Copyright 2015-2024 Google LLC / The Noto Project Authors and licensed
 under the SIL Open Font License 1.1 (`OFL.txt`); these Noto fonts
@@ -88,6 +90,11 @@ U+0020..U+00FF in `NotoSans-subset.ttf`.
 
 The Khmer and Myanmar subsets were made the same way, also keeping
 `cfar` and `rphf` in `--layout-features`.
+
+The Noto Serif Ahom and Noto Music subsets (issue #856) keep the
+characters of their golden lines plus U+25CC, ZWNJ and ZWJ, with
+`--layout-features='*'` and layout closure; the golden lines shape them
+with GDEF (Ahom) or GPOS (Music) hidden by the `!-TAG` font spec.
 
 The text is the matching lines of `tools/shape_golden_hb.py`; the two
 OTF subsets keep hinting and subroutines (no `--no-hinting`) so the CFF

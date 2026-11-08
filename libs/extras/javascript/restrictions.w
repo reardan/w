@@ -126,13 +126,17 @@ void js_validate_for_header(pg_ast_node* node, js_restriction_context* context, 
 		if (context.async_function == 0 || operator == 0 || strcmp(operator.first_token.text, c"of") != 0):
 			js_validation_error(diagnostics, node, c"for await requires async function and of clause")
 	pg_ast_node* binding = js_cst_child(header, c"for_binding")
+	# for-of iterates an AssignmentExpression, not a comma Expression.
+	if (operator != 0 && strcmp(operator.first_token.text, c"of") == 0 && header.children.length > 2 && header.children[2].children.length > 1):
+		js_validation_error(diagnostics, header.children[2], c"for-of iterable must be an assignment expression")
 	if (binding != 0 && js_cst_child(binding, c"variable_kind") == 0):
 		pg_ast_node* target = binding.children[0]
-		if (js_pattern_target(target, 0, context.strict, diagnostics) == 0): js_validation_error(diagnostics, binding, c"invalid for-in/of assignment target")
+		if (js_pattern_target(target, 0, context.strict, diagnostics) == 0 && (context.strict || js_call_target(target) == 0)): js_validation_error(diagnostics, binding, c"invalid for-in/of assignment target")
 		pg_ast_node* simple = js_cst_unwrap(target)
-		if (operator != 0 && strcmp(operator.first_token.text, c"of") == 0 && simple.token != 0):
-			if (strcmp(simple.text, c"let") == 0 || (awaiting == 0 && strcmp(simple.text, c"async") == 0)):
-				js_validation_error(diagnostics, binding, c"ambiguous for-of binding")
+		int of = operator != 0 && strcmp(operator.first_token.text, c"of") == 0
+		# [lookahead != let] covers `for (let.x of y)` as well as `for (let of y)`.
+		if (of && (strcmp(binding.first_token.text, c"let") == 0 || (simple.token != 0 && awaiting == 0 && strcmp(simple.text, c"async") == 0))):
+			js_validation_error(diagnostics, binding, c"ambiguous for-of binding")
 
 
 void js_validate_label(pg_ast_node* node, pg_diagnostics* diagnostics):
@@ -154,10 +158,74 @@ void js_validate_declaration_position(pg_ast_node* node, int strict, pg_diagnost
 	if (declaration == 0 || js_cst_is(node.parent, c"statement") == 0): return
 	pg_ast_node* owner = node.parent.parent
 	if (js_cst_is(owner, c"program") || js_cst_is(owner, c"block") || js_cst_is(owner, c"switch_clause")): return
+	# IsLabelledFunction: a labelled function must itself sit in a statement
+	# list, never in an if/loop/with body (sec-if-statement-static-semantics-early-errors).
+	if (js_cst_is(owner, c"labelled_statement") && js_cst_is(node, c"function_decl")):
+		pg_ast_node* outer = owner
+		while (js_cst_is(outer, c"labelled_statement") && js_cst_is(outer.parent, c"statement")): outer = outer.parent.parent
+		if (js_cst_is(outer, c"program") == 0 && js_cst_is(outer, c"block") == 0 && js_cst_is(outer, c"switch_clause") == 0):
+			js_validation_error(diagnostics, node, c"labelled function declaration in single-statement context")
+			return
 	# Annex B's plain sloppy function declaration exceptions are narrow.
 	if (strict == 0 && js_cst_is(node, c"function_decl") && js_cst_child(node, c"async_modifier") == 0 && js_cst_child(node, c"STAR") == 0):
 		if (js_cst_is(owner, c"if_statement") || js_cst_is(owner, c"else_clause") || js_cst_is(owner, c"labelled_statement")): return
 	js_validation_error(diagnostics, node, c"declaration requires a statement-list context")
+
+
+# PropertyNameList duplicates of a non-computed `__proto__: value` definition
+# (sec-object-initializer-static-semantics-early-errors); assignment patterns
+# are exempt.
+void js_validate_proto_duplicates(pg_ast_node* node, pg_diagnostics* diagnostics):
+	pg_ast_node* properties = js_cst_child(node, c"object_properties")
+	if (properties == 0 || js_in_assignment_pattern(node)): return
+	int count = 0
+	for pg_ast_node* entry in properties.children:
+		pg_ast_node* property = entry
+		if (js_cst_is(entry, c"object_property_tail")): property = entry.children[1]
+		if (js_cst_is(property, c"object_property") == 0 || js_cst_child(property, c"COLON") == 0): continue
+		pg_ast_node* name = js_cst_child(property, c"property_name")
+		pg_ast_node* key = js_cst_unwrap(name)
+		if (name == 0 || key.token == 0): continue
+		char* text = 0
+		int length = 0
+		if (js_cst_is(key, c"STRING")):
+			# Decode without the char* seam: keys such as 'a\0' are valid
+			# and simply are not __proto__.
+			js_text* value = js_text_decode(key.text, strlen(key.text))
+			if (value != 0): text = js_text_to_utf8(value, &length)
+			js_text_free(value)
+			if (text != 0 && strlen(text) != length):
+				free(text)
+				text = 0
+		else if (js_cst_is(key, c"NUMBER") == 0): text = js_identifier_decode(key.text)
+		if (text != 0 && strcmp(text, c"__proto__") == 0):
+			count = count + 1
+			if (count == 2): js_validation_error(diagnostics, property, c"duplicate __proto__ property in object literal")
+		free(text)
+
+
+# `let` is never a LexicalDeclaration bound name (sec-let-and-const-declarations-static-semantics-early-errors).
+void js_validate_let_names(pg_ast_node* node, pg_diagnostics* diagnostics):
+	pg_ast_node* kind = js_cst_child(node, c"variable_kind")
+	if (kind == 0 || strcmp(kind.first_token.text, c"var") == 0): return
+	list[js_binding_name*] names = new list[js_binding_name*]
+	js_binding_collect(node, names)
+	for js_binding_name* binding in names:
+		if (strcmp(binding.name, c"let") == 0): js_validation_error(diagnostics, binding.node, c"let is not a valid lexically bound name")
+	js_binding_names_free(names)
+
+
+# Optional chains cannot be tagged, and `new` without arguments cannot start
+# one (sec-left-hand-side-expressions-static-semantics-early-errors).
+void js_validate_optional_chain(pg_ast_node* node, pg_diagnostics* diagnostics):
+	int optional = 0
+	int constructed = js_cst_is(node, c"new_expression") && js_cst_child(node, c"new_callee") != 0 && js_cst_child(node, c"arguments") == 0
+	for pg_ast_node* tail in node.children:
+		if (js_cst_is(tail, c"postfix_tail") == 0): continue
+		if (js_cst_child(tail, c"OPTIONAL") != 0):
+			optional = 1
+			if (constructed): js_validation_error(diagnostics, tail, c"optional chain on new expression without arguments")
+		if (optional && js_cst_child(tail, c"template") != 0): js_validation_error(diagnostics, tail, c"tagged template in optional chain")
 
 
 void js_restriction_walk(pg_ast_node* node, js_restriction_context* context, pg_diagnostics* diagnostics):
@@ -176,6 +244,9 @@ void js_restriction_walk(pg_ast_node* node, js_restriction_context* context, pg_
 	if (js_cst_is(node, c"KW_SUPER") && js_cst_is(node.parent, c"primary")): js_validate_super(node, &here, diagnostics)
 	if (js_cst_is(node, c"for_statement")): js_validate_for_header(node, &here, diagnostics)
 	if (js_cst_is(node, c"labelled_statement")): js_validate_label(node, diagnostics)
+	if (js_cst_is(node, c"object_literal")): js_validate_proto_duplicates(node, diagnostics)
+	if (js_cst_is(node, c"variable_declarations") || js_cst_is(node, c"for_binding")): js_validate_let_names(node, diagnostics)
+	if (js_cst_is(node, c"postfix") || js_cst_is(node, c"new_expression")): js_validate_optional_chain(node, diagnostics)
 	if (js_cst_is(node, c"switch_statement")):
 		int defaults = 0
 		for pg_ast_node* child in node.children:
@@ -187,7 +258,7 @@ void js_restriction_walk(pg_ast_node* node, js_restriction_context* context, pg_
 			int plain = strcmp(tail.first_token.text, c"=") == 0
 			int valid = js_simple_target(node.children[0]) && js_restricted_target(node.children[0], here.strict) == 0
 			if (plain): valid = js_pattern_target(node.children[0], 0, here.strict, diagnostics)
-			if (valid == 0): js_validation_error(diagnostics, node, c"invalid assignment pattern")
+			if (valid == 0 && (here.strict || js_call_target(node.children[0]) == 0)): js_validation_error(diagnostics, node, c"invalid assignment pattern")
 	if (js_cst_is(node, c"object_property") && js_cst_child(node, c"initializer") != 0 && js_in_assignment_pattern(node) == 0):
 		js_validation_error(diagnostics, node, c"initialized shorthand outside assignment pattern")
 	if (js_cst_is(node, c"update") && node.children.length == 2 && js_restricted_target(node.children[0], here.strict)):

@@ -1,6 +1,6 @@
 # Unicode properties for text layout (issue #459): Bidi_Class, paired
 # brackets, mirroring glyphs, Joining_Type and Script, read from the
-# compact Unicode 15.0.0 tables in lib/unicode_text_data.w (a build output
+# compact Unicode 18.0.0 tables in lib/unicode_text_data.w (a build output
 # of tools/generate_text_data.w). Lookups allocate nothing.
 #
 # This is deliberately much smaller than libs/standard/text/unicodedata:
@@ -143,6 +143,8 @@ const int ut_cat_mn = 6
 const int ut_cat_mc = 7
 const int ut_cat_me = 8
 const int ut_cat_nd = 9
+const int ut_cat_pi = 16
+const int ut_cat_pf = 17
 const int ut_cat_sk = 21
 const int ut_cat_zs = 23
 const int ut_cat_cc = 26

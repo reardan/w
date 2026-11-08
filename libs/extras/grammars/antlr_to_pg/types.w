@@ -76,6 +76,9 @@ struct at_alt:
 	int source_alternative
 	pg_token* source_first
 	char* source_lhs_label
+	# Canonical ANTLR tree projection (prediction metadata `antlr_tree`):
+	# 0 inline, 1 context, 2 fold (wraps the preceding value), 3 list base.
+	int tree_role
 
 
 struct at_classification:

@@ -1,5 +1,5 @@
 # Unicode Character Database lookups in the style of Python's
-# unicodedata module, for Unicode 15.0.0: general category, bidirectional
+# unicodedata module, for Unicode 18.0.0: general category, bidirectional
 # class, canonical combining class, mirrored flag, decimal/digit/numeric
 # values, simple and full case mappings, case folding, decompositions,
 # and NFC/NFD/NFKC/NFKD normalization of UTF-8 text.
@@ -118,7 +118,7 @@ const int ud_kind_title = 1
 const int ud_kind_upper = 2
 const int ud_kind_fold = 3
 
-# Hangul syllable algorithm (Unicode 15.0 section 3.12).
+# Hangul syllable algorithm (Unicode 18.0 section 3.12).
 const int ud_s_base = 44032
 const int ud_l_base = 4352
 const int ud_v_base = 4449
@@ -130,7 +130,7 @@ const int ud_n_count = 588
 const int ud_s_count = 11172
 
 
-# The Unicode Character Database version of the tables ("15.0.0").
+# The Unicode Character Database version of the tables ("18.0.0").
 char* unicode_version():
 	return ud_unicode_version()
 

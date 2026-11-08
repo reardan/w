@@ -33,6 +33,7 @@ Design notes: docs/projects/wasm_webgl.md
 import lib.lib
 import graphics.gl
 import graphics.event
+import graphics.clipboard_store
 
 
 struct gfx_window:
@@ -48,6 +49,8 @@ struct gfx_window:
 	# software keyboard, window resize) resets it like X11's ConfigureNotify.
 	int32 viewport_width
 	int32 viewport_height
+	# Clipboard (graphics.clipboard_store); the host owns the pending read.
+	gfx_clipboard_store clip
 
 
 # The frame callback contract: return 1 to keep the loop running, 0 to
@@ -80,6 +83,16 @@ extern void gfx_host_pointer_mode(int mode)
 # devicePixelRatio times 1000 (an int keeps the import i32-only); 0 or
 # below 1000 means 1:1.
 extern int gfx_host_pixel_ratio_milli()
+# Clipboard (docs/projects/ui_clipboard.md): the browser's Clipboard API
+# is asynchronous and permission-gated, so a read is a request the host
+# resolves later. write hands over UTF-8 text[0..length); read starts a
+# navigator.clipboard.readText(); read_poll answers -1 while it is in
+# flight and then the UTF-8 byte length (0 when it was refused or
+# empty), which read_copy writes to out and clears.
+extern void gfx_host_clipboard_write(char* text, int length)
+extern void gfx_host_clipboard_read()
+extern int gfx_host_clipboard_read_poll()
+extern void gfx_host_clipboard_read_copy(char* out)
 
 
 void gfx_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id):
@@ -88,6 +101,35 @@ void gfx_text_input(int active, int multiline, int x, int y, int width, int heig
 
 void gfx_pointer_mode(int mode):
 	gfx_host_pointer_mode(mode)
+
+
+int gfx_clipboard_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_clipboard_local_set(text)
+	int length = strlen(text)
+	gfx_clipboard_store_own(&win.clip, text, length)
+	gfx_host_clipboard_write(text, length)
+	return 1
+
+
+void gfx_clipboard_request(gfx_window* win):
+	if (win == 0):
+		gfx_clipboard_local_request()
+		return
+	gfx_clipboard_store_begin(&win.clip, GFX_CLIPBOARD_REQUESTED)
+	gfx_host_clipboard_read()
+
+
+char* gfx_clipboard_take(gfx_window* win):
+	if (win == 0): return gfx_clipboard_local_take()
+	if (win.clip.state == GFX_CLIPBOARD_REQUESTED):
+		int length = gfx_host_clipboard_read_poll()
+		if (length < 0): return 0
+		char* bytes = cast(char*, malloc(length + 1))
+		gfx_host_clipboard_read_copy(bytes)
+		gfx_clipboard_store_append(&win.clip, bytes, length)
+		free(bytes)
+		gfx_clipboard_store_arrive(&win.clip)
+	return gfx_clipboard_store_take(&win.clip)
 
 
 # "#version" line for shader sources that should compile on every
@@ -123,6 +165,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.last_keycode = 0
 	win.viewport_width = 0
 	win.viewport_height = 0
+	gfx_clipboard_store_init(&win.clip)
 	# The host may already have clamped the canvas below the request (a
 	# phone narrower than width); start from the size it actually has.
 	gfx_host_poll_state(win)
@@ -174,4 +217,5 @@ void gfx_window_run(gfx_window* win, gfx_frame_fn* frame):
 
 
 void gfx_window_destroy(gfx_window* win):
+	gfx_clipboard_store_free(&win.clip)
 	free(win)

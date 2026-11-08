@@ -9,6 +9,7 @@ skip SPACE js_space
 skip LINE_COMMENT js_line_comment
 skip BLOCK_COMMENT js_block_comment
 skip HASHBANG js_hashbang
+skip HTML_COMMENT js_html_comment
 token IDENT js_identifier
 token NUMBER js_number
 token STRING js_string
@@ -162,7 +163,7 @@ goal conditional_tail 0
 goal assignment_tail 0
 goal expression_tail 0
 
-rule identifier_reference = IDENT | KW_ASYNC | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET | KW_LET
+rule identifier_reference = IDENT | KW_ASYNC | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET | KW_LET | &{ js_yield_identifier(stream) } KW_YIELD | &{ js_await_identifier(stream) } KW_AWAIT
 rule binding_identifier = identifier_reference
 rule label_identifier = identifier_reference | KW_AWAIT | KW_YIELD
 rule identifier_name = IDENT | KW_BREAK | KW_CASE | KW_CATCH | KW_CLASS | KW_CONST | KW_CONTINUE | KW_DEBUGGER | KW_DEFAULT | KW_DELETE | KW_DO | KW_ELSE | KW_EXPORT | KW_EXTENDS | KW_FALSE | KW_FINALLY | KW_FOR | KW_FUNCTION | KW_IF | KW_IMPORT | KW_IN | KW_INSTANCEOF | KW_LET | KW_NEW | KW_NULL | KW_RETURN | KW_SUPER | KW_SWITCH | KW_THIS | KW_THROW | KW_TRUE | KW_TRY | KW_TYPEOF | KW_VAR | KW_VOID | KW_WHILE | KW_WITH | KW_YIELD | KW_ASYNC | KW_AWAIT | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET
@@ -254,7 +255,7 @@ rule expression_tail = COMMA assignment
 rule assignment = arrow_function | yield_expression | conditional assignment_tail?
 rule assignment_tail = assignment_operator assignment
 rule assignment_operator = ASSIGN | ADD_ASSIGN | SUB_ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN | POWER_ASSIGN | SHL_ASSIGN | SAR_ASSIGN | SHR_ASSIGN | BITAND_ASSIGN | BITXOR_ASSIGN | BITOR_ASSIGN
-rule yield_expression = KW_YIELD yield_value?
+rule yield_expression = &{ js_yield_keyword(stream) } KW_YIELD yield_value?
 rule yield_value = &{ js_no_linebreak(stream) } STAR? assignment
 rule conditional = short_circuit conditional_tail?
 rule conditional_tail = QUESTION assignment COLON assignment
@@ -288,7 +289,7 @@ rule multiplicative_tail = multiplicative_operator power
 rule multiplicative_operator = STAR | SLASH | MOD
 rule power = unary power_tail?
 rule power_tail = POWER power
-rule unary = prefix_operator unary | KW_AWAIT unary | update
+rule unary = prefix_operator unary | &{ js_await_keyword(stream) } KW_AWAIT unary | update
 rule prefix_operator = PLUS | MINUS | NOT | BITNOT | KW_TYPEOF | KW_VOID | KW_DELETE | INC | DEC
 rule update = postfix postfix_update?
 rule postfix_update = &{ js_no_linebreak(stream) } INC | &{ js_no_linebreak(stream) } DEC

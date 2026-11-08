@@ -3,12 +3,25 @@
 # wbuild: step="bin/wv2 --profile-generate --strict w.w -o bin/prof_wv3"
 # wbuild: step="bin/wprof clear bin/self.wprofraw"
 # wbuild: step="bin/prof_wv3 --quiet w.w -o bin/prof_self_out" env="W_PROFILE_OUT=bin/self.wprofraw"
-# wbuild: step="bin/wprof merge -o profiles/self.wprof bin/prof_wv3.wprofmap bin/self.wprofraw"
+# wbuild: step="bin/wprof merge -o bin/refresh_self.wprof bin/prof_wv3.wprofmap bin/self.wprofraw"
 # wbuild: step="bin/wv2_64 x64 --profile-generate --strict w.w -o bin/prof_wv3_64"
 # wbuild: step="bin/wprof clear bin/self_x64.wprofraw"
 # wbuild: step="bin/prof_wv3_64 x64 --quiet w.w -o bin/prof_self_out_64" env="W_PROFILE_OUT=bin/self_x64.wprofraw"
-# wbuild: step="bin/wprof merge -o profiles/self_x64.wprof bin/prof_wv3_64.wprofmap bin/self_x64.wprofraw"
-# wbuild: step="bin/wprof corpus -o profiles/bench.wprof --compiler bin/wv2 tests/bench"
+# wbuild: step="bin/wprof merge -o bin/refresh_self_x64.wprof bin/prof_wv3_64.wprofmap bin/self_x64.wprofraw"
+# wbuild: step="bin/wprof corpus -o bin/refresh_bench.wprof --compiler bin/wv2 tests/bench"
+# wbuild: step="bin/wv2 --profile-use=bin/refresh_self.wprof --strict w.w -o bin/refresh_wv3_pgo"
+# wbuild: step="bin/refresh_wv3_pgo --profile-use=bin/refresh_self.wprof --strict w.w -o bin/refresh_wv4_pgo"
+# wbuild: step="bin/wv2 --profile-use=bin/refresh_self.wprof --streaming --strict w.w -o bin/refresh_wv3_pgo_streaming"
+# wbuild: step="cmp bin/refresh_wv3_pgo bin/refresh_wv4_pgo"
+# wbuild: step="cmp bin/refresh_wv3_pgo bin/refresh_wv3_pgo_streaming"
+# wbuild: step="bin/wv2 x64 --profile-use=bin/refresh_self_x64.wprof --strict w.w -o bin/refresh_wv3_pgo_64"
+# wbuild: step="bin/refresh_wv3_pgo_64 x64 --profile-use=bin/refresh_self_x64.wprof --strict w.w -o bin/refresh_wv4_pgo_64"
+# wbuild: step="bin/wv2 x64 --profile-use=bin/refresh_self_x64.wprof --streaming --strict w.w -o bin/refresh_wv3_pgo_streaming_64"
+# wbuild: step="cmp bin/refresh_wv3_pgo_64 bin/refresh_wv4_pgo_64"
+# wbuild: step="cmp bin/refresh_wv3_pgo_64 bin/refresh_wv3_pgo_streaming_64"
+# wbuild: step="cp bin/refresh_self.wprof profiles/self.wprof"
+# wbuild: step="cp bin/refresh_self_x64.wprof profiles/self_x64.wprof"
+# wbuild: step="cp bin/refresh_bench.wprof profiles/bench.wprof"
 /*
 wprof: merge and inspect --profile-generate output (unit P1,
 docs/projects/register_allocation_pgo.md §3.3).
@@ -56,6 +69,12 @@ docs/projects/register_allocation_pgo.md §3.3).
       profile_refresh (the directive block above) works before the
       benchmark corpus (unit B1, tests/bench/) lands. Programs that fail
       to compile or run are reported and skipped.
+
+profile_refresh merges into bin/refresh_*.wprof first and copies them
+over profiles/ only after the new self profiles pass what verify_pgo
+checks: the PGO self-host fixpoint (wv3 == wv4) and the same image
+under the AST and --streaming front ends, on x86 and x64 (reardan/w#886:
+a refresh once committed a profile verify_pgo then failed on).
 
 Built as a 64-bit tool (arch=x64 above) so merged counts are 64-bit;
 the dumps themselves are written by lib/profile.w on either target.

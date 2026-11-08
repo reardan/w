@@ -19,7 +19,7 @@ const int gen_max_codepoint = 1114111
 
 # Update together with tools/unicode/UnicodeData.txt.
 char* gen_unicode_version():
-	return c"15.0.0"
+	return c"18.0.0"
 
 
 # Derived general-category classes (0 = none of them).

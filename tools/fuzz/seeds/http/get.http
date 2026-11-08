@@ -1,0 +1,7 @@
+GET /a/b/../c%20d?a=1&b=%41 HTTP/1.1
+Host: example.com
+User-Agent: wfuzz
+Accept: */*
+
+GET * HTTP/1.0
+

@@ -235,6 +235,32 @@ SECTIONS = [
         "हिन्दी भाषा का इतिहास बहुत पुराना है।",
         "क्षत्रिय ज्ञान श्री त्र द्ध द्व र्क र्कि कि कृ प्र्य",
     ]),
+    # Issue #856. Without GDEF only nonspacing (Mn) characters are marks,
+    # and Unicode 16.0 made U+1171E AHOM CONSONANT SIGN MEDIAL RA a
+    # spacing mark (Mc), so the killer after it finds no mark to attach to.
+    ("tests/data/fonts/NotoSerifAhom-subset.ttf!-GDEF", [
+        "\U00011733\U0001171e\U0001172b",
+        "\U00011721\U0001171e\U0001172a\U00011715\U00011722",
+        "\U0001171d\U00011700\U0001171e\U0001172a\u25cc\U00011723",
+        "\U0001171e\U0001172b\U00011703\U0001170e\U00011726",
+    ]),
+    ("tests/data/fonts/NotoSerifAhom-subset.ttf", [
+        "\U00011733\U0001171e\U0001172b",
+        "\U0001171d\U00011700\U0001171e\U0001172a\u25cc\U00011723",
+    ]),
+    # Issue #856. Without GPOS, ccmp multiplies the combining stem (Mc)
+    # around a reordered tremolo; both pieces stay marks of the stem's
+    # class in fallback placement.
+    ("tests/data/fonts/NotoMusic-subset.ttf!-GPOS", [
+        "\U0001d20c\U0001d165\U0001d167\U0001d188",
+        "\U0001d204\U0001d168\U0001d165",
+        "\U0001d011\U0001d014\U0001d226\U0001d165\U0001d169\U0001d170",
+        "\U0001d1d7\U0001d0b8\U0001d1bd\U0001d188 \U0001d189\U0001d185\U0001d167\U0001d17c\U0001d165\U0001d02e",
+    ]),
+    ("tests/data/fonts/NotoMusic-subset.ttf", [
+        "\U0001d20c\U0001d165\U0001d167\U0001d188",
+        "\U0001d204\U0001d168\U0001d165",
+    ]),
 ]
 
 

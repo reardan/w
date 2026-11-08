@@ -66,6 +66,7 @@ import lib.lib
 import lib.utf8
 import graphics.ui.accessibility
 import graphics.ui.accessibility_table
+import graphics.ui.accessibility_text
 
 
 c_lib "uiautomationcore.dll"
@@ -79,6 +80,7 @@ extern int UiaRaiseStructureChangedEvent(int provider, int change, int32* runtim
 extern int UiaClientsAreListening()
 extern int UiaDisconnectProvider(int provider)
 extern int UiaGetReservedNotSupportedValue(int* value)
+extern int UiaGetReservedMixedAttributeValue(int* value)
 
 c_lib "oleaut32.dll"
 extern int SysAllocStringLen(char* text, int length)
@@ -130,11 +132,24 @@ const int UI_UIA_TABLE = 12
 const int UI_UIA_TABLE_ITEM = 13
 const int UI_UIA_ACCESSIBLE = 14
 const int UI_UIA_TEXT = 15
-const int UI_UIA_IFACES = 16
+# #863: ITextEditProvider, ILegacyIAccessibleProvider, IEnumVARIANT
+# (accChildren), IServiceProvider (IAccessible2's way in) and
+# IAccessible2. Their IIDs follow IDispatch's and ITextRangeProvider's
+# (ui_uia_kind_slot).
+const int UI_UIA_TEXT_EDIT = 16
+const int UI_UIA_LEGACY = 17
+const int UI_UIA_ENUM = 18
+const int UI_UIA_SERVICE = 19
+const int UI_UIA_IA2 = 20
+const int UI_UIA_IFACES = 21
 # ui_uia_iids slots after IUnknown and the interface kinds (slot kind + 1):
 # IDispatch (IAccessible's base), then ITextRangeProvider.
 const int UI_UIA_IDISPATCH_SLOT = 17
 const int UI_UIA_TEXT_RANGE_IID = 18
+# ITextProvider2, answered by the Text kind (its vtable is the
+# ITextProvider2 layout, which begins with ITextProvider's).
+const int UI_UIA_TEXT2_IID = 24
+const int UI_UIA_IID_SLOTS = 25
 
 # Control pattern ids (UIA_*PatternId).
 const int UIA_InvokePatternId = 10000
@@ -149,6 +164,9 @@ const int UIA_TablePatternId = 10012
 const int UIA_TableItemPatternId = 10013
 const int UIA_TextPatternId = 10014
 const int UIA_TogglePatternId = 10015
+const int UIA_LegacyIAccessiblePatternId = 10018
+const int UIA_TextPattern2Id = 10024
+const int UIA_TextEditPatternId = 10032
 
 # Property ids (UIA_*PropertyId).
 const int UIA_RuntimeIdPropertyId = 30000
@@ -189,6 +207,14 @@ const int HeadingLevel_None = 80050
 # Text attribute ids (UIA_*AttributeId), TextUnit,
 # TextPatternRangeEndpoint and SupportedTextSelection.
 const int UIA_IsReadOnlyAttributeId = 40015
+const int UIA_BackgroundColorAttributeId = 40001
+const int UIA_FontNameAttributeId = 40005
+const int UIA_FontSizeAttributeId = 40006
+const int UIA_FontWeightAttributeId = 40007
+const int UIA_ForegroundColorAttributeId = 40008
+const int UIA_IsItalicAttributeId = 40014
+const int UIA_UnderlineStyleAttributeId = 40030
+const int SupportedTextSelection_Multiple = 2
 const int TextUnit_Character = 0
 const int TextUnit_Format = 1
 const int TextUnit_Word = 2
@@ -268,6 +294,7 @@ const int ROLE_SYSTEM_DIALOG = 18
 const int ROLE_SYSTEM_GROUPING = 20
 const int ROLE_SYSTEM_TABLE = 24
 const int ROLE_SYSTEM_COLUMNHEADER = 25
+const int ROLE_SYSTEM_ROWHEADER = 26
 const int ROLE_SYSTEM_ROW = 28
 const int ROLE_SYSTEM_CELL = 29
 const int ROLE_SYSTEM_LINK = 30
@@ -296,7 +323,12 @@ const int STATE_SYSTEM_FOCUSABLE = 0x100000
 const int STATE_SYSTEM_SELECTABLE = 0x200000
 const int STATE_SYSTEM_LINKED = 0x400000
 const int STATE_SYSTEM_HASPOPUP = 0x40000000
+const int STATE_SYSTEM_MULTISELECTABLE = 0x1000000
+const int STATE_SYSTEM_EXTSELECTABLE = 0x2000000
 const int NAVDIR_UP = 1
+const int NAVDIR_DOWN = 2
+const int NAVDIR_LEFT = 3
+const int NAVDIR_RIGHT = 4
 const int NAVDIR_NEXT = 5
 const int NAVDIR_PREVIOUS = 6
 const int NAVDIR_FIRSTCHILD = 7
@@ -321,11 +353,12 @@ struct ui_uia_iface:
 
 
 struct ui_uia_element:
-	ui_uia_iface[16] ifaces
+	ui_uia_iface[21] ifaces
 	int refs                    # COM references held by clients
 	int id
 	int dead                    # the node is gone (or the bridge closed)
 	int bridge                  # ui_uia_bridge*, valid while !dead
+	int enum_cursor             # IEnumVARIANT: the next child to hand out
 
 
 # An ITextRangeProvider: its own COM object, holding one reference to
@@ -360,9 +393,10 @@ struct ui_uia_bridge:
 
 /* Plumbing: vtables, GUIDs, strings, VARIANTs. */
 
-int[16] ui_uia_vtables
+int[21] ui_uia_vtables
 int ui_uia_range_vtable         # ITextRangeProvider
-char[304] ui_uia_iids           # IUnknown, one IID per interface kind, IDispatch, ITextRangeProvider
+int ui_uia_enum_vtable          # a standalone IEnumVARIANT (ui_uia_enum)
+char[400] ui_uia_iids           # IUnknown, kinds 0-15, IDispatch, ITextRangeProvider, kinds 16-20, ITextProvider2
 int ui_uia_ready
 ui_uia_bridge* ui_uia_active    # the bridge ui_access_uia_wm_getobject serves
 
@@ -396,6 +430,12 @@ int ui_uia_guid_is(int riid, int slot):
 	for i in range(16):
 		if (a[i] != g[i]): return 0
 	return 1
+
+
+# The IID slot of interface kind k.
+int ui_uia_kind_slot(int k):
+	if (k < 16): return k + 1
+	return k + 3
 
 
 ui_uia_element* ui_uia_self(int self):
@@ -528,7 +568,7 @@ int ui_uia_control_type(ui_uia_bridge* b, ui_access_node* n):
 		if (ui_uia_is_root(b, n)): return UIA_PaneControlTypeId
 		return UIA_DocumentControlTypeId
 	if (r == UI_ACCESS_GROUP): return UIA_GroupControlTypeId
-	if ((r == UI_ACCESS_CELL) && ui_access_is_header_cell(n)): return UIA_HeaderItemControlTypeId
+	if ((r == UI_ACCESS_CELL) && (ui_access_is_header_cell(n) || ui_access_is_row_header(n))): return UIA_HeaderItemControlTypeId
 	if ((r == UI_ACCESS_TEXT) || (r == UI_ACCESS_HEADING) || (r == UI_ACCESS_CELL)): return UIA_TextControlTypeId
 	if (r == UI_ACCESS_LINK): return UIA_HyperlinkControlTypeId
 	# A switch is a button with the Toggle pattern (the UIA guidance for
@@ -576,6 +616,8 @@ int ui_uia_supports(ui_uia_bridge* b, ui_access_node* n, int kind):
 		return ((n.states & UI_ACCESS_EXPANDED) != 0) && ((n.actions & UI_ACCESS_ACTIVATE) != 0)
 	if (kind == UI_UIA_RANGE): return r == UI_ACCESS_PROGRESS
 	if (kind == UI_UIA_TEXT): return r == UI_ACCESS_TEXTBOX
+	if (kind == UI_UIA_TEXT_EDIT): return (r == UI_ACCESS_TEXTBOX) && ((n.actions & UI_ACCESS_SET_VALUE) != 0) && ((n.states & UI_ACCESS_READONLY) == 0)
+	if ((kind == UI_UIA_LEGACY) || (kind == UI_UIA_ENUM) || (kind == UI_UIA_SERVICE) || (kind == UI_UIA_IA2)): return 1
 	if (kind == UI_UIA_INVOKE):
 		if ((n.actions & UI_ACCESS_ACTIVATE) == 0): return 0
 		for k in range(UI_UIA_TOGGLE, UI_UIA_RANGE):
@@ -706,8 +748,9 @@ int ui_uia_query_interface(int self, int riid, int out):
 	else if (ui_uia_guid_is(riid, UI_UIA_IDISPATCH_SLOT)): kind = UI_UIA_ACCESSIBLE
 	else:
 		ui_access_node* n = ui_uia_node(e)
+		if (ui_uia_guid_is(riid, UI_UIA_TEXT2_IID) && (n != 0) && ui_uia_supports(ui_uia_bridge_of(e), n, UI_UIA_TEXT)): kind = UI_UIA_TEXT
 		for k in range(UI_UIA_IFACES):
-			if ((kind < 0) && ui_uia_guid_is(riid, k + 1)):
+			if ((kind < 0) && ui_uia_guid_is(riid, ui_uia_kind_slot(k))):
 				if ((k == UI_UIA_SIMPLE) || (k == UI_UIA_FRAGMENT)): kind = k
 				else if ((n != 0) && ui_uia_supports(ui_uia_bridge_of(e), n, k)): kind = k
 	if (kind < 0): return UIA_E_NOINTERFACE
@@ -755,7 +798,9 @@ int ui_uia_pattern_kind(int pattern):
 	if (pattern == UIA_GridItemPatternId): return UI_UIA_GRID_ITEM
 	if (pattern == UIA_TablePatternId): return UI_UIA_TABLE
 	if (pattern == UIA_TableItemPatternId): return UI_UIA_TABLE_ITEM
-	if (pattern == UIA_TextPatternId): return UI_UIA_TEXT
+	if ((pattern == UIA_TextPatternId) || (pattern == UIA_TextPattern2Id)): return UI_UIA_TEXT
+	if (pattern == UIA_TextEditPatternId): return UI_UIA_TEXT_EDIT
+	if (pattern == UIA_LegacyIAccessiblePatternId): return UI_UIA_LEGACY
 	return 0 - 1
 
 
@@ -834,7 +879,7 @@ int ui_uia_get_property(int self, int property, int out):
 			save_int16(v, VT_UNKNOWN)
 			ui_uia_hand_out(b, container.id, UI_UIA_SIMPLE, cast(int, &v[8]))
 	else if (ui_uia_supports(b, n, UI_UIA_SELECTION) && ((p == UIA_SelectionSelectionPropertyId) || (p == UIA_SelectionCanSelectMultiplePropertyId) || (p == UIA_SelectionIsSelectionRequiredPropertyId))):
-		if (p == UIA_SelectionCanSelectMultiplePropertyId): ui_uia_variant_bool(v, 0)
+		if (p == UIA_SelectionCanSelectMultiplePropertyId): ui_uia_variant_bool(v, ui_access_is_multiselectable(n))
 		else if (p == UIA_SelectionIsSelectionRequiredPropertyId): ui_uia_variant_bool(v, n.role == UI_ACCESS_TAB_LIST)
 		else:
 			list[int] ids = ui_uia_selection_ids(n)
@@ -850,13 +895,16 @@ int ui_uia_get_property(int self, int property, int out):
 	else if ((p >= UIA_GridItemRowPropertyId) && (p <= UIA_GridItemContainingGridPropertyId) && ui_uia_supports(b, n, UI_UIA_GRID_ITEM)):
 		int row = 0
 		int col = 0
-		ui_access_cell_position(n, &row, &col)
+		int row_span = 1
+		int col_span = 1
+		ui_access_cell_slot(n, &row, &col, &row_span, &col_span)
 		if (p == UIA_GridItemRowPropertyId): ui_uia_variant_i4(v, row)
 		else if (p == UIA_GridItemColumnPropertyId): ui_uia_variant_i4(v, col)
 		else if (p == UIA_GridItemContainingGridPropertyId):
 			save_int16(v, VT_UNKNOWN)
 			ui_uia_hand_out(b, n.parent.parent.id, UI_UIA_SIMPLE, cast(int, &v[8]))
-		else: ui_uia_variant_i4(v, 1)
+		else if (p == UIA_GridItemRowSpanPropertyId): ui_uia_variant_i4(v, row_span)
+		else: ui_uia_variant_i4(v, col_span)
 	return UIA_S_OK
 
 
@@ -1047,7 +1095,16 @@ int ui_uia_answer32(int self, int out, int which):
 		v = ((n.states & UI_ACCESS_READONLY) != 0) || ((n.actions & UI_ACCESS_SET_VALUE) == 0) || ui_access_inert(n)
 	else if (which == 2): v = ui_uia_selected(n)
 	else if (which == 3): v = ui_uia_expanded(n)
-	else if (which == 4): v = 1
+	else if ((which == 4) || (which == 12)):
+		# GridItem.RowSpan (4) and ColumnSpan (12).
+		int row = 0
+		int col = 0
+		int row_span = 1
+		int col_span = 1
+		ui_access_cell_slot(n, &row, &col, &row_span, &col_span)
+		if (which == 4): v = row_span
+		else: v = col_span
+	else if (which == 5): v = ui_access_is_multiselectable(n)
 	else if (which == 6): v = n.role == UI_ACCESS_TAB_LIST
 	else if (which == 7): v = ui_access_table_rows(n)
 	else if (which == 8): v = ui_access_table_columns(n)
@@ -1057,7 +1114,7 @@ int ui_uia_answer32(int self, int out, int which):
 		ui_access_cell_position(n, &row, &col)
 		if (which == 10): v = row
 		else: v = col
-	# 5: CanSelectMultiple and 9: RowOrColumnMajor_RowMajor are 0.
+	# 9: RowOrColumnMajor_RowMajor is 0.
 	save_int32(cast(char*, out), v)
 	return UIA_S_OK
 
@@ -1093,26 +1150,46 @@ int ui_uia_value_read_only(int self, int out):
 	return ui_uia_answer32(self, out, 1)
 
 
+# Queue a UI_ACCESS_SELECT of mode on n (an item offering it), else
+# activation to select it; S_OK or the HRESULT refusing it.
+int ui_uia_select_mode(ui_uia_bridge* b, ui_access_node* n, int mode):
+	if ((n.actions & UI_ACCESS_SELECT) != 0):
+		char* word = ui_access_select_word(mode)
+		if (ui_uia_enqueue(b, n, UI_ACCESS_SELECT, word, strlen(word))): return UIA_S_OK
+		return UIA_E_ELEMENTNOTENABLED
+	if (mode == UI_ACCESS_SELECT_REMOVE): return UIA_E_INVALIDOPERATION
+	if (ui_uia_enqueue(b, n, UI_ACCESS_ACTIVATE, c"", 0)): return UIA_S_OK
+	return UIA_E_ELEMENTNOTENABLED
+
+
+# Select: the item alone (activation, or SELECT "only").
 int ui_uia_select(int self):
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if ((n.actions & UI_ACCESS_SELECT) != 0): return ui_uia_select_mode(ui_uia_bridge_of(e), n, UI_ACCESS_SELECT_ONLY)
 	return ui_uia_request_action(self, UI_ACCESS_ACTIVATE)
 
 
-# Single selection: adding the selected item, or removing an unselected
-# one, is a no-op; anything else would need multiple selection.
+# Adding the selected item, or removing an unselected one, is a no-op;
+# otherwise a multi-selection container (UI_ACCESS_MULTISELECTABLE)
+# adds or removes the item, and a single-selection one refuses.
 int ui_uia_add_to_selection(int self):
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
 	if (ui_uia_selected(n)): return UIA_S_OK
-	return UIA_E_INVALIDOPERATION
+	if (!ui_access_is_multiselectable(n.parent)): return UIA_E_INVALIDOPERATION
+	return ui_uia_select_mode(ui_uia_bridge_of(e), n, UI_ACCESS_SELECT_ADD)
 
 
 int ui_uia_remove_from_selection(int self):
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	if (ui_uia_selected(n)): return UIA_E_INVALIDOPERATION
-	return UIA_S_OK
+	if (!ui_uia_selected(n)): return UIA_S_OK
+	if (!ui_access_is_multiselectable(n.parent)): return UIA_E_INVALIDOPERATION
+	return ui_uia_select_mode(ui_uia_bridge_of(e), n, UI_ACCESS_SELECT_REMOVE)
 
 
 int ui_uia_is_selected(int self, int out):
@@ -1349,17 +1426,19 @@ int ui_uia_text_selection(int self, int out):
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	int count = 0
-	if (n.caret >= 0): count = 1
+	# Every selected range (#863), or the degenerate caret range alone.
+	int total = ui_access_selection_total(n)
+	int count = total
+	if ((count == 0) && (n.caret >= 0)): count = 1
 	int array = SafeArrayCreateVector(VT_UNKNOWN, 0, count)
 	if (array == 0): return UIA_E_INVALIDARG
-	if (count == 1):
-		int start = n.selection_start
-		int end = n.selection_end
-		if ((start < 0) || (end < start)):
-			start = n.caret
-			end = n.caret
-		ui_uia_put_range(array, 0, ui_uia_text_range_new(e, start, end))
+	if (total == 0):
+		if (count == 1): ui_uia_put_range(array, 0, ui_uia_text_range_new(e, n.caret, n.caret))
+	for k in range(total):
+		int start = 0
+		int end = 0
+		ui_access_selection_range(n, k, &start, &end)
+		ui_uia_put_range(array, k, ui_uia_text_range_new(e, start, end))
 	save_int64(cast(char*, out), array)
 	return UIA_S_OK
 
@@ -1400,15 +1479,22 @@ int ui_uia_text_from_point(int self, int point, int out):
 	float64* xy = cast(float64*, point)
 	int ox = 0
 	int oy = 0
-	ui_uia_origin(ui_uia_bridge_of(e), &ox, &oy)
-	float64 x = xy[0] - cast(float64, ox) - cast(float64, n.bounds.x)
-	float64 y = xy[1] - cast(float64, oy) - cast(float64, n.bounds.y)
-	float64 w = cast(float64, n.bounds.w)
-	int count = ui_access_char_count(n.value.data, n.value.length)
-	int at = 0
-	if ((y >= cast(float64, n.bounds.h)) || (x >= w)): at = count
-	else if ((y >= 0.0) && (x > 0.0) && (w > 0.0)): at = cast(int, x / w * cast(float64, count) + 0.5)
-	if (at > count): at = count
+	ui_uia_bridge* b = ui_uia_bridge_of(e)
+	ui_uia_origin(b, &ox, &oy)
+	float64 sx = (xy[0] - cast(float64, ox)) / b.scale
+	float64 sy = (xy[1] - cast(float64, oy)) / b.scale
+	# The nearest caret position from the glyph boxes (#863); without
+	# them, proportional along the field.
+	int at = ui_access_caret_at_point(n, cast(float32, sx), cast(float32, sy))
+	if (at < 0):
+		float64 x = sx - cast(float64, n.bounds.x)
+		float64 y = sy - cast(float64, n.bounds.y)
+		float64 w = cast(float64, n.bounds.w)
+		int count = ui_access_char_count(n.value.data, n.value.length)
+		at = 0
+		if ((y >= cast(float64, n.bounds.h)) || (x >= w)): at = count
+		else if ((y >= 0.0) && (x > 0.0) && (w > 0.0)): at = cast(int, x / w * cast(float64, count) + 0.5)
+		if (at > count): at = count
 	save_int64(cast(char*, out), ui_uia_text_range_new(e, at, at))
 	return UIA_S_OK
 
@@ -1426,8 +1512,43 @@ int ui_uia_text_document(int self, int out):
 int ui_uia_text_supported_selection(int self, int out):
 	if (out == 0): return UIA_E_POINTER
 	save_int32(cast(char*, out), 0)
+	ui_access_node* n = ui_uia_node(ui_uia_self(self))
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if ((n.actions & UI_ACCESS_SET_SELECTIONS) != 0): save_int32(cast(char*, out), SupportedTextSelection_Multiple)
+	else: save_int32(cast(char*, out), SupportedTextSelection_Single)
+	return UIA_S_OK
+
+
+# ITextProvider2::RangeFromAnnotation: the snapshot has no annotations.
+int ui_uia_text_from_annotation(int self, int annotation, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
 	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	save_int32(cast(char*, out), SupportedTextSelection_Single)
+	return UIA_E_INVALIDARG
+
+
+# ITextProvider2::GetCaretRange: the degenerate range at the caret, and
+# whether the field has keyboard focus (the caret is then active).
+int ui_uia_text_caret_range(int self, int active, int out):
+	if ((out == 0) || (active == 0)): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	save_int32(cast(char*, active), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	ui_uia_bridge* b = ui_uia_bridge_of(e)
+	save_int32(cast(char*, active), (b.published.focused_id == n.id) && !ui_access_inert(n))
+	int caret = ui_access_caret_or_zero(n)
+	save_int64(cast(char*, out), ui_uia_text_range_new(e, caret, caret))
+	return UIA_S_OK
+
+
+# ITextEditProvider: the snapshot carries no IME composition, so there
+# is no active composition or conversion target (a null range).
+int ui_uia_text_composition(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
 	return UIA_S_OK
 
 
@@ -1501,15 +1622,6 @@ int ui_uia_range_expand(int self, int unit):
 	return UIA_S_OK
 
 
-# FindAttribute: the text has uniform (unreported) formatting, so no
-# run is ever found.
-int ui_uia_range_find_attribute(int self, int attribute, int value, int backward, int out):
-	if (out == 0): return UIA_E_POINTER
-	save_int64(cast(char*, out), 0)
-	if (ui_uia_range_node(cast(ui_uia_text_range*, self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	return UIA_S_OK
-
-
 int ui_uia_fold(int c, int ignore_case):
 	if (ignore_case && (c >= 'A') && (c <= 'Z')): return c + 32
 	return c
@@ -1550,48 +1662,210 @@ int ui_uia_range_find_text(int self, int text, int backward, int ignore_case, in
 	return UIA_S_OK
 
 
-# GetAttributeValue: IsReadOnly; every other attribute answers the
-# reserved not-supported value.
+# COLORREF (0x00BBGGRR) for 0xRRGGBB.
+int ui_uia_colorref(int rgb):
+	return ((rgb & 255) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 255)
+
+
+# Write text attribute attribute of attrs a into VARIANT v; 0 when a
+# does not set it (or the bridge does not know the attribute).
+int ui_uia_attr_variant(ui_access_text_attrs* a, int attribute, char* v):
+	ui_uia_variant_clear(v)
+	if (a == 0): return 0
+	if (attribute == UIA_FontNameAttributeId):
+		if (a.family.length == 0): return 0
+		ui_uia_variant_text(v, &a.family)
+		return 1
+	if (attribute == UIA_FontSizeAttributeId):
+		if (a.size <= 0): return 0
+		save_int16(v, VT_R8)
+		ui_uia_put_double(cast(int, &v[8]), cast(float64, a.size))
+		return 1
+	if (attribute == UIA_FontWeightAttributeId):
+		if (a.weight <= 0): return 0
+		ui_uia_variant_i4(v, a.weight)
+		return 1
+	if (attribute == UIA_ForegroundColorAttributeId):
+		if (a.fg < 0): return 0
+		ui_uia_variant_i4(v, ui_uia_colorref(a.fg))
+		return 1
+	if (attribute == UIA_BackgroundColorAttributeId):
+		if (a.bg < 0): return 0
+		ui_uia_variant_i4(v, ui_uia_colorref(a.bg))
+		return 1
+	if (attribute == UIA_IsItalicAttributeId):
+		ui_uia_variant_bool(v, a.italic)
+		return 1
+	if (attribute == UIA_UnderlineStyleAttributeId):
+		# TextDecorationLineStyle: None 0, Single 1.
+		ui_uia_variant_i4(v, a.underline != 0)
+		return 1
+	return 0
+
+
+# 1 when two attribute VARIANTs written by ui_uia_attr_variant (or a
+# client's of the same type) hold the same value.
+int ui_uia_variant_same(char* a, char* b):
+	int vt = load_int16(a) & 65535
+	if (vt != (load_int16(b) & 65535)): return 0
+	if (vt == VT_BSTR):
+		int x = load_int64(&a[8])
+		int y = load_int64(&b[8])
+		int xl = 0
+		int yl = 0
+		char* xs = ui_uia_utf8(x, &xl)
+		char* ys = ui_uia_utf8(y, &yl)
+		int same = (xl == yl)
+		if same:
+			for i in range(xl):
+				if (xs[i] != ys[i]): same = 0
+		free(xs)
+		free(ys)
+		return same
+	if (vt == VT_R8): return load_int64(&a[8]) == load_int64(&b[8])
+	if (vt == VT_BOOL): return ((load_int16(&a[8]) & 65535) != 0) == ((load_int16(&b[8]) & 65535) != 0)
+	return load_int32(&a[8]) == load_int32(&b[8])
+
+
+void ui_uia_variant_reserved(char* v, int mixed):
+	int value = 0
+	if mixed: UiaGetReservedMixedAttributeValue(&value)
+	else: UiaGetReservedNotSupportedValue(&value)
+	save_int16(v, VT_UNKNOWN)
+	save_int64(&v[8], value)
+
+
+# Free what a VARIANT written by ui_uia_attr_variant owns.
+void ui_uia_variant_clear_owned(char* v):
+	if ((load_int16(v) & 65535) == VT_BSTR): SysFreeString(load_int64(&v[8]))
+	ui_uia_variant_clear(v)
+
+
+# GetAttributeValue: IsReadOnly, and the font, size, weight, colours,
+# italic and underline from the node's text attributes (#863): the
+# mixed-attribute value when they differ across the range, the
+# not-supported value when the node does not set them.
 int ui_uia_range_attribute(int self, int attribute, int out):
 	if (out == 0): return UIA_E_POINTER
 	char* v = cast(char*, out)
 	ui_uia_variant_clear(v)
-	ui_access_node* n = ui_uia_range_node(cast(ui_uia_text_range*, self))
+	ui_uia_text_range* r = cast(ui_uia_text_range*, self)
+	ui_access_node* n = ui_uia_range_node(r)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	if (ui_uia_lo32(attribute) == UIA_IsReadOnlyAttributeId):
+	int id = ui_uia_lo32(attribute)
+	if (id == UIA_IsReadOnlyAttributeId):
 		ui_uia_variant_bool(v, ((n.states & UI_ACCESS_READONLY) != 0) || ((n.actions & UI_ACCESS_SET_VALUE) == 0) || ui_access_inert(n))
 		return UIA_S_OK
-	int unsupported = 0
-	UiaGetReservedNotSupportedValue(&unsupported)
-	save_int16(v, VT_UNKNOWN)
-	save_int64(&v[8], unsupported)
+	int start = 0
+	int end = 0
+	ui_access_text_attrs* a = ui_access_attrs_at(n, r.start, &start, &end)
+	char[24] first
+	if (!ui_uia_attr_variant(a, id, &first[0])):
+		ui_uia_variant_reserved(v, 0)
+		return UIA_S_OK
+	# Every run the range touches must agree.
+	char[24] other
+	while (end < r.end):
+		ui_access_text_attrs* next = ui_access_attrs_at(n, end, &start, &end)
+		int known = ui_uia_attr_variant(next, id, &other[0])
+		int same = known && ui_uia_variant_same(&first[0], &other[0])
+		ui_uia_variant_clear_owned(&other[0])
+		if (!same):
+			ui_uia_variant_clear_owned(&first[0])
+			ui_uia_variant_reserved(v, 1)
+			return UIA_S_OK
+		if (end <= start): break
+	for i in range(24): v[i] = first[i]
 	return UIA_S_OK
 
 
-# GetBoundingRectangles: the field's screen rectangle (no glyph
-# geometry) as [left, top, width, height] doubles; none when hidden.
+# FindAttribute: the first (or last, backward) stretch of the range
+# whose attribute equals the VARIANT value (by reference); a null range
+# when there is none.
+int ui_uia_range_find_attribute(int self, int attribute, int value, int backward, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	ui_uia_text_range* r = cast(ui_uia_text_range*, self)
+	ui_access_node* n = ui_uia_range_node(r)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if (value == 0): return UIA_E_INVALIDARG
+	int id = ui_uia_lo32(attribute)
+	int found_start = 0 - 1
+	int found_end = 0 - 1
+	int at = r.start
+	char[24] probe
+	while (at < r.end):
+		int start = 0
+		int end = 0
+		ui_access_text_attrs* a = ui_access_attrs_at(n, at, &start, &end)
+		if (end <= at): end = r.end
+		if (end > r.end): end = r.end
+		int match = ui_uia_attr_variant(a, id, &probe[0]) && ui_uia_variant_same(&probe[0], cast(char*, value))
+		ui_uia_variant_clear_owned(&probe[0])
+		if match:
+			# Adjacent matching runs join into one stretch.
+			if ((found_end == at) && (found_start >= 0)): found_end = end
+			else if ((found_start < 0) || (ui_uia_lo32(backward) != 0)):
+				found_start = at
+				found_end = end
+			if ((ui_uia_lo32(backward) == 0) && (found_start >= 0) && (found_end == end)):
+				int peek_start = 0
+				int peek_end = 0
+				if (end >= r.end): break
+				ui_access_text_attrs* next = ui_access_attrs_at(n, end, &peek_start, &peek_end)
+				int continues = ui_uia_attr_variant(next, id, &probe[0]) && ui_uia_variant_same(&probe[0], cast(char*, value))
+				ui_uia_variant_clear_owned(&probe[0])
+				if (!continues): break
+		at = end
+	if (found_start >= 0): save_int64(cast(char*, out), ui_uia_text_range_new(cast(ui_uia_element*, r.element), found_start, found_end))
+	return UIA_S_OK
+
+
+# GetBoundingRectangles: one [left, top, width, height] of screen
+# doubles per line the range covers, from the glyph boxes (#863; a
+# degenerate range is its caret box); the field's rectangle when the
+# node has none; nothing when hidden.
 int ui_uia_range_rectangles(int self, int out):
 	if (out == 0): return UIA_E_POINTER
 	save_int64(cast(char*, out), 0)
 	ui_uia_text_range* r = cast(ui_uia_text_range*, self)
 	ui_access_node* n = ui_uia_range_node(r)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	int shown = ui_uia_hidden(n) == 0
-	int array = SafeArrayCreateVector(VT_R8, 0, 4 * shown)
-	if (array == 0): return UIA_E_INVALIDARG
-	if shown:
-		int ox = 0
-		int oy = 0
-		ui_uia_origin(ui_uia_bridge_of(cast(ui_uia_element*, r.element)), &ox, &oy)
-		float64[4] rect
-		rect[0] = cast(float64, n.bounds.x) + cast(float64, ox)
-		rect[1] = cast(float64, n.bounds.y) + cast(float64, oy)
-		rect[2] = cast(float64, n.bounds.w)
-		rect[3] = cast(float64, n.bounds.h)
-		int32[1] at
+	int lines = 0
+	ui_rect* boxes = 0
+	if (ui_uia_hidden(n) == 0):
+		if (ui_access_has_glyphs(n)):
+			if (r.start == r.end):
+				boxes = cast(ui_rect*, malloc(sizeof(ui_rect)))
+				lines = ui_access_char_box(n, r.start, boxes)
+			else:
+				lines = ui_access_range_lines(n, r.start, r.end, 0, 0)
+				boxes = cast(ui_rect*, malloc((lines + 1) * sizeof(ui_rect)))
+				ui_access_range_lines(n, r.start, r.end, boxes, lines)
+		else:
+			boxes = cast(ui_rect*, malloc(sizeof(ui_rect)))
+			boxes[0] = n.bounds
+			lines = 1
+	int array = SafeArrayCreateVector(VT_R8, 0, 4 * lines)
+	if (array == 0):
+		free(cast(char*, boxes))
+		return UIA_E_INVALIDARG
+	ui_uia_bridge* b = ui_uia_bridge_of(cast(ui_uia_element*, r.element))
+	int ox = 0
+	int oy = 0
+	if (lines > 0): ui_uia_origin(b, &ox, &oy)
+	float64[4] rect
+	int32[1] at
+	for k in range(lines):
+		ui_rect box = boxes[k]
+		rect[0] = cast(float64, box.x) * b.scale + cast(float64, ox)
+		rect[1] = cast(float64, box.y) * b.scale + cast(float64, oy)
+		rect[2] = cast(float64, box.w) * b.scale
+		rect[3] = cast(float64, box.h) * b.scale
 		for i in range(4):
-			at[0] = i
+			at[0] = k * 4 + i
 			SafeArrayPutElement(array, &at[0], cast(char*, &rect[i]))
+	free(cast(char*, boxes))
 	save_int64(cast(char*, out), array)
 	return UIA_S_OK
 
@@ -1706,11 +1980,45 @@ int ui_uia_range_select(int self):
 	return UIA_E_ELEMENTNOTENABLED
 
 
-# AddToSelection / RemoveFromSelection: a single-selection field cannot
-# hold further ranges.
+# AddToSelection / RemoveFromSelection: a field taking several
+# selections (UI_ACCESS_SET_SELECTIONS) adds the range, or removes the
+# selection equal to it; a single-selection field cannot hold more.
+int ui_uia_range_selection_edit(int self, int remove):
+	ui_uia_text_range* r = cast(ui_uia_text_range*, self)
+	ui_access_node* n = ui_uia_range_node(r)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	if ((n.actions & UI_ACCESS_SET_SELECTIONS) == 0): return UIA_E_INVALIDOPERATION
+	int total = ui_access_selection_total(n)
+	int k = total
+	int start = r.start
+	int end = r.end
+	if remove:
+		k = 0 - 1
+		for i in range(total):
+			int s = 0
+			int e = 0
+			ui_access_selection_range(n, i, &s, &e)
+			if ((s == r.start) && (e == r.end)): k = i
+		if (k < 0): return UIA_E_INVALIDARG
+		start = 0 - 1
+		end = 0 - 1
+	else if (r.start == r.end): return UIA_E_INVALIDARG
+	char* payload = 0
+	int length = ui_access_selections_edit(n, k, start, end, &payload)
+	if (length <= 0): return UIA_E_INVALIDARG
+	ui_uia_element* e = cast(ui_uia_element*, r.element)
+	int ok = ui_uia_enqueue(ui_uia_bridge_of(e), n, UI_ACCESS_SET_SELECTIONS, payload, length)
+	free(payload)
+	if ok: return UIA_S_OK
+	return UIA_E_ELEMENTNOTENABLED
+
+
 int ui_uia_range_add_selection(int self):
-	if (ui_uia_range_node(cast(ui_uia_text_range*, self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	return UIA_E_INVALIDOPERATION
+	return ui_uia_range_selection_edit(self, 0)
+
+
+int ui_uia_range_remove_selection(int self):
+	return ui_uia_range_selection_edit(self, 1)
 
 
 int ui_uia_range_scroll(int self, int align_to_top):
@@ -1744,12 +2052,18 @@ int ui_uia_answer_array(int self, int out, int which):
 	else if (which == 1): ids = ui_uia_column_header_ids(n)
 	else:
 		ids = new list[int]
-		if (which == 2):
-			int row = 0
-			int col = 0
-			ui_access_cell_position(n, &row, &col)
-			ui_access_node* header = ui_access_row_cell(ui_access_header_row(n.parent.parent), col)
-			if (header != 0): ids.push(header.id)
+		# 2: a cell's column headers, 3: the table's row headers, 4: a
+		# cell's row headers.
+		ui_access_node* header = 0
+		int count = 0
+		if (which == 2): count = ui_access_column_headers_of(n, 0, &header)
+		else if (which == 3): count = ui_access_table_row_headers(n, 0, &header)
+		else if (which == 4): count = ui_access_row_headers_of(n, 0, &header)
+		for i in range(count):
+			if (which == 2): ui_access_column_headers_of(n, i, &header)
+			else if (which == 3): ui_access_table_row_headers(n, i, &header)
+			else: ui_access_row_headers_of(n, i, &header)
+			ids.push(header.id)
 	int array = ui_uia_element_array(b, ids)
 	list_free[int](ids)
 	if (array == 0): return UIA_E_FAIL
@@ -1777,7 +2091,7 @@ int ui_uia_grid_item(int self, int row, int col, int out):
 	ui_uia_element* e = ui_uia_self(self)
 	ui_access_node* n = ui_uia_node(e)
 	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
-	ui_access_node* cell = ui_access_row_cell(ui_access_table_row(n, ui_uia_lo32(row)), ui_uia_lo32(col))
+	ui_access_node* cell = ui_access_table_cell_at(n, ui_uia_lo32(row), ui_uia_lo32(col))
 	if (cell == 0): return UIA_E_INVALIDARG
 	return ui_uia_hand_out(ui_uia_bridge_of(e), cell.id, UI_UIA_SIMPLE, out)
 
@@ -1815,6 +2129,10 @@ int ui_uia_grid_item_span(int self, int out):
 	return ui_uia_answer32(self, out, 4)
 
 
+int ui_uia_grid_item_column_span(int self, int out):
+	return ui_uia_answer32(self, out, 12)
+
+
 int ui_uia_grid_item_grid(int self, int out):
 	if (out == 0): return UIA_E_POINTER
 	save_int64(cast(char*, out), 0)
@@ -1825,11 +2143,42 @@ int ui_uia_grid_item_grid(int self, int out):
 
 
 int ui_uia_table_item_row_headers(int self, int out):
-	return ui_uia_answer_array(self, out, 3)
+	return ui_uia_answer_array(self, out, 4)
 
 
 int ui_uia_table_item_column_headers(int self, int out):
 	return ui_uia_answer_array(self, out, 2)
+
+
+/* IEnumVARIANT (#863): AccessibleChildren asks an IAccessible for it to
+enumerate accChildren, and get_accSelection hands one out for several
+selected children. On an element it walks the node's current children
+(a cursor per element); Clone, and get_accSelection, make standalone
+enumerators over a fixed list of node ids. Each VARIANT is the child's
+own IAccessible (VT_DISPATCH). */
+
+struct ui_uia_enum:
+	int vtbl
+	int element                 # the container's ui_uia_element (one reference)
+	int* ids
+	int count
+	int cursor
+	int refs
+
+
+# A standalone enumerator over ids (one reference, the caller's),
+# positioned at cursor.
+int ui_uia_enum_new(ui_uia_element* e, list[int] ids, int cursor):
+	ui_uia_enum* en = new ui_uia_enum()
+	en.vtbl = ui_uia_enum_vtable
+	en.element = cast(int, e)
+	e.refs = e.refs + 1
+	en.count = ids.length
+	en.ids = cast(int*, malloc((ids.length + 1) * 8))
+	for i in range(ids.length): en.ids[i] = ids[i]
+	en.cursor = cursor
+	en.refs = 1
+	return cast(int, en)
 
 
 /* MSAA: IAccessible over the same elements. Every method takes the
@@ -1886,6 +2235,7 @@ int ui_msaa_role(ui_uia_bridge* b, ui_access_node* n):
 	if (r == UI_ACCESS_ROW): return ROLE_SYSTEM_ROW
 	if (r == UI_ACCESS_CELL):
 		if (ui_access_is_header_cell(n)): return ROLE_SYSTEM_COLUMNHEADER
+		if (ui_access_is_row_header(n)): return ROLE_SYSTEM_ROWHEADER
 		return ROLE_SYSTEM_CELL
 	if (r == UI_ACCESS_RADIO): return ROLE_SYSTEM_RADIOBUTTON
 	if (r == UI_ACCESS_COMBOBOX): return ROLE_SYSTEM_COMBOBOX
@@ -1911,6 +2261,7 @@ int ui_msaa_state(ui_uia_bridge* b, ui_access_node* n):
 	if (ui_uia_hidden(n)): s = s | STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN
 	if (((n.states & UI_ACCESS_FOCUSABLE) != 0) && !inert): s = s | STATE_SYSTEM_FOCUSABLE
 	if ((b.published.focused_id == n.id) && !inert): s = s | STATE_SYSTEM_FOCUSED
+	if (ui_access_is_selection_container(n) && ui_access_is_multiselectable(n)): s = s | STATE_SYSTEM_MULTISELECTABLE | STATE_SYSTEM_EXTSELECTABLE
 	if (ui_uia_supports(b, n, UI_UIA_SELECTION_ITEM)):
 		s = s | STATE_SYSTEM_SELECTABLE
 		if ((n.role != UI_ACCESS_RADIO) && ui_uia_selected(n)): s = s | STATE_SYSTEM_SELECTED
@@ -2124,9 +2475,15 @@ int ui_msaa_selection(int self, int out):
 	ui_uia_variant_clear(v)
 	ui_access_node* n = ui_uia_node(ui_uia_self(self))
 	if (n == 0): return UIA_E_FAIL
-	ui_access_node* s = ui_access_selected_at(n, 0)
-	if (s == 0): return UIA_S_FALSE
-	return ui_msaa_variant_object(ui_msaa_bridge(self), v, s.id)
+	int count = ui_access_selected_count(n)
+	if (count == 0): return UIA_S_FALSE
+	if (count == 1): return ui_msaa_variant_object(ui_msaa_bridge(self), v, ui_access_selected_at(n, 0).id)
+	# Several selected children (#863): an IEnumVARIANT of their objects.
+	list[int] ids = ui_uia_selection_ids(n)
+	save_int16(v, VT_UNKNOWN)
+	save_int64(&v[8], ui_uia_enum_new(ui_uia_self(self), ids, 0))
+	list_free[int](ids)
+	return UIA_S_OK
 
 
 # Queue action on t; S_OK, or E_FAIL when it is refused.
@@ -2135,14 +2492,60 @@ int ui_msaa_request(int self, ui_access_node* t, int action, char* value, int le
 	return UIA_E_FAIL
 
 
+int ui_msaa_child_index(ui_access_node* n):
+	int k = 0
+	ui_access_node* c = n.parent.first_child
+	while ((c != 0) && (c != n)):
+		c = c.next_sibling
+		k = k + 1
+	return k
+
+
+# accSelect on an item of a multi-selection container: TAKESELECTION
+# selects it alone, ADDSELECTION and REMOVESELECTION add or remove it,
+# and EXTENDSELECTION selects (or with REMOVESELECTION deselects) every
+# item from the focused one (else the first selected) to it.
+int ui_msaa_select_multiple(int self, ui_access_node* t, int f):
+	ui_uia_bridge* b = ui_msaa_bridge(self)
+	int r = UIA_S_OK
+	if ((f & SELFLAG_TAKESELECTION) != 0): r = ui_uia_select_mode(b, t, UI_ACCESS_SELECT_ONLY)
+	else if ((f & SELFLAG_EXTENDSELECTION) != 0):
+		ui_access_node* anchor = ui_access_find(b.published, b.published.focused_id)
+		if ((anchor == 0) || (anchor.parent != t.parent)): anchor = ui_access_selected_at(t.parent, 0)
+		if (anchor == 0): anchor = t
+		int mode = UI_ACCESS_SELECT_ADD
+		if ((f & SELFLAG_REMOVESELECTION) != 0): mode = UI_ACCESS_SELECT_REMOVE
+		int from = ui_msaa_child_index(anchor)
+		int to = ui_msaa_child_index(t)
+		if (from > to):
+			int swap = from
+			from = to
+			to = swap
+		int k = 0
+		ui_access_node* c = t.parent.first_child
+		while ((c != 0) && (r == UIA_S_OK)):
+			if ((k >= from) && (k <= to) && ui_uia_supports(b, c, UI_UIA_SELECTION_ITEM) && (ui_uia_selected(c) != (mode == UI_ACCESS_SELECT_ADD))): r = ui_uia_select_mode(b, c, mode)
+			k = k + 1
+			c = c.next_sibling
+	else if ((f & SELFLAG_ADDSELECTION) != 0):
+		if (!ui_uia_selected(t)): r = ui_uia_select_mode(b, t, UI_ACCESS_SELECT_ADD)
+	else if ((f & SELFLAG_REMOVESELECTION) != 0):
+		if (ui_uia_selected(t)): r = ui_uia_select_mode(b, t, UI_ACCESS_SELECT_REMOVE)
+	if (r != UIA_S_OK): return UIA_E_FAIL
+	if ((f & SELFLAG_TAKEFOCUS) != 0): return ui_msaa_request(self, t, UI_ACCESS_FOCUS, c"", 0)
+	return UIA_S_OK
+
+
 # Single selection driven by activation: taking or adding the selection
 # activates an unselected item; removing a selected one, or extending,
-# is refused.
+# is refused. Items of a multi-selection container (#863) take, add,
+# remove and extend through UI_ACCESS_SELECT.
 int ui_msaa_select(int self, int flags, int variant):
 	int status = 0
 	ui_access_node* t = ui_msaa_target(self, variant, &status)
 	if (t == 0): return status
 	int f = ui_uia_lo32(flags)
+	if (ui_uia_supports(ui_msaa_bridge(self), t, UI_UIA_SELECTION_ITEM) && ui_access_is_multiselectable(t.parent)): return ui_msaa_select_multiple(self, t, f)
 	if ((f & SELFLAG_EXTENDSELECTION) != 0): return UIA_E_INVALIDARG
 	if ((f & (SELFLAG_TAKESELECTION | SELFLAG_ADDSELECTION | SELFLAG_REMOVESELECTION)) != 0):
 		if (!ui_uia_supports(ui_msaa_bridge(self), t, UI_UIA_SELECTION_ITEM)): return UIA_E_INVALIDARG
@@ -2175,8 +2578,48 @@ int ui_msaa_location(int self, int x, int y, int w, int h, int variant):
 	return UIA_S_OK
 
 
-# Logical navigation (siblings, first and last child); the spatial
-# directions are not supported.
+# Spatial navigation (#863): the visible sibling of s nearest in
+# direction d (NAVDIR_UP, _DOWN, _LEFT or _RIGHT): one lying wholly on
+# that side of s, nearest by the distance between the facing edges'
+# midpoints. 0 when there is none.
+ui_access_node* ui_msaa_spatial(ui_access_node* s, int d):
+	if (s.parent == 0): return 0
+	ui_rect a = s.bounds
+	ui_access_node* best = 0
+	float32 best_score = 0.0
+	ui_access_node* c = s.parent.first_child
+	while (c != 0):
+		ui_rect r = c.bounds
+		if ((c != s) && !ui_uia_hidden(c)):
+			float32 dx = 0.0
+			float32 dy = 0.0
+			int beside = 0
+			if (d == NAVDIR_UP):
+				beside = r.y + r.h <= a.y
+				dy = a.y - (r.y + r.h)
+				dx = (r.x + r.w * 0.5) - (a.x + a.w * 0.5)
+			else if (d == NAVDIR_DOWN):
+				beside = r.y >= a.y + a.h
+				dy = r.y - (a.y + a.h)
+				dx = (r.x + r.w * 0.5) - (a.x + a.w * 0.5)
+			else if (d == NAVDIR_LEFT):
+				beside = r.x + r.w <= a.x
+				dx = a.x - (r.x + r.w)
+				dy = (r.y + r.h * 0.5) - (a.y + a.h * 0.5)
+			else:
+				beside = r.x >= a.x + a.w
+				dx = r.x - (a.x + a.w)
+				dy = (r.y + r.h * 0.5) - (a.y + a.h * 0.5)
+			float32 score = dx * dx + dy * dy
+			if (beside && ((best == 0) || (score < best_score))):
+				best = c
+				best_score = score
+		c = c.next_sibling
+	return best
+
+
+# Logical navigation (siblings, first and last child) and spatial
+# navigation among siblings (ui_msaa_spatial).
 int ui_msaa_navigate(int self, int direction, int variant, int out):
 	if (out == 0): return UIA_E_POINTER
 	char* v = cast(char*, out)
@@ -2197,6 +2640,7 @@ int ui_msaa_navigate(int self, int direction, int variant, int out):
 			ui_access_node* c = s.parent.first_child
 			while ((c != 0) && (c.next_sibling != s)): c = c.next_sibling
 			to = c
+	else if ((d >= NAVDIR_UP) && (d <= NAVDIR_RIGHT)): to = ui_msaa_spatial(s, d)
 	else: return DISP_E_MEMBERNOTFOUND
 	if (to == 0): return UIA_S_FALSE
 	return ui_msaa_variant_object(ui_msaa_bridge(self), v, to.id)
@@ -2241,6 +2685,459 @@ int ui_msaa_put_value(int self, int variant, int text):
 	int r = ui_msaa_request(self, t, UI_ACCESS_SET_VALUE, value, length)
 	if (text != 0): free(value)
 	return r
+
+
+int ui_uia_enum_query(int self, int riid, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	if (riid == 0): return UIA_E_INVALIDARG
+	if (!ui_uia_guid_is(riid, 0) && !ui_uia_guid_is(riid, ui_uia_kind_slot(UI_UIA_ENUM))): return UIA_E_NOINTERFACE
+	ui_uia_enum* en = cast(ui_uia_enum*, self)
+	en.refs = en.refs + 1
+	save_int64(cast(char*, out), self)
+	return UIA_S_OK
+
+
+int ui_uia_enum_add_ref(int self):
+	ui_uia_enum* en = cast(ui_uia_enum*, self)
+	en.refs = en.refs + 1
+	return en.refs
+
+
+int ui_uia_enum_release(int self):
+	ui_uia_enum* en = cast(ui_uia_enum*, self)
+	if (en.refs > 0): en.refs = en.refs - 1
+	int left = en.refs
+	if (left == 0):
+		ui_uia_element* e = cast(ui_uia_element*, en.element)
+		ui_uia_release(ui_uia_iface_ptr(e, UI_UIA_SIMPLE))
+		free(cast(char*, en.ids))
+		free(en)
+	return left
+
+
+# The ids an enumerator walks and its cursor: a standalone one's own,
+# or an element's current children. 0 once the element is gone.
+list[int] ui_uia_enum_ids(int self, int** cursor):
+	if (load_int64(cast(char*, self)) == ui_uia_enum_vtable):
+		ui_uia_enum* en = cast(ui_uia_enum*, self)
+		if (ui_uia_node(cast(ui_uia_element*, en.element)) == 0): return 0
+		cursor[0] = &en.cursor
+		list[int] ids = new list[int]
+		for i in range(en.count): ids.push(en.ids[i])
+		return ids
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return 0
+	cursor[0] = &e.enum_cursor
+	list[int] children = new list[int]
+	ui_access_node* c = n.first_child
+	while (c != 0):
+		children.push(c.id)
+		c = c.next_sibling
+	return children
+
+
+ui_uia_bridge* ui_uia_enum_bridge(int self):
+	if (load_int64(cast(char*, self)) == ui_uia_enum_vtable):
+		ui_uia_enum* en = cast(ui_uia_enum*, self)
+		return ui_uia_bridge_of(cast(ui_uia_element*, en.element))
+	return ui_uia_bridge_of(ui_uia_self(self))
+
+
+# Next: up to count children as VT_DISPATCH VARIANTs (24 bytes each);
+# S_FALSE when fewer remain.
+int ui_uia_enum_next(int self, int count, int out, int fetched):
+	int want = ui_uia_lo32(count)
+	if (fetched != 0): save_int32(cast(char*, fetched), 0)
+	if ((out == 0) || (want < 0)): return UIA_E_INVALIDARG
+	int* cursor = 0
+	list[int] ids = ui_uia_enum_ids(self, &cursor)
+	if (ids == 0): return UIA_E_FAIL
+	ui_uia_bridge* b = ui_uia_enum_bridge(self)
+	int got = 0
+	while ((got < want) && (cursor[0] < ids.length)):
+		char* v = cast(char*, out + got * 24)
+		ui_uia_variant_clear(v)
+		ui_msaa_variant_object(b, v, ids[cursor[0]])
+		cursor[0] = cursor[0] + 1
+		got = got + 1
+	list_free[int](ids)
+	if (fetched != 0): save_int32(cast(char*, fetched), got)
+	if (got < want): return UIA_S_FALSE
+	return UIA_S_OK
+
+
+int ui_uia_enum_skip(int self, int count):
+	int* cursor = 0
+	list[int] ids = ui_uia_enum_ids(self, &cursor)
+	if (ids == 0): return UIA_E_FAIL
+	int want = ui_uia_lo32(count)
+	int r = UIA_S_OK
+	cursor[0] = cursor[0] + want
+	if (cursor[0] > ids.length):
+		cursor[0] = ids.length
+		r = UIA_S_FALSE
+	list_free[int](ids)
+	return r
+
+
+int ui_uia_enum_reset(int self):
+	int* cursor = 0
+	list[int] ids = ui_uia_enum_ids(self, &cursor)
+	if (ids == 0): return UIA_E_FAIL
+	cursor[0] = 0
+	list_free[int](ids)
+	return UIA_S_OK
+
+
+int ui_uia_enum_clone(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	int* cursor = 0
+	list[int] ids = ui_uia_enum_ids(self, &cursor)
+	if (ids == 0): return UIA_E_FAIL
+	ui_uia_element* e = 0
+	if (load_int64(cast(char*, self)) == ui_uia_enum_vtable):
+		ui_uia_enum* own = cast(ui_uia_enum*, self)
+		e = cast(ui_uia_element*, own.element)
+	else: e = ui_uia_self(self)
+	save_int64(cast(char*, out), ui_uia_enum_new(e, ids, cursor[0]))
+	list_free[int](ids)
+	return UIA_S_OK
+
+
+/* ILegacyIAccessibleProvider (#863): the LegacyIAccessible pattern,
+the element's MSAA view for UIA clients (Narrator, Inspect, NVDA read
+it for names, roles, states and default actions). Every element offers
+it with child id CHILDID_SELF, since each node has its own IAccessible. */
+
+# A CHILDID_SELF VARIANT for the MSAA functions.
+void ui_uia_self_variant(char* v):
+	ui_uia_variant_clear(v)
+	ui_uia_variant_i4(v, CHILDID_SELF)
+
+
+int ui_uia_legacy_select(int self, int flags):
+	char[24] v
+	ui_uia_self_variant(&v[0])
+	return ui_msaa_select(self, flags, cast(int, &v[0]))
+
+
+int ui_uia_legacy_default_action(int self):
+	char[24] v
+	ui_uia_self_variant(&v[0])
+	int r = ui_msaa_do_default_action(self, cast(int, &v[0]))
+	if (r == UIA_E_FAIL):
+		if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+		return UIA_E_ELEMENTNOTENABLED
+	return r
+
+
+int ui_uia_legacy_set_value(int self, int text):
+	if (text == 0): return UIA_E_INVALIDARG
+	char[24] v
+	ui_uia_self_variant(&v[0])
+	int r = ui_msaa_put_value(self, cast(int, &v[0]), text)
+	if (r == UIA_E_FAIL):
+		if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+		return UIA_E_ELEMENTNOTENABLED
+	return r
+
+
+int ui_uia_legacy_accessible(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	if (ui_uia_node(e) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	return ui_uia_hand_out(ui_uia_bridge_of(e), e.id, UI_UIA_ACCESSIBLE, out)
+
+
+int ui_uia_legacy_child_id(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), CHILDID_SELF)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	return UIA_S_OK
+
+
+# The BSTR properties (which as for ui_msaa_text): S_OK with a null
+# BSTR for an empty one.
+int ui_uia_legacy_text(int self, int out, int which):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	char[24] v
+	ui_uia_self_variant(&v[0])
+	int r = ui_msaa_text(self, cast(int, &v[0]), out, which)
+	if (r == UIA_S_FALSE): return UIA_S_OK
+	return r
+
+
+int ui_uia_legacy_name(int self, int out):
+	return ui_uia_legacy_text(self, out, 0)
+
+
+int ui_uia_legacy_value(int self, int out):
+	return ui_uia_legacy_text(self, out, 1)
+
+
+int ui_uia_legacy_description(int self, int out):
+	return ui_uia_legacy_text(self, out, 2)
+
+
+int ui_uia_legacy_help(int self, int out):
+	return ui_uia_legacy_text(self, out, 3)
+
+
+int ui_uia_legacy_shortcut(int self, int out):
+	return ui_uia_legacy_text(self, out, 4)
+
+
+int ui_uia_legacy_default_action_name(int self, int out):
+	return ui_uia_legacy_text(self, out, 5)
+
+
+int ui_uia_legacy_role(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	save_int32(cast(char*, out), ui_msaa_role(ui_uia_bridge_of(e), n))
+	return UIA_S_OK
+
+
+int ui_uia_legacy_state(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	save_int32(cast(char*, out), ui_msaa_state(ui_uia_bridge_of(e), n))
+	return UIA_S_OK
+
+
+# GetSelection: the selected children's providers (none outside a
+# selection container).
+int ui_uia_legacy_selection(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_ELEMENTNOTAVAILABLE
+	list[int] ids = ui_uia_selection_ids(n)
+	int array = ui_uia_element_array(ui_uia_bridge_of(e), ids)
+	list_free[int](ids)
+	if (array == 0): return UIA_E_FAIL
+	save_int64(cast(char*, out), array)
+	return UIA_S_OK
+
+
+/* IAccessible2 (#863), reached from the IAccessible through
+IServiceProvider::QueryService(IID_IAccessible, IID_IAccessible2) (or a
+plain QueryInterface): IAccessible's methods, then IA2's role, states,
+attributes, group position, unique id, window and index. Relations,
+extended roles and states are empty; scrolling does nothing. */
+
+const int IA2_ROLE_HEADING = 0x414
+const int IA2_ROLE_TOGGLE_BUTTON = 0x42a
+const int IA2_STATE_ACTIVE = 0x1
+const int IA2_STATE_EDITABLE = 0x8
+const int IA2_STATE_MODAL = 0x100
+const int IA2_STATE_MULTI_LINE = 0x200
+const int IA2_STATE_SELECTABLE_TEXT = 0x1000
+const int IA2_STATE_SINGLE_LINE = 0x2000
+const int IA2_STATE_CHECKABLE = 0x40000
+
+
+int ui_uia_query_service(int self, int service, int riid, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	if ((service == 0) || (riid == 0)): return UIA_E_INVALIDARG
+	ui_uia_element* e = ui_uia_self(self)
+	if (ui_uia_node(e) == 0): return UIA_E_FAIL
+	int known = ui_uia_guid_is(service, ui_uia_kind_slot(UI_UIA_ACCESSIBLE)) || ui_uia_guid_is(service, ui_uia_kind_slot(UI_UIA_IA2))
+	if (!known): return UIA_E_NOINTERFACE
+	int kind = 0 - 1
+	if (ui_uia_guid_is(riid, ui_uia_kind_slot(UI_UIA_IA2))): kind = UI_UIA_IA2
+	if (ui_uia_guid_is(riid, ui_uia_kind_slot(UI_UIA_ACCESSIBLE))): kind = UI_UIA_ACCESSIBLE
+	if (kind < 0): return UIA_E_NOINTERFACE
+	return ui_uia_hand_out(ui_uia_bridge_of(e), e.id, kind, out)
+
+
+ui_access_node* ui_ia2_node(int self, int out):
+	if (out == 0): return 0
+	return ui_uia_node(ui_uia_self(self))
+
+
+int ui_ia2_zero(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	if (ui_ia2_node(self, out) == 0): return UIA_E_FAIL
+	return UIA_S_OK
+
+
+int ui_ia2_relation(int self, int index, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	return UIA_E_INVALIDARG
+
+
+# get_relations / get_extendedStates / get_localizedExtendedStates:
+# none (count 0, a null array).
+int ui_ia2_empty_list(int self, int max, int items, int count):
+	if ((items == 0) || (count == 0)): return UIA_E_POINTER
+	save_int64(cast(char*, items), 0)
+	save_int32(cast(char*, count), 0)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_FAIL
+	return UIA_S_FALSE
+
+
+int ui_ia2_role(int self, int out):
+	ui_access_node* n = ui_ia2_node(self, out)
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	if (n == 0): return UIA_E_FAIL
+	int role = ui_msaa_role(ui_msaa_bridge(self), n)
+	if (n.role == UI_ACCESS_HEADING): role = IA2_ROLE_HEADING
+	if (n.role == UI_ACCESS_SWITCH): role = IA2_ROLE_TOGGLE_BUTTON
+	save_int32(cast(char*, out), role)
+	return UIA_S_OK
+
+
+int ui_ia2_scroll_to(int self, int how):
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_FAIL
+	return UIA_S_OK
+
+
+int ui_ia2_scroll_to_point(int self, int coordinates, int x, int y):
+	return ui_ia2_scroll_to(self, 0)
+
+
+# get_groupPosition: a heading's level; an item's 1-based position
+# among its siblings of the same role (list items, tabs, data rows,
+# radio buttons) and their count.
+int ui_ia2_group_position(int self, int level, int similar, int position):
+	if ((level == 0) || (similar == 0) || (position == 0)): return UIA_E_POINTER
+	save_int32(cast(char*, level), 0)
+	save_int32(cast(char*, similar), 0)
+	save_int32(cast(char*, position), 0)
+	ui_access_node* n = ui_uia_node(ui_uia_self(self))
+	if (n == 0): return UIA_E_FAIL
+	if (n.role == UI_ACCESS_HEADING): save_int32(cast(char*, level), n.heading_level)
+	int r = n.role
+	if ((n.parent != 0) && ((r == UI_ACCESS_LIST_ITEM) || (r == UI_ACCESS_TAB) || (r == UI_ACCESS_RADIO) || ui_access_is_data_row(n))):
+		int count = 0
+		int at = 0
+		ui_access_node* c = n.parent.first_child
+		while (c != 0):
+			if ((c.role == r) && !ui_access_is_header_row(c)):
+				count = count + 1
+				if (c == n): at = count
+			c = c.next_sibling
+		save_int32(cast(char*, similar), count)
+		save_int32(cast(char*, position), at)
+	return UIA_S_OK
+
+
+int ui_ia2_states(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	ui_access_node* n = ui_uia_node(e)
+	if (n == 0): return UIA_E_FAIL
+	int st = 0
+	int r = n.role
+	if ((r == UI_ACCESS_CHECKBOX) || (r == UI_ACCESS_RADIO) || (r == UI_ACCESS_SWITCH)): st = st | IA2_STATE_CHECKABLE
+	if (r == UI_ACCESS_DIALOG): st = st | IA2_STATE_MODAL
+	if (ui_uia_is_root(ui_uia_bridge_of(e), n)): st = st | IA2_STATE_ACTIVE
+	if (r == UI_ACCESS_TEXTBOX):
+		if (ui_uia_supports(ui_uia_bridge_of(e), n, UI_UIA_TEXT_EDIT)): st = st | IA2_STATE_EDITABLE
+		if ((n.actions & (UI_ACCESS_SET_SELECTION | UI_ACCESS_SET_SELECTIONS)) != 0): st = st | IA2_STATE_SELECTABLE_TEXT
+		int lines = 0
+		for i in range(n.value.length):
+			if (n.value.data[i] == 10): lines = 1
+		if (ui_access_has_glyphs(n) && (ui_access_range_lines(n, 0, n.char_box_count, 0, 0) > 1)): lines = 1
+		if lines: st = st | IA2_STATE_MULTI_LINE
+		else: st = st | IA2_STATE_SINGLE_LINE
+	save_int32(cast(char*, out), st)
+	return UIA_S_OK
+
+
+int ui_ia2_null_bstr(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_FAIL
+	return UIA_S_FALSE
+
+
+# get_uniqueID: -id, the child id the WinEvents carry (and that
+# get_accChild resolves).
+int ui_ia2_unique_id(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	if (ui_uia_node(e) == 0): return UIA_E_FAIL
+	save_int32(cast(char*, out), 0 - e.id)
+	return UIA_S_OK
+
+
+int ui_ia2_window(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	ui_uia_element* e = ui_uia_self(self)
+	if (ui_uia_node(e) == 0): return UIA_E_FAIL
+	save_int64(cast(char*, out), ui_uia_bridge_of(e).hwnd)
+	return UIA_S_OK
+
+
+int ui_ia2_index(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int32(cast(char*, out), 0 - 1)
+	ui_access_node* n = ui_uia_node(ui_uia_self(self))
+	if (n == 0): return UIA_E_FAIL
+	if (n.parent == 0): return UIA_S_FALSE
+	save_int32(cast(char*, out), ui_msaa_child_index(n))
+	return UIA_S_OK
+
+
+# get_locale: an IA2Locale of three BSTRs, all null (unknown).
+int ui_ia2_locale(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	for i in range(3): save_int64(cast(char*, out + i * 8), 0)
+	if (ui_uia_node(ui_uia_self(self)) == 0): return UIA_E_FAIL
+	return UIA_S_FALSE
+
+
+# get_attributes: "name:value;" pairs (IA2 object attributes): a
+# heading's level, live regions as Gecko and Chromium report them.
+int ui_ia2_attributes(int self, int out):
+	if (out == 0): return UIA_E_POINTER
+	save_int64(cast(char*, out), 0)
+	ui_access_node* n = ui_uia_node(ui_uia_self(self))
+	if (n == 0): return UIA_E_FAIL
+	char[128] text
+	text[0] = 0
+	if ((n.role == UI_ACCESS_HEADING) && (n.heading_level >= 1) && (n.heading_level <= 9)):
+		strcpy(&text[0], c"level:")
+		int at = strlen(&text[0])
+		text[at] = '0' + n.heading_level
+		text[at + 1] = ';'
+		text[at + 2] = 0
+	ui_access_node* live = ui_access_live_root(n)
+	if (live != 0):
+		char* word = c"polite"
+		if (live.live == UI_ACCESS_LIVE_ASSERTIVE): word = c"assertive"
+		if (n.live != UI_ACCESS_LIVE_OFF):
+			strcpy(&text[strlen(&text[0])], c"live:")
+			strcpy(&text[strlen(&text[0])], word)
+			strcpy(&text[strlen(&text[0])], c";")
+		strcpy(&text[strlen(&text[0])], c"container-live:")
+		strcpy(&text[strlen(&text[0])], word)
+		strcpy(&text[strlen(&text[0])], c";")
+	if (text[0] == 0): return UIA_S_FALSE
+	save_int64(cast(char*, out), ui_uia_bstr(&text[0], strlen(&text[0])))
+	return UIA_S_OK
 
 
 /* Vtables. */
@@ -2323,6 +3220,18 @@ void ui_uia_init():
 	ui_uia_guid(UI_UIA_IDISPATCH_SLOT, 0x00020400, 0, 0, 192, 0, 0, 0, 0, 0, 0, 70)
 	# ITextProvider                {3589c92c-63f3-4367-99bb-ada653b77cf2}
 	ui_uia_guid(UI_UIA_TEXT + 1, cast(int, 0x3589c92c), 0x63f3, 0x4367, 0x99, 0xbb, 0xad, 0xa6, 0x53, 0xb7, 0x7c, 0xf2)
+	# ITextEditProvider            {ea3605b4-3a05-400e-b5f9-4e91b40f6176}
+	ui_uia_guid(ui_uia_kind_slot(UI_UIA_TEXT_EDIT), cast(int, 0xea3605b4), 0x3a05, 0x400e, 0xb5, 0xf9, 0x4e, 0x91, 0xb4, 0x0f, 0x61, 0x76)
+	# ILegacyIAccessibleProvider   {e44c3566-915d-4070-99c6-047bff5a08f5}
+	ui_uia_guid(ui_uia_kind_slot(UI_UIA_LEGACY), cast(int, 0xe44c3566), 0x915d, 0x4070, 0x99, 0xc6, 0x04, 0x7b, 0xff, 0x5a, 0x08, 0xf5)
+	# IEnumVARIANT                 {00020404-0000-0000-C000-000000000046}
+	ui_uia_guid(ui_uia_kind_slot(UI_UIA_ENUM), 0x00020404, 0, 0, 192, 0, 0, 0, 0, 0, 0, 70)
+	# IServiceProvider             {6d5140c1-7436-11ce-8034-00aa006009fa}
+	ui_uia_guid(ui_uia_kind_slot(UI_UIA_SERVICE), 0x6d5140c1, 0x7436, 0x11ce, 0x80, 0x34, 0x00, 0xaa, 0x00, 0x60, 0x09, 0xfa)
+	# IAccessible2                 {e89f726e-c4f4-4c19-bb19-b647d7fa8478}
+	ui_uia_guid(ui_uia_kind_slot(UI_UIA_IA2), cast(int, 0xe89f726e), 0xc4f4, 0x4c19, 0xbb, 0x19, 0xb6, 0x47, 0xd7, 0xfa, 0x84, 0x78)
+	# ITextProvider2               {0dc5e6ed-3e16-4bf1-8f9a-a979878bc195}
+	ui_uia_guid(UI_UIA_TEXT2_IID, 0x0dc5e6ed, 0x3e16, 0x4bf1, 0x8f, 0x9a, 0xa9, 0x79, 0x87, 0x8b, 0xc1, 0x95)
 	# ITextRangeProvider           {5347ad7b-c355-46f8-aff5-909033582f63}
 	ui_uia_guid(UI_UIA_TEXT_RANGE_IID, cast(int, 0x5347ad7b), 0xc355, 0x46f8, 0xaf, 0xf5, 0x90, 0x90, 0x33, 0x58, 0x2f, 0x63)
 
@@ -2402,7 +3311,7 @@ void ui_uia_init():
 	vt[3] = ui_uia_thunk(cast(int, ui_uia_grid_item_row), 2)
 	vt[4] = ui_uia_thunk(cast(int, ui_uia_grid_item_column), 2)
 	vt[5] = ui_uia_thunk(cast(int, ui_uia_grid_item_span), 2)
-	vt[6] = ui_uia_thunk(cast(int, ui_uia_grid_item_span), 2)
+	vt[6] = ui_uia_thunk(cast(int, ui_uia_grid_item_column_span), 2)
 	vt[7] = ui_uia_thunk(cast(int, ui_uia_grid_item_grid), 2)
 	ui_uia_vtables[UI_UIA_GRID_ITEM] = cast(int, vt)
 
@@ -2446,14 +3355,25 @@ void ui_uia_init():
 	vt[27] = ui_uia_thunk(cast(int, ui_msaa_put_value), 3)
 	ui_uia_vtables[UI_UIA_ACCESSIBLE] = cast(int, vt)
 	# ITextProvider, in UIAutomationCore.h's method order.
-	vt = ui_uia_vtable(6)
-	vt[3] = ui_uia_thunk(cast(int, ui_uia_text_selection), 2)
-	vt[4] = ui_uia_thunk(cast(int, ui_uia_text_visible), 2)
-	vt[5] = ui_uia_thunk(cast(int, ui_uia_text_from_child), 3)
-	vt[6] = ui_uia_thunk(cast(int, ui_uia_text_from_point), 3)
-	vt[7] = ui_uia_thunk(cast(int, ui_uia_text_document), 2)
-	vt[8] = ui_uia_thunk(cast(int, ui_uia_text_supported_selection), 2)
-	ui_uia_vtables[UI_UIA_TEXT] = cast(int, vt)
+	# ITextProvider2 extends it with RangeFromAnnotation and
+	# GetCaretRange; ITextEditProvider with GetActiveComposition and
+	# GetConversionTarget.
+	for kind in range(2):
+		vt = ui_uia_vtable(8)
+		vt[3] = ui_uia_thunk(cast(int, ui_uia_text_selection), 2)
+		vt[4] = ui_uia_thunk(cast(int, ui_uia_text_visible), 2)
+		vt[5] = ui_uia_thunk(cast(int, ui_uia_text_from_child), 3)
+		vt[6] = ui_uia_thunk(cast(int, ui_uia_text_from_point), 3)
+		vt[7] = ui_uia_thunk(cast(int, ui_uia_text_document), 2)
+		vt[8] = ui_uia_thunk(cast(int, ui_uia_text_supported_selection), 2)
+		if (kind == 0):
+			vt[9] = ui_uia_thunk(cast(int, ui_uia_text_from_annotation), 3)
+			vt[10] = ui_uia_thunk(cast(int, ui_uia_text_caret_range), 3)
+			ui_uia_vtables[UI_UIA_TEXT] = cast(int, vt)
+		else:
+			vt[9] = ui_uia_thunk(cast(int, ui_uia_text_composition), 2)
+			vt[10] = ui_uia_thunk(cast(int, ui_uia_text_composition), 2)
+			ui_uia_vtables[UI_UIA_TEXT_EDIT] = cast(int, vt)
 
 	# ITextRangeProvider, with its own IUnknown (a range is not an
 	# element). VARIANT arguments (FindAttribute) arrive by reference.
@@ -2476,10 +3396,71 @@ void ui_uia_init():
 	vt[15] = ui_uia_thunk(cast(int, ui_uia_range_move_to_range), 4)
 	vt[16] = ui_uia_thunk(cast(int, ui_uia_range_select), 1)
 	vt[17] = ui_uia_thunk(cast(int, ui_uia_range_add_selection), 1)
-	vt[18] = ui_uia_thunk(cast(int, ui_uia_range_add_selection), 1)
+	vt[18] = ui_uia_thunk(cast(int, ui_uia_range_remove_selection), 1)
 	vt[19] = ui_uia_thunk(cast(int, ui_uia_range_scroll), 2)
 	vt[20] = ui_uia_thunk(cast(int, ui_uia_range_children), 2)
 	ui_uia_range_vtable = cast(int, vt)
+
+	# ILegacyIAccessibleProvider, in UIAutomationCore.h's order.
+	vt = ui_uia_vtable(14)
+	vt[3] = ui_uia_thunk(cast(int, ui_uia_legacy_select), 2)
+	vt[4] = ui_uia_thunk(cast(int, ui_uia_legacy_default_action), 1)
+	vt[5] = ui_uia_thunk(cast(int, ui_uia_legacy_set_value), 2)
+	vt[6] = ui_uia_thunk(cast(int, ui_uia_legacy_accessible), 2)
+	vt[7] = ui_uia_thunk(cast(int, ui_uia_legacy_child_id), 2)
+	vt[8] = ui_uia_thunk(cast(int, ui_uia_legacy_name), 2)
+	vt[9] = ui_uia_thunk(cast(int, ui_uia_legacy_value), 2)
+	vt[10] = ui_uia_thunk(cast(int, ui_uia_legacy_description), 2)
+	vt[11] = ui_uia_thunk(cast(int, ui_uia_legacy_role), 2)
+	vt[12] = ui_uia_thunk(cast(int, ui_uia_legacy_state), 2)
+	vt[13] = ui_uia_thunk(cast(int, ui_uia_legacy_help), 2)
+	vt[14] = ui_uia_thunk(cast(int, ui_uia_legacy_shortcut), 2)
+	vt[15] = ui_uia_thunk(cast(int, ui_uia_legacy_selection), 2)
+	vt[16] = ui_uia_thunk(cast(int, ui_uia_legacy_default_action_name), 2)
+	ui_uia_vtables[UI_UIA_LEGACY] = cast(int, vt)
+
+	# IEnumVARIANT on an element, and the standalone enumerator's (its
+	# own IUnknown).
+	vt = ui_uia_vtable(4)
+	vt[3] = ui_uia_thunk(cast(int, ui_uia_enum_next), 4)
+	vt[4] = ui_uia_thunk(cast(int, ui_uia_enum_skip), 2)
+	vt[5] = ui_uia_thunk(cast(int, ui_uia_enum_reset), 1)
+	vt[6] = ui_uia_thunk(cast(int, ui_uia_enum_clone), 2)
+	ui_uia_vtables[UI_UIA_ENUM] = cast(int, vt)
+	int* standalone = cast(int*, malloc(7 * 8))
+	standalone[0] = ui_uia_thunk(cast(int, ui_uia_enum_query), 3)
+	standalone[1] = ui_uia_thunk(cast(int, ui_uia_enum_add_ref), 1)
+	standalone[2] = ui_uia_thunk(cast(int, ui_uia_enum_release), 1)
+	for i in range(3, 7): standalone[i] = vt[i]
+	ui_uia_enum_vtable = cast(int, standalone)
+
+	vt = ui_uia_vtable(1)
+	vt[3] = ui_uia_thunk(cast(int, ui_uia_query_service), 4)
+	ui_uia_vtables[UI_UIA_SERVICE] = cast(int, vt)
+
+	# IAccessible2: IAccessible's 28 entries, then its own 18.
+	int* acc = cast(int*, ui_uia_vtables[UI_UIA_ACCESSIBLE])
+	vt = ui_uia_vtable(43)
+	for i in range(28): vt[i] = acc[i]
+	vt[28] = ui_uia_thunk(cast(int, ui_ia2_zero), 2)
+	vt[29] = ui_uia_thunk(cast(int, ui_ia2_relation), 3)
+	vt[30] = ui_uia_thunk(cast(int, ui_ia2_empty_list), 4)
+	vt[31] = ui_uia_thunk(cast(int, ui_ia2_role), 2)
+	vt[32] = ui_uia_thunk(cast(int, ui_ia2_scroll_to), 2)
+	vt[33] = ui_uia_thunk(cast(int, ui_ia2_scroll_to_point), 4)
+	vt[34] = ui_uia_thunk(cast(int, ui_ia2_group_position), 4)
+	vt[35] = ui_uia_thunk(cast(int, ui_ia2_states), 2)
+	vt[36] = ui_uia_thunk(cast(int, ui_ia2_null_bstr), 2)
+	vt[37] = ui_uia_thunk(cast(int, ui_ia2_null_bstr), 2)
+	vt[38] = ui_uia_thunk(cast(int, ui_ia2_zero), 2)
+	vt[39] = ui_uia_thunk(cast(int, ui_ia2_empty_list), 4)
+	vt[40] = ui_uia_thunk(cast(int, ui_ia2_empty_list), 4)
+	vt[41] = ui_uia_thunk(cast(int, ui_ia2_unique_id), 2)
+	vt[42] = ui_uia_thunk(cast(int, ui_ia2_window), 2)
+	vt[43] = ui_uia_thunk(cast(int, ui_ia2_index), 2)
+	vt[44] = ui_uia_thunk(cast(int, ui_ia2_locale), 2)
+	vt[45] = ui_uia_thunk(cast(int, ui_ia2_attributes), 2)
+	ui_uia_vtables[UI_UIA_IA2] = cast(int, vt)
 
 
 /* Events. */

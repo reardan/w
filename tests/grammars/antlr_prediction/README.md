@@ -66,6 +66,11 @@ Metadata is replayed onto the selected tree:
   list-labeled child, preserving encounter order rather than overwriting a list.
 - `antlr_lhs_label:<name>=` on a normalized suffix identifies the prior
   accumulated expression/list value as the original labeled left operand.
+- `antlr_tree:context` / `antlr_tree:fold` / `antlr_tree:list` describe how the
+  node maps onto ANTLR's parse tree: an original context, a left-recursive tail
+  wrapping the preceding value, or an inlined list base. Untagged helper nodes
+  are transparent. `libs/extras/grammars/antlr_to_pg/canonical_tree.w` applies
+  this projection; `tests/grammars/antlr_trees/` checks it against ANTLR.
 
 Group alternatives retain their original owner and source coordinates. Helper
 nodes expose provenance rather than pretending to be original ANTLR contexts.

@@ -44,7 +44,9 @@ void test_js_loop_target_constraints():
 	js_restriction_expect(c"for ({a} of xs) {}", 0, 1)
 	js_restriction_expect(c"for ([a] in xs) {}", 0, 1)
 	js_restriction_expect(c"for (obj.x of xs) {}", 0, 1)
-	js_restriction_expect(c"for (f() of xs) {}", 0, 0)
+	# Annex B web-compat call targets parse in sloppy code only.
+	js_restriction_expect(c"for (f() of xs) {}", 0, 1)
+	js_restriction_expect(c"for (f() of xs) {}", 1, 0)
 	js_restriction_expect(c"for (1 in xs) {}", 0, 0)
 	js_restriction_expect(c"for (async of xs) {}", 0, 0)
 	js_restriction_expect(c"for await (x of xs) {}", 0, 0)

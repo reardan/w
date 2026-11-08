@@ -575,3 +575,53 @@ void test_text_caret_and_selection_round_trip():
 	ui_access_tree_free(tree)
 	ui_textarea_free(&ta)
 	ui_render_destroy(&fx.r)
+
+
+# The text fields publish a box per character from the layout they draw
+# and the attributes they draw in (#863).
+void test_text_fields_publish_glyphs_and_attributes():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textarea_state ta
+	ui_textarea_init(&ta)
+	ui_textarea_set(&ta, c"h\xc3\xa9llo\nw")
+	int32 clicks = 0
+	ui_access_tree* tree = captured_area(ctx, &ta, &clicks)
+	ui_access_node* area = ui_access_find(tree, 1)
+	assert_equal(7, area.char_box_count)
+	asserts(c"glyph geometry", ui_access_has_glyphs(area))
+	ui_rect* b = area.char_boxes
+	float32 pad = cast(float32, ctx.theme.pad)
+	asserts(c"first glyph at the padded edge", b[0].x == 8.0 + pad)
+	asserts(c"first glyph on the first line", b[0].y == 8.0 + pad)
+	asserts(c"glyphs have width", b[0].w > 0.0)
+	for k in range(1, 5): asserts(c"glyphs follow each other", b[k].x == b[k - 1].x + b[k - 1].w)
+	asserts(c"newline: zero width at the line end", (b[5].w == 0.0) && (b[5].x == b[4].x + b[4].w))
+	float32 line_h = cast(float32, ui_textarea_line_height(ctx))
+	asserts(c"second line", (b[6].x == b[0].x) && (b[6].y == b[0].y + line_h))
+	assert_equal(2, ui_access_offset_at_point(area, b[2].x + 1.0, b[2].y + 1.0))
+	assert_equal(6, ui_access_offset_at_point(area, b[6].x + 1.0, b[6].y + 1.0))
+	ui_access_text_attrs* a = area.attrs
+	asserts(c"attributes", a != 0)
+	assert_bytes_equal(c"Liberation Sans", a.family.data, 15)
+	assert_equal(12, a.size)
+	assert_equal(400, a.weight)
+	assert_equal(0, a.italic)
+	assert_equal(ui_access_rgb(ctx.theme.text.r, ctx.theme.text.g, ctx.theme.text.b), a.fg)
+	assert_equal(ui_access_rgb(ctx.theme.widget.r, ctx.theme.widget.g, ctx.theme.widget.b), a.bg)
+	ui_access_tree_free(tree)
+
+	# The single-line field: its characters, vertically centred.
+	form_model m
+	form_model_init(&m)
+	ui_textbox_set(&m.name, c"Ad\xc3\xa1")
+	tree = captured_frame(ctx, &m)
+	ui_access_node* name = ui_access_find(tree, 4)
+	assert_equal(3, name.char_box_count)
+	ui_rect* nb = name.char_boxes
+	asserts(c"field glyphs inside the field", (nb[0].x == name.bounds.x + pad) && (nb[0].y > name.bounds.y) && (nb[0].y + nb[0].h < name.bounds.y + name.bounds.h))
+	asserts(c"field glyphs follow each other", (nb[1].x == nb[0].x + nb[0].w) && (nb[2].x == nb[1].x + nb[1].w))
+	asserts(c"field attributes", (name.attrs != 0) && (name.attrs.weight == 400))
+	ui_access_tree_free(tree)
+	ui_textarea_free(&ta)
+	ui_render_destroy(&fx.r)

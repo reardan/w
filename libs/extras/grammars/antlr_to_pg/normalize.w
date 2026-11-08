@@ -1,6 +1,7 @@
 # Bounded parser recursion normalization.
 import libs.extras.grammars.antlr_to_pg.normalize_operators
 import libs.extras.grammars.antlr_to_pg.normalize_prediction
+import libs.extras.grammars.antlr_to_pg.normalize_precedence
 
 
 int at_normalize_expression(at_rule* rule, list[at_rule*] rules);
@@ -18,7 +19,9 @@ int at_normalize_parser_lists(list[at_rule*] rules):
 		if (at_normalize_expression(rule, rules)): count = count + 1
 		else if (g_at_prediction && at_normalize_prediction_expression(rule, rules)): count = count + 1
 		else if (g_at_prediction && at_normalize_prediction_list(rule)): count = count + 1
-		else: count = count + at_normalize_parser_list(rule)
+		else if (at_normalize_parser_list(rule)): count = count + 1
+		# Last resort, so rules the established lowerings accept keep their AST.
+		else if (g_at_prediction && at_normalize_prediction_plan(rule, rules)): count = count + 1
 		i = i + 1
 	return count
 
@@ -250,6 +253,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 				if ((binaries > 0) || postfix_prefix_seen): return 0
 				at_alt* suffix = new at_alt()
 				at_source_copy(suffix, alt)
+				suffix.tree_role = 2
 				suffix.elements = new list[at_element*]
 				int si = 1
 				while (si < alt.elements.length):
@@ -335,6 +339,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 		at_alt* source = recursive_alts[i]
 		at_alt* tail = new at_alt()
 		at_source_copy(tail, source)
+		tail.tree_role = 2
 		tail.elements = new list[at_element*]
 		int end = source.elements.length
 		if (binary_kinds[i]): end = end - 1

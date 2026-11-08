@@ -1,0 +1,11 @@
+# wfuzz_c_import's driver (tools/fuzz/harness_c.w): the target copies it
+# to bin/wfuzz_c_import/driver.w and runs the --coverage compiler's
+# 'check' on it, so every case wfuzz writes to the header path below
+# goes through c_import's preprocessor, parser and lowering into the
+# compiler's type and symbol tables. Not a .w file: it only makes sense
+# inside that target's output directory.
+c_import "libc.so.6" "bin/wfuzz_c_import/out/work/case.h"
+
+
+int main():
+	return 0

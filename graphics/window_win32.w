@@ -51,6 +51,7 @@ import graphics.event
 import graphics.input_queue
 import lib.mem
 import graphics.text_unicode
+import graphics.clipboard_store
 
 
 c_lib "user32.dll"
@@ -72,6 +73,17 @@ extern int SetCapture(int hwnd)
 extern int ReleaseCapture()
 extern int SetWindowPos(int hwnd, int after, int x, int y, int width, int height, int flags)
 extern int GetClientRect(int hwnd, int32* rect)
+extern int OpenClipboard(int hwnd)
+extern int CloseClipboard()
+extern int EmptyClipboard()
+extern int SetClipboardData(int format, int memory)
+extern int GetClipboardData(int format)
+
+c_lib "kernel32.dll"
+extern int GlobalAlloc(int flags, int bytes)
+extern char* GlobalLock(int memory)
+extern int GlobalUnlock(int memory)
+extern int GlobalFree(int memory)
 
 c_lib "imm32.dll"
 extern int ImmGetContext(int hwnd)
@@ -110,6 +122,9 @@ struct gfx_window:
 	# per-frame event ring (graphics.event); drained by
 	# gfx_window_next_event
 	gfx_input_queue input_queue
+	# Clipboard (graphics.clipboard_store); the Win32 clipboard is
+	# synchronous, so a request arrives before gfx_clipboard_take runs.
+	gfx_clipboard_store clip
 
 
 gfx_window* gfx_win32_active    /* the window the procedure reports into */
@@ -463,6 +478,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.pending_surrogate = 0
 	win.text_focus = 0
 	gfx_input_queue_init(&win.input_queue)
+	gfx_clipboard_store_init(&win.clip)
 	gfx_win32_active = win
 
 	int use_default = 0 - 2147483648  /* CW_USEDEFAULT */
@@ -520,6 +536,111 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	return win
 
 
+# ---- clipboard: CF_UNICODETEXT ------------------------------------------
+#
+# Copy writes UTF-16 with CR LF line ends into a GMEM_MOVEABLE block the
+# clipboard then owns; paste reads CF_UNICODETEXT back and decodes it to
+# UTF-8 (the store turns CR LF into LF). OpenClipboard fails while
+# another process holds the clipboard open, so both sides retry briefly.
+
+const int gfx_win32_cf_unicodetext = 13
+
+
+int gfx_win32_open_clipboard(gfx_window* win):
+	for attempt in range(10):
+		if (OpenClipboard(win.hwnd) != 0): return 1
+		Sleep(5)
+	return 0
+
+
+int gfx_clipboard_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_clipboard_local_set(text)
+	int length = strlen(text)
+	gfx_clipboard_store_own(&win.clip, text, length)
+	# LF -> CR LF, then UTF-16.
+	char* crlf = cast(char*, malloc(length * 2 + 1))
+	int n = 0
+	for i in range(length):
+		if ((text[i] == 10) && ((i == 0) || (text[i - 1] != 13))):
+			crlf[n] = 13
+			n = n + 1
+		crlf[n] = text[i]
+		n = n + 1
+	crlf[n] = 0
+	char* wide = gfx_utf16_from_utf8(crlf)
+	free(crlf)
+	int units = 0
+	while ((wide[units * 2] != 0) || (wide[units * 2 + 1] != 0)): units = units + 1
+	int ok = 0
+	if (gfx_win32_open_clipboard(win)):
+		EmptyClipboard()
+		int memory = GlobalAlloc(2, (units + 1) * 2)            /* GMEM_MOVEABLE */
+		if (memory != 0):
+			char* dst = GlobalLock(memory)
+			if (dst != 0):
+				mem_copy[char](dst, wide, (units + 1) * 2)
+				GlobalUnlock(memory)
+				# On success the clipboard owns the block; free it only on
+				# failure.
+				if (SetClipboardData(gfx_win32_cf_unicodetext, memory) != 0): ok = 1
+			if (ok == 0): GlobalFree(memory)
+		CloseClipboard()
+	free(wide)
+	return ok
+
+
+# Decode NUL-terminated UTF-16 into the store as UTF-8.
+void gfx_win32_clipboard_decode(gfx_window* win, char* wide):
+	int32 pending = 0
+	char[4] bytes
+	int at = 0
+	while (1):
+		int unit = (wide[at] & 255) | ((wide[at + 1] & 255) << 8)
+		if (unit == 0): break
+		at = at + 2
+		int cp = gfx_utf16_input(&pending, unit)
+		if (cp < 0): continue
+		int n = 1
+		if (cp < 128): bytes[0] = cp
+		else if (cp < 2048):
+			bytes[0] = 192 | (cp >> 6)
+			bytes[1] = 128 | (cp & 63)
+			n = 2
+		else if (cp < 65536):
+			bytes[0] = 224 | (cp >> 12)
+			bytes[1] = 128 | ((cp >> 6) & 63)
+			bytes[2] = 128 | (cp & 63)
+			n = 3
+		else:
+			bytes[0] = 240 | (cp >> 18)
+			bytes[1] = 128 | ((cp >> 12) & 63)
+			bytes[2] = 128 | ((cp >> 6) & 63)
+			bytes[3] = 128 | (cp & 63)
+			n = 4
+		gfx_clipboard_store_append(&win.clip, &bytes[0], n)
+
+
+void gfx_clipboard_request(gfx_window* win):
+	if (win == 0):
+		gfx_clipboard_local_request()
+		return
+	gfx_clipboard_store_begin(&win.clip, GFX_CLIPBOARD_REQUESTED)
+	if (gfx_win32_open_clipboard(win)):
+		int memory = GetClipboardData(gfx_win32_cf_unicodetext)
+		if (memory != 0):
+			char* wide = GlobalLock(memory)
+			if (wide != 0):
+				gfx_win32_clipboard_decode(win, wide)
+				GlobalUnlock(memory)
+		CloseClipboard()
+	gfx_clipboard_store_arrive(&win.clip)
+
+
+char* gfx_clipboard_take(gfx_window* win):
+	if (win == 0): return gfx_clipboard_local_take()
+	return gfx_clipboard_store_take(&win.clip)
+
+
 # Drain pending window messages. Returns 1 while the window should stay
 # open.
 int gfx_window_poll(gfx_window* win):
@@ -553,6 +674,7 @@ float32 gfx_window_pixel_ratio(gfx_window* win):
 
 void gfx_window_destroy(gfx_window* win):
 	gfx_input_queue_free(&win.input_queue)
+	gfx_clipboard_store_free(&win.clip)
 	wglMakeCurrent(0, 0)
 	wglDeleteContext(win.context)
 	ReleaseDC(win.hwnd, win.dc)

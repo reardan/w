@@ -34,7 +34,7 @@ It runs every workflow twice: at 96 DPI (100%), and at 144 DPI (150%,
 | 1.1, 1.3 startup, rendering, `--screenshot` | pass (P6 at 1280x800; 1920x1200 at 150%) |
 | 2.1–2.8 click, drag, Escape cancel, Move here, Link to, Tab/Shift+Tab, arrows, Delete, rename, undo/redo chains | pass, at both scales, in flowchart, ER, class, state, groups, multi-selection (Space, Ctrl+A, Shift+drag band), C4, block, kanban and the class-member inspector |
 | 2.9 source typing | pass for ASCII; a real IME needs Windows |
-| 2.10 clipboard | not implemented on any backend (#850) |
+| 2.10 clipboard | pass (#850): in the source, Ctrl+A/Ctrl+C and a Shift+End selection copy to X11 `CLIPBOARD` through wine's bridge (read by a second X client, non-ASCII), Ctrl+V pastes non-ASCII text that client owns, Ctrl+X cuts and the editor pastes its own cut back (`--only clipboard`). Mouse drag selection is covered headlessly (`graphics_ui_clipboard_test`); a native Windows run with another application (Notepad) is pending |
 | 3.1–3.4 DPI | at 150%: logical layout unchanged, text rasterized at device resolution, hits land on the right node, screenshot at physical size. Per-monitor moves (`WM_DPICHANGED`) need two real monitors |
 | 4.1–4.3 saves, CRLF, non-ASCII folder ("Qualification Ü"), path over 260 characters | pass |
 | 4.4 read-only file | pass: the save is refused, the editor stays dirty, and the save succeeds once the file is writable |
@@ -155,6 +155,10 @@ are accepted where the backend reports them.
 10. In the source, select text, copy (Ctrl+C), paste (Ctrl+V) elsewhere and into
     another application, and paste text from another application in.
     **Expect:** clipboard round trips both ways, including non-ASCII text.
+    (Runs on Linux: the `clipboard` workflow of `mermaid_editor_ui_test` on X11
+    and of `mermaid_editor_wine_test` for the Windows build, with the driver as
+    the other application. Still to run natively: Windows with Notepad, macOS
+    with Cmd+C/Cmd+V and TextEdit, also selecting by mouse drag.)
 11. Ctrl+Q with unsaved changes. **Expect:** the Unsaved prompt; Cancel keeps
     editing; Discard closes without writing.
 
