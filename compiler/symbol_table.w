@@ -648,6 +648,9 @@ void sym_set_rel_chain(int t, int head):
 	save_int(table + t + 150, head)
 
 
+void object_alias_defined(int t, int v);   /* code_generator/elf_object.w */
+
+
 void sym_define_global_at(int current_symbol, int v):
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
@@ -670,9 +673,13 @@ void sym_define_global_at(int current_symbol, int v):
 
 	table[t + 1] = 'D'
 	sym_set_value_at(t, v)
+	# '@alias' declarations waiting for this definition (elf_object.w)
+	if (object_alias_pending): object_alias_defined(t, v)
 
 
+int stack_usage_last_symbol   /* code_generator/stack_usage.w */
 void sym_define_global(int current_symbol):
+	stack_usage_last_symbol = current_symbol
 	# A symbol defined at codepos (a function entry) is a call target:
 	# what follows is reachable again (O1, the terminator note)
 	term_note_end = 0
@@ -824,6 +831,39 @@ int sym_param_type(int t, int i):
 	if (i >= num_args): return -1
 	if (i >= sym_max_param_slots): return -1
 	return load_int(table + t + 26 + (i << 2))
+
+
+# Parameter types past the sym_max_param_slots in the record, for the
+# signatures that need every one (the System V adapters and shims of
+# --c-abi, code_generator/c_abi.w): symbol -> an extern_max_params word
+# array. Reset with the C ABI state (c_abi_reset).
+map[int, int] sym_wide_param_types
+
+
+# Record the declared type of parameter `count` (1-based) of function t.
+void sym_record_param_type(int t, int count, int type):
+	if (count <= sym_max_param_slots):
+		save_int(table + t + 22 + (count << 2), type)
+		return
+	if (count > extern_max_params): return
+	if (cast(int, sym_wide_param_types) == 0): sym_wide_param_types = new map[int, int]
+	int* types = cast(int*, sym_wide_param_types.get(t, 0))
+	if (cast(int, types) == 0):
+		types = cast(int*, malloc(extern_max_params * __word_size__))
+		for i in range(extern_max_params): types[i] = -1
+		sym_wide_param_types[t] = cast(int, types)
+	types[count - 1] = type
+
+
+# sym_param_type without the record's slot limit.
+int sym_param_type_wide(int t, int i):
+	if (i < sym_max_param_slots): return sym_param_type(t, i)
+	int num_args = load_int(table + t + 22)
+	if ((i >= num_args) || (i >= extern_max_params)): return -1
+	if (cast(int, sym_wide_param_types) == 0): return -1
+	int* types = cast(int*, sym_wide_param_types.get(t, 0))
+	if (cast(int, types) == 0): return -1
+	return types[i]
 
 
 # REPL late binding (issue #114): when nonzero, sym_get_value reports every
@@ -1113,15 +1153,21 @@ int sym_get_value(char* s):
 	return sym_emit_value(t, s)
 
 
+int c_abi_calls_through_symbol(int t);   /* code_generator/c_abi.w */
+
+
 # 1 when a call to the symbol at table offset t may be a direct `call
 # rel32` (docs/projects/codegen_gap_plan.md §2.4, unit A4): a global W
 # function, defined ('D') or still pending ('U'), on the x86 family. A
 # gpu kernel keeps sym_emit_value's diagnostic, a thread_local the TLS
 # path; function-pointer values, C variadic imports (their inline ABI
 # path never calls through the symbol) and the other targets keep the
-# accumulator call. t may be -1 (a failed lookup).
+# accumulator call, as does a --c-abi call of a weak function, which
+# binds through its symbol (c_abi_calls_through_symbol). t may be -1
+# (a failed lookup).
 int direct_callee_ok(int t):
 	if (direct_calls_disabled): return 0
+	if (c_abi_calls_through_symbol(t)): return 0
 	if (target_isa != 0): return 0
 	if (t < 0): return 0
 	char scope_type = table[t + 1]

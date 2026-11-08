@@ -209,7 +209,79 @@ void manifest_host_require_android(manifest* m):
 		if (reason != 0): json_object_set(m.by_name[name], c"host_unavailable", json_string(reason))
 
 
+# Native source generators have distinct binary paths: default and native
+# builds can coexist without replacing an executable another build selected.
+void manifest_host_linux_generators(manifest* m, map[char*, int] generators):
+	map[char*, char*] outputs = new map[char*, char*]
+	for char* name, int member in generators:
+		json_value* target = m.by_name.get(name, 0)
+		if (target == 0): continue
+		json_value* steps = jfield_array(target, c"steps")
+		if (steps == 0): continue
+		for i in range(json_array_length(steps)):
+			json_value* cmd = jfield_array(json_array_get(steps, i), c"cmd")
+			if (cmd == 0 || json_array_length(cmd) < 3): continue
+			if (strcmp(json_array_get(cmd, 0).string_value, c"bin/wv2_native") != 0): continue
+			for j in range(1, json_array_length(cmd) - 1):
+				json_value* arg = json_array_get(cmd, j)
+				json_value* next = json_array_get(cmd, j + 1)
+				if (arg.type == json_type_string() && next.type == json_type_string() && strcmp(arg.string_value, c"-o") == 0 && starts_with(next.string_value, c"bin/")):
+					string_builder* output = string_new()
+					string_append(output, next.string_value)
+					string_append(output, c"_native")
+					outputs[next.string_value] = output.data
+	for char* name in m.names:
+		json_value* target = m.by_name[name]
+		json_value* steps = jfield_array(target, c"steps")
+		if (steps != 0):
+			for i in range(json_array_length(steps)):
+				json_value* step = json_array_get(steps, i)
+				json_value* cmd = jfield_array(step, c"cmd")
+				if (cmd != 0):
+					for j in range(json_array_length(cmd)):
+						json_value* arg = json_array_get(cmd, j)
+						if (arg.type == json_type_string() && arg.string_value in outputs): arg.string_value = strclone(outputs[arg.string_value])
+				char* atomic = jfield_string(step, c"atomic_output")
+				if (atomic != 0 && atomic in outputs): json_object_set(step, c"atomic_output", json_string(outputs[atomic]))
+		for i in range(2):
+			char* field = c"outputs"
+			if (i == 1): field = c"inputs"
+			json_value* paths = jfield_array(target, field)
+			if (paths == 0): continue
+			for j in range(json_array_length(paths)):
+				json_value* item = json_array_get(paths, j)
+				if (item.type == json_type_string() && item.string_value in outputs): item.string_value = strclone(outputs[item.string_value])
+
+
+# Opt-in Linux host tools are native without rewriting ordinary product targets.
+void manifest_host_prepare_linux_x64(manifest* m, int repository):
+	map[char*, int] generators = new map[char*, int]
+	if (repository):
+		manifest_host_members(m, c"generated", generators)
+		manifest_host_bootstrap(m, c"wv2", c"bin/wv2_native")
+		manifest_host_bootstrap(m, c"wexec", c"bin/wexec_native")
+	for char* name in m.names:
+		json_value* target = m.by_name[name]
+		int host_tool = name in generators || strcmp(name, c"wtest") == 0 || strcmp(name, c"wbuildgen") == 0 || strcmp(name, c"wmeta") == 0
+		manifest_host_commands_for(target, repository && host_tool, c"bin/wv2_native", c"x64")
+	if (repository): manifest_host_linux_generators(m, generators)
+	if (repository):
+		for i in range(2):
+			char* alias = c"build"
+			char* qualified = c"build_native"
+			if (i == 1):
+				alias = c"verify"
+				qualified = c"verify_native"
+			json_value* target = m.by_name.get(alias, 0)
+			if (target != 0):
+				json_object_set(target, c"steps", json_array())
+				json_value* deps = json_array()
+				json_array_push(deps, json_string(qualified))
+				json_object_set(target, c"deps", deps)
+
+
 void manifest_host_prepare(manifest* m, int repository):
+	if (build_host_linux_x64()): manifest_host_prepare_linux_x64(m, repository)
 	if (build_host_android()): manifest_host_prepare_android(m, repository)
 	else if (build_host_darwin()): manifest_host_prepare_darwin(m, repository)
 	if (repository && build_host_android() == 0): manifest_host_require_android(m)
