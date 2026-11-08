@@ -172,6 +172,13 @@ void test_parse_w_inline_asm_and_raw_asm_forms():
 	assert_w_parse_text(c"inline asm int \x22this + integer\x22(int right):\x0a\x09mov eax, [this]\x0a\x09add eax, [right]\x0a\x0aasm push(this):\x0a\x09mov eax, esp\x0a\x09ret\x0a\x0avoid test_raw():\x0a\x09raw_asm(\x22\\x90\\x90\x22)\x0a", c"asm.w")
 
 
+# An asm_native block ends at the first line that is neither an operand
+# directive nor a template string, so a nested block's goto, a label and
+# a following static function still parse as statements.
+void test_parse_w_native_inline_asm_block_ends():
+	assert_w_parse_text(c"int f(int* p, int i):\n\tint r = i\n\t{\n\t\tasm_native:\n\t\t\tinout rax:4 = &r\n\t\t\tinput rcx = p\n\t\t\tclobber rdx\n\t\t\t\"xaddl %eax, (%rcx)\"\n\t\tgoto done\n\t}\n\tdone:\n\tpass\n\treturn r\nstatic int g(int i, int* v):\n\treturn i\n", c"native_asm.w")
+
+
 void test_parse_w_multiline_expressions_braces_and_inline_blocks():
 	assert_w_parse_text(c"int main():\n\treturn f(\n\t\t1,\n\t\t2\n\t)\n", c"multiline_call.w")
 	assert_w_parse_text(c"int main():\n\treturn f(\n\t)\n", c"multiline_empty_call.w")
