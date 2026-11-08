@@ -131,7 +131,7 @@ which is semantically equivalent. Node shapes are documented in
 | `case` / `default` | empty | test then statements / statements |
 | `with` | empty | object, body |
 | `debugger` | empty | none |
-| `for_in`, `for_of`, `for_await_of` | `var`, `let`, `const` or empty (assignment target) | binding or target, expression, body |
+| `for_in`, `for_of`, `for_await_of` | `var`, `let`, `const` or empty (assignment target) | binding or target (`for_in(var)` may bind `default_pattern(identifier, initializer)`, Annex B.3.6), expression, body |
 | `catch` | empty | binding pattern, block (destructured parameter) |
 | `import` | specifier | optional default `identifier`, then `import_namespace` (identifier) or `import_named` (`import_specifier(imported)` = local identifier) |
 | `export` | empty | declaration |
@@ -489,9 +489,7 @@ parameters, duplicate module export names, missing local exports, chained labels
 complete RegExp pattern validation (below), contextual `yield`/`await`,
 cross-module export resolution and the Annex B syntax described in
 [Static semantics, modules and Annex B](#static-semantics-modules-and-annex-b).
-Remaining static-semantics work is narrow: the Annex B.3.6 `for (var x = 1 in o)`
-initializer, `if (x) let` followed by a line break (parsed as a declaration
-instead of an expression statement), and syntax newer than ES2020 (numeric
+Remaining static-semantics work is narrow: syntax newer than ES2020 (numeric
 separators, string export names, import attributes), which Node accepts. Label
 names have their own contextual checks, so
 strict `eval`/`arguments` labels are valid while generator `yield`, async `await`,
@@ -516,8 +514,20 @@ passes when its version pin is bypassed under v22.
   `var yield`, `function f(await)`, `yield => 1` and `() => yield` inside a
   generator parse in sloppy code. A FunctionDeclaration's name follows the
   enclosing context (`function* yield() {}` is valid sloppy code), a
-  FunctionExpression's its own (`(function* yield() {})` is not). Each
-  `yield`/`await` token costs a backward scan to its enclosing function.
+  FunctionExpression's its own (`(function* yield() {})` is not). The scan
+  to the enclosing function is memoized per token in the stream
+  (`pg_token_stream_memo_get`/`_set`, dropped when rollback rescans a
+  token), so n contextual keywords cost O(n) overall; template `${` counts
+  as a bracket and template text is never one.
+- **`[~In]` and `let` substatements (reardan/w#903).** `js_relational_in`
+  rejects a relational `in` at the top level of a for head's first clause,
+  which gives both `for (var x = a in b;;)` its early error and Annex B.3.6
+  `for (var x = 1 in o)` its parse; the initializer is valid only for a
+  sloppy `var` name with `in` and lowers to `for_in(var)` over
+  `default_pattern(identifier, initializer)`. In a single-statement position
+  (if/else/loop/with bodies and labels) `let` followed by a line break is an
+  identifier expression statement, as in Node: `if (x) let\ny` is
+  `if (x) let; y;`.
 - **Early errors added:** duplicate `__proto__: value` in object literals (not
   in assignment patterns), `let` as a let/const bound name, comma expressions
   after `for (... of`, `for (let.x of ...)`, labelled functions as if/loop/with

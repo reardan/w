@@ -214,6 +214,8 @@ int main(int argc, int argv):
 	js_test_roundtrip(c"const {a, b: {c}, [k]: v, 1: one, 'q': w = 3, ...more} = obj; const {n: [n1]} = obj; let [x, , [y], z = 4, ...others] = list; var [, hole,] = h;", 0)
 	js_test_roundtrip(c"[a, b] = [b, a]; ({x, y: [z], w = 1, [k]: q, ...r} = obj); [o.p, q[0] = 1, ...s] = t;", 0)
 	js_test_roundtrip(c"for (var k in o) use(k); for (const [k, v] of entries) use(k, v); for (x of xs); for (o.p in q); for ([a, b] of pairs); for (var {length} of strings); for (let i in arr) {}", 0)
+	# Annex B.3.6 for-in initializers; the printer parenthesizes the [~In] value.
+	js_test_roundtrip(c"for (var k = 1 in o) use(k); for (var j = (a in b) in o); for (var i = a ? b in c : d in o); for (var h = () => a in b);", 0)
 	js_test_roundtrip(c"switch (x) { case 1: case 2: a(); break; default: b(); case 3: { c(); } } switch (y) {}", 0)
 	js_test_roundtrip(c"with (o) { p(); } debugger; try { f(); } catch ({message}) { use(message); } try {} catch ([first]) {}", 0)
 	js_test_roundtrip(c"a?.b; a?.[0]?.(1).c; a.b?.c.d(e)[f]; (a?.b).c; (a?.b)(); new (f())(); new A; tag`x${1}y`; a.b`\\unicode`; f()`t`; import('./m.js').then(m => m);", 0)

@@ -126,6 +126,11 @@ void js_validate_for_header(pg_ast_node* node, js_restriction_context* context, 
 		if (context.async_function == 0 || operator == 0 || strcmp(operator.first_token.text, c"of") != 0):
 			js_validation_error(diagnostics, node, c"for await requires async function and of clause")
 	pg_ast_node* binding = js_cst_child(header, c"for_binding")
+	# Annex B.3.6: only sloppy `for (var name = init in o)` takes an initializer.
+	if (binding != 0 && js_cst_child(binding, c"initializer") != 0):
+		int simple = js_cst_unwrap(js_cst_child(binding, c"binding_pattern")).token != 0
+		if (context.strict || awaiting || simple == 0 || strcmp(binding.first_token.text, c"var") != 0 || operator == 0 || strcmp(operator.first_token.text, c"in") != 0):
+			js_validation_error(diagnostics, binding, c"for-in/of head initializer requires a sloppy var name and in")
 	# for-of iterates an AssignmentExpression, not a comma Expression.
 	if (operator != 0 && strcmp(operator.first_token.text, c"of") == 0 && header.children.length > 2 && header.children[2].children.length > 1):
 		js_validation_error(diagnostics, header.children[2], c"for-of iterable must be an assignment expression")

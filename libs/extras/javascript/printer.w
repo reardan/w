@@ -802,10 +802,20 @@ int js_print_for_each(string_builder* out, js_node* node, int depth, pg_diagnost
 	string_append(out, c"(")
 	if (strlen(declaration) != 0):
 		js_node* binding = node.children[0]
+		# Annex B.3.6: `for (var x = (init) in o)`; the parentheses keep a
+		# relational `in` inside the [~In] initializer.
+		js_node* initializer = 0
+		if (js_kind(node, c"for_in") && strcmp(declaration, c"var") == 0 && js_kind(binding, c"default_pattern") && binding.children.length == 2 && js_kind(binding.children[0], c"identifier")):
+			initializer = binding.children[1]
+			binding = binding.children[0]
 		if (js_kind(binding, c"identifier") == 0 && js_kind(binding, c"object_pattern") == 0 && js_kind(binding, c"array_pattern") == 0): return js_print_error(diagnostics, node)
 		string_append(out, declaration)
 		string_append(out, c" ")
 		if (js_print_binding(out, binding, diagnostics) == 0): return 0
+		if (initializer != 0):
+			string_append(out, c" = (")
+			if (js_print_expression(out, initializer, diagnostics) == 0): return 0
+			string_append(out, c")")
 	else if (js_print_target(out, node.children[0], diagnostics) == 0): return 0
 	if (js_kind(node, c"for_in")): string_append(out, c" in (")
 	else: string_append(out, c" of (")
