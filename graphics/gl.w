@@ -63,7 +63,34 @@ enum gl_constant:
 	GL_R8 = 0x8229
 	GL_RGBA8 = 0x8058
 	GL_UNPACK_ALIGNMENT = 0x0CF5
+	GL_PACK_ALIGNMENT = 0x0D05
 	GL_STREAM_DRAW = 0x88E0
+	GL_REPEAT = 0x2901
+	GL_TEXTURE1 = 0x84C1
+	GL_TEXTURE2 = 0x84C2
+	# glGetIntegerv queries
+	GL_VIEWPORT = 0x0BA2
+	GL_MAX_TEXTURE_SIZE = 0x0D33
+	GL_TEXTURE_BINDING_2D = 0x8069
+	GL_CURRENT_PROGRAM = 0x8B8D
+	GL_FRAMEBUFFER_BINDING = 0x8CA6
+	GL_RENDERBUFFER_BINDING = 0x8CA7
+	GL_MAX_RENDERBUFFER_SIZE = 0x84E8
+	# framebuffer objects (render-to-texture)
+	GL_FRAMEBUFFER = 0x8D40
+	GL_READ_FRAMEBUFFER = 0x8CA8
+	GL_DRAW_FRAMEBUFFER = 0x8CA9
+	GL_RENDERBUFFER = 0x8D41
+	GL_COLOR_ATTACHMENT0 = 0x8CE0
+	GL_DEPTH_ATTACHMENT = 0x8D00
+	GL_STENCIL_ATTACHMENT = 0x8D20
+	GL_DEPTH_STENCIL_ATTACHMENT = 0x821A
+	GL_DEPTH_COMPONENT16 = 0x81A5
+	GL_DEPTH24_STENCIL8 = 0x88F0
+	GL_FRAMEBUFFER_COMPLETE = 0x8CD5
+	GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT = 0x8CD6
+	GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT = 0x8CD7
+	GL_FRAMEBUFFER_UNSUPPORTED = 0x8CDD
 
 
 ########################## shader helpers #############################
@@ -134,3 +161,55 @@ int gl_create_program(char* vertex_source, char* fragment_source):
 	glDeleteShader(vertex_shader)
 	glDeleteShader(fragment_shader)
 	return program
+
+
+######################## render-target helpers ########################
+
+# A tightly packed RGBA8 texture (pixels may be 0 for uninitialized
+# storage), clamped at the edges, with filter (GL_NEAREST or GL_LINEAR)
+# for both minification and magnification. Leaves it bound to
+# GL_TEXTURE_2D on the active unit. Returns the texture id.
+int gl_texture_rgba(int width, int height, char* pixels, int filter):
+	int32 texture = 0
+	glGenTextures(1, &texture)
+	glBindTexture(GL_TEXTURE_2D, texture)
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels)
+	return texture
+
+
+# A framebuffer object whose color attachment 0 is level 0 of texture.
+# Returns the framebuffer id with it left bound to GL_FRAMEBUFFER, or 0
+# (after printing the status to stderr and rebinding the default
+# framebuffer) when the driver reports it incomplete.
+int gl_framebuffer_for_texture(int texture):
+	int32 framebuffer = 0
+	glGenFramebuffers(1, &framebuffer)
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer)
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0)
+	int status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
+	if (status != GL_FRAMEBUFFER_COMPLETE):
+		print_error(c"gl: framebuffer incomplete, status ")
+		print_error(itoa(status))
+		print_error(c"\n")
+		glBindFramebuffer(GL_FRAMEBUFFER, 0)
+		glDeleteFramebuffers(1, &framebuffer)
+		return 0
+	return framebuffer
+
+
+# The framebuffer currently bound for drawing (0 = the window's).
+int gl_current_framebuffer():
+	int32 binding = 0
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &binding)
+	return binding
+
+
+# glIsEnabled as 0/1: GLboolean is one byte, and the C ABI leaves the
+# rest of the return register undefined.
+int gl_is_enabled(int capability):
+	return (glIsEnabled(capability) & 255) != 0
