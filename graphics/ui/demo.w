@@ -50,7 +50,6 @@ int ui_demo_write_ppm(char* path, int w, int h):
 		stream_write(out, row, w * 3)
 		y = y - 1
 	stream_close(out)
-	stream_free(out)
 	free(row)
 	free(pixels)
 	return 1
