@@ -14,11 +14,11 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 1811 upstream test files (plus module fixtures) expanded
-into 3550 variants. The native profile reports **3301 PASS, 0 FAIL, 249
+The corpus contains 2018 upstream test files (plus module fixtures) expanded
+into 3757 variants. The native profile reports **3441 PASS, 0 FAIL, 316
 UNSUPPORTED, 0 ERROR**; 2228 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **3066 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (86.36%)**; the 452
+reports **3275 PASS, 0 FAIL, 482 UNSUPPORTED, 0 ERROR (87.17%)**; the 452
 property-escape variants (below) are UNSUPPORTED there because
 `regExpUtils.js` is not pinned. The positive cases execute 9368 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
@@ -104,9 +104,36 @@ run: the supervisor writes the case under its upstream path with its pinned
 sibling `_FIXTURE.js` files, and the runner links the graph with
 `libs/extras/javascript/module_graph.w` after early errors. A link failure is a
 `resolution` phase SyntaxError (or ReferenceError for an unloadable
-specifier). Positive module tests remain UNSUPPORTED. The `async-functions`,
+specifier). The `async-functions`,
 `generators` and `optional-chaining` feature tags are enabled; their runtime
 support is still decided by lowering and preflight.
+
+### Module code (reardan/w#908)
+
+227 of the files are `test/language/module-code/` tests (with 57 more
+`_FIXTURE.js` modules), and all of them pass in the upstream-harness profile:
+instantiation (`instn-*`: local, named, default and namespace bindings, `export
+*` and `export * as ns` re-exports, cyclic `iee`/`star` graphs, TDZ, namespace
+identity), evaluation (`eval-*`: `this`, export forms, default export naming,
+live indirect bindings, request order), the `parse-err-*` and `early-*`
+negatives, `namespace/internals/` (`[[Get]]` live values and TDZ, `[[Set]]`,
+`@@toStringTag`, extensibility through `Object.defineProperty`, super property
+assignment in the TDZ) and the ES2020-compatible `ambiguous-export-bindings/`
+cases. The positive cases run through `libs/extras/javascript/modules.w`'s link
+and evaluation on `module_graph.w` records, and the native profile still
+reports them UNSUPPORTED (`flags: module`), since it has no `assert.throws`.
+The `export-star-as-namespace-from-module`, `let`, `const` and
+`Symbol.toStringTag` feature tags are enabled.
+
+Not pinned: tests that need `fnGlobalObject.js` (the `Function` constructor),
+`Reflect`, `Object.keys`, `Object.prototype` methods,
+`Object.setPrototypeOf`/`Object.isExtensible`, the `in` operator,
+`instanceof Object`, or an engine-identified `new TypeError()` runtime negative.
+Also not pinned: generator and async default exports, dynamic `import()`,
+top-level await, import attributes, source/defer phase imports, string export
+names (`arbitrary-module-namespace-names`) and class private names, plus the
+`ambiguous-export-bindings/` cases that test the post-ES2020 rule making
+`import * as` + `export {ns}` and `export * as ns` of one module unambiguous.
 
 ### Unicode property escapes (reardan/w#901)
 
@@ -146,8 +173,7 @@ pinned `harness/sta.js`, `harness/assert.js` and each declared include from
 script that fails is an ERROR (or UNSUPPORTED when it needs syntax outside the
 runtime subset). Includes that are not pinned remain UNSUPPORTED. Module tests
 are staged beside their pinned `*_FIXTURE.js` siblings and evaluated through
-`libs/extras/javascript/modules.w` with a relative-path file resolver, so
-loader limits (cycles, default/namespace imports) report UNSUPPORTED. A
+`libs/extras/javascript/modules.w` with a relative-path file resolver. A
 runtime-negative `Test262Error` is identified by inheritance from the harness's
 `Test262Error.prototype`, never by forgeable properties. This pass is not gated
 by the native per-variant baseline; an ERROR in it fails the target, and the
@@ -192,15 +218,16 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Ordinary scripts run once unchanged and once with `"use strict";` prepended.
   `onlyStrict`, `noStrict`, and `raw` select their appropriate single variant.
   Raw scripts receive no harness bindings and no source prefix.
-- Async tests, positive modules, includes, blocking/non-deterministic flags,
-  and features outside the declared profile produce explicit UNSUPPORTED
-  results. No missing include is silently ignored. Only the
-  `coalesce-expression`, `regexp-named-groups`,
+- Async tests, positive modules (native profile only), includes,
+  blocking/non-deterministic flags, and features outside the declared profile
+  produce explicit UNSUPPORTED results. No missing include is silently
+  ignored. Only the `coalesce-expression`, `regexp-named-groups`,
   `regexp-unicode-property-escapes`, `async-functions`, `generators`,
   `optional-chaining`, `arrow-function`, `String.prototype.matchAll`, `Symbol`,
   the `Symbol.*` tags listed above, `class`, `computed-property-names`,
-  `new.target`, `default-parameters`, `rest-parameters` and
-  `destructuring-binding` are currently enabled; untagged cases still
+  `new.target`, `default-parameters`, `rest-parameters`,
+  `destructuring-binding`, `export-star-as-namespace-from-module`, `let` and
+  `const` are currently enabled; untagged cases still
   undergo the interpreter's actual syntax/runtime support checks.
 - A deliberately restricted frontmatter reader supports the inline/block
   sequences and negative mappings used here, plus descriptive block text.
