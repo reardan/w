@@ -233,10 +233,14 @@ The initial semantic subset is deliberately explicit:
   Substitutions execute once in source order; object conversion remains unsupported.
 - `= += -= *= /= &= |= ^= <<= >>= >>>=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
+- RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
+  or RegExp arguments create objects with own `lastIndex` and the shared
+  `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
+  "RegExp patterns" below).
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, regex execution, tagged
-templates, prototype-literal `__proto__`, loose equality and additional numeric
+through the script API, classes, generators/async, tagged templates,
+String.prototype RegExp methods (`match`, `replace`, `search`, `split`), prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
 keys and catch patterns remain unsupported. Global `this`, sloppy receiver
@@ -403,9 +407,11 @@ tools/mac/run_javascript_tests.sh
 The ordinary test targets require no Node installation. The explicit compatibility
 target requires Node v20.19.3 and fails visibly if it is missing or differs. It
 runs pinned Test262 syntax variants (respecting test metadata), a pinned real
-source fixture, bounded growth cases, and controlled execution comparisons. Nine additional cases compare actual W runtime
+source fixture, bounded growth cases, and controlled execution comparisons. Seventeen additional cases compare actual W runtime
 completion values with fresh Node realms, covering arrows, per-iteration capture,
-Unicode iteration, template cooking/number spelling, abrupt completions and TDZ.
+Unicode iteration, template cooking/number spelling, abrupt completions, TDZ and
+RegExp matching (captures, lookaround, Annex B escapes, case folding, `u` mode,
+`lastIndex` and the constructor).
 It also executes the actual builder and transformer, checks their output with
 both parsers, and compares original/transformed behavior and untouched bytes.
 `bin/javascript-compatibility.json` records results. This small corpus is a
@@ -430,10 +436,9 @@ variant as well. Full upstream harness and full-suite execution remain deferred.
 
 Early-error checks include async/generator parameter expressions and duplicate
 parameters, duplicate module export names, missing local exports, chained labels
-and structural RegExp groups/assertions/quantifiers. Remaining work includes
-RegExp escape values, class ranges, named captures/backreferences and Unicode
-properties, complete ECMAScript early errors and cross-module export resolution,
-Annex B behavior, and broader contextual keyword handling. Function-call
+and complete RegExp pattern validation (below). Remaining work includes
+complete ECMAScript early errors and cross-module export resolution,
+Annex B behavior outside RegExp patterns, and broader contextual keyword handling. Function-call
 assignment targets are rejected; Node permits some of
 these forms and defers their failure until execution. Sloppy-context uses of `await`/`yield` as identifiers are not generally
 accepted outside label names. Label names have their own contextual checks, so
@@ -442,6 +447,56 @@ and module-reserved labels are rejected. This integration does not support TypeS
 as a compatibility contract. Full-edition acceptance requires expanding the
 pinned corpus and eliminating these exclusions before closing #492 as complete
 ECMAScript compatibility.
+
+### RegExp patterns
+
+`libs/extras/javascript/regexp_syntax.w` parses every RegExp literal with the
+ES2020 Pattern grammar (sec-patterns), including Annex B.1.4 for patterns
+without `u`, and reports each early error as a SyntaxError diagnostic:
+
+- Escape values: `\u{...}` above U+10FFFF or malformed, incomplete `\x`/`\u`,
+  `\c` without a control letter, decimal escapes beyond the capture count, `\0`
+  followed by a digit and identity escapes other than syntax characters and `/`
+  are errors with `u`. Without `u`, Annex B reinterprets them as legacy octal,
+  identity or literal-backslash escapes (`/\8/`, `/\101/`, `/\c/`, `/\u{2}/`).
+- Class ranges: out-of-order ranges are always errors; a class escape
+  (`\d`, `\p{...}`) at either end of a range is an error with `u` and makes
+  the `-` literal without it.
+- Named groups: names follow RegExpIdentifierName (Unicode 12.1 ID_Start/
+  ID_Continue, `\u` escapes including surrogate pairs), duplicates are errors,
+  and `\k<name>` must name a group anywhere in the pattern whenever the pattern
+  has a group name or `u`. Without either, `\k` is an identity escape.
+- Unicode property escapes (`u` only): `General_Category`/`gc`, `Script`/`sc`
+  and `Script_Extensions`/`scx` values, lone General_Category values and the
+  ES2020 binary properties, with exact (non-loose) names, pinned to Unicode 12.1
+  PropertyValueAliases. Values added after 12.1 (for example `Script=Kawi`) and
+  the Unicode 13 emoji aliases (`EPres`, ...) are rejected, where Node v20
+  (Unicode 15.1) accepts them.
+- Structure: unbalanced groups/classes, invalid group syntax, quantifiers
+  without an atom, reversed or lone braced quantifiers, quantified lookbehind and
+  (with `u`) quantified lookahead and lone `{`, `}` or `]`.
+
+The `v` flag and later RegExp syntax (modifiers, duplicate names in separate
+alternatives) are outside the ES2020 lexer profile.
+
+The interpreter compiles the same parse tree into a backtracking matcher
+(`regexp_runtime.w`) with the ECMAScript semantics for greedy/lazy and counted
+quantifiers (per-iteration capture reset and empty-iteration checks),
+backreferences (including forward and case-insensitive references), lookahead,
+lookbehind (matched right to left), word boundaries, `m`/`s` line handling,
+`u` code point matching, and `g`/`y` `lastIndex` handling (a `lastIndex` inside a
+surrogate pair starts at the pair, as in V8). `exec` results carry `index`,
+`input` and `groups`. Case-insensitive Canonicalize uses simple case folding
+with `u` and single-unit uppercase mapping without it; both tables are generated
+by `tools/javascript_regexp_case.py` from the vendored Unicode 15.0 UCD files in
+`tools/unicode/` into `regexp_case.w`. Every matcher instruction charges the
+evaluation step budget, so catastrophic backtracking ends with a limit
+completion. Property escapes match `Any`, `ASCII`, `ASCII_Hex_Digit`, `ID_Start`
+and `ID_Continue`; other valid properties need data the runtime does not ship
+and report unsupported during preflight (or from the constructor). Counted
+quantifiers expand to a bounded program; patterns that exceed it are also
+unsupported. String coercion of non-primitive inputs and the String.prototype
+RegExp methods remain outside the runtime subset.
 
 Generic infrastructure and restrictions are documented in
 [ParserGenerator](parser_generator.md): stateful mode is opt-in, lexer guards and
