@@ -444,6 +444,7 @@ int wexec_deps_usable():
 
 
 int wexec_selector_word(char* word):
+	if (strcmp(word, c"x86") == 0): return 1
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
 	if (strcmp(word, c"arm64_android") == 0): return 1
@@ -507,7 +508,7 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 				if (strcmp(piece.string_value, c"-o") == 0): has_output = 1
 			i = i + 1
 		if (has_output == 0): continue
-		char* arch = c"x86"
+		char* arch = deps_default_arch(program.string_value)
 		json_value* first = json_array_get(cmd, 1)
 		if (first.type == json_type_string()):
 			if (wexec_selector_word(first.string_value)): arch = first.string_value
@@ -635,7 +636,7 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 
 	json_value* compile_cmd = json_array()
 	json_array_push(compile_cmd, json_string(c"bin/wv2"))
-	if (strcmp(arch, c"x86") != 0): json_array_push(compile_cmd, json_string(arch))
+	json_array_push(compile_cmd, json_string(arch))
 	json_array_push(compile_cmd, json_string(path))
 	json_array_push(compile_cmd, json_string(c"-o"))
 	json_array_push(compile_cmd, json_string(binary))

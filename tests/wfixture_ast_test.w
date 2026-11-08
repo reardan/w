@@ -27,9 +27,9 @@ process_result* fixture_ast_run(int ast, char* first, char* second, char* third)
 void test_fixture_ast_mode_preserves_diagnostics():
 	process_result* result = fixture_ast_run(1, c"tests/limb_builtin_warning_fixture.w", c"tests/expression_nesting_clean_fixture.w", c"tests/expression_nesting_error_fixture.w")
 	assert_equal(0, result.status)
-	assert_contains(result.stdout_text, c"--ast-full-expressions tests/limb_builtin_warning_fixture.w")
-	assert_contains(result.stdout_text, c"--ast-required tests/expression_nesting_clean_fixture.w")
-	assert_contains(result.stdout_text, c"--ast-full-expressions tests/expression_nesting_error_fixture.w")
+	assert_contains(result.stdout_text, c"--ast-full-expressions x86 tests/limb_builtin_warning_fixture.w")
+	assert_contains(result.stdout_text, c"--ast-required x86 tests/expression_nesting_clean_fixture.w")
+	assert_contains(result.stdout_text, c"--ast-full-expressions x86 tests/expression_nesting_error_fixture.w")
 	assert_contains(result.stdout_text, c"wfixture: OK (3 fixtures)")
 	process_result_free(result)
 
@@ -90,7 +90,7 @@ void test_fixture_ast_mode_keeps_explicit_frontends():
 		assert_equal(0, result.status)
 		string_builder* command = string_from(c"$ bin/wv2 ")
 		string_append(command, modes[i])
-		string_append(command, c" ")
+		string_append(command, c" x86 ")
 		string_append(command, path)
 		string_append(command, c" -o ")
 		string_append(command, output)
@@ -107,8 +107,8 @@ void test_fixture_ast_mode_keeps_explicit_frontends():
 void test_fixture_ast_mode_keeps_explicit_diagnostic_frontends():
 	process_result* result = fixture_ast_run(1, c"tests/diagnostic_sites/shift_streaming_error_fixture.w", c"tests/diagnostic_sites/ternarr_warning_fixture.w", 0)
 	assert_equal(0, result.status)
-	assert_contains(result.stdout_text, c"$ bin/wv2 --streaming tests/diagnostic_sites/shift_streaming_error_fixture.w")
-	assert_contains(result.stdout_text, c"$ bin/wv2 --ast-full-expressions tests/diagnostic_sites/ternarr_warning_fixture.w")
+	assert_contains(result.stdout_text, c"$ bin/wv2 --streaming x86 tests/diagnostic_sites/shift_streaming_error_fixture.w")
+	assert_contains(result.stdout_text, c"$ bin/wv2 --ast-full-expressions x86 tests/diagnostic_sites/ternarr_warning_fixture.w")
 	assert_contains(result.stdout_text, c"wfixture: OK (2 fixtures)")
 	process_result_free(result)
 

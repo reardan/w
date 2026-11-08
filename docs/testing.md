@@ -292,7 +292,7 @@ That is the report at the time of #538.
 The roots are every `.w` file under `tests/`, plus every `*_test.w` and
 `*_e2e.w` under `lib/`, `structures/`, `graphics/`, `libs/` and
 `tools/`. Each root's import closure comes from `bin/wv2 deps`. A root
-that does not compile for the default target is retried as `x64`. The
+that does not compile for x86 is retried as `x64`. The
 measured modules leave out `*_test.w` files and the per-target
 `__arch__/` trees. Use `--roots <dir>` and `--modules <dir>` to measure
 something else, `--covered` to list the covered modules as well, and

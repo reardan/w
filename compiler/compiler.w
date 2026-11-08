@@ -703,6 +703,7 @@ void compile_save(char* fn):
 # parse and the selector-first subcommand spelling ('w x64 check f.w')
 # that main() forwards through target_pending.
 int target_is_selector(char* arg):
+	if (strcmp(arg, c"x86") == 0): return 1
 	if (strcmp(arg, c"x64") == 0): return 1
 	if (strcmp(arg, c"arm64") == 0): return 1
 	if (strcmp(arg, c"arm64_android") == 0): return 1
@@ -724,6 +725,12 @@ char* target_pending
 # Apply one selector word to the target-mode globals; returns 1 when the
 # word selected a target, 0 when it is not a selector.
 int target_selector_apply(char* arg):
+	if (strcmp(arg, c"x86") == 0):
+		if (quiet_mode == 0): println2(c"Compiling in x86 mode")
+		word_size = 4
+		word_size_log2 = 2
+		diag_word_size = word_size
+		return 1
 	if (strcmp(arg, c"x64") == 0):
 		if (quiet_mode == 0): println2(c"Compiling in x64 mode")
 		word_size = 8
@@ -1185,9 +1192,10 @@ void help_shared_options():
 
 
 void help_selectors():
-	println(c"target selectors (default: 32-bit x86 Linux ELF; may appear before")
+	println(c"target selectors (default: 64-bit x86-64 Linux ELF; may appear before")
 	println(c"the subcommand word or anywhere before the first input file):")
-	println(c"  x64           64-bit x86-64 Linux ELF")
+	println(c"  x86           32-bit x86 Linux ELF")
+	println(c"  x64           64-bit x86-64 Linux ELF (the default)")
 	println(c"  arm64         64-bit AArch64 Linux ELF")
 	println(c"  arm64_android 64-bit AArch64 Android ELF (PIE, 16 KB pages)")
 	println(c"  arm64_darwin  64-bit AArch64 macOS Mach-O (self-signed)")
@@ -1198,7 +1206,7 @@ void help_selectors():
 
 
 void help_link():
-	println(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+	println(c"usage: w [x86|x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 	println(c"")
 	println(c"Compile W source files into a native executable. Without -o the")
 	println(c"executable bytes are written to stdout.")
@@ -1433,12 +1441,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+		println2(c"usage: w [x86|x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 		println2(c"run 'w --help' for details")
 		exit(1)
 	int i = start_index
-	word_size = 4
-	word_size_log2 = 2
+	word_size = 8
+	word_size_log2 = 3
 	diag_word_size = word_size
 	target_isa = 0
 	target_os = 0

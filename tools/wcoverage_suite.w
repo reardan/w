@@ -175,6 +175,7 @@ void wcov_suite_build_all(list[wcov_suite_build*] builds):
 		list[char*] argv = new list[char*]
 		argv.push(c"bin/wv2")
 		if (b.x64): argv.push(c"x64")
+		else: argv.push(c"x86")
 		argv.push(c"--coverage")
 		argv.push(b.source)
 		argv.push(c"-o")

@@ -11,5 +11,5 @@ int main():
 	return 0
 # wbuild: target=asm_x64_test tag=tests dep=wv2 input=libs/asm/ input=tests/asm/ input=tests/asm_x64_test.w input=tests/asm_x86_roundtrip_common.w input=w.w
 # wbuild: step="bin/wv2 x64 w.w -o bin/asm_x64_selfhost"
-# wbuild: step="bin/wv2 tests/asm_x64_test.w -o bin/asm_x64_test"
+# wbuild: step="bin/wv2 x86 tests/asm_x64_test.w -o bin/asm_x64_test"
 # wbuild: step="bin/asm_x64_test"

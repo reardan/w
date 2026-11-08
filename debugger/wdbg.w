@@ -1212,19 +1212,18 @@ void wdbg_fatal_entry(int sig):
 # tables hold the target's real addresses, so attach needs no remapping. The
 # ELF image goes to /dev/null; only the in-memory tables are kept.
 #
-# link_impl always resets word_size to 4 (32-bit) unless its first argument
-# is a target selector word ("x64", ...), so this must pass one explicitly
-# when the target is 64-bit -- otherwise every attach recompile (even under
-# bin/wdbg64) would build 32-bit tables and byte-mismatch against a 64-bit
-# /proc/<pid>/exe at calibration, permanently falling back to raw mode. The
+# link_impl resets word_size to the x64 default unless its first argument
+# is a target selector word ("x86", "x64", ...), so this always passes one
+# -- otherwise every attach recompile under bin/wdbg would build 64-bit
+# tables and byte-mismatch against a 32-bit /proc/<pid>/exe at
+# calibration, permanently falling back to raw mode. The
 # word size to compile for is the running debugger binary's own
 # (__word_size__): exactly like the in-process path (which sets
 # word_size = __word_size__ a few lines down in wdbg_main), attach mode
 # symbolizes 64-bit targets by running as bin/wdbg64, not by asking bin/wdbg
 # to cross-symbolize a 64-bit process.
 void wdbg_attach_compile(char* target):
-	int n = 4
-	if (__word_size__ == 8): n = 5
+	int n = 5
 	# The AST front end is link_impl's default; only a streaming, retaining
 	# or required session needs flags (two for --streaming --ast-expressions).
 	if (ast_expressions_mode < 2): n = n + 1
@@ -1240,9 +1239,10 @@ void wdbg_attach_compile(char* target):
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
 	idx = idx + 1
-	if (__word_size__ == 8):
-		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"x64"))
-		idx = idx + 1
+	char* selector = c"x86"
+	if (__word_size__ == 8): selector = c"x64"
+	save_word(cast(char*, argv + idx * __word_size__), cast(int, selector))
+	idx = idx + 1
 	# The recompile must lower exactly as the binary's compile did, so
 	# the AST modes wdbg runs with are forwarded. Full-expression mode is
 	# the driver's default; --ast-emit-retained implies the retained forest.

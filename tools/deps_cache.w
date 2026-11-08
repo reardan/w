@@ -7,8 +7,8 @@ root that fails to compile -- whether to persist it, and what a cached
 failure must still match -- is each tool's policy (wexec_deps_lookup,
 wtest_closure_compute); this module only offers the pieces.
 
-One record per root id "<arch> <root>" (arch "x86" for the default
-target). A compile step that passes --import-root roots carries them,
+One record per root id "<arch> <root>" (deps_default_arch for a step
+without a selector). A compile step that passes --import-root roots carries them,
 in command-line order, in the arch column: "<arch>|<dir>|<dir> <root>"
 (deps_arch_with_roots), so the same root compiled with different roots
 is a different closure, and deps_run / deps_wv2_argv pass them back to
@@ -527,6 +527,14 @@ char* deps_arch_with_roots(char* arch, list[char*] roots):
 	return column
 
 
+# The arch of a root compile step with no target selector. The seed
+# ('./w') predates the x64 default and builds x86; every compiler built
+# from this tree (bin/wv2 and its siblings) defaults to x64.
+char* deps_default_arch(char* program):
+	if (strcmp(program, c"./w") == 0): return c"x86"
+	return c"x64"
+
+
 # The arch word of an id or arch column ("x64|a|b lib/x.w" -> "x64"); a
 # fresh allocation.
 char* deps_arch_word(char* column):
@@ -535,7 +543,7 @@ char* deps_arch_word(char* column):
 	return substring(column, 0, i)
 
 
-# argv for 'bin/wv2 [arch] <sub> [--import-root <dir>]... <root>' for a
+# argv for 'bin/wv2 <arch> <sub> [--import-root <dir>]... <root>' for a
 # root id (see the header for the arch column's import roots); 0 for an
 # id without an arch column. The words point into id.
 char** deps_wv2_argv(char* id, char* sub):
@@ -545,7 +553,7 @@ char** deps_wv2_argv(char* id, char* sub):
 	char* arch = deps_arch_word(column)
 	list[char*] words = new list[char*]
 	words.push(build_host_compiler())
-	if (strcmp(arch, c"x86") != 0): words.push(arch)
+	words.push(arch)
 	words.push(sub)
 	int i = strlen(arch)
 	while (column[i] == '|'):

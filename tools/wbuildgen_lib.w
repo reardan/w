@@ -1739,15 +1739,16 @@ json_value* wbg_extra_compile_step(char* args):
 	return step
 
 
-# The arch flag token passed to bin/wv2 for a non-default arch, or 0
-# for the default (32-bit x86) arch.
+# The arch selector token passed to bin/wv2 for a generated target.
+# The default arch is spelled "x86" explicitly: the compiler itself
+# defaults to x64, and the default twin stays the 32-bit build.
 char* wbg_arch_flag(int arch):
 	if (arch == wbg_arch_x64()): return c"x64"
 	if (arch == wbg_arch_arm64()): return c"arm64"
 	if (arch == wbg_arch_win64()): return c"win64"
 	if (arch == wbg_arch_arm64_darwin()): return c"arm64_darwin"
 	if (arch == wbg_arch_wasm()): return c"wasm"
-	return 0
+	return c"x86"
 
 
 # The compile command for one generated step: 'bin/wv2 [arch]
