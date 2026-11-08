@@ -66,6 +66,16 @@ struct js_value:
 	int bigint_unsigned
 	# Owned compiled RegExp (regexp_runtime.w js_regexp_program), or 0.
 	void* regexp
+	# Classes (runtime_classes.w). home_object: a method's [[HomeObject]].
+	# Function environments record their function_object and new_target;
+	# this_scope marks an environment with a this binding (uninitialized in
+	# a derived constructor until super()). class_kind: 0 ordinary,
+	# 1 base class constructor, 2 derived class constructor, 3 method.
+	js_value* home_object
+	js_value* function_object
+	js_value* new_target
+	int this_scope
+	int class_kind
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -162,7 +172,6 @@ void js_runtime_install_constructors(js_runtime* rt);
 js_value* js_runtime_error_prototype(js_runtime* rt, char* name);
 void js_runtime_function_prototype(js_runtime* rt, js_value* callable, js_text* key);
 int js_runtime_constructible(js_value* callable);
-js_value* js_runtime_construct_ordinary(js_runtime* rt, js_value* callable, list[js_value*] arguments);
 js_value* js_runtime_instanceof(js_runtime* rt, js_value* value, js_value* target);
 js_value* js_runtime_switch(js_runtime* rt, js_node* node, js_value* env);
 
@@ -175,6 +184,15 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 void js_annexb_declare(js_runtime* rt, js_node* body, js_value* env);
 int js_annexb_evaluate(js_runtime* rt, js_node* node, js_value* env);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
+int js_runtime_class_reference_error(char* message);
+js_value* js_runtime_class(js_runtime* rt, js_node* node, js_value* env);
+js_value* js_runtime_named_eval(js_runtime* rt, js_node* node, js_value* env, char* name);
+js_value* js_runtime_super_base(js_runtime* rt, js_value* env, js_value** receiver);
+js_value* js_runtime_super_member(js_runtime* rt, js_node* node, js_value* env, js_value** receiver);
+js_value* js_runtime_super_call(js_runtime* rt, js_node* node, js_value* env);
+js_value* js_runtime_new_target(js_runtime* rt, js_value* env);
+js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] arguments, js_value* new_target);
+int js_runtime_class_supported(js_node* node);
 
 
 void js_runtime_fail(js_runtime* rt, int status, char* message):
@@ -237,6 +255,11 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.bigint_bits = 0
 	value.bigint_unsigned = 0
 	value.regexp = 0
+	value.home_object = 0
+	value.function_object = 0
+	value.new_target = 0
+	value.this_scope = 0
+	value.class_kind = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -339,6 +362,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 	if (rt.max_values - rt.heap.length < 3 || rt.max_properties < 2 || strlen(message) > rt.max_properties || rt.max_properties < 14): return rt.undefined_value
 	char* name = c"TypeError"
 	if (strcmp(message, c"uninitialized or missing binding") == 0 || strcmp(message, c"invalid assignment target") == 0): name = c"ReferenceError"
+	if (js_runtime_class_reference_error(message)): name = c"ReferenceError"
 	if (strcmp(message, c"duplicate lexical binding") == 0 || strcmp(message, c"duplicate callable binding") == 0): name = c"SyntaxError"
 	if (js_runtime_prefix(message, c"invalid regular expression")): name = c"SyntaxError"
 	js_value* error = js_runtime_alloc(rt, 5)
@@ -479,6 +503,9 @@ int js_runtime_collect(js_runtime* rt):
 		js_runtime_mark(pending, value.parent)
 		js_runtime_mark(pending, value.prototype)
 		js_runtime_mark(pending, value.this_value)
+		js_runtime_mark(pending, value.home_object)
+		js_runtime_mark(pending, value.function_object)
+		js_runtime_mark(pending, value.new_target)
 		for i in range(value.properties.length):
 			js_runtime_mark(pending, value.properties[i].value)
 			js_runtime_mark(pending, value.properties[i].getter)
@@ -585,8 +612,11 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	name = js_runtime_key(c"name")
 	js_runtime_define_data(rt, callable, name, name_value, 0, 0, 1)
 	js_text_free(name)
+	# ExpectedArgumentCount: parameters before the first default or rest.
+	int length = 0
+	while (length < node.children[0].children.length && js_kind(node.children[0].children[length], c"default_pattern") == 0 && js_kind(node.children[0].children[length], c"rest") == 0): length = length + 1
 	name = js_runtime_key(c"length")
-	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, node.children[0].children.length)), 0, 0, 1)
+	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, length)), 0, 0, 1)
 	js_text_free(name)
 	if (js_kind(node, c"function_expression") && strlen(node.text) > 0):
 		callable.parent = js_runtime_environment(rt, env)
@@ -631,6 +661,11 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 			for j in range(statement.children.length):
 				js_runtime_pattern_declare(rt, statement.children[j].children[0], env, 0, 0)
 				if (rt.completion.status != 0): return
+		else if (js_kind(statement, c"class")):
+			js_node* name = js_identifier(statement.text)
+			js_runtime_pattern_declare(rt, name, env, 0, 0)
+			js_node_free(name)
+			if (rt.completion.status != 0): return
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
 			js_value* binding = js_runtime_property(env, key)
@@ -645,6 +680,10 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 		if (js_kind(statement, c"variable") && strcmp(statement.text, c"var") != 0):
 			for j in range(statement.children.length):
 				js_runtime_pattern_declare(rt, statement.children[j].children[0], env, 1, strcmp(statement.text, c"const") == 0)
+		else if (js_kind(statement, c"class")):
+			js_node* name = js_identifier(statement.text)
+			js_runtime_pattern_declare(rt, name, env, 1, 0)
+			js_node_free(name)
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
 			js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
@@ -963,6 +1002,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	js_value* binding = 0
 	js_value* object = 0
 	js_text* key = 0
+	js_value* receiver = 0
 	js_value* old = rt.undefined_value
 	int update = js_kind(node, c"assignment") == 0
 	int read = update || strcmp(node.text, c"=") != 0
@@ -976,6 +1016,11 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_eval_node(rt, target, env)
 		if (rt.completion.status == 0): js_runtime_fail(rt, 2, c"invalid assignment target")
 		return rt.undefined_value
+	else if (js_kind(target.children[0], c"super")):
+		object = js_runtime_super_base(rt, env, &receiver)
+		key = js_runtime_member_key(rt, target, env)
+		if (rt.completion.status == 0 && object == 0): js_runtime_fail(rt, 2, c"super base is null")
+		if (read && rt.completion.status == 0): old = js_runtime_read_receiver(rt, object, key, receiver)
 	else:
 		object = js_runtime_eval_node(rt, target.children[0], env)
 		key = js_runtime_member_key(rt, target, env)
@@ -987,7 +1032,8 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 			if (strcmp(node.text, c"--") == 0): op = c"-"
 			value = js_runtime_binary(rt, op, old, js_runtime_number(rt, 1.0))
 		else:
-			value = js_runtime_eval_node(rt, node.children[1], env)
+			if (binding != 0 && read == 0): value = js_runtime_named_eval(rt, node.children[1], env, target.text)
+			else: value = js_runtime_eval_node(rt, node.children[1], env)
 			if (read && rt.completion.status == 0):
 				char* op = strclone(node.text)
 				op[strlen(op) - 1] = 0
@@ -998,6 +1044,8 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 			if (binding.immutable):
 				if (binding.silent_immutable == 0 || env.strict): js_runtime_fail(rt, 2, c"assignment to constant binding")
 			else: binding.value = value
+		else if (receiver != 0):
+			if (js_runtime_write_receiver(rt, object, key, value, receiver) == 0 && rt.completion.status == 0): js_runtime_fail(rt, 2, c"property write rejected")
 		else if (js_runtime_member_write(rt, object, key, value) == 0 && env.strict):
 			js_runtime_fail(rt, 2, c"property write rejected")
 	js_text_free(key)
@@ -1005,7 +1053,19 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	return value
 
 
+js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args, js_value* new_target, js_value** frame);
+
+
 js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args):
+	if (callable.class_kind == 1 || callable.class_kind == 2):
+		js_runtime_fail(rt, 2, c"class constructor cannot be invoked without new")
+		return rt.undefined_value
+	return js_runtime_call_code(rt, callable, receiver, args, rt.undefined_value, 0)
+
+
+# A null receiver leaves this uninitialized (derived constructors). frame,
+# when nonnull, receives the function environment.
+js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args, js_value* new_target, js_value** frame):
 	if (callable.kind == 9):
 		js_value* value = rt.undefined_value
 		if (callable.host_receiver):
@@ -1022,8 +1082,13 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 		js_runtime_fail(rt, 2, c"value is not callable")
 		return rt.undefined_value
 	js_value* env = js_runtime_environment(rt, callable.parent)
+	if (frame != 0): *frame = env
 	if (env != rt.undefined_value):
-		if (js_kind(callable.code, c"arrow") == 0): env.this_value = receiver
+		if (js_kind(callable.code, c"arrow") == 0):
+			env.this_value = receiver
+			env.this_scope = 1
+			env.function_object = callable
+			env.new_target = new_target
 		env.variable_scope = 1
 		env.strict = callable.strict
 		env.code = callable.code
@@ -1355,6 +1420,9 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 						js_runtime_fail(rt, 6, c"sloppy receiver conversion is outside the runtime subset")
 						return rt.undefined_value
 					return scope.this_value
+				if (scope.this_scope):
+					js_runtime_fail(rt, 2, c"this is not initialized before super()")
+					return rt.undefined_value
 				scope = scope.parent
 			js_runtime_fail(rt, 6, c"global this is outside the runtime subset")
 			return rt.undefined_value
@@ -1367,6 +1435,8 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			return rt.undefined_value
 		return js_runtime_binding_value(rt, property)
 	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return js_runtime_function(rt, node, env)
+	if (js_kind(node, c"class") || js_kind(node, c"class_expression")): return js_runtime_class(rt, node, env)
+	if (js_kind(node, c"new_target")): return js_runtime_new_target(rt, env)
 	if (js_kind(node, c"function")):
 		js_annexb_evaluate(rt, node, env)
 		rt.empty = 1
@@ -1394,7 +1464,8 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_node* declaration = node.children[i]
 			if (strcmp(node.text, c"var") == 0 && declaration.children.length == 1): continue
 			js_value* value = rt.undefined_value
-			if (declaration.children.length == 2): value = js_runtime_eval_node(rt, declaration.children[1], env)
+			if (declaration.children.length == 2 && js_kind(declaration.children[0], c"identifier")): value = js_runtime_named_eval(rt, declaration.children[1], env, declaration.children[0].text)
+			else if (declaration.children.length == 2): value = js_runtime_eval_node(rt, declaration.children[1], env)
 			if (rt.completion.status != 0): break
 			js_runtime_pattern_bind(rt, declaration.children[0], value, env)
 		rt.empty = 1
@@ -1485,6 +1556,9 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_value* receiver = rt.undefined_value
 		return js_runtime_chain(rt, node.children[0], env, &skipped, &receiver)
 	if (js_kind(node, c"member") || js_kind(node, c"computed_member")):
+		if (js_kind(node.children[0], c"super")):
+			js_value* this_value = rt.undefined_value
+			return js_runtime_super_member(rt, node, env, &this_value)
 		js_value* object = js_runtime_eval_node(rt, node.children[0], env)
 		js_text* key = js_runtime_member_key(rt, node, env)
 		js_value* value = js_runtime_member_read(rt, object, key)
@@ -1534,7 +1608,9 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_node* target = node.children[0]
 		js_value* receiver = rt.undefined_value
 		js_value* callable = rt.undefined_value
-		if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
+		if (js_kind(target, c"super") && js_kind(node, c"call")): return js_runtime_super_call(rt, node, env)
+		if ((js_kind(target, c"member") || js_kind(target, c"computed_member")) && js_kind(target.children[0], c"super")): callable = js_runtime_super_member(rt, target, env, &receiver)
+		else if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
 			receiver = js_runtime_eval_node(rt, target.children[0], env)
 			if (rt.completion.status == 0):
 				js_text* key = js_runtime_member_key(rt, target, env)
@@ -1548,13 +1624,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_arguments(rt, node, env, arguments)
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
-			if (js_kind(node, c"construct")):
-				if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
-				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
-				else if (callable.host_construct): result = js_runtime_call_receiver(rt, callable, rt.undefined_value, arguments)
-				else if (js_runtime_constructible(callable)): result = js_runtime_construct_ordinary(rt, callable, arguments)
-				else if (callable.kind == 7): js_runtime_fail(rt, 2, c"value is not a constructor")
-				else: js_runtime_fail(rt, 6, c"unsupported native constructor")
+			if (js_kind(node, c"construct")): result = js_runtime_construct(rt, callable, arguments, callable)
 			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
@@ -1576,6 +1646,11 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 	return value
 
 
+# Nonzero while preflight is inside a class method body (arrows included),
+# where super has a [[HomeObject]]. Ordinary functions reset it.
+int js_runtime_super_allowed = 0
+
+
 # Shape validity is established by lowering. Preflight rejects unsupported
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
@@ -1584,6 +1659,9 @@ int js_runtime_supported(js_node* node):
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
 	if (supported == 0): supported = js_kind(node, c"switch") || js_kind(node, c"case") || js_kind(node, c"default")
 	if (supported == 0 && js_kind(node, c"regex")): supported = js_regexp_runtime_supported(node.text)
+	if (supported == 0 && (js_kind(node, c"class") || js_kind(node, c"class_expression"))): return js_runtime_class_supported(node)
+	if (supported == 0 && js_kind(node, c"new_target")): return 1
+	if (supported == 0 && js_kind(node, c"super")): return js_runtime_super_allowed
 	if (supported == 0): return 0
 	# Lowered shapes the evaluator does not model: var/assignment-target
 	# for-of heads, destructured catch parameters, array holes, destructuring
@@ -1605,9 +1683,12 @@ int js_runtime_supported(js_node* node):
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
 		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0 && strcmp(op, c"instanceof") != 0): return 0
+	int saved = js_runtime_super_allowed
+	if (js_kind(node, c"function") || js_kind(node, c"function_expression")): js_runtime_super_allowed = 0
 	for i in range(node.children.length):
-		if (js_runtime_supported(node.children[i]) == 0): return 0
-	return 1
+		if (supported && js_runtime_supported(node.children[i]) == 0): supported = 0
+	js_runtime_super_allowed = saved
+	return supported
 
 
 # Both script evaluation and host invocation replace the instance completion.
@@ -1712,4 +1793,5 @@ import libs.extras.javascript.bigint
 import libs.extras.javascript.regexp_runtime
 
 import libs.extras.javascript.runtime_constructors
+import libs.extras.javascript.runtime_classes
 import libs.extras.javascript.runtime_annexb

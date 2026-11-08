@@ -87,7 +87,8 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 			binding.initialized = 1
 		return
 	if (js_kind(pattern, c"default_pattern")):
-		if (value.kind == 0): value = js_runtime_eval_node(rt, pattern.children[1], env)
+		if (value.kind == 0 && js_kind(pattern.children[0], c"identifier")): value = js_runtime_named_eval(rt, pattern.children[1], env, pattern.children[0].text)
+		else if (value.kind == 0): value = js_runtime_eval_node(rt, pattern.children[1], env)
 		if (rt.completion.status == 0): js_runtime_pattern_bind(rt, pattern.children[0], value, env)
 		return
 	if (js_kind(pattern, c"rest")):

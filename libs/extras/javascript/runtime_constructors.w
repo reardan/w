@@ -27,10 +27,12 @@ js_value* js_runtime_error_prototype(js_runtime* rt, char* name):
 	return 0
 
 
-# Only ordinary (non-arrow) function code is constructible here; methods
-# lowered as function expressions remain constructible as in the facade.
+# Only ordinary (non-arrow) function code and class constructors are
+# constructible here; object-literal methods lowered as function expressions
+# remain constructible as in the facade, class methods do not.
 int js_runtime_constructible(js_value* callable):
-	if (callable.kind != 7 || callable.code == 0): return 0
+	if (callable.kind != 7 || callable.code == 0 || callable.class_kind == 3): return 0
+	if (callable.class_kind != 0): return 1
 	return js_kind(callable.code, c"function") || js_kind(callable.code, c"function_expression")
 
 
@@ -52,18 +54,6 @@ js_value* js_runtime_prototype_of(js_runtime* rt, js_value* callable):
 	js_value* prototype = js_runtime_member_read(rt, callable, key)
 	js_text_free(key)
 	return prototype
-
-
-js_value* js_runtime_construct_ordinary(js_runtime* rt, js_value* callable, list[js_value*] arguments):
-	js_value* prototype = js_runtime_prototype_of(rt, callable)
-	if (rt.completion.status != 0): return rt.undefined_value
-	js_value* object = js_runtime_alloc(rt, 5)
-	if (object == rt.undefined_value): return object
-	if (prototype.kind >= 5 && prototype.kind != 8): object.prototype = prototype
-	js_value* result = js_runtime_call_receiver(rt, callable, object, arguments)
-	if (rt.completion.status != 0): return rt.undefined_value
-	if (result.kind >= 5 && result.kind != 8 && result.kind != 10): return result
-	return object
 
 
 js_value* js_runtime_instanceof(js_runtime* rt, js_value* value, js_value* target):

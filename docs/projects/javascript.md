@@ -148,8 +148,8 @@ distinct), and prints anonymous declarations only under `export default`.
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
 source-backed nodes preserve byte spans. The printer handles loop, `with` and
 label wrappers when protecting against a dangling `else`. The interpreter's
-preflight rejects the lowered shapes it does not execute (classes,
-async/generators, `for-in`, `var`/target `for-of`, catch patterns, holes,
+preflight rejects the lowered shapes it does not execute (generator/async
+class methods, `super` outside class methods, async/generators, `for-in`, `var`/target `for-of`, catch patterns, holes,
 destructuring assignment, modules through the script API) with status 6.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
@@ -279,18 +279,34 @@ The initial semantic subset is deliberately explicit:
   engine-issued errors inherit the same prototypes, so `e.constructor ===
   TypeError` holds. Only engine-issued errors carry the host intrinsic brand.
   `String(value)` converts primitives.
+- Classes (reardan/w#905, `runtime_classes.w`): declarations (TDZ lexical
+  bindings) and expressions with constructors, methods, getters/setters,
+  static members and computed/numeric keys; class code is strict and methods
+  are non-enumerable and not constructible. `extends` takes any constructor
+  expression or `null`; `super(...)` constructs through the parent with the
+  current `new.target`, `super.x`/`super[x]` read and write through the
+  method's [[HomeObject]] with `this` as receiver, and a derived
+  constructor's `this` is in its TDZ until `super()` (ReferenceError; a second
+  `super()` or an uninitialized `this` at return also throws one). `new.target`
+  is the constructor (or `undefined` for a call). Calling a class constructor
+  without `new` and assigning the inner class-name binding are TypeErrors.
+  Anonymous functions, arrows and classes take their binding's name
+  (NamedEvaluation) and `length` counts parameters before the first default or
+  rest. The realm has no `Object.prototype`/`Function.prototype` intrinsics, so
+  a class without heritage has null-prototype objects. Class fields, private
+  names, static blocks and generator/async methods remain unsupported.
 - RegExp literals and `RegExp(pattern, flags)` / `new RegExp(...)` with string
   or RegExp arguments create objects with own `lastIndex` and the shared
   `exec`, `test`, `toString`, `source`, `flags` and flag accessors (see
   "RegExp patterns" below).
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, tagged templates, `in`,
+through the script API, generators/async (including class methods), tagged templates, `in`,
 String.prototype RegExp methods (`match`, `replace`, `search`, `split`), prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
 keys and catch patterns remain unsupported. Global `this`, sloppy receiver
-substitution/boxing, `super` and ordinary functions' implicit `arguments` object
+substitution/boxing, `super` outside class methods and ordinary functions' implicit `arguments` object
 are not implemented; accessing these receiver/arguments features reports
 unsupported status. Explicit `arguments` parameters remain ordinary bindings.
 
