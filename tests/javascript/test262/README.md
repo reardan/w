@@ -14,12 +14,14 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The corpus contains 337 upstream test files (plus module fixtures) expanded
-into 611 variants. The native profile reports **566 PASS, 0 FAIL, 45
-UNSUPPORTED, 0 ERROR**; 111 passes reach runtime execution and the rest verify
+The corpus contains 563 upstream test files (plus module fixtures) expanded
+into 1063 variants. The native profile reports **1018 PASS, 0 FAIL, 45
+UNSUPPORTED, 0 ERROR**; 563 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **579 PASS, 0 FAIL, 32 UNSUPPORTED, 0 ERROR (94.76%)**. The positive
-cases execute 515 assertions across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
+reports **579 PASS, 0 FAIL, 484 UNSUPPORTED, 0 ERROR (54.46%)**; the 452
+property-escape variants (below) are UNSUPPORTED there because
+`regExpUtils.js` is not pinned. The positive cases execute 4107 assertions
+across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
 incomplete and invalid group names), the `test/built-ins/RegExp/property-escapes/`
@@ -30,7 +32,8 @@ forward named references. reardan/w#841 added `instanceof` and `switch` tests
 (`test/language/expressions/instanceof/`, `test/language/statements/switch/`),
 two module tests with their fixtures, and the `tcoHelper.js`/`compareArray.js`
 includes. Tests that need `eval` or other harness includes
-(`propertyHelper.js`, `regExpUtils.js`) were not vendored. These numbers describe this small selected corpus, **not full Test262
+(`propertyHelper.js`, `regExpUtils.js`) were not vendored (the property-escape
+files below use native `regExpUtils.js` overrides instead). These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
 
@@ -61,6 +64,24 @@ sibling `_FIXTURE.js` files, and the runner links the graph with
 specifier). Positive module tests remain UNSUPPORTED. The `async-functions`,
 `generators` and `optional-chaining` feature tags are enabled; their runtime
 support is still decided by lowering and preflight.
+
+### Unicode property escapes (reardan/w#901)
+
+226 files pin `test/built-ins/RegExp/property-escapes/generated/`: the files
+whose Unicode 17.0 expectations agree with the Unicode 12.1 data the runtime
+pins (see [javascript.md](../../../docs/projects/javascript.md), "Unicode version
+pin", for the split and the 215 that differ). Each builds the strings of
+matching and non-matching code points (up to 1.1M of them) with
+`regExpUtils.js` and tests `/^\p{...}+$/u` and `/^\P{...}+$/u` against them.
+INTERPRETING.md lets a host override harness functions, and the native profile
+does: the runner's `buildString` keeps the code points host-side (the strings
+exceed the runtime's string length cap) and its `testPropertyEscapes` runs the
+RegExp's matcher over the whole string like `RegExp.prototype.test` and, if
+that fails, over each symbol, failing the test when any symbol does not match.
+That matching has its own step budget. The other `regExpUtils.js` helpers are
+unsupported. In the upstream-harness profile these files stay UNSUPPORTED,
+since `regExpUtils.js` is not pinned (the interpreter has no
+`String.fromCodePoint` and its loops would exceed the step budget).
 
 ## Provenance
 

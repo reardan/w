@@ -128,7 +128,10 @@ char* t262_unsupported(json_value* meta):
 	if (blocked.length): return strjoin(c"unsupported flags: ", join(blocked, c", "))
 	list[char*] includes = new list[char*]
 	for json_value* item in jc_get(meta, c"includes").array_values:
-		if (!t262_upstream || !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		# The native profile overrides regExpUtils.js's helpers in the runner;
+		# the upstream profile needs each include pinned.
+		if (t262_upstream && !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		if (!t262_upstream && !jc_is(item, c"regExpUtils.js")): includes.push(item.string_value)
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
