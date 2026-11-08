@@ -11,8 +11,22 @@ int main(int argc, int argv):
 	argparse_arg_default(argparse_add_int(parser, c"--budget", c"STEPS", c"execution step budget"), c"100000")
 	argparse_add_flag(parser, c"--require-all", c"fail if any case is unsupported")
 	argparse_add_flag(parser, c"--native-only", c"skip the upstream-harness pass")
+	argparse_add_flag(parser, c"--upstream-only", c"run only the upstream-harness pass")
 	arg_namespace* args = argparse_parse_or_exit(parser, argc, argv)
 	int status = 0
+	if (argparse_get_bool(args, c"upstream_only")):
+		# The upstream-harness pass alone, so the two passes can run as
+		# separate (parallel) wbuild targets: its ERROR count gates, its
+		# pass rate is reported.
+		t262_upstream = 1
+		json_value* only = t262_run(tempfile_abspath(argparse_get(args, c"manifest")), tempfile_abspath(argparse_get(args, c"runner")), cast(int, argparse_get_float(args, c"timeout") * 1000.0), argparse_get_int(args, c"budget"), &status, t262_execute)
+		if (status != 2): status = ht_number(jc_get(only, c"counts"), c"ERROR") != 0
+		char* text = strjoin(json_stringify(only), c"\n")
+		char* target = argparse_get(args, c"json")
+		if (target != 0): ht_write(target, text, strlen(text))
+		print(text)
+		ht_cleanup()
+		return status
 	json_value* report = t262_run(tempfile_abspath(argparse_get(args, c"manifest")), tempfile_abspath(argparse_get(args, c"runner")), cast(int, argparse_get_float(args, c"timeout") * 1000.0), argparse_get_int(args, c"budget"), &status, t262_execute)
 	if (status != 2 && argparse_get_bool(args, c"require_all") && ht_number(jc_get(report, c"counts"), c"UNSUPPORTED")): status = 1
 	if (status != 2 && !argparse_get_bool(args, c"native_only")):
