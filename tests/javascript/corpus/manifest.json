@@ -340,6 +340,26 @@
       "name": "regexp-constructor-source",
       "source": "let n = ''; try { new RegExp('[z-a]'); } catch (e) { n = e.name; } `${n}|${new RegExp('a/b\\n').source}|${/a/gimsuy.flags}|${/x/g.toString()}|${RegExp('b').test('abc')}`;",
       "stdout": "SyntaxError|a\\/b\\n|gimsuy|/x/g|true\n"
+    },
+    {
+      "name": "regexp-property-general-category",
+      "source": "`${/^\\p{Lu}+$/u.test('A\u0391\\u{10400}')},${/\\p{Ll}/u.test('A')},${/^\\p{L}+$/u.test('a\u4e00')},${/\\p{Nd}/u.test('\u0663')},${/\\P{L}/u.exec('ab1c')[0]},${/\\p{gc=Zs}/u.test('\u3000')},${/\\p{Cn}/u.test('\u0378')}`;",
+      "stdout": "true,false,true,true,1,true,true\n"
+    },
+    {
+      "name": "regexp-property-script",
+      "source": "`${/\\p{Script=Greek}/u.test('\u03b1')},${/\\p{sc=Latn}/u.test('\u03b1')},${/\\p{scx=Deva}/u.test('\u0964')},${/\\p{sc=Deva}/u.test('\u0964')},${/\\p{Script_Extensions=Hira}/u.test('\u30fc')},${/^\\p{sc=Han}+$/u.test('\u4e00\u9fa5')}`;",
+      "stdout": "true,false,true,false,true,true\n"
+    },
+    {
+      "name": "regexp-property-binary-classes",
+      "source": "`${/[\\p{Nd}x]+/u.exec('-x12-')[0]},${/[^\\P{Lu}]/u.test('A')},${/\\p{ASCII_Hex_Digit}+/u.exec('xBEEFg')[0]},${/\\p{White_Space}/u.test('\u2028')},${/\\p{Emoji_Presentation}/u.test('\\u{1F600}')},${/\\p{Lu}/ui.test('a')},${/[\\P{Any}]/u.test('a')}`;",
+      "stdout": "x12,true,BEEF,true,true,true,false\n"
+    },
+    {
+      "name": "regexp-property-without-u",
+      "source": "`${/\\p{L}/.test('p{L}')},${/\\p{L}/.test('a')},${/[\\p{L}]/.test('{')},${new RegExp('\\\\P').test('P')}`;",
+      "stdout": "true,false,true,true\n"
     }
   ]
 }
