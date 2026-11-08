@@ -286,6 +286,33 @@ def main():
         key(0xFF09)
         wait_for(lambda: has(canvas, "Alpha", Atspi.StateType.FOCUSED), "Ctrl+D then Tab focuses a node again")
 
+        # The node list (#913): a multi-selection list box mirroring the
+        # canvas selection, driven from the keyboard and through the
+        # Selection interface.
+        nodes = None
+        for node in walk(app):
+            if node.get_role() == Atspi.Role.LIST and node.get_name() == "Nodes":
+                nodes = node
+        require(nodes is not None, "node list in the tree")
+        require(states(nodes).contains(Atspi.StateType.MULTISELECTABLE), "node list is multiselectable")
+        require(names(nodes) == ["Alpha", "Beta", "Gamma"], "node list items: %r" % names(nodes))
+        require(has(nodes, "Alpha", Atspi.StateType.SELECTED), "the canvas selection shows in the list")
+        nodes.grab_focus()
+        wait_for(lambda: has(nodes, "Alpha", Atspi.StateType.FOCUSED), "GrabFocus on the list focuses its cursor item")
+        key(0xFF54, shift=True)
+        wait_for(lambda: has(canvas, "Alpha", Atspi.StateType.SELECTED) and has(canvas, "Beta", Atspi.StateType.SELECTED), "Shift+Down selects Alpha and Beta on the canvas")
+        wait_for(lambda: has(nodes, "Beta", Atspi.StateType.FOCUSED), "the list's focus follows its cursor")
+        key(ord("a"), ctrl=True)
+        wait_for(lambda: all(has(canvas, n, Atspi.StateType.SELECTED) for n in ("Alpha", "Beta", "Gamma")), "Ctrl+A in the list selects every node")
+        selection = nodes.get_selection_iface()
+        require(selection.get_n_selected_children() == 3, "three selected children")
+        require(selection.deselect_child(1), "DeselectChild")
+        wait_for(lambda: not has(canvas, "Beta", Atspi.StateType.SELECTED) and has(canvas, "Gamma", Atspi.StateType.SELECTED), "DeselectChild deselects Beta on the canvas")
+        require(selection.clear_selection(), "ClearSelection")
+        wait_for(lambda: not any(has(canvas, n, Atspi.StateType.SELECTED) for n in ("Alpha", "Beta", "Gamma")), "ClearSelection empties the canvas selection")
+        require(selection.select_child(2), "SelectChild")
+        wait_for(lambda: has(canvas, "Gamma", Atspi.StateType.SELECTED) and selection.get_n_selected_children() == 1, "SelectChild selects Gamma")
+
         if orca_log is not None:
             print("Orca speech, in order: %r" % speech.heard)
     finally:
@@ -294,7 +321,65 @@ def main():
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
+    check_compartments(editor, path)
     print("Mermaid editor AT-SPI qualification passed")
+
+
+def check_compartments(editor, path):
+    """The compartment grid (#913): an ER entity's attributes as a table
+    with a header row and the attribute names as row headers; picking a
+    row picks the line the inspector edits."""
+    with open(path, "w") as out:
+        out.write("erDiagram\nCUSTOMER {\n  string name PK \"full name\"\n  int age\n}\nCUSTOMER ||--o{ ORDER : places\n")
+    process = subprocess.Popen([editor, path])
+    try:
+        app = None
+        end = time.monotonic() + 20.0
+        while app is None and time.monotonic() < end:
+            pump(0.2)
+            app = find_app("W Mermaid")
+        require(app is not None, "ER editor registered")
+        canvas = None
+        end = time.monotonic() + 10.0
+        while canvas is None and time.monotonic() < end:
+            pump(0.2)
+            canvas = find_canvas(app)
+        require(canvas is not None, "ER canvas")
+        wait_for(lambda: item(canvas, "CUSTOMER") is not None, "entity on the canvas")
+        item(canvas, "CUSTOMER").grab_focus()
+        wait_for(lambda: has(canvas, "CUSTOMER", Atspi.StateType.SELECTED), "entity selected")
+
+        def grid():
+            for node in walk(app):
+                if node.get_role() == Atspi.Role.TABLE:
+                    return node
+            return None
+        wait_for(lambda: grid() is not None, "compartment grid in the tree")
+        table = grid()
+        require(table.get_n_rows() == 2 and table.get_n_columns() == 4, "two attributes by four columns")
+        require([table.get_column_header(c).get_name() for c in range(4)] == ["Name", "Type", "Keys", "Comment"], "column headers")
+        require(table.get_row_header(0).get_name() == "name" and table.get_row_header(1).get_name() == "age", "attribute names head their rows")
+        require(table.get_accessible_at(0, 0).get_role() == Atspi.Role.TABLE_ROW_HEADER, "row header role")
+        require(table.get_accessible_at(0, 2).get_name() == "PK" and table.get_accessible_at(0, 3).get_name() == "full name", "keys and comment cells")
+        require(table.get_accessible_at(1, 1).get_name() == "int", "type cell")
+
+        def picked_line():
+            for node in walk(app):
+                if node.get_name() in ("1/2", "2/2"):
+                    return node.get_name()
+            return None
+        require(picked_line() == "1/2", "first line picked")
+        # Selection counts the table's children: the header row is child 0.
+        rows = table.get_selection_iface()
+        require(rows.is_child_selected(1) and not rows.is_child_selected(2), "the first row is selected")
+        require(rows.select_child(2), "SelectChild on the second row")
+        wait_for(lambda: picked_line() == "2/2", "the inspector edits the second line")
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
 
 if __name__ == "__main__":

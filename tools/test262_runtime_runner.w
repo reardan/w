@@ -1,5 +1,5 @@
 # wbuild: binary=test262_runtime_runner arch=x64 dep=javascript_parser
-# wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance
+# wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
 # wbuild: step="bin/test262_conformance --json bin/test262-conformance.json"
 # Bounded upstream Test262 profile. Fresh process and realm per variant.
 import lib.args
@@ -62,6 +62,110 @@ js_value* test262_missing_helper(void* runtime, void* context, js_value* object,
 	js_runtime_fail(rt, 6, c"unsupported Test262 harness helper or host hook")
 	return rt.undefined_value
 
+# Native regExpUtils.js overrides (reardan/w#901; INTERPRETING.md lets hosts
+# override harness functions). Property-escape tests build strings of up to
+# 1.1M code points, beyond the runtime's string length cap, so buildString
+# returns an opaque object whose UTF-16 units stay host-side.
+# testPropertyEscapes then follows upstream: the RegExp's matcher runs on the
+# whole string (as RegExp.prototype.test would, without lastIndex since the
+# generated patterns have no g or y flag) and, if that fails, on each symbol,
+# asserting that every symbol matches. The matching runs on its own step
+# budget, restored afterwards.
+list[js_value*] test262_built_objects
+list[list[int]] test262_built_units
+int test262_helper_budget = 200000000
+
+int test262_array_length(js_runtime* rt, js_value* array):
+	js_value* length = js_runtime_get(rt, array, c"length")
+	if (length.kind != 3): return -1
+	return cast(int, length.number)
+
+int test262_code_point(js_value* value):
+	if (value.kind != 3 || value.number < 0.0 || value.number > 1114111.0): return -1
+	int cp = cast(int, value.number)
+	if (cast(float64, cp) != value.number): return -1
+	return cp
+
+void test262_push_scalar(list[int] units, int cp):
+	if (cp <= 65535): units.push(cp)
+	else:
+		units.push(55296 + ((cp - 65536) >> 10))
+		units.push(56320 + ((cp - 65536) & 1023))
+
+js_value* test262_build_string(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	if (args.length == 0 || (args[0].kind != 5 && args[0].kind != 6)): return test262_failure(rt)
+	js_value* lone = js_runtime_get(rt, args[0], c"loneCodePoints")
+	js_value* ranges = js_runtime_get(rt, args[0], c"ranges")
+	int lone_count = test262_array_length(rt, lone)
+	int range_count = test262_array_length(rt, ranges)
+	if (lone_count < 0 || range_count < 0): return test262_failure(rt)
+	list[int] units = new list[int]
+	for i in range(lone_count):
+		int cp = test262_code_point(js_runtime_index_get(rt, lone, i))
+		if (cp < 0): return test262_failure(rt)
+		test262_push_scalar(units, cp)
+	for i in range(range_count):
+		js_value* range = js_runtime_index_get(rt, ranges, i)
+		int first = test262_code_point(js_runtime_index_get(rt, range, 0))
+		int last = test262_code_point(js_runtime_index_get(rt, range, 1))
+		if (first < 0 || last < 0): return test262_failure(rt)
+		for cp in range(first, last + 1): test262_push_scalar(units, cp)
+	js_value* result = js_runtime_alloc(rt, 5)
+	if (test262_built_objects == 0):
+		test262_built_objects = new list[js_value*]
+		test262_built_units = new list[list[int]]
+	test262_built_objects.push(result)
+	test262_built_units.push(units)
+	return result
+
+# RegExpBuiltinExec's search loop (no lastIndex) over input; 1 on a match,
+# 0 on none, -1 when the step budget ran out.
+int test262_regexp_search(js_runtime* rt, js_regexp_program* program, list[int] input):
+	js_regexp_vm* vm = js_regexp_vm_new(rt, program, input)
+	int found = 0
+	int index = 0
+	while (found == 0 && vm.aborted == 0 && index <= input.length):
+		if (js_regexp_match_at(vm, index) >= 0): found = 1
+		int width = 1
+		if (vm.unicode): js_regexp_read(vm, index, 1, &width)
+		index = index + width
+	if (vm.aborted): found = -1
+	js_regexp_vm_free(vm)
+	return found
+
+js_value* test262_test_property_escapes(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	test262_assertions = test262_assertions + 1
+	if (args.length < 2 || args[0].regexp == 0): return test262_failure(rt)
+	js_regexp_program* program = cast(js_regexp_program*, args[0].regexp)
+	if (program.flags & (JS_RX_GLOBAL | JS_RX_STICKY)): return test262_failure(rt)
+	list[int] units = 0
+	if (test262_built_objects == 0): return test262_failure(rt)
+	for i in range(test262_built_objects.length):
+		if (test262_built_objects[i] == args[1]): units = test262_built_units[i]
+	if (units == 0): return test262_failure(rt)
+	int remaining = rt.remaining
+	rt.remaining = test262_helper_budget
+	int ok = test262_regexp_search(rt, program, units)
+	if (ok == 0):
+		ok = 1
+		list[int] symbol = new list[int]
+		int i = 0
+		while (ok == 1 && i < units.length):
+			symbol.clear()
+			symbol.push(units[i])
+			if (i + 1 < units.length && units[i] >= 55296 && units[i] <= 56319 && units[i + 1] >= 56320 && units[i + 1] <= 57343):
+				i = i + 1
+				symbol.push(units[i])
+			ok = test262_regexp_search(rt, program, symbol)
+			i = i + 1
+		__w_list_free(cast(__w_list*, symbol))
+	rt.remaining = remaining
+	if (rt.completion.status != 0): return rt.undefined_value
+	if (ok != 1): return test262_failure(rt)
+	return rt.undefined_value
+
 js_value* test262_callable(js_runtime* rt, js_host_function* callback):
 	js_value* value = js_runtime_alloc(rt, 9)
 	value.host = cast(int, callback)
@@ -84,6 +188,13 @@ void test262_install(js_runtime* rt):
 	js_runtime_bind(rt, c"formatSimpleValue", test262_unsupported)
 	js_runtime_bind(rt, c"isNegativeZero", test262_unsupported)
 	js_runtime_bind(rt, c"isPrimitive", test262_unsupported)
+	js_runtime_bind(rt, c"buildString", test262_build_string)
+	js_runtime_bind(rt, c"testPropertyEscapes", test262_test_property_escapes)
+	js_runtime_bind(rt, c"printCodePoint", test262_unsupported)
+	js_runtime_bind(rt, c"printStringCodePoints", test262_unsupported)
+	js_runtime_bind(rt, c"testPropertyOfStrings", test262_unsupported)
+	js_runtime_bind(rt, c"testExtendedCharacterClass", test262_unsupported)
+	js_runtime_bind(rt, c"matchValidator", test262_unsupported)
 	js_value* host = js_runtime_alloc(rt, 5)
 	js_runtime_set_host_hooks(rt, host, 0, test262_missing_helper, 0)
 	js_runtime_set(rt, rt.global, c"$262", host)

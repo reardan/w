@@ -128,11 +128,14 @@ char* t262_unsupported(json_value* meta):
 	if (blocked.length): return strjoin(c"unsupported flags: ", join(blocked, c", "))
 	list[char*] includes = new list[char*]
 	for json_value* item in jc_get(meta, c"includes").array_values:
-		if (!t262_upstream || !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		# The native profile overrides regExpUtils.js's helpers in the runner;
+		# the upstream profile needs each include pinned.
+		if (t262_upstream && !(strjoin(c"upstream/harness/", item.string_value) in t262_sources)): includes.push(item.string_value)
+		if (!t262_upstream && !jc_is(item, c"regExpUtils.js")): includes.push(item.string_value)
 	if (includes.length): return strjoin(c"unsupported harness includes: ", join(includes, c", "))
 	list[char*] features = new list[char*]
 	for json_value* item in jc_get(meta, c"features").array_values:
-		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining class computed-property-names new.target default-parameters rest-parameters arrow-function destructuring-binding")): features.push(item.string_value)
+		if (!jc_choice(item, c"coalesce-expression regexp-named-groups regexp-unicode-property-escapes async-functions generators optional-chaining Symbol Symbol.iterator Symbol.match Symbol.matchAll Symbol.replace Symbol.search Symbol.species Symbol.split Symbol.toPrimitive String.prototype.matchAll arrow-function class computed-property-names new.target default-parameters rest-parameters destructuring-binding")): features.push(item.string_value)
 	ht_sort(features)
 	if (features.length): return strjoin(c"unsupported features: ", join(features, c", "))
 	if (jc_is(jc_get(jc_get(meta, c"negative"), c"phase"), c"resolution") && !t262_upstream && !t262_has(jc_get(meta, c"flags"), c"module")): return c"module resolution is unsupported"

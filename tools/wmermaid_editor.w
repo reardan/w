@@ -48,6 +48,8 @@ int wm_editor_ppm(char* path, int width, int height):
 const int WM_CANVAS_FOCUS = 900001
 # Semantic ids past every canvas item id (graphics/mermaid_access.w).
 const int WM_STATUS_ACCESS = 990001
+# The node list / compartment band: a header and three rows.
+const int WM_BAND_HEIGHT = 130
 
 char* wm_message
 
@@ -107,6 +109,106 @@ int wm_attribute_add(mm_editor* e, int index, char* text):
 	__w_list_free(cast(__w_list*, words))
 	return ok
 
+# The node list (#913): every node the canvas can select, in document
+# order, as a multi-selection list box mirroring the canvas selection.
+# Ctrl/Shift+click, Shift+arrows and Ctrl+A there select on the canvas
+# too; returns 1 on a frame it changed the canvas selection.
+int wm_node_list(ui_context* ctx, ui_listbox_state* st, mm_canvas* canvas, mm_editor* e, ui_rect area):
+	int total = 0
+	if (e.document.error == 0 && e.scene != 0): total = e.document.nodes.length
+	int32* order = cast(int32*, malloc(total * 4 + 4))
+	char* flags = cast(char*, malloc(total + 1))
+	int count = 0
+	for i in range(total):
+		if (mm_canvas_selectable(e, i)):
+			order[count] = i
+			flags[count] = mm_canvas_selected(canvas, i)
+			# The canvas moved its focus: the list's cursor follows.
+			if (canvas.node == i && ctx.focus != st.list_id):
+				st.cursor = count
+				st.anchor = count
+			count = count + 1
+	ui_listbox_begin(ctx, area, st, c"Nodes", flags, count)
+	for k in range(count): ui_listbox_item(ctx, st, k, mm_access_label(e.document.nodes[order[k]]))
+	int changed = ui_listbox_end(ctx, st)
+	if (changed):
+		mm_canvas_cancel(canvas, e)
+		mm_canvas_clear_selection(canvas)
+		canvas.edge = -1
+		canvas.node = -1
+		canvas.extend = 0
+		for k in range(count):
+			if (flags[k]):
+				canvas.selection.push(order[k])
+				canvas.node = order[k]
+		# The list's cursor is the canvas focus when it is selected.
+		if (st.cursor >= 0 && st.cursor < count && flags[st.cursor]): canvas.node = order[st.cursor]
+	free(flags)
+	free(order)
+	return changed
+
+# The selected node's compartment (#913) as a grid: ER attributes by
+# name, type, keys and comment; class members by text and kind;
+# requirement properties by number. The first column heads each row.
+# Returns the picked line on the frame the pick changed, else -1;
+# 0 columns (nothing drawn) when the node has no compartment.
+int wm_compartment_columns(mm_editor* e, int node):
+	if (node < 0 || mm_editor_line_count(e, node) == 0): return 0
+	if (e.document.kind == MM_ER): return 4
+	if (e.document.kind == MM_CLASS || e.document.kind == MM_REQUIREMENT): return 2
+	return 0
+
+int wm_compartment_table(ui_context* ctx, ui_table_state* st, mm_editor* e, int node, int line, ui_rect area):
+	int columns = wm_compartment_columns(e, node)
+	char*[4] headers
+	int32[4] widths
+	float32 rest = area.w - 120.0
+	if (rest < 60.0): rest = 60.0
+	if (e.document.kind == MM_ER):
+		headers[0] = c"Name"
+		headers[1] = c"Type"
+		headers[2] = c"Keys"
+		headers[3] = c"Comment"
+		widths[0] = cast(int32, area.w * 0.3)
+		widths[1] = cast(int32, area.w * 0.25)
+		widths[2] = cast(int32, area.w * 0.15)
+		widths[3] = cast(int32, area.w) - widths[0] - widths[1] - widths[2]
+	else if (e.document.kind == MM_CLASS):
+		headers[0] = c"Member"
+		headers[1] = c"Kind"
+		widths[0] = cast(int32, rest)
+		widths[1] = 120
+	else:
+		headers[0] = c"#"
+		headers[1] = c"Property"
+		widths[0] = 40
+		widths[1] = cast(int32, area.w) - 40
+	st.row_header_col = 0
+	st.selected = line
+	ui_table_begin(ctx, area, &headers[0], &widths[0], columns, st)
+	mm_node* n = e.document.nodes[node]
+	int count = mm_editor_line_count(e, node)
+	for k in range(count):
+		if (ui_table_row(ctx, st, k) == 0): continue
+		if (e.document.kind == MM_ER):
+			mm_attribute* a = n.attributes[k]
+			ui_table_cell(ctx, st, a.name)
+			ui_table_cell(ctx, st, a.type_name)
+			if (a.keys != 0): ui_table_cell(ctx, st, a.keys)
+			else: ui_table_cell(ctx, st, c"")
+			if (a.comment != 0): ui_table_cell(ctx, st, a.comment)
+			else: ui_table_cell(ctx, st, c"")
+		else if (e.document.kind == MM_CLASS):
+			ui_table_cell(ctx, st, n.members[k].text)
+			if (n.members[k].method): ui_table_cell(ctx, st, c"method")
+			else: ui_table_cell(ctx, st, c"field")
+		else:
+			char* number = itoa(k + 1)
+			ui_table_cell(ctx, st, number)
+			free(number)
+			ui_table_cell(ctx, st, n.members[k].text)
+	return ui_table_end(ctx, st)
+
 int main(int argc, int argv):
 	args_init(argc, argv)
 	char* path = args_positional(0)
@@ -144,6 +246,11 @@ int main(int argc, int argv):
 	int line_position = -1
 	int line_group = -1
 	int line_time = 0
+	# The node list and the compartment grid under the inspector (#913).
+	ui_listbox_state node_list
+	ui_listbox_init(&node_list)
+	ui_table_state compartment
+	ui_table_init(&compartment)
 	gfx_window* win = gfx_window_open(c"W Mermaid", 1280, 800)
 	if (win == 0):
 		mm_editor_free(e)
@@ -284,6 +391,9 @@ int main(int argc, int argv):
 					wm_message = count.data
 					free(count)
 					status = wm_message
+				else if (key == 'c' && ctx.focus == WM_CANVAS_FOCUS):
+					if (mm_canvas_copy(&ctx, e)): status = c"Copied the diagram as an image, SVG and Mermaid source."
+					else: status = c"Fix the syntax error before copying."
 				else if (key == 'g' && ctx.focus == WM_CANVAS_FOCUS && canvas.node >= 0):
 					if (mm_editor_ungroup(e, canvas.node)):
 						mm_canvas_reset(&canvas, e)
@@ -391,6 +501,10 @@ int main(int argc, int argv):
 				else: status = c"SVG export failed."
 				free(svg)
 				string_free(output)
+		ui_same_line(&ctx)
+		if (ui_button(&ctx, c"Copy")):
+			if (mm_canvas_copy(&ctx, e)): status = c"Copied the diagram as an image, SVG and Mermaid source."
+			else: status = c"Fix the syntax error before copying."
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Close")): closing = 1
 		ui_same_line(&ctx)
@@ -765,10 +879,13 @@ int main(int argc, int argv):
 			string_free(which)
 			ui_disable(&ctx, closing)
 		ui_region_pop(&ctx)
-		float32 source_y = left.y + 338.0
+		# The node list and compartment band, issued after the source
+		# field so the node count never shifts the field's id.
+		ui_rect band = ui_rect_new(left.x, left.y + 338.0, left.w - 8.0, cast(float32, WM_BAND_HEIGHT))
+		float32 source_y = band.y + band.h + 4.0
 		ui_draw_text(&renderer, left.x, source_y, c"Source  (Ctrl+E)", 2, theme.text_muted)
 		source_y = source_y + 24.0
-		ui_rect source_rect = ui_rect_new(left.x, source_y, left.w - 8.0, left.h - 362.0)
+		ui_rect source_rect = ui_rect_new(left.x, source_y, left.w - 8.0, left.h - 366.0 - band.h)
 		if (source_rect.h < 40.0): source_rect.h = 40.0
 		if (focus_source):
 			ctx.focus = ctx.next_id
@@ -780,6 +897,29 @@ int main(int argc, int argv):
 			if (mm_editor_change_typing(e, area.buf.data, keep_group) == 0):
 				mm_canvas_source_sync(&area, e.document.source)
 				status = c"Edit exceeds the 1 MiB source limit."
+		int single = mm_canvas_single(&canvas, e)
+		if (canvas.edge >= 0): single = -1
+		ui_rect list_area = band
+		if (wm_compartment_columns(e, single) > 0): list_area.w = band.w * 0.4 - 4.0
+		if (wm_node_list(&ctx, &node_list, &canvas, e, list_area)):
+			wm_selection_fields(&canvas, e, &node_id, &node_label)
+			string_builder* picked = string_new()
+			string_append_int(picked, mm_canvas_selection_count(&canvas, e))
+			string_append(picked, c" selected from the node list.")
+			free(wm_message)
+			wm_message = picked.data
+			free(picked)
+			status = wm_message
+		if (wm_compartment_columns(e, single) > 0):
+			if (line_node != single):
+				line_node = single
+				line_index = 0
+				line_resync = 1
+			ui_rect grid = ui_rect_new(band.x + band.w * 0.4 + 4.0, band.y, band.w * 0.6 - 4.0, band.h)
+			int pick = wm_compartment_table(&ctx, &compartment, e, single, line_index, grid)
+			if (pick >= 0 && pick != line_index):
+				line_index = pick
+				line_resync = 1
 		ui_clip_pop(&renderer)
 		ui_render_rect(&renderer, preview, theme.surface)
 		if (fit && e.scene != 0):

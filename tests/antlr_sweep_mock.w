@@ -34,6 +34,11 @@ int main(int argc, int argv):
 		json_object_set(finding, c"file", json_string(args_get(1)))
 		json_value* document = json_parse(c"{\"schema_version\":1,\"findings\":[]}")
 		json_array_push(ht_field(document, c"findings"), finding)
+		# A permissive translation that ignored a host predicate.
+		if (strcmp(mode, c"predicate") == 0 && !sm_flag(c"--strict")):
+			json_value* predicate = json_parse(c"{\"code\":\"AT_HOST_SITE\",\"stage\":\"translate\",\"feature\":\"host_code\",\"classification\":\"unsupported\",\"line\":1,\"column\":3,\"rule\":\"root\",\"reason\":\"unmapped predicate at atom position 0: {p()}?\"}")
+			json_object_set(predicate, c"file", json_string(args_get(1)))
+			json_array_push(ht_field(document, c"findings"), predicate)
 		char* text = json_stringify(document)
 		ht_write(audit, text, strlen(text))
 	if (strcmp(mode, c"timeout") == 0): process_sleep_ms(5000)

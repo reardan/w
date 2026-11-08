@@ -79,6 +79,7 @@ struct gfx_window:
 	int sel_value_for_key
 	int sel_get_value_size
 	int sel_button_number
+	int sel_click_count
 	int sel_scrolling_delta_y
 	int sel_has_precise_deltas
 	int key_location
@@ -195,6 +196,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.sel_value_for_key = sel_registerName(c"valueForKey:")
 	win.sel_get_value_size = sel_registerName(c"getValue:size:")
 	win.sel_button_number = sel_registerName(c"buttonNumber")
+	win.sel_click_count = sel_registerName(c"clickCount")
 	win.sel_scrolling_delta_y = sel_registerName(c"scrollingDeltaY")
 	win.sel_has_precise_deltas = sel_registerName(c"hasPreciseScrollingDeltas")
 	# Like run_mode: made in the open pool, so it lives until destroy.
@@ -360,7 +362,10 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 		int bit = 1 << (button - 1)
 		if (down):
 			win.mouse_buttons = win.mouse_buttons | bit
-			gfx_cocoa_push(win, GFX_EVENT_MOUSE_DOWN, button, mods)
+			# AppKit counts multi-clicks against the user's double-click
+			# interval; clickCount is an NSInteger, valid on mouse events.
+			int clicks = objc_msg0(event, win.sel_click_count)
+			gfx_cocoa_push(win, GFX_EVENT_MOUSE_DOWN, button, gfx_mods_with_clicks(mods, clicks))
 		else:
 			# no bitwise-not operator: -1 - mask == ~mask
 			win.mouse_buttons = win.mouse_buttons & (0 - 1 - bit)
@@ -392,19 +397,52 @@ int gfx_cocoa_nsstring(char* text):
 	return objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, text))
 
 
-int gfx_clipboard_set(gfx_window* win, char* text):
-	if (win == 0): return gfx_clipboard_local_set(text)
-	gfx_clipboard_store_own(&win.clip, text, strlen(text))
+# Write what win.clip owns to the general pasteboard: the plain-text
+# UTI, plus public.html and public.png when the copy carried them.
+int gfx_cocoa_clipboard_publish(gfx_window* win):
 	int pool = objc_autoreleasePoolPush()
 	int board = objc_msg0(objc_getClass(c"NSPasteboard"), sel_registerName(c"generalPasteboard"))
 	int ok = 0
 	if (board != 0):
 		objc_msg0(board, sel_registerName(c"clearContents"))
-		int value = gfx_cocoa_nsstring(text)
+		int set_string = sel_registerName(c"setString:forType:")
+		int value = gfx_cocoa_nsstring(win.clip.owned)
 		# setString:forType: returns a BOOL: only the low byte is defined.
-		if (value != 0): ok = objc_msg2(board, sel_registerName(c"setString:forType:"), value, gfx_cocoa_nsstring(c"public.utf8-plain-text")) & 0xff
+		if (value != 0): ok = objc_msg2(board, set_string, value, gfx_cocoa_nsstring(c"public.utf8-plain-text")) & 0xff
+		if (win.clip.html != 0):
+			int html = gfx_cocoa_nsstring(win.clip.html)
+			if (html != 0): objc_msg2(board, set_string, html, gfx_cocoa_nsstring(c"public.html"))
+		if (win.clip.png != 0):
+			int data = objc_msg2(objc_getClass(c"NSData"), sel_registerName(c"dataWithBytes:length:"), cast(int, win.clip.png), win.clip.png_length)
+			if (data != 0): objc_msg2(board, sel_registerName(c"setData:forType:"), data, gfx_cocoa_nsstring(c"public.png"))
 	objc_autoreleasePoolPop(pool)
 	return ok != 0
+
+
+int gfx_clipboard_set(gfx_window* win, char* text):
+	if (win == 0): return gfx_clipboard_local_set(text)
+	gfx_clipboard_store_own(&win.clip, text, strlen(text))
+	return gfx_cocoa_clipboard_publish(win)
+
+
+int gfx_clipboard_set_rich(gfx_window* win, char* text, char* html, char* png, int png_length):
+	if (win == 0): return gfx_clipboard_local_set_rich(text, html, png, png_length)
+	gfx_clipboard_store_own_rich(&win.clip, text, html, png, png_length)
+	return gfx_cocoa_clipboard_publish(win)
+
+
+# macOS has no PRIMARY selection; middle-click pastes the program's own
+# latest selection (graphics.clipboard_store's in-process PRIMARY).
+int gfx_primary_set(gfx_window* win, char* text):
+	return gfx_primary_local_set(text)
+
+
+void gfx_primary_request(gfx_window* win):
+	gfx_primary_local_request()
+
+
+char* gfx_primary_take(gfx_window* win):
+	return gfx_primary_local_take()
 
 
 void gfx_clipboard_request(gfx_window* win):

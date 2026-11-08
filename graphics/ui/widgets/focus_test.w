@@ -12,6 +12,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.accessibility
+import graphics.ui.accessibility_table
 import graphics.ui.widgets
 import graphics.ui.testing
 
@@ -624,4 +625,370 @@ void test_text_fields_publish_glyphs_and_attributes():
 	asserts(c"field attributes", (name.attrs != 0) && (name.attrs.weight == 400))
 	ui_access_tree_free(tree)
 	ui_textarea_free(&ta)
+	ui_render_destroy(&fx.r)
+
+
+# The multi-selection list box (#913): five fruit, ids 1 (the list) and
+# 2..6 (the items), 32-pixel rows from y = 9.
+struct fruit_model:
+	ui_listbox_state st
+	char[5] picked
+	int32 changes
+	int32 disabled
+
+
+void fruit_init(fruit_model* m):
+	ui_listbox_init(&m.st)
+	for i in range(5): m.picked[i] = 0
+	m.changes = 0
+	m.disabled = 0
+
+
+void fruit_frame(ui_context* ctx, fruit_model* m):
+	char*[5] names
+	names[0] = c"Apple"
+	names[1] = c"Banana"
+	names[2] = c"Cherry"
+	names[3] = c"Date"
+	names[4] = c"Elder"
+	ui_begin(ctx, 320, 240)
+	ui_disable(ctx, m.disabled)
+	ui_listbox_begin(ctx, ui_rect_new(8.0, 8.0, 160.0, 200.0), &m.st, c"Fruit", &m.picked[0], 5)
+	for i in range(5): ui_listbox_item(ctx, &m.st, i, names[i])
+	if (ui_listbox_end(ctx, &m.st)): m.changes = m.changes + 1
+	ui_disable(ctx, 0)
+	ui_end(ctx)
+
+
+void fruit_click(ui_context* ctx, fruit_model* m, int index, int mods):
+	int y = 9 + 32 * index + 16
+	ui_test_event(ctx, GFX_EVENT_MOUSE_DOWN, 1, 40, y, mods)
+	ui_test_event(ctx, GFX_EVENT_MOUSE_UP, 1, 40, y, mods)
+	fruit_frame(ctx, m)
+
+
+# The picked flags as a five-character string of 0s and 1s.
+char* fruit_marks(fruit_model* m):
+	char* s = cast(char*, malloc(6))
+	for i in range(5): s[i] = '0' + m.picked[i]
+	s[5] = 0
+	return s
+
+
+void assert_marks(char* expected, fruit_model* m):
+	char* got = fruit_marks(m)
+	assert_strings_equal(expected, got)
+	free(got)
+
+
+void test_listbox_pointer_selection():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	fruit_model m
+	fruit_init(&m)
+	fruit_frame(ctx, &m)
+	fruit_click(ctx, &m, 1, 0)
+	assert_marks(c"01000", &m)
+	assert_equal(1, ctx.focus)
+	assert_equal(1, m.changes)
+	# Ctrl+click toggles one item in and out; Super does the same (Mac).
+	fruit_click(ctx, &m, 3, GFX_MOD_CTRL)
+	assert_marks(c"01010", &m)
+	fruit_click(ctx, &m, 1, GFX_MOD_SUPER)
+	assert_marks(c"00010", &m)
+	# Shift+click selects the range from the anchor (the last click,
+	# Banana) and only that range; the anchor stays.
+	fruit_click(ctx, &m, 0, GFX_MOD_SHIFT)
+	assert_marks(c"11000", &m)
+	fruit_click(ctx, &m, 3, GFX_MOD_SHIFT)
+	assert_marks(c"01110", &m)
+	# A plain click selects one item again; Ctrl+Shift adds a range.
+	fruit_click(ctx, &m, 4, 0)
+	assert_marks(c"00001", &m)
+	fruit_click(ctx, &m, 0, GFX_MOD_CTRL)
+	fruit_click(ctx, &m, 1, GFX_MOD_CTRL | GFX_MOD_SHIFT)
+	assert_marks(c"11001", &m)
+	# A frame without input changes nothing.
+	int before = m.changes
+	fruit_frame(ctx, &m)
+	assert_equal(before, m.changes)
+	ui_render_destroy(&fx.r)
+
+
+void test_listbox_keyboard_selection():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	fruit_model m
+	fruit_init(&m)
+	fruit_frame(ctx, &m)
+	tab(ctx, 0)
+	fruit_frame(ctx, &m)
+	assert_equal(1, ctx.focus)
+	assert_marks(c"00000", &m)
+	ui_test_nav(ctx, GFX_NAV_DOWN)
+	fruit_frame(ctx, &m)
+	assert_equal(0, m.st.cursor)
+	assert_marks(c"10000", &m)
+	ui_test_nav(ctx, GFX_NAV_DOWN)
+	fruit_frame(ctx, &m)
+	assert_marks(c"01000", &m)
+	# Shift+arrows grow and shrink the range from the anchor.
+	ui_test_key(ctx, GFX_NAV_DOWN, GFX_MOD_SHIFT)
+	ui_test_key(ctx, GFX_NAV_DOWN, GFX_MOD_SHIFT)
+	fruit_frame(ctx, &m)
+	assert_marks(c"01110", &m)
+	assert_equal(3, m.st.cursor)
+	ui_test_key(ctx, GFX_NAV_UP, GFX_MOD_SHIFT)
+	fruit_frame(ctx, &m)
+	assert_marks(c"01100", &m)
+	ui_test_key(ctx, GFX_NAV_HOME, GFX_MOD_SHIFT)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11000", &m)
+	# Ctrl+arrows move the cursor alone; Space toggles its item.
+	ui_test_key(ctx, GFX_NAV_END, GFX_MOD_CTRL)
+	fruit_frame(ctx, &m)
+	assert_equal(4, m.st.cursor)
+	assert_marks(c"11000", &m)
+	ui_test_char(ctx, 32)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11001", &m)
+	ui_test_char(ctx, 32)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11000", &m)
+	# Ctrl+A selects every item, as the letter or as its control code.
+	ui_test_event(ctx, GFX_EVENT_CHAR, 'a', 0, 0, GFX_MOD_CTRL)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11111", &m)
+	ui_test_nav(ctx, GFX_NAV_UP)
+	fruit_frame(ctx, &m)
+	assert_marks(c"00010", &m)
+	ui_test_event(ctx, GFX_EVENT_CHAR, 1, 0, 0, GFX_MOD_CTRL)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11111", &m)
+	# Without focus the list ignores the keyboard.
+	ctx.focus = 0
+	ui_test_nav(ctx, GFX_NAV_DOWN)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11111", &m)
+	ui_render_destroy(&fx.r)
+
+
+ui_access_tree* captured_fruit(ui_context* ctx, fruit_model* m):
+	ui_access_tree* tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	fruit_frame(ctx, m)
+	ui_access_capture(ctx, 0)
+	return tree
+
+
+void test_listbox_publishes_and_takes_the_selection():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	fruit_model m
+	fruit_init(&m)
+	m.picked[1] = 1
+	m.picked[3] = 1
+	ui_access_tree* tree = captured_fruit(ctx, &m)
+	ui_access_node* list = ui_access_find(tree, 1)
+	assert_equal(UI_ACCESS_LIST, list.role)
+	assert_strings_equal(c"Fruit", list.name.data)
+	asserts(c"multiselectable", (list.states & UI_ACCESS_MULTISELECTABLE) != 0)
+	asserts(c"focusable", (list.states & UI_ACCESS_FOCUSABLE) != 0)
+	assert_equal(1, ui_access_is_multiselectable(list))
+	assert_equal(2, ui_access_selected_count(list))
+	assert_strings_equal(c"Banana", ui_access_selected_at(list, 0).name.data)
+	assert_strings_equal(c"Date", ui_access_selected_at(list, 1).name.data)
+	ui_access_node* cherry = ui_access_find(tree, 4)
+	assert_equal(UI_ACCESS_LIST_ITEM, cherry.role)
+	assert_strings_equal(c"Cherry", cherry.name.data)
+	asserts(c"items select", (cherry.actions & UI_ACCESS_SELECT) != 0)
+
+	# Add, remove and select-only requests reach the flags next frame.
+	assert_equal(1, ui_access_dispatch_select(tree, 4, UI_ACCESS_SELECT_ADD))
+	assert_equal(1, ui_access_dispatch_select(tree, 3, UI_ACCESS_SELECT_REMOVE))
+	fruit_frame(ctx, &m)
+	assert_marks(c"00110", &m)
+	assert_equal(1, ui_access_dispatch_select(tree, 6, UI_ACCESS_SELECT_ONLY))
+	fruit_frame(ctx, &m)
+	assert_marks(c"00001", &m)
+	# Requests live for one frame; activation selects one item.
+	fruit_frame(ctx, &m)
+	assert_marks(c"00001", &m)
+	assert_equal(1, ui_access_dispatch(tree, 2, UI_ACCESS_ACTIVATE, 0, 0))
+	fruit_frame(ctx, &m)
+	assert_marks(c"10000", &m)
+	ui_access_tree_free(tree)
+
+	# A focus request on an item focuses the list with its cursor there,
+	# and the snapshot then reports that item as focused.
+	tree = captured_fruit(ctx, &m)
+	assert_equal(1, ui_access_dispatch(tree, 5, UI_ACCESS_FOCUS, 0, 0))
+	ui_access_tree_free(tree)
+	tree = captured_fruit(ctx, &m)
+	assert_equal(1, ctx.focus)
+	assert_equal(3, m.st.cursor)
+	assert_equal(5, tree.focused_id)
+	ui_access_tree_free(tree)
+	# Focus moves the cursor, not the anchor (Apple, activated last), as
+	# Ctrl+arrows do: Shift+Down then selects Apple through Elder.
+	ui_test_key(ctx, GFX_NAV_DOWN, GFX_MOD_SHIFT)
+	tree = captured_fruit(ctx, &m)
+	assert_marks(c"11111", &m)
+	assert_equal(6, tree.focused_id)
+	assert_equal(5, ui_access_selected_count(ui_access_find(tree, 1)))
+	ui_test_char(ctx, 32)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11110", &m)
+	# A frame applies its arrows before its characters.
+	ui_test_key(ctx, GFX_NAV_UP, GFX_MOD_CTRL)
+	ui_test_char(ctx, 32)
+	fruit_frame(ctx, &m)
+	assert_marks(c"11100", &m)
+	ui_test_key(ctx, GFX_NAV_UP, GFX_MOD_CTRL)
+	ui_test_key(ctx, GFX_NAV_UP, GFX_MOD_CTRL)
+	ui_test_char(ctx, 32)
+	fruit_frame(ctx, &m)
+	assert_marks(c"10100", &m)
+
+	ui_access_tree_free(tree)
+
+	# A list disabled since publication refuses them in the widget.
+	tree = captured_fruit(ctx, &m)
+	assert_equal(1, ui_access_dispatch_select(tree, 2, UI_ACCESS_SELECT_REMOVE))
+	m.disabled = 1
+	fruit_frame(ctx, &m)
+	assert_marks(c"10100", &m)
+	ui_access_tree_free(tree)
+	# and, published disabled, the dispatcher refuses them outright.
+	tree = captured_fruit(ctx, &m)
+	assert_equal(0, ui_access_dispatch_select(tree, 2, UI_ACCESS_SELECT_REMOVE))
+	ui_access_tree_free(tree)
+	ui_render_destroy(&fx.r)
+
+
+# A grid (#913): a header spanning two columns, a row-header column and
+# cells spanning rows and columns, as tools/access_depth_app.w builds by
+# hand.
+void grid_frame(ui_context* ctx, ui_table_state* st, int* picked):
+	char*[3] headers
+	headers[0] = c"Kind"
+	headers[1] = c"Item"
+	headers[2] = c""
+	int32[3] spans
+	spans[0] = 1
+	spans[1] = 2
+	spans[2] = 1
+	int32[3] widths
+	widths[0] = 80
+	widths[1] = 80
+	widths[2] = 60
+	st.row_header_col = 0
+	st.header_spans = &spans[0]
+	ui_begin(ctx, 320, 240)
+	ui_table_begin(ctx, ui_rect_new(8.0, 8.0, 240.0, 200.0), &headers[0], &widths[0], 3, st)
+	if (ui_table_row(ctx, st, 0)):
+		ui_table_cell_span(ctx, st, c"Fruit", 2, 1)
+		ui_table_cell(ctx, st, c"Apple")
+		ui_table_cell(ctx, st, c"Red")
+	if (ui_table_row(ctx, st, 1)):
+		ui_table_cell_span(ctx, st, c"Cherry", 1, 2)
+	if (ui_table_row(ctx, st, 2)):
+		ui_table_cell(ctx, st, c"Nut")
+		ui_table_cell(ctx, st, c"Pecan")
+		ui_table_cell(ctx, st, c"Brown")
+	picked[0] = ui_table_end(ctx, st)
+	ui_end(ctx)
+
+
+void test_table_publishes_headers_and_spans():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_table_state st
+	ui_table_init(&st)
+	int picked = 0
+	ui_access_tree* tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	grid_frame(ctx, &st, &picked)
+	ui_access_capture(ctx, 0)
+	ui_access_node* table = ui_access_find(tree, 1)
+	assert_equal(UI_ACCESS_TABLE, table.role)
+	ui_access_node* header = ui_access_header_row(table)
+	asserts(c"explicit header row", (header != 0) && ((header.states & UI_ACCESS_HEADER) != 0))
+	assert_equal(2, ui_access_row_cells(header))
+	ui_access_node* item = ui_access_row_cell(header, 1)
+	assert_strings_equal(c"Item", item.name.data)
+	assert_equal(2, item.col_span)
+	assert_equal(3, ui_access_table_rows(table))
+	assert_equal(3, ui_access_table_columns(table))
+
+	# The row header spans two rows; Cherry fills the two columns it
+	# leaves free in the second row.
+	ui_access_node* fruit = ui_access_table_cell_at(table, 0, 0)
+	assert_strings_equal(c"Fruit", fruit.name.data)
+	asserts(c"row header", (fruit.states & UI_ACCESS_HEADER) != 0)
+	assert_equal(2, fruit.row_span)
+	assert_equal(1, ui_access_is_row_header(fruit))
+	asserts(c"spans down", ui_access_table_cell_at(table, 1, 0) == fruit)
+	ui_access_node* cherry = ui_access_table_cell_at(table, 1, 2)
+	assert_strings_equal(c"Cherry", cherry.name.data)
+	assert_equal(2, cherry.col_span)
+	int row = 0
+	int col = 0
+	int rs = 0
+	int cs = 0
+	ui_access_cell_slot(cherry, &row, &col, &rs, &cs)
+	assert_equal(1, row)
+	assert_equal(1, col)
+	ui_access_node* found = 0
+	assert_equal(1, ui_access_row_headers_of(cherry, 0, &found))
+	asserts(c"Cherry's row header", found == fruit)
+	assert_equal(1, ui_access_column_headers_of(cherry, 0, &found))
+	asserts(c"Cherry's column header", found == item)
+	ui_access_node* nut = ui_access_table_cell_at(table, 2, 0)
+	assert_strings_equal(c"Nut", nut.name.data)
+	asserts(c"each row's first cell heads it", (nut.states & UI_ACCESS_HEADER) != 0)
+	assert_equal(0, ui_access_table_cell_at(table, 2, 1).states & UI_ACCESS_HEADER)
+
+	# Drawn where the snapshot says: Cherry right of the spanning row
+	# header, two rows tall and two columns wide respectively.
+	assert_equal(cast(int, fruit.bounds.x + 80.0), cast(int, cherry.bounds.x))
+	assert_equal(cast(int, fruit.bounds.h), cast(int, cherry.bounds.h * 2.0))
+	assert_equal(140, cast(int, cherry.bounds.w))
+	ui_access_tree_free(tree)
+
+	# A focused table reports its selected row as the focused node.
+	tab(ctx, 0)
+	ui_test_nav(ctx, GFX_NAV_DOWN)
+	grid_frame(ctx, &st, &picked)
+	assert_equal(0, picked)
+	tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	grid_frame(ctx, &st, &picked)
+	ui_access_capture(ctx, 0)
+	ui_access_node* first = ui_access_table_row(ui_access_find(tree, 1), 0)
+	assert_equal(first.id, tree.focused_id)
+	ui_access_tree_free(tree)
+	ui_render_destroy(&fx.r)
+
+
+# Rows that a span from above still covers stay in the issue window
+# when the spanning row scrolls out, so their cells keep their columns.
+void test_table_spans_survive_scrolling():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_table_state st
+	ui_table_init(&st)
+	int picked = 0
+	grid_frame(ctx, &st, &picked)
+	# One row's height down: row 0 (with Fruit's span) is off screen.
+	st.scroll.view_h = 64.0
+	st.scroll.offset_y = 40.0
+	ui_access_tree* tree = ui_access_tree_new(64, 4096)
+	ui_access_capture(ctx, tree)
+	grid_frame(ctx, &st, &picked)
+	ui_access_capture(ctx, 0)
+	ui_access_node* table = ui_access_find(tree, 1)
+	ui_access_node* cherry = ui_access_table_cell_at(table, 1, 1)
+	asserts(c"Cherry keeps its column", (cherry != 0) && (strcmp(cherry.name.data, c"Cherry") == 0))
+	ui_access_tree_free(tree)
 	ui_render_destroy(&fx.r)

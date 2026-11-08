@@ -35,6 +35,14 @@ struct ui_input:
 	int32 scroll_at_x      # pointer position when the wheel turned
 	int32 scroll_at_y
 	int32 mods             # gfx_mod bits on the most recent event
+	# The click count of this frame's button-1 press (2 double, 3
+	# triple; gfx_event_clicks), 1 when the backend does not count.
+	int32 clicks
+	# Button 2, a per-frame edge like button 3: middle-click pastes the
+	# PRIMARY selection into the text field under the pointer.
+	int32 mouse_middle_pressed
+	int32 middle_x
+	int32 middle_y
 
 
 # Where widgets are placed. One of these is the whole window (seeded by
@@ -147,6 +155,16 @@ struct ui_context:
 	int32 access_selection_id
 	int32 access_selection_anchor
 	int32 access_selection_active
+	# Item selection requests (UI_ACCESS_SELECT) for multi-selection
+	# containers: the item's id and its UI_ACCESS_SELECT_* mode.
+	int32[256] access_selects
+	int32[256] access_select_modes
+	int32 access_select_count
+	# A focused container (a list) names the item assistive technology
+	# should treat as focused, its cursor; ui_end publishes it as the
+	# snapshot's focused node while access_focus_owner holds focus.
+	int32 access_focus_owner
+	int32 access_focus_child
 	# Clipboard (docs/projects/ui_clipboard.md). A text widget's copy or
 	# cut leaves its text in clip_out until the next ui_begin_window hands
 	# it to the platform; a paste names the widget waiting for text in
@@ -155,10 +173,22 @@ struct ui_context:
 	# clip_in through ui_clipboard_copied / ui_clipboard_deliver.
 	char* clip_out
 	int32 clip_out_ready
+	# Rich flavors queued with clip_out (ui_clipboard_copy_rich), 0 for a
+	# plain-text copy: HTML, and PNG bytes with their length.
+	char* clip_out_html
+	char* clip_out_png
+	int32 clip_out_png_length
 	int32 clip_paste_id
 	int32 clip_paste_sent
 	int32 clip_paste_frames
+	# 1 while the waiting paste reads PRIMARY (middle-click) instead of
+	# the clipboard.
+	int32 clip_paste_primary
 	char* clip_in
+	# PRIMARY (docs/projects/ui_clipboard.md §6): the selection a text
+	# widget last made, handed to the platform by the pump like clip_out.
+	char* primary_out
+	int32 primary_out_ready
 	# The window ui_begin_window started this frame with (a gfx_window*,
 	# kept untyped because this module does not import graphics.window),
 	# so ui_end can publish a copy in the frame it happened: the browser

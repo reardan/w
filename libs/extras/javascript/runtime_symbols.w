@@ -763,5 +763,8 @@ void js_runtime_install_object(js_runtime* rt):
 	js_text* key = js_runtime_key(c"prototype")
 	js_runtime_define_data(rt, array, key, rt.array_prototype, 0, 0, 0)
 	js_text_free(key)
+	key = js_runtime_key(c"constructor")
+	js_runtime_define_data(rt, rt.array_prototype, key, array, 1, 0, 1)
+	js_text_free(key)
 	js_runtime_set(rt, rt.global, c"Object", object)
 	js_runtime_set(rt, rt.global, c"Array", array)

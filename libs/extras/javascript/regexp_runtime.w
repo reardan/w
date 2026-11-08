@@ -3,12 +3,12 @@
 # toString, the flag/source accessors and a RegExp constructor.
 # Matching follows ECMA-262 2020 sec-regexp-regular-expression-objects with
 # Annex B; it is bounded by the interpreter's step budget. Unicode property
-# escapes match only properties whose pinned data ships with the runtime
-# (Any, ASCII, ASCII_Hex_Digit, ID_Start, ID_Continue); others are rejected by
-# runtime preflight. Case-insensitive matching uses regexp_case.w.
+# escapes match the Unicode 12.1 tables in regexp_property.w, the version the
+# parser validates names against. Case-insensitive matching uses regexp_case.w.
 import libs.extras.javascript.runtime
 import libs.extras.javascript.regexp_syntax
 import libs.extras.javascript.regexp_case
+import libs.extras.javascript.regexp_property
 
 
 const int JS_RX_OP_CHAR = 1
@@ -27,6 +27,10 @@ const int JS_RX_OP_MATCH = 13
 const int JS_RX_OP_RESET = 14
 const int JS_RX_OP_MARK = 15
 const int JS_RX_OP_CHECK = 16
+# Greedy repetition of one single-character atom: REPEAT min max next, then
+# the atom's CHAR/ANY/CLASS instruction. Backtracking gives characters back
+# one at a time from a single stack record.
+const int JS_RX_OP_REPEAT = 17
 
 # Runtime-resolved property set items (see js_regexp_runtime_property).
 const int JS_RX_RUNTIME_PROPERTY = 2097152
@@ -56,6 +60,12 @@ struct js_regexp_vm:
 	int multiline
 	int dot_all
 	int aborted
+	# Last property lookup: item, the interval [lo, hi] around the character
+	# with the same answer, and that answer.
+	int cache_item
+	int cache_lo
+	int cache_hi
+	int cache_has
 
 
 js_value* js_regexp_match_array(js_runtime* rt, js_regexp_vm* vm, js_text* input);
@@ -74,24 +84,19 @@ void js_regexp_program_free(void* raw):
 	free(program)
 
 
-# Property items with runtime data, or 0 when the property is outside the
-# runtime subset. Codes: 1 Any, 2 ASCII, 3 ASCII_Hex_Digit, 4 ID_Start,
-# 5 ID_Continue; JS_RX_NEGATED is preserved.
+# Resolves a parsed property item (validation table word index) to its
+# runtime form: JS_RX_RUNTIME_PROPERTY + kind * 4096 + data id, keeping
+# JS_RX_NEGATED. Every validated property has data (regexp_property.w).
 int js_regexp_runtime_property(int item):
 	int negated = item & JS_RX_NEGATED
 	int code = item - JS_RX_PROPERTY - negated
 	int kind = code / 4096
 	int index = code % 4096
-	if (kind != JS_RX_PROPERTY_BINARY): return 0
-	char* table = js_regexp_binary_names()
-	int result = 0
-	if (index == js_regexp_table_index(table, c"Any")): result = 1
-	if (index == js_regexp_table_index(table, c"ASCII")): result = 2
-	if (index == js_regexp_table_index(table, c"ASCII_Hex_Digit") || index == js_regexp_table_index(table, c"AHex")): result = 3
-	if (index == js_regexp_table_index(table, c"ID_Start") || index == js_regexp_table_index(table, c"IDS")): result = 4
-	if (index == js_regexp_table_index(table, c"ID_Continue") || index == js_regexp_table_index(table, c"IDC")): result = 5
-	if (result == 0): return 0
-	return JS_RX_RUNTIME_PROPERTY + result + negated
+	int id = 0
+	if (kind == JS_RX_PROPERTY_GC): id = js_regexp_property_gc_id(index)
+	else if (kind == JS_RX_PROPERTY_BINARY): id = js_regexp_property_binary_id(index)
+	else: id = js_regexp_property_script_id(index)
+	return JS_RX_RUNTIME_PROPERTY + kind * 4096 + id + negated
 
 
 int js_regexp_canonicalize(int ch, int unicode):
@@ -145,6 +150,15 @@ void js_regexp_patch_exit(js_regexp_program* program, js_regexp_node* node, int 
 
 
 void js_regexp_compile_quantifier(js_regexp_program* program, js_regexp_node* node, int dir):
+	int atom = node.children[0].kind
+	if (node.greedy && (atom == JS_RX_CHAR || atom == JS_RX_DOT || atom == JS_RX_CLASS)):
+		js_regexp_emit(program, JS_RX_OP_REPEAT)
+		js_regexp_emit(program, node.min)
+		js_regexp_emit(program, node.max)
+		int next = js_regexp_emit(program, 0)
+		js_regexp_compile(program, node.children[0], dir)
+		program.code[next] = program.code.length
+		return
 	int low = 0
 	int high = 0
 	js_regexp_capture_span(node.children[0], &low, &high)
@@ -207,10 +221,7 @@ void js_regexp_compile(js_regexp_program* program, js_regexp_node* node, int dir
 	else if (kind == JS_RX_CLASS):
 		for i in range(node.sets.length):
 			int item = node.sets[i]
-			if (item >= JS_RX_PROPERTY && item < JS_RX_RUNTIME_PROPERTY):
-				int resolved = js_regexp_runtime_property(item)
-				if (resolved == 0 && program.error == 0): program.error = c"Unicode property escape data outside the runtime subset"
-				node.sets[i] = resolved
+			if (item >= JS_RX_PROPERTY && item < JS_RX_RUNTIME_PROPERTY): node.sets[i] = js_regexp_runtime_property(item)
 		js_regexp_emit(program, JS_RX_OP_CLASS)
 		js_regexp_emit(program, program.classes.length)
 		program.classes.push(node)
@@ -318,30 +329,42 @@ int js_regexp_word_char(js_regexp_vm* vm, int ch):
 	return vm.unicode && vm.ignore && (ch == 383 || ch == 8490)
 
 
-int js_regexp_set_item(js_regexp_vm* vm, int item, int ch):
+# The dswDSW class escapes.
+int js_regexp_set_escape(js_regexp_vm* vm, int item, int ch):
 	if (item == 'd'): return ch >= '0' && ch <= '9'
 	if (item == 'D'): return (ch >= '0' && ch <= '9') == 0
 	if (item == 's'): return js_regexp_space(ch)
 	if (item == 'S'): return js_regexp_space(ch) == 0
 	if (item == 'w'): return js_regexp_word_char(vm, ch)
 	if (item == 'W'): return js_regexp_word_char(vm, ch) == 0
+	return 0
+
+
+int js_regexp_set_item(js_regexp_vm* vm, int item, int ch):
+	if (item < JS_RX_RUNTIME_PROPERTY): return js_regexp_set_escape(vm, item, ch)
 	int negated = (item & JS_RX_NEGATED) != 0
 	int code = item - JS_RX_RUNTIME_PROPERTY
 	if (negated): code = code - JS_RX_NEGATED
-	int has = 0
-	if (code == 1): has = 1
-	if (code == 2): has = ch < 128
-	if (code == 3): has = js_hex(ch) >= 0
-	if (code == 4): has = js_unicode_id_start(ch)
-	if (code == 5): has = js_unicode_id_continue(ch)
-	return has != negated
+	if (item != vm.cache_item || ch < vm.cache_lo || ch > vm.cache_hi):
+		int[2] span
+		span[0] = 0
+		span[1] = 1114111
+		vm.cache_has = js_regexp_property_has_span(code / 4096, code % 4096, ch, &span[0])
+		vm.cache_item = item
+		vm.cache_lo = span[0]
+		vm.cache_hi = span[1]
+	return vm.cache_has != negated
 
 
 int js_regexp_class_raw(js_regexp_vm* vm, js_regexp_node* node, int ch):
+	__w_list* raw_ranges = cast(__w_list*, node.ranges)
+	int* ranges = cast(int*, raw_ranges.items)
 	for i in range(node.ranges.length / 2):
-		if (ch >= node.ranges[i * 2] && ch <= node.ranges[i * 2 + 1]): return 1
-	for int item in node.sets:
-		if (js_regexp_set_item(vm, item, ch)): return 1
+		if (ch >= ranges[i * 2] && ch <= ranges[i * 2 + 1]): return 1
+	__w_list* raw_sets = cast(__w_list*, node.sets)
+	int* sets = cast(int*, raw_sets.items)
+	for i in range(node.sets.length):
+		if (js_regexp_set_item(vm, sets[i], ch)): return 1
 	return 0
 
 
@@ -429,9 +452,29 @@ int js_regexp_look(js_regexp_vm* vm, list[int] stack, int pc, int pos):
 	return ok
 
 
+int js_regexp_atom_dir(list[int] code, int pc):
+	if (code[pc] == JS_RX_OP_ANY): return code[pc + 1]
+	return code[pc + 2]
+
+
+# One CHAR/ANY/CLASS instruction at pc against the character at pos.
+int js_regexp_match_atom(js_regexp_vm* vm, int pc, int pos, int* width):
+	list[int] code = vm.program.code
+	int op = code[pc]
+	int ch = js_regexp_read(vm, pos, js_regexp_atom_dir(code, pc), width)
+	if (ch < 0): return 0
+	if (op == JS_RX_OP_CHAR):
+		if (vm.ignore): ch = js_regexp_canonicalize(ch, vm.unicode)
+		return ch == code[pc + 1]
+	if (op == JS_RX_OP_ANY): return vm.dot_all || js_regexp_line_terminator(ch) == 0
+	return js_regexp_class_match(vm, vm.program.classes[code[pc + 1]], ch)
+
+
 # Backtracking VM. Returns the end position or -1. Stack records are
 # (0, pc, pos) branches, (1, slot, old) capture and (2, reg, old) register
-# restores. Every instruction charges one interpreter step.
+# restores, and (4, boundary, dir) under (3, pc, pos) for a REPEAT that can
+# give characters back. Every instruction and REPEAT iteration charges one
+# interpreter step.
 int js_regexp_run(js_regexp_vm* vm, int pc, int pos):
 	list[int] code = vm.program.code
 	js_runtime* rt = vm.rt
@@ -450,20 +493,59 @@ int js_regexp_run(js_regexp_vm* vm, int pc, int pos):
 			result = pos
 			break
 		if (op == JS_RX_OP_CHAR || op == JS_RX_OP_ANY || op == JS_RX_OP_CLASS):
-			int dir = code[pc + 2]
-			if (op == JS_RX_OP_ANY): dir = code[pc + 1]
 			int width = 1
-			int ch = js_regexp_read(vm, pos, dir, &width)
-			if (ch < 0): fail = 1
-			else if (op == JS_RX_OP_CHAR):
-				if (vm.ignore): ch = js_regexp_canonicalize(ch, vm.unicode)
-				fail = ch != code[pc + 1]
-			else if (op == JS_RX_OP_ANY): fail = vm.dot_all == 0 && js_regexp_line_terminator(ch)
-			else: fail = js_regexp_class_match(vm, vm.program.classes[code[pc + 1]], ch) == 0
-			if (fail == 0):
-				pos = pos + width * dir
+			if (js_regexp_match_atom(vm, pc, pos, &width)):
+				pos = pos + width * js_regexp_atom_dir(code, pc)
 				pc = pc + 3
 				if (op == JS_RX_OP_ANY): pc = pc - 1
+			else: fail = 1
+		else if (op == JS_RX_OP_REPEAT):
+			int max = code[pc + 2]
+			int atom = pc + 4
+			int atom_op = code[atom]
+			int dir = js_regexp_atom_dir(code, atom)
+			int value = 0
+			if (atom_op != JS_RX_OP_ANY): value = code[atom + 1]
+			js_regexp_node* atom_class = 0
+			if (atom_op == JS_RX_OP_CLASS): atom_class = vm.program.classes[value]
+			# Hot loop: read the input units directly (bounds checked here).
+			__w_list* raw_input = cast(__w_list*, vm.input)
+			int* units = cast(int*, raw_input.items)
+			int length = vm.input.length
+			int count = 0
+			int boundary = pos
+			while ((max < 0 || count < max) && rt.remaining > 0):
+				rt.remaining = rt.remaining - 1
+				rt.completion.steps = rt.completion.steps + 1
+				int width = 1
+				int ch = -1
+				if (dir > 0 && pos < length):
+					ch = units[pos]
+					if (vm.unicode && ch >= 55296 && ch <= 56319 && pos + 1 < length && units[pos + 1] >= 56320 && units[pos + 1] <= 57343):
+						ch = 65536 + ((ch - 55296) << 10) + (units[pos + 1] - 56320)
+						width = 2
+				else if (dir < 0 && pos > 0):
+					ch = units[pos - 1]
+					if (vm.unicode && ch >= 56320 && ch <= 57343 && pos >= 2 && units[pos - 2] >= 55296 && units[pos - 2] <= 56319):
+						ch = 65536 + ((units[pos - 2] - 55296) << 10) + (ch - 56320)
+						width = 2
+				if (ch < 0): break
+				int ok = 0
+				if (atom_op == JS_RX_OP_CHAR):
+					if (vm.ignore): ch = js_regexp_canonicalize(ch, vm.unicode)
+					ok = ch == value
+				else if (atom_op == JS_RX_OP_ANY): ok = vm.dot_all || js_regexp_line_terminator(ch) == 0
+				else: ok = js_regexp_class_match(vm, atom_class, ch)
+				if (ok == 0): break
+				pos = pos + width * dir
+				count = count + 1
+				if (count == code[pc + 1]): boundary = pos
+			if (count < code[pc + 1]): fail = 1
+			else:
+				if (pos != boundary):
+					js_regexp_push(stack, 4, boundary, dir)
+					js_regexp_push(stack, 3, pc, pos)
+				pc = code[pc + 3]
 		else if (op == JS_RX_OP_BOL):
 			fail = pos != 0 && (vm.multiline == 0 || js_regexp_line_terminator(vm.input[pos - 1]) == 0)
 			pc = pc + 1
@@ -516,6 +598,22 @@ int js_regexp_run(js_regexp_vm* vm, int pc, int pos):
 			int kind = stack.pop()
 			if (kind == 1): vm.caps[a] = b
 			else if (kind == 2): vm.regs[a] = b
+			else if (kind == 3):
+				# Give back one character of a REPEAT; its (4, boundary, dir)
+				# record stays below until the minimum count is reached.
+				int boundary = stack[stack.length - 2]
+				int dir = stack[stack.length - 1]
+				int width = 1
+				js_regexp_read(vm, b, 0 - dir, &width)
+				if (width == 2 && (b - 2 * dir - boundary) * dir < 0): width = 1
+				pos = b - width * dir
+				if (pos == boundary):
+					for i in range(3): stack.pop()
+				else: js_regexp_push(stack, 3, a, pos)
+				pc = code[a + 3]
+				resumed = 1
+				break
+			else if (kind == 4): continue
 			else:
 				pc = a
 				pos = b
@@ -547,6 +645,7 @@ js_regexp_vm* js_regexp_vm_new(js_runtime* rt, js_regexp_program* program, list[
 	vm.multiline = (program.flags & JS_RX_MULTILINE) != 0
 	vm.dot_all = (program.flags & JS_RX_DOT_ALL) != 0
 	vm.aborted = 0
+	vm.cache_item = 0
 	return vm
 
 

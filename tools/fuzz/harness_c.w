@@ -2,10 +2,10 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_c.w -o bin/wfuzz_c_harness"
 # wbuild: step="rm -rf bin/wfuzz_c_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_c_harness --ext .h --dict tools/fuzz/dicts/c.dict --corpus tests --out bin/wfuzz_c_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_c dep=wfuzz
+# wbuild: target=wfuzz_c tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_c.w -o bin/wfuzz_c_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_c_harness --ext .h --dict tools/fuzz/dicts/c.dict --corpus tests --out bin/wfuzz_c" timeout=3600000
-# wbuild: target=wfuzz_c_import dep=wfuzz data=tools/fuzz/c_import_driver.wfuzz data=tests/ data=tools/fuzz/dicts/c.dict
+# wbuild: target=wfuzz_c_import tag=fuzz_campaign dep=wfuzz data=tools/fuzz/c_import_driver.wfuzz data=tests/ data=tools/fuzz/dicts/c.dict
 # wbuild: step="mkdir -p bin/wfuzz_c_import"
 # wbuild: step="cp tools/fuzz/c_import_driver.wfuzz bin/wfuzz_c_import/driver.w"
 # wbuild: step="bin/wv2 --coverage w.w -o bin/wfuzz_c_import/compiler_cov"

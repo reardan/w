@@ -890,3 +890,61 @@ Not done: an access-key mode where a lone Alt or F10 focuses the bar
 (the widget layer has no clock, §9.3), scrolling for menus taller than
 the window, and Mac-style rendering of shortcut labels (they read
 "Super+S", not "⌘S").
+
+## 13. Round 6: list box and grid (#913)
+
+Implemented 2026-11-08. The accessibility model and the AT-SPI and UIA
+bridges already carried multi-selection containers, header rows and
+cells, and cell spans (#863), but no widget published them. This round
+adds `listbox.w` and extends `table.w` (API-compatible).
+
+- **The list box keeps no selection of its own.** The caller passes one
+  flag byte per item every frame and reads them back when
+  `ui_listbox_end` returns 1, so an application whose selection lives
+  elsewhere (the Mermaid canvas) fills the flags from it and applies
+  them on a change. The widget owns only the cursor and the Shift
+  anchor. Clicks, keys and assistive requests are all applied in
+  `ui_listbox_begin`, before any item is published, so the snapshot and
+  the drawing never disagree with the flags within a frame.
+- **Desktop extended selection.** Click selects one; Ctrl (or Super)
+  toggles; Shift selects the range from the anchor and Ctrl+Shift adds
+  it. Arrows, Home/End and Page Up/Down select the cursor alone, Shift
+  extends from the anchor, Ctrl moves the cursor only, Space toggles
+  the cursor (Shift+Space selects the range), Ctrl+A selects all. An
+  assistive focus request moves the cursor, not the anchor, as Ctrl+arrows
+  do. A frame applies its arrows before its characters, because the
+  context queues NAV and CHAR events separately.
+- **Ids are reserved.** A list takes 1 + count ids, so a request that
+  names item i lands on item i, and the count changing (a node added in
+  the Mermaid source) shifts only the ids after it. The editor issues its
+  list after the source field for that reason.
+- **Every item is published**, not only the visible ones: a screen
+  reader counts the whole selection, and select-all arrives as one
+  request per item, which is why the context queues up to 256
+  `UI_ACCESS_SELECT` requests a frame.
+- **The focused item.** A focused container may name its cursor item as
+  the snapshot's focused node (`ctx.access_focus_owner` /
+  `access_focus_child`, set during the frame, published by `ui_end`).
+  The list box names its cursor and the table its selected row.
+- **Grid structure in `table.w`.** The header row is now marked
+  `UI_ACCESS_HEADER` rather than left to the bridges' heuristic;
+  `st.row_header_col` makes a column's cells row headers (drawn with a
+  rule on their trailing edge); `st.header_spans` lets a header cover
+  several columns; `ui_table_cell_span` covers rows and columns.
+  Cells are placed as HTML places them, the next column no span from
+  above still covers, tracked for the first 32 columns. Row backgrounds
+  skip the covered columns so a row does not paint over the cell
+  spanning into it. Virtualization keeps working: a row whose span
+  could reach the viewport (the tallest span seen so far) is still
+  issued, so a spanning cell scrolled half out of view still draws and
+  its continuation rows keep their columns.
+
+Tests: `graphics_ui_focus_test` (pointer, keyboard and assistive
+selection, the published list, the grid's headers, spans and placement,
+spans across scrolling), `graphics_ui_widgets_uia_test` (UI Automation
+under wine) and the opt-in `access_atspi_widgets_test` (at-spi2-core on
+Xvfb).
+
+Not done: type-ahead (jumping to an item by its first letter), drag
+selection across items, and keyboard cell navigation inside the grid
+(it still moves by rows).

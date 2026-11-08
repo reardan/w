@@ -5,8 +5,11 @@
 # multi-selection (Space, Ctrl+A, rubber band), C4 geometry, block cell
 # (single and multi-selection) and kanban card moves, inspector line
 # typing, and external-change detection with refused saves, Keep mine,
-# reload and deletion, and the clipboard (copy, cut and paste in the source,
-# and paste from another X client).
+# reload and deletion, the clipboard (copy, cut and paste in the source,
+# and paste from another X client), and selection (#910: double- and
+# triple-click in the source owning PRIMARY, middle-click pasting another
+# client's PRIMARY, and Ctrl+C on the canvas offering the diagram as
+# text/html and image/png beside its source).
 #
 # --wine runs the same workflows against the Windows build
 # (bin/wmermaid_editor_win.exe) under wine's X11 driver: the XTest events
@@ -114,10 +117,24 @@ void mu_click(float x, float y):
 	mu_button(1)
 	mu_button(0)
 void mu_save(): mu_key(c"s", c"Control_L")
+# The file's bytes, or 0 while a save is replacing it: under wine the
+# replacing rename can leave the path briefly absent.
+char* mu_read_maybe(char* path):
+	wstream* input = stream_open_read(path)
+	if (input == 0): return 0
+	string_builder* data = string_new()
+	io_result result
+	int status = stream_read_all_checked(input, data, &result)
+	stream_close(input)
+	if (status != IO_OK): return 0
+	return data.data
 void mu_wait(char* expected, int mode, char* message):
 	int deadline = process_monotonic_ms() + mu_patience
 	while (process_monotonic_ms() < deadline):
-		char* actual = ht_read(mu_path).data
+		char* actual = mu_read_maybe(mu_path)
+		if (actual == 0):
+			process_sleep_ms(40)
+			continue
 		if (mode == 0 && strcmp(actual, expected) == 0): return
 		if (mode == 1 && strcmp(actual, expected) != 0): return
 		if (mode == 2 && contains(actual, expected)): return
@@ -179,9 +196,15 @@ void mu_quit(process* editor):
 	mu_window = 0
 
 # Canvas focus with nothing selected: Ctrl+D, then a click on empty canvas.
+# The editor handles a frame's keys before its pointer press, so a Tab
+# queued in the same frame as the click would select a node the click
+# then clears; wait for the click's frame to pass first (wine at 150%
+# draws a frame in about 100 ms).
 void mu_canvas():
 	mu_key(c"d", c"Control_L")
 	mu_click(1250.0, 700.0)
+	if (mu_wine): process_sleep_ms(400)
+	else: process_sleep_ms(100)
 
 void mu_write_external(char* text):
 	ht_write(mu_path, text, strlen(text))
@@ -746,6 +769,137 @@ void mu_clipboard(char* work):
 	mu_wait(strjoin(source, pasted), 0, c"clipboard: pasting the editor's own cut failed")
 	mu_quit(editor)
 
+# ---- selection: PRIMARY, multi-click and rich copies (#910) --------------
+# One read of selection (CLIPBOARD or PRIMARY) as target; the bytes and
+# their count in length[0], or 0 when nobody answered in time.
+char* mu_sel_read(char* selection, char* target, int* length):
+	mu_clip_open()
+	int property = mu_atom(c"W_DRIVER_SEL")
+	XConvertSelection(mu_display, mu_atom(selection), mu_atom(target), property, mu_clip_window, 0)
+	XFlush(mu_display)
+	int deadline = process_monotonic_ms() + 2000
+	while (process_monotonic_ms() < deadline):
+		while (XPending(mu_display) > 0):
+			x_event event
+			XNextEvent(mu_display, &event)
+			if (event.event_type == SelectionNotify && event.selection.requestor == mu_clip_window):
+				length[0] = 0
+				if (event.selection.property == 0): return c""
+				int kind = 0
+				int32 format = 0
+				int count = 0
+				int after = 0
+				char* data = 0
+				XGetWindowProperty(mu_display, mu_clip_window, property, 0, 4194304, 1, 0, &kind, &format, &count, &after, &data)
+				# Format-32 items are C longs.
+				int bytes = count
+				if (format == 32): bytes = count * 8
+				char* out = cast(char*, malloc(bytes + 1))
+				for i in range(bytes): out[i] = data[i]
+				out[bytes] = 0
+				if (data != 0): XFree(cast(int, data))
+				length[0] = bytes
+				return out
+		process_sleep_ms(10)
+	return 0
+
+# Wait until the editor's PRIMARY holds expected.
+void mu_primary_expect(char* expected, char* message):
+	int deadline = process_monotonic_ms() + mu_patience
+	char* got = 0
+	int length = 0
+	while (process_monotonic_ms() < deadline):
+		got = mu_sel_read(c"PRIMARY", c"UTF8_STRING", &length)
+		if (got != 0 && strcmp(got, expected) == 0): return
+		process_sleep_ms(60)
+	if (got != 0): println(strjoin(c"PRIMARY holds: ", got))
+	ht_require(0, message)
+
+# Press button 1 `clicks` times in quick succession at x,y.
+void mu_multi_click(float x, float y, int clicks):
+	mu_move(x, y)
+	for i in range(clicks):
+		mu_button(1)
+		mu_button(0)
+		process_sleep_ms(40)
+
+# Own PRIMARY with text, middle-click at x,y and serve the editor's
+# request.
+void mu_primary_paste(char* text, float x, float y, char* message):
+	mu_clip_open()
+	int primary = 1
+	int utf8 = mu_atom(c"UTF8_STRING")
+	int targets = mu_atom(c"TARGETS")
+	XSetSelectionOwner(mu_display, primary, mu_clip_window, 0)
+	ht_require(XGetSelectionOwner(mu_display, primary) == mu_clip_window, c"driver could not own PRIMARY")
+	mu_move(x, y)
+	XTestFakeButtonEvent(mu_display, 2, 1, 0)
+	XTestFakeButtonEvent(mu_display, 2, 0, 0)
+	mu_flush()
+	int served = 0
+	int deadline = process_monotonic_ms() + mu_patience
+	while (served == 0 && process_monotonic_ms() < deadline):
+		while (XPending(mu_display) > 0):
+			x_event event
+			XNextEvent(mu_display, &event)
+			if (event.event_type != SelectionRequest): continue
+			x_selection_request_event* r = &event.selection_request
+			int property = r.property
+			if (property == 0): property = r.target
+			if (r.selection != primary): property = 0
+			else if (r.target == targets):
+				int[2] offered
+				offered[0] = targets
+				offered[1] = utf8
+				XChangeProperty(mu_display, r.requestor, property, 4, 32, 0, cast(char*, &offered[0]), 2)
+			else if (r.target == utf8 || r.target == 31):
+				XChangeProperty(mu_display, r.requestor, property, r.target, 8, 0, text, strlen(text))
+				served = 1
+			else: property = 0
+			mu_clip_reply(r, property)
+		process_sleep_ms(10)
+	ht_require(served, message)
+	process_sleep_ms(200)
+
+void mu_selection(char* work):
+	char* path = path_join(work, c"selection.mmd")
+	char* source = c"flowchart LR\nA[Café] --> B[Beta]\n"
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	# The source field: left pane at (12, 134), its text 362 px further
+	# down; the first line's middle is 18 px into the field.
+	float line_y = 514.0
+	mu_multi_click(44.0, line_y, 2)
+	mu_primary_expect(c"flowchart", c"selection: a double-click did not select and own the word")
+	mu_multi_click(44.0, line_y, 3)
+	mu_primary_expect(c"flowchart LR\n", c"selection: a triple-click did not select and own the line")
+	# Middle-click at the very start of the field pastes another client's
+	# PRIMARY there, leaving CLIPBOARD alone.
+	process_sleep_ms(600)
+	char* pasted = c"%% primary: ü\n"
+	mu_primary_paste(pasted, 19.0, line_y, c"selection: a middle-click did not ask for PRIMARY")
+	mu_save()
+	mu_wait(strjoin(pasted, source), 0, c"selection: the PRIMARY text was not pasted at the pointer")
+	# Ctrl+C on the canvas: the source as text, the SVG as HTML and a PNG.
+	mu_key(c"d", c"Control_L")
+	mu_key(c"c", c"Control_L")
+	mu_clip_expect(strjoin(pasted, source), c"selection: copying the diagram did not offer its source as text")
+	int length = 0
+	char* targets = mu_sel_read(c"CLIPBOARD", c"TARGETS", &length)
+	ht_require(targets != 0 && length >= 8, c"selection: no TARGETS for the diagram copy")
+	int has_png = 0
+	int has_html = 0
+	for i in range(length / 8):
+		int atom = load_int(targets + i * 8)
+		if (atom == mu_atom(c"image/png")): has_png = 1
+		if (atom == mu_atom(c"text/html")): has_html = 1
+	ht_require(has_png && has_html, c"selection: the diagram copy does not offer image/png and text/html")
+	char* html = mu_sel_read(c"CLIPBOARD", c"text/html", &length)
+	ht_require(html != 0 && starts_with(html, c"<svg"), c"selection: the HTML flavor is not the SVG")
+	char* png = mu_sel_read(c"CLIPBOARD", c"image/png", &length)
+	ht_require(png != 0 && length > 100 && (png[0] & 255) == 137 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G', c"selection: the image/png flavor is not a PNG")
+	mu_quit(editor)
+
 int mu_runs(char* name):
 	return (mu_only == 0) || (strcmp(mu_only, name) == 0)
 
@@ -777,6 +931,7 @@ int main(int argc, char** argv):
 	if (mu_runs(c"conflicts")): mu_conflicts(work)
 	if (mu_runs(c"files")): mu_files(work)
 	if (mu_runs(c"clipboard")): mu_clipboard(work)
+	if ((mu_wine == 0) && mu_runs(c"selection")): mu_selection(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()
 	if (mu_wine): println(c"Mermaid Windows editor workflow under wine passed")

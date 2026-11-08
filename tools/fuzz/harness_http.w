@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_http.w -o bin/wfuzz_http_harness"
 # wbuild: step="rm -rf bin/wfuzz_http_smoke"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_http_harness --ext .http --dict tools/fuzz/dicts/http.dict --corpus tools/fuzz/seeds/http --out bin/wfuzz_http_smoke --cases 0 --fail-on-findings" expect_stdout="crashes: 0" timeout=300000
-# wbuild: target=wfuzz_http dep=wfuzz
+# wbuild: target=wfuzz_http tag=fuzz_campaign dep=wfuzz
 # wbuild: step="bin/wv2 --coverage tools/fuzz/harness_http.w -o bin/wfuzz_http_harness"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_http_harness --ext .http --dict tools/fuzz/dicts/http.dict --corpus tools/fuzz/seeds/http --out bin/wfuzz_http" timeout=3600000
 # Fuzz harness for HTTP/1.1 message parsing (issue #842). The input is
