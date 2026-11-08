@@ -275,7 +275,10 @@ void js_restriction_walk(pg_ast_node* node, js_restriction_context* context, pg_
 		if (js_cst_is(op, c"KW_DELETE") && here.strict):
 			pg_ast_node* target = js_restriction_unwrap_target(node.children[1])
 			if (target.token != 0 && js_simple_target(target)): js_validation_error(diagnostics, node, c"delete of unqualified identifier in strict code")
-	for pg_ast_node* child in node.children: js_restriction_walk(child, &here, diagnostics)
+	for pg_ast_node* child in node.children:
+		# A method's computed key evaluates in the enclosing context.
+		if (js_cst_is(node, c"method") && js_cst_is(child, c"property_name")): js_restriction_walk(child, context, diagnostics)
+		else: js_restriction_walk(child, &here, diagnostics)
 
 
 void js_validate_restrictions(pg_parse_result* result, int module):

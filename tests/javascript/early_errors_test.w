@@ -217,3 +217,47 @@ void test_contextual_keywords_after_templates():
 	early(c"async function f() { x = `)`; await y; }", 0, 1)
 	early(c"async function f() { x = `${b})(`; await y; }", 0, 1)
 	early(c"function f() { x = `${a}`; await y; }", 0, 0)
+
+
+# A method's computed key evaluates in the enclosing function and class
+# context, not the method's own (checked against Node 22).
+void test_method_computed_keys():
+	early(c"function* g() { class C { [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static [yield 1]() {} } }", 0, 1)
+	early(c"function* g() { class C { static *[yield 1]() { yield 2; } } }", 0, 1)
+	early(c"function* g() { ({ [yield 1]() {} }); ({ get [yield]() {} }); ({ set [yield 1](v) {} }); }", 0, 1)
+	early(c"function* g() { ({ [yield]() { 'use strict'; } }); }", 0, 1)
+	early(c"async function f() { class C { [await 1]() {} } }", 0, 1)
+	early(c"async function f() { ({ [await x]() {} }); ({ async [await x]() { await y; } }); }", 0, 1)
+	early(c"function f() { class C { [new.target]() {} } }", 0, 1)
+	early(c"var o = { m() { return { [super.x]() {} }; } };", 0, 1)
+	# The method body keeps its own context; the key keeps the class's strictness.
+	early(c"function* g() { class C { [yield 1]() { yield 2; } } }", 0, 0)
+	early(c"function* g() { class C { [yield]() {} } }", 0, 1)
+	early(c"class C { [yield]() {} }", 0, 0)
+	early(c"class C { [new.target]() {} }", 0, 0)
+	early(c"class C { [super.x]() {} }", 0, 0)
+	early(c"function f() { ({ [yield 1]() {} }); }", 0, 0)
+
+
+# A non-generator method's parameters follow the method, not the enclosing
+# generator or async function: the predicate looks past the balanced list
+# for the method body's `{` (checked against Node 22).
+void test_method_parameter_defaults():
+	early(c"function* g() { ({ m(a = yield) {} }); }", 0, 1)
+	early(c"async function f() { ({ m(a = await) {} }); }", 0, 1)
+	early(c"function* g() { ({ [k](a = yield) {} }); ({ a: 1, m(a = yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = (yield), b = [yield], c = {d: yield}, e = `${yield}`) {} }); }", 0, 1)
+	early(c"function* g() { var o = { m(a = yield) { return yield; } }; }", 0, 1)
+	early(c"function* g() { ({ a: 1,\n m(a = yield)\n {} }); }", 0, 1)
+	early(c"function* g() { ({ m(yield) {} }); }", 0, 1)
+	early(c"function* g() { ({ m(a = yield 1) {} }); }", 0, 0)
+	early(c"function* g() { ({ *m(a = yield) {} }); }", 0, 0)
+	early(c"async function f() { ({ m(a = await 1) {} }); }", 0, 0)
+	early(c"async function f() { ({ async m(a = await 1) {} }); }", 0, 0)
+	early(c"function* g() { class C { m(a = yield) {} } }", 0, 0)
+	# Calls keep the enclosing context, including a call followed by a block.
+	early(c"function* g() { f(yield); f(yield 1, yield 2); f(a = yield 1); f(yield)(yield); new F(yield); }", 0, 1)
+	early(c"function* g() { if (f(yield)) {} class C extends f(yield) {} class D extends (yield) {} }", 0, 1)
+	early(c"function* g() { f(yield)\n{} }", 0, 1)
+	early(c"async function f() { g(await 1); g(await 1)(await 2); }", 0, 1)
