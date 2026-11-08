@@ -29,6 +29,7 @@ void ivopt_step(int offset);   /* compiler/ivopt.w (unit O7) */
 void ast_if_statement_tail();
 int ast_statement_block();
 int asm_block_misplaced();   /* grammar/asm_function.w */
+int inline_asm_statement();   /* grammar/inline_asm_stmt.w */
 
 
 # Table offset of the function whose body is being parsed; return
@@ -367,6 +368,12 @@ void statement_impl():
 		get_token()
 		statement()
 		terminates = flow_terminates
+
+	# asm_native: -- a native inline assembly statement. Checked here,
+	# before the expression-statement rules read 'asm_native' as an
+	# identifier and before labeled_statement treats it as a goto label
+	# (grammar/inline_asm_stmt.w).
+	else if (inline_asm_statement()): inline_hazard_count = inline_hazard_count + 1
 
 	# type-name identifier
 	else if (variable_declaration() >= 0): expect_or_newline(c";")
