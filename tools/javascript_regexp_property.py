@@ -256,15 +256,14 @@ def render() -> str:
     points: dict[str, set[int]] = {}
     for source in sorted({source for _, source in BINARY if source != "computed"}):
         points.update(binary_points(source, {name for name, s in BINARY if s == source}))
-    # ID_Start/ID_Continue reuse the identifier tables in unicode.w (generated
-    # from the same 12.1 DerivedCoreProperties); check they still agree.
+    # The lexer's identifier tables (unicode.w) must agree with these.
     for name, values in identifier_ranges().items():
         if values != points[name]:
             raise SystemExit(f"libs/extras/javascript/unicode_12_1.ranges {name} differs from {UCD}")
     points["Assigned"] = {cp for cp, value in gc_of.items() if value != leaves.index("Cn")}
     # Each stored property is base XOR ranges, with the base chosen (smallest
     # property first) to minimise the stored ranges; 255 means no base.
-    computed = {"Any", "ASCII", "Assigned", "ID_Start", "ID_Continue"}
+    computed = {"Any", "ASCII", "Assigned"}
     plan: dict[str, tuple[str | None, list[tuple[int, int]]]] = {}
     done = sorted(computed - {"Any", "ASCII"})
     for name in sorted(points.keys() - computed, key=lambda key: (len(ranges(points[key])), key)):
@@ -301,65 +300,84 @@ def render() -> str:
 # ({len(sc_part)} runs), Script_Extensions ({len(scx_part)} runs, {len(sets)} sets) and
 # {len(binary_order)} ES2020 binary properties ({len(bin_data) // 6} XOR ranges).
 import libs.extras.javascript.regexp_syntax
-import libs.extras.javascript.unicode
 
 
 int js_regexp_property_u24(char* data, int offset):
 \treturn (data[offset] & 255) | ((data[offset + 1] & 255) << 8) | ((data[offset + 2] & 255) << 16)
 
 
+# Every lookup narrows span[0]..span[1] to an interval around cp on which its
+# answer is constant, so callers can cache results for neighbouring input.
+void js_regexp_property_narrow(int* span, int lo, int hi):
+\tif (lo > span[0]): span[0] = lo
+\tif (hi < span[1]): span[1] = hi
+
+
 # Value of the run containing cp in a (start u24, value u8) partition.
-int js_regexp_property_run(char* data, int count, int cp):
+int js_regexp_property_run(char* data, int count, int cp, int* span):
 \tint lo = 0
 \tint hi = count - 1
 \twhile (lo < hi):
 \t\tint mid = hi - (hi - lo) / 2
 \t\tif (js_regexp_property_u24(data, mid * 4) <= cp): lo = mid
 \t\telse: hi = mid - 1
+\tint last = {MAX}
+\tif (lo + 1 < count): last = js_regexp_property_u24(data, lo * 4 + 4) - 1
+\tjs_regexp_property_narrow(span, js_regexp_property_u24(data, lo * 4), last)
 \treturn data[lo * 4 + 3] & 255
 
 
-int js_regexp_property_in_ranges(char* data, int first, int count, int cp):
+int js_regexp_property_in_ranges(char* data, int first, int count, int cp, int* span):
 \tint lo = first
 \tint hi = first + count
 \twhile (lo < hi):
 \t\tint mid = lo + (hi - lo) / 2
 \t\tif (cp < js_regexp_property_u24(data, mid * 6)): hi = mid
 \t\telse if (cp > js_regexp_property_u24(data, mid * 6 + 3)): lo = mid + 1
-\t\telse: return 1
+\t\telse:
+\t\t\tjs_regexp_property_narrow(span, js_regexp_property_u24(data, mid * 6), js_regexp_property_u24(data, mid * 6 + 3))
+\t\t\treturn 1
+\tint gap_lo = 0
+\tint gap_hi = {MAX}
+\tif (lo > first): gap_lo = js_regexp_property_u24(data, lo * 6 - 3) + 1
+\tif (lo < first + count): gap_hi = js_regexp_property_u24(data, lo * 6) - 1
+\tjs_regexp_property_narrow(span, gap_lo, gap_hi)
 \treturn 0
 
 
 # Runtime ids for the validation table words (1-based word index - 1).
 int js_regexp_property_gc_id(int index):
-\tchar* ids = c"{literal(gc_ids)}"\n\treturn ids[index - 1] & 255
+\tchar* ids = c"{literal(gc_ids)}"
+\treturn ids[index - 1] & 255
 
 
 int js_regexp_property_script_id(int index):
-\tchar* ids = c"{literal(sc_ids)}"\n\treturn ids[index - 1] & 255
+\tchar* ids = c"{literal(sc_ids)}"
+\treturn ids[index - 1] & 255
 
 
 int js_regexp_property_binary_id(int index):
-\tchar* ids = c"{literal(bin_ids)}"\n\treturn ids[index - 1] & 255
+\tchar* ids = c"{literal(bin_ids)}"
+\treturn ids[index - 1] & 255
 
 
-int js_regexp_property_gc(int cp):
-\treturn js_regexp_property_run(c"{literal(part_bytes(gc_part))}", {len(gc_part)}, cp)
+int js_regexp_property_gc_span(int cp, int* span):
+\treturn js_regexp_property_run(c"{literal(part_bytes(gc_part))}", {len(gc_part)}, cp, span)
 
 
-int js_regexp_property_script(int cp):
-\treturn js_regexp_property_run(c"{literal(part_bytes(sc_part))}", {len(sc_part)}, cp)
+int js_regexp_property_script_span(int cp, int* span):
+\treturn js_regexp_property_run(c"{literal(part_bytes(sc_part))}", {len(sc_part)}, cp, span)
 
 
-int js_regexp_property_has_gc(int id, int cp):
+int js_regexp_property_has_gc(int id, int cp, int* span):
 \tchar* masks = c"{literal(mask_data)}"
 \tint mask = (masks[id * 4] & 255) | ((masks[id * 4 + 1] & 255) << 8) | ((masks[id * 4 + 2] & 255) << 16) | ((masks[id * 4 + 3] & 255) << 24)
-\treturn (mask >> js_regexp_property_gc(cp)) & 1
+\treturn (mask >> js_regexp_property_gc_span(cp, span)) & 1
 
 
-int js_regexp_property_has_scx(int id, int cp):
-\tint which = js_regexp_property_run(c"{literal(part_bytes(scx_part))}", {len(scx_part)}, cp)
-\tif (which == 0): return js_regexp_property_script(cp) == id
+int js_regexp_property_has_scx(int id, int cp, int* span):
+\tint which = js_regexp_property_run(c"{literal(part_bytes(scx_part))}", {len(scx_part)}, cp, span)
+\tif (which == 0): return js_regexp_property_script_span(cp, span) == id
 \tchar* offsets = c"{literal(bytes(set_offsets))}"
 \tchar* members = c"{literal(bytes(set_data))}"
 \tint at = (offsets[(which - 1) * 2] & 255) | ((offsets[(which - 1) * 2 + 1] & 255) << 8)
@@ -372,26 +390,52 @@ char* js_regexp_property_binary_data():
 \treturn c"{literal(bytes(bin_data))}"
 
 
-int js_regexp_property_has_binary(int id, int cp):
+int js_regexp_property_has_binary(int id, int cp, int* span):
 \tif (id == {computed_ids["Any"]}): return 1
-\tif (id == {computed_ids["ASCII"]}): return cp < 128
-\tif (id == {computed_ids["Assigned"]}): return js_regexp_property_gc(cp) != {leaves.index("Cn")}
-\tif (id == {computed_ids["ID_Start"]}): return js_unicode_id_start(cp)
-\tif (id == {computed_ids["ID_Continue"]}): return js_unicode_id_continue(cp)
+\tif (id == {computed_ids["ASCII"]}):
+\t\tif (cp < 128):
+\t\t\tjs_regexp_property_narrow(span, 0, 127)
+\t\t\treturn 1
+\t\tjs_regexp_property_narrow(span, 128, {MAX})
+\t\treturn 0
+\tif (id == {computed_ids["Assigned"]}): return js_regexp_property_gc_span(cp, span) != {leaves.index("Cn")}
 \t# Records: first range u24, range count u24, base property (255: none).
 \tchar* index = c"{literal(bytes(bin_index))}"
-\tint has = js_regexp_property_in_ranges(js_regexp_property_binary_data(), js_regexp_property_u24(index, id * 7), js_regexp_property_u24(index, id * 7 + 3), cp)
+\tint has = js_regexp_property_in_ranges(js_regexp_property_binary_data(), js_regexp_property_u24(index, id * 7), js_regexp_property_u24(index, id * 7 + 3), cp, span)
 \tint base = index[id * 7 + 6] & 255
 \tif (base == 255): return has
-\treturn has != js_regexp_property_has_binary(base, cp)
+\treturn has != js_regexp_property_has_binary(base, cp, span)
 
 
 # kind is JS_RX_PROPERTY_BINARY/GC/SCRIPT/SCX and id a runtime id above.
+# span (two ints, preset to 0 and 0x10FFFF) receives an interval around cp
+# with the same answer.
+int js_regexp_property_has_span(int kind, int id, int cp, int* span):
+\tif (kind == JS_RX_PROPERTY_GC): return js_regexp_property_has_gc(id, cp, span)
+\tif (kind == JS_RX_PROPERTY_SCRIPT): return js_regexp_property_script_span(cp, span) == id
+\tif (kind == JS_RX_PROPERTY_SCX): return js_regexp_property_has_scx(id, cp, span)
+\treturn js_regexp_property_has_binary(id, cp, span)
+
+
 int js_regexp_property_has(int kind, int id, int cp):
-\tif (kind == JS_RX_PROPERTY_GC): return js_regexp_property_has_gc(id, cp)
-\tif (kind == JS_RX_PROPERTY_SCRIPT): return js_regexp_property_script(cp) == id
-\tif (kind == JS_RX_PROPERTY_SCX): return js_regexp_property_has_scx(id, cp)
-\treturn js_regexp_property_has_binary(id, cp)
+\tint[2] span
+\tspan[0] = 0
+\tspan[1] = {MAX}
+\treturn js_regexp_property_has_span(kind, id, cp, &span[0])
+
+
+int js_regexp_property_gc(int cp):
+\tint[2] span
+\tspan[0] = 0
+\tspan[1] = {MAX}
+\treturn js_regexp_property_gc_span(cp, &span[0])
+
+
+int js_regexp_property_script(int cp):
+\tint[2] span
+\tspan[0] = 0
+\tspan[1] = {MAX}
+\treturn js_regexp_property_script_span(cp, &span[0])
 '''
 
 

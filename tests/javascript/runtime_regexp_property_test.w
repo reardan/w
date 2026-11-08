@@ -92,6 +92,16 @@ void test_forms():
 	js_runtime_free(rt)
 
 
+void test_repeat():
+	js_runtime* rt = js_runtime_new()
+	# Greedy single-character repetition (JS_RX_OP_REPEAT) gives characters back.
+	property_true(rt, c"/a+ab/.exec('aaab')[0] === 'aaab' && /x*y/.exec('xxz xy')[0] === 'xy' && /[a-z]{2,3}c/.exec('abcd')[0] === 'abc' && /a{2}/.exec('aaa')[0] === 'aa' && /^(\\w+)\\s(\\w+)$/.exec('ab cd')[2] === 'cd';")
+	property_true(rt, c"/\\u{1F600}+\\u{1F600}/u.test('\\u{1F600}\\u{1F600}') && !/.+\\udc00/u.test('a\\ud83d\\udc00') && /.+\\udc00/.test('a\\ud83d\\udc00') && /^.{2}$/u.test('\\u{1F600}a') && !/^.{3}$/u.test('\\u{1F600}a');")
+	property_true(rt, c"/(?<=a+)b/.exec('aaab').index === 3 && /(?<=(\\d+))x/.exec('123x')[1] === '123' && /(?<=^\\d{1,2})x/.test('12x') && !/(?<=^\\d{1,2})x/.test('123x') && /(?<=\\u{1F600}+)x/u.exec('\\u{1F600}\\u{1F600}x').index === 4;")
+	property_true(rt, c"/A+b/i.exec('aAab')[0] === 'aAab' && /^\\p{L}*\\p{Lu}$/u.test('abC') && /^\\P{Nd}{0,2}\\d/u.exec('ab1')[0] === 'ab1' && /^[^x]*?x/.exec('abx')[0] === 'abx' && /a{0}/.exec('a')[0] === '';")
+	js_runtime_free(rt)
+
+
 int dump_has(int kind, int id, int cp):
 	return js_regexp_property_has(kind, id, cp)
 
@@ -156,6 +166,7 @@ int main(int argc, int argv):
 	test_scripts()
 	test_binary()
 	test_forms()
+	test_repeat()
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_regexp_property_test: OK")
 	return 0

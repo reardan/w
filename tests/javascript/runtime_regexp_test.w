@@ -82,7 +82,7 @@ void test_regexp_limits():
 	assert_equal(6, regexp_status(rt, c"new RegExp('a', 1);", 1000))
 	assert_equal(6, regexp_status(rt, c"const r = /a/g; r.lastIndex = 'x'; r.test('a');", 1000))
 	assert_equal(6, regexp_status(rt, c"/a/.test({});", 1000))
-	assert_equal(6, regexp_status(rt, c"new RegExp('a{0,300000}');", 100000))
+	assert_equal(6, regexp_status(rt, c"new RegExp('(?:ab){0,300000}');", 100000))
 	# Catastrophic backtracking stops at the step budget.
 	assert_equal(5, regexp_status(rt, c"/(a*)*b/.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');", 50000))
 	assert_equal(5, regexp_status(rt, c"/(?=(a*)*b)/.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');", 50000))
