@@ -391,6 +391,9 @@ int main(int argc, int argv):
 					wm_message = count.data
 					free(count)
 					status = wm_message
+				else if (key == 'c' && ctx.focus == WM_CANVAS_FOCUS):
+					if (mm_canvas_copy(&ctx, e)): status = c"Copied the diagram as an image, SVG and Mermaid source."
+					else: status = c"Fix the syntax error before copying."
 				else if (key == 'g' && ctx.focus == WM_CANVAS_FOCUS && canvas.node >= 0):
 					if (mm_editor_ungroup(e, canvas.node)):
 						mm_canvas_reset(&canvas, e)
@@ -498,6 +501,10 @@ int main(int argc, int argv):
 				else: status = c"SVG export failed."
 				free(svg)
 				string_free(output)
+		ui_same_line(&ctx)
+		if (ui_button(&ctx, c"Copy")):
+			if (mm_canvas_copy(&ctx, e)): status = c"Copied the diagram as an image, SVG and Mermaid source."
+			else: status = c"Fix the syntax error before copying."
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Close")): closing = 1
 		ui_same_line(&ctx)

@@ -37,6 +37,10 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.input.scroll_at_x = 0
 	ctx.input.scroll_at_y = 0
 	ctx.input.mods = 0
+	ctx.input.clicks = 1
+	ctx.input.mouse_middle_pressed = 0
+	ctx.input.middle_x = 0
+	ctx.input.middle_y = 0
 	ctx.hot = 0
 	ctx.active = 0
 	ctx.focus = 0
@@ -77,10 +81,16 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.access_focus_child = 0
 	ctx.clip_out = 0
 	ctx.clip_out_ready = 0
+	ctx.clip_out_html = 0
+	ctx.clip_out_png = 0
+	ctx.clip_out_png_length = 0
 	ctx.clip_paste_id = 0
 	ctx.clip_paste_sent = 0
 	ctx.clip_paste_frames = 0
+	ctx.clip_paste_primary = 0
 	ctx.clip_in = 0
+	ctx.primary_out = 0
+	ctx.primary_out_ready = 0
 	ctx.clip_window = 0
 
 
@@ -101,13 +111,55 @@ int ui_clipboard_command(int ch, int mods):
 	return 0
 
 
+char* ui_clipboard_bytes(char* text, int length):
+	char* out = cast(char*, malloc(length + 1))
+	for i in range(length): out[i] = text[i]
+	out[length] = 0
+	return out
+
+
+void ui_clipboard_drop_rich(ui_context* ctx):
+	if (ctx.clip_out_html != 0): free(ctx.clip_out_html)
+	if (ctx.clip_out_png != 0): free(ctx.clip_out_png)
+	ctx.clip_out_html = 0
+	ctx.clip_out_png = 0
+	ctx.clip_out_png_length = 0
+
+
 # Queue text[0..length) for the platform clipboard (copy and cut).
 void ui_clipboard_copy(ui_context* ctx, char* text, int length):
 	if (ctx.clip_out != 0): free(ctx.clip_out)
-	ctx.clip_out = cast(char*, malloc(length + 1))
-	for i in range(length): ctx.clip_out[i] = text[i]
-	ctx.clip_out[length] = 0
+	ui_clipboard_drop_rich(ctx)
+	ctx.clip_out = ui_clipboard_bytes(text, length)
 	ctx.clip_out_ready = 1
+
+
+# Queue a copy that offers HTML and a PNG image (either may be 0)
+# alongside the plain text, for applications that paste them: a
+# diagram copied as a picture, say. Pasting back into a W text field
+# still takes the text.
+void ui_clipboard_copy_rich(ui_context* ctx, char* text, char* html, char* png, int png_length):
+	ui_clipboard_copy(ctx, text, strlen(text))
+	if (html != 0): ctx.clip_out_html = ui_clipboard_bytes(html, strlen(html))
+	if ((png != 0) && (png_length > 0)):
+		ctx.clip_out_png = ui_clipboard_bytes(png, png_length)
+		ctx.clip_out_png_length = png_length
+
+
+# Publish text[0..length) as the PRIMARY selection: text widgets call it
+# whenever their selection changes to a non-empty range.
+void ui_primary_publish(ui_context* ctx, char* text, int length):
+	if (ctx.primary_out != 0): free(ctx.primary_out)
+	ctx.primary_out = ui_clipboard_bytes(text, length)
+	ctx.primary_out_ready = 1
+
+
+# The selection a widget published since the last call (owned by ctx),
+# or 0: the PRIMARY counterpart of ui_clipboard_copied.
+char* ui_primary_published(ui_context* ctx):
+	if (ctx.primary_out_ready == 0): return 0
+	ctx.primary_out_ready = 0
+	return ctx.primary_out
 
 
 # The text a widget copied since the last call (owned by ctx), or 0.
@@ -127,6 +179,14 @@ void ui_clipboard_paste_request(ui_context* ctx, int id):
 	ctx.clip_paste_id = id
 	ctx.clip_paste_sent = 0
 	ctx.clip_paste_frames = 0
+	ctx.clip_paste_primary = 0
+
+
+# Widget id starts waiting for the PRIMARY selection (middle-click). The
+# text arrives through ui_clipboard_paste_take like a clipboard paste.
+void ui_primary_paste_request(ui_context* ctx, int id):
+	ui_clipboard_paste_request(ctx, id)
+	ctx.clip_paste_primary = 1
 
 
 # Hand the waiting widget its paste text (copied). The pump calls it
@@ -164,16 +224,23 @@ const int ui_clipboard_paste_patience = 600
 # lost focus is abandoned.
 void ui_clipboard_pump(ui_context* ctx, gfx_window* win):
 	char* copied = ui_clipboard_copied(ctx)
-	if (copied != 0): gfx_clipboard_set(win, copied)
+	if (copied != 0):
+		if ((ctx.clip_out_html != 0) || (ctx.clip_out_png != 0)): gfx_clipboard_set_rich(win, copied, ctx.clip_out_html, ctx.clip_out_png, ctx.clip_out_png_length)
+		else: gfx_clipboard_set(win, copied)
+	char* selected = ui_primary_published(ctx)
+	if (selected != 0): gfx_primary_set(win, selected)
 	if (ctx.clip_paste_id == 0): return
 	if (ctx.clip_paste_id != ctx.focus):
 		ctx.clip_paste_id = 0
 		return
 	if (ctx.clip_in != 0): return
 	if (ctx.clip_paste_sent == 0):
-		gfx_clipboard_request(win)
+		if (ctx.clip_paste_primary): gfx_primary_request(win)
+		else: gfx_clipboard_request(win)
 		ctx.clip_paste_sent = 1
-	char* text = gfx_clipboard_take(win)
+	char* text = 0
+	if (ctx.clip_paste_primary): text = gfx_primary_take(win)
+	else: text = gfx_clipboard_take(win)
 	if (text != 0):
 		ctx.clip_in = text
 		return
@@ -192,6 +259,13 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.mouse_pressed = 1
 		ctx.input.press_x = e.x
 		ctx.input.press_y = e.y
+		ctx.input.mouse_x = e.x
+		ctx.input.mouse_y = e.y
+		ctx.input.clicks = gfx_event_clicks(e.mods)
+	else if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 2)):
+		ctx.input.mouse_middle_pressed = 1
+		ctx.input.middle_x = e.x
+		ctx.input.middle_y = e.y
 		ctx.input.mouse_x = e.x
 		ctx.input.mouse_y = e.y
 	else if ((e.kind == GFX_EVENT_MOUSE_DOWN) && (e.code == 3)):
@@ -220,6 +294,7 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.mouse_pressed = 0
 		ctx.input.mouse_released = 0
 		ctx.input.mouse_right_pressed = 0
+		ctx.input.mouse_middle_pressed = 0
 		ctx.active = 0
 	else if (e.kind == GFX_EVENT_PREEDIT_BEGIN):
 		ctx.preedit_length = 0
@@ -253,7 +328,8 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 			ctx.navs[ctx.nav_count] = e.code
 			ctx.nav_mods[ctx.nav_count] = e.mods
 			ctx.nav_count = ctx.nav_count + 1
-	ctx.input.mods = e.mods
+	# The click count rides above the modifier bits; widgets see keys only.
+	ctx.input.mods = e.mods & gfx_mod_keys
 
 
 # Move keyboard focus one stop along the previous frame's focus order,
@@ -410,6 +486,7 @@ void ui_end(ui_context* ctx):
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
 	ctx.input.mouse_right_pressed = 0
+	ctx.input.mouse_middle_pressed = 0
 	ctx.input.scroll_x = 0
 	ctx.input.scroll_y = 0
 	ctx.input.scroll_pixels_y = 0

@@ -1721,3 +1721,14 @@ follows. Direction: when a declaration's identifier is a reserved type name
 (`map`, `set`, `list`, `byte`), say so at that declaration ("'map' is a
 built-in type and cannot name a variable"), as CLAUDE.md already warns for
 `byte`.
+
+## `&int32_field` passed as `int*` compiles silently (2026-11-08, #910)
+
+`ui_word_bounds(text, n, at, &st.unit_start, &st.unit_end)` with
+`int32 unit_start, unit_end` fields and `int* start, int* end`
+parameters was clean under `check`, `check --lint` and `--strict`, but on
+x64 each 8-byte store spilled into the next field, and the last one into
+whatever the caller had next on the stack: the headless test crashed later
+in an unrelated call with a mangled `ctx` pointer. Direction: warn when a
+pointer to a narrower integer is passed (or assigned) where a pointer to a
+wider one is expected; the widths are known at the call site.
