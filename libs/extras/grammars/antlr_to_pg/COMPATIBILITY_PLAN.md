@@ -9,8 +9,10 @@ retain their ordered-choice behavior.
 This plan follows merged PRs #689, #690, and #692. It replaces the earlier
 increment plans as the forward work plan; their implementation histories remain
 unchanged. The architecture gates and implementation waves are complete within the bounded
-contracts below. The final pinned sweep reaches 267/291 exact compilations and
-218/291 exact strict translations, with remaining cases recorded in
+contracts below. The pinned sweep reached 267/291 exact compilations and 218/291
+exact strict translations at the end of this plan; left-recursion lowering
+(#679, [LEFT_RECURSION_PLAN.md](LEFT_RECURSION_PLAN.md)) now reaches 287/291 and
+232/291, with remaining cases recorded in
 [SWEEP_RESULTS.md](SWEEP_RESULTS.md). The original plan below is retained to
 explain sequencing, acceptance criteria, and deliberately deferred capabilities.
 

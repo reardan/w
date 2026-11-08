@@ -1,0 +1,7416 @@
+{
+ "Adjacent/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "AtomContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Adjacent/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Adjacent/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Adjacent/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "ComplexSuffix/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "CallContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "ComplexSuffix/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "CallContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "ComplexSuffix/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "("
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "CallContext",
+       "rule": "expr"
+      },
+      {
+       "token": ")"
+      }
+     ],
+     "context": "CallContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "ComplexSuffix/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "GroupedOwner/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "AtomContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GroupedOwner/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "["
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": ","
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "]"
+      }
+     ],
+     "context": "IndexContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GroupedOwner/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "["
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "["
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "]"
+        }
+       ],
+       "context": "IndexContext",
+       "rule": "expr"
+      },
+      {
+       "token": "]"
+      }
+     ],
+     "context": "IndexContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GroupedOwner/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "GuardedPrimary/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GuardedPrimary/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "if"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "then"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "end"
+        }
+       ],
+       "context": "GuardContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GuardedPrimary/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "if"
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "then"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      },
+      {
+       "token": "end"
+      }
+     ],
+     "context": "GuardContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "GuardedPrimary/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "MisplacedAssoc/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "="
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AssignContext",
+       "rule": "expr"
+      },
+      {
+       "token": "="
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AssignContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NestedAssoc/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "="
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AssignContext",
+       "rule": "expr"
+      },
+      {
+       "token": "="
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AssignContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NestedAssoc/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ":="
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AssignContext",
+       "rule": "expr"
+      },
+      {
+       "token": "="
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AssignContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NestedAssoc/03": {
+  "accepted": false,
+  "tree": null
+ },
+ "NullableList/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [],
+     "context": "EmptyContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "context": "EmptyContext",
+       "rule": "list"
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "context": "EmptyContext",
+         "rule": "list"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "ItemContext",
+         "rule": "item"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "list"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "context": "EmptyContext",
+       "rule": "list"
+      },
+      {
+       "token": ","
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "MoreContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "context": "EmptyContext",
+         "rule": "list"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "ItemContext",
+         "rule": "item"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "list"
+      },
+      {
+       "token": ";"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [],
+             "context": "EmptyContext",
+             "rule": "list"
+            },
+            {
+             "children": [
+              {
+               "token": "a"
+              }
+             ],
+             "context": "ItemContext",
+             "rule": "item"
+            }
+           ],
+           "context": "JoinContext",
+           "rule": "list"
+          },
+          {
+           "token": ","
+          },
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "ItemContext",
+           "rule": "item"
+          }
+         ],
+         "context": "MoreContext",
+         "rule": "list"
+        },
+        {
+         "token": ";"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "ItemContext",
+         "rule": "item"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "list"
+      },
+      {
+       "children": [
+        {
+         "token": "d"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "context": "EmptyContext",
+       "rule": "list"
+      },
+      {
+       "token": "!"
+      }
+     ],
+     "context": "BangContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [],
+             "context": "EmptyContext",
+             "rule": "list"
+            },
+            {
+             "children": [
+              {
+               "token": "a"
+              }
+             ],
+             "context": "ItemContext",
+             "rule": "item"
+            }
+           ],
+           "context": "JoinContext",
+           "rule": "list"
+          },
+          {
+           "token": "!"
+          }
+         ],
+         "context": "BangContext",
+         "rule": "list"
+        },
+        {
+         "token": "!"
+        }
+       ],
+       "context": "BangContext",
+       "rule": "list"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "context": "EmptyContext",
+         "rule": "list"
+        },
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [],
+               "context": "EmptyContext",
+               "rule": "list"
+              },
+              {
+               "children": [
+                {
+                 "token": "a"
+                }
+               ],
+               "context": "ItemContext",
+               "rule": "item"
+              }
+             ],
+             "context": "JoinContext",
+             "rule": "list"
+            },
+            {
+             "children": [
+              {
+               "token": "b"
+              }
+             ],
+             "context": "ItemContext",
+             "rule": "item"
+            }
+           ],
+           "context": "JoinContext",
+           "rule": "list"
+          },
+          {
+           "token": ")"
+          }
+         ],
+         "context": "ItemContext",
+         "rule": "item"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "list"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "context": "EmptyContext",
+         "rule": "list"
+        },
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [],
+           "context": "EmptyContext",
+           "rule": "list"
+          },
+          {
+           "token": ")"
+          }
+         ],
+         "context": "ItemContext",
+         "rule": "item"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "list"
+      },
+      {
+       "token": ","
+      },
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "ItemContext",
+       "rule": "item"
+      }
+     ],
+     "context": "MoreContext",
+     "rule": "list"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullableList/11": {
+  "accepted": false,
+  "tree": null
+ },
+ "NullableList/12": {
+  "accepted": false,
+  "tree": null
+ },
+ "NullableList/13": {
+  "accepted": false,
+  "tree": null
+ },
+ "NullableList/14": {
+  "accepted": false,
+  "tree": null
+ },
+ "NullablePrimary/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [],
+     "context": "BaseContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullablePrimary/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "BaseContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullablePrimary/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "context": "BaseContext",
+       "rule": "expr"
+      },
+      {
+       "token": ","
+      },
+      {
+       "token": "a"
+      }
+     ],
+     "context": "MoreContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullablePrimary/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [],
+         "context": "BaseContext",
+         "rule": "expr"
+        },
+        {
+         "token": ","
+        },
+        {
+         "token": "a"
+        }
+       ],
+       "context": "MoreContext",
+       "rule": "expr"
+      },
+      {
+       "token": ","
+      },
+      {
+       "token": "b"
+      }
+     ],
+     "context": "MoreContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "NullablePrimary/05": {
+  "accepted": false,
+  "tree": null
+ },
+ "OptionalSeparator/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "AtomContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "OptionalSeparator/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "OptionalSeparator/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ","
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "JoinContext",
+       "rule": "expr"
+      },
+      {
+       "token": ","
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "JoinContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "OptionalSeparator/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "RightAssoc/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "^"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "^"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "PowerContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "PowerContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "RightAssoc/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "-"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "^"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "PowerContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "NegateContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "RightAssoc/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "^"
+      },
+      {
+       "children": [
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "NegateContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "PowerContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "RightAssoc/04": {
+  "accepted": false,
+  "tree": null
+ },
+ "Shapes/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "AtomContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "."
+        },
+        {
+         "token": "b"
+        }
+       ],
+       "context": "MemberContext",
+       "rule": "expr"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "c"
+      }
+     ],
+     "context": "MemberContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ","
+        },
+        {
+         "children": [
+          {
+           "token": "y"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "CallContext",
+       "rule": "expr"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "z"
+      }
+     ],
+     "context": "MemberContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "y"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "f"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "token": "y"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "f"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "NegateContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "NegateContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "-"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "."
+        },
+        {
+         "token": "b"
+        }
+       ],
+       "context": "MemberContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "NegateContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "^"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "^"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "PowerContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "PowerContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "NegateContext",
+       "rule": "expr"
+      },
+      {
+       "token": "^"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "PowerContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/11": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "*"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          },
+          {
+           "token": "^"
+          },
+          {
+           "children": [
+            {
+             "token": "c"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "PowerContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "MulContext",
+       "rule": "expr"
+      },
+      {
+       "token": "*"
+      },
+      {
+       "children": [
+        {
+         "token": "d"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "MulContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          },
+          {
+           "token": "*"
+          },
+          {
+           "children": [
+            {
+             "token": "c"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "MulContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "token": "d"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/13": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "?"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ":"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "TernaryContext",
+       "rule": "expr"
+      },
+      {
+       "token": "?"
+      },
+      {
+       "children": [
+        {
+         "token": "d"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": ":"
+      },
+      {
+       "children": [
+        {
+         "token": "e"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "TernaryContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/14": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "?"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "?"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": ":"
+        },
+        {
+         "children": [
+          {
+           "token": "d"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "TernaryContext",
+       "rule": "expr"
+      },
+      {
+       "token": ":"
+      },
+      {
+       "children": [
+        {
+         "token": "e"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "TernaryContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/15": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "not"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "NotContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/16": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "not"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "NotContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/17": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "return"
+      }
+     ],
+     "context": "ReturnContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/18": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "return"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "AddContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ReturnContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/19": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "return"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ReturnContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/20": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [
+            {
+             "token": "return"
+            },
+            {
+             "children": [
+              {
+               "token": "a"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "expr"
+            }
+           ],
+           "context": "ReturnContext",
+           "rule": "expr"
+          },
+          {
+           "token": ")"
+          }
+         ],
+         "context": "ParensContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/21": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "+"
+      },
+      {
+       "children": [
+        {
+         "token": "return"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ReturnContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "AddContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/22": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "a"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          },
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "ApplyContext",
+         "rule": "expr"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "ParensContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/23": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "token": "."
+        },
+        {
+         "token": "c"
+        }
+       ],
+       "context": "MemberContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/24": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "expr"
+          },
+          {
+           "token": ")"
+          }
+         ],
+         "context": "ParensContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ApplyContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/25": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      },
+      {
+       "token": "?"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ApplyContext",
+       "rule": "expr"
+      },
+      {
+       "token": ":"
+      },
+      {
+       "children": [
+        {
+         "token": "d"
+        }
+       ],
+       "context": "AtomContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "TernaryContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "StartContext",
+   "rule": "start"
+  }
+ },
+ "Shapes/26": {
+  "accepted": false,
+  "tree": null
+ },
+ "Shapes/27": {
+  "accepted": false,
+  "tree": null
+ },
+ "Shapes/28": {
+  "accepted": false,
+  "tree": null
+ },
+ "Shapes/29": {
+  "accepted": false,
+  "tree": null
+ },
+ "Shapes/30": {
+  "accepted": false,
+  "tree": null
+ },
+ "cayenne/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "f"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "f"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "x"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "y"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "f"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "x"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "token": "."
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "l"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "LblidContext",
+       "rule": "lblid"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "f"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "token": "."
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "l"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "LblidContext",
+         "rule": "lblid"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "\\"
+        },
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "x"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "VaridContext",
+         "rule": "varid"
+        },
+        {
+         "token": "::"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "t"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "Type_Context",
+         "rule": "type_"
+        },
+        {
+         "token": ")"
+        },
+        {
+         "token": "->"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "f"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "x"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "VaridContext",
+           "rule": "varid"
+          },
+          {
+           "token": "::"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "t"
+                }
+               ],
+               "context": "Id_Context",
+               "rule": "id_"
+              }
+             ],
+             "context": "ExprContext",
+             "rule": "expr"
+            }
+           ],
+           "context": "Type_Context",
+           "rule": "type_"
+          },
+          {
+           "token": ")"
+          },
+          {
+           "token": "->"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "f"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "x"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "y"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "case"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "VaridContext",
+       "rule": "varid"
+      },
+      {
+       "token": "of"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "y"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "VaridContext",
+         "rule": "varid"
+        },
+        {
+         "token": "->"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "z"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "token": ";"
+        }
+       ],
+       "context": "ArmContext",
+       "rule": "arm"
+      },
+      {
+       "token": "::"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "t"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "Type_Context",
+       "rule": "type_"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "data"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ConidContext",
+       "rule": "conid"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "Type_Context",
+       "rule": "type_"
+      },
+      {
+       "token": "|"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ConidContext",
+       "rule": "conid"
+      },
+      {
+       "token": "|"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "sig"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "l"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "LblidContext",
+         "rule": "lblid"
+        },
+        {
+         "token": "::"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "t"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "Type_Context",
+         "rule": "type_"
+        },
+        {
+         "token": ";"
+        }
+       ],
+       "context": "SignContext",
+       "rule": "sign"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "m"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "LblidContext",
+         "rule": "lblid"
+        },
+        {
+         "token": "::"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "t"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "Type_Context",
+         "rule": "type_"
+        },
+        {
+         "token": "="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "f"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "x"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "token": ";"
+        }
+       ],
+       "context": "SignContext",
+       "rule": "sign"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/11": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "struct"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "private"
+          }
+         ],
+         "context": "VisContext",
+         "rule": "vis"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "l"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "LblidContext",
+         "rule": "lblid"
+        },
+        {
+         "token": "::"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "t"
+              }
+             ],
+             "context": "Id_Context",
+             "rule": "id_"
+            }
+           ],
+           "context": "ExprContext",
+           "rule": "expr"
+          }
+         ],
+         "context": "Type_Context",
+         "rule": "type_"
+        },
+        {
+         "token": "="
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "x"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "token": ";"
+        }
+       ],
+       "context": "DefnContext",
+       "rule": "defn"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "c"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ConidContext",
+       "rule": "conid"
+      },
+      {
+       "token": "@"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "t"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "Type_Context",
+       "rule": "type_"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/13": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "#"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/14": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "f"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        },
+        {
+         "children": [
+          {
+           "token": "#"
+          }
+         ],
+         "context": "ExprContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "g"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "cayenne/15": {
+  "accepted": false,
+  "tree": null
+ },
+ "cayenne/16": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "data"
+      }
+     ],
+     "context": "ExprContext",
+     "rule": "expr"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "peoplecode/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&a"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    },
+    {
+     "token": "+"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "*"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&c"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprMulDivContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprAddSubContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "And"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprBooleanContext",
+     "rule": "expr"
+    },
+    {
+     "token": "Or"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&c"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprBooleanContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "Or"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprBooleanContext",
+     "rule": "expr"
+    },
+    {
+     "token": "And"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&c"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprBooleanContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "."
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprDotAccessContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprNegateContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "Not"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprNotContext",
+     "rule": "expr"
+    },
+    {
+     "token": "="
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&b"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprEqualityContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "["
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "1"
+            }
+           ],
+           "context": "LiteralContext",
+           "rule": "literal"
+          }
+         ],
+         "context": "ExprLiteralContext",
+         "rule": "expr"
+        },
+        {
+         "token": ","
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "2"
+            }
+           ],
+           "context": "LiteralContext",
+           "rule": "literal"
+          }
+         ],
+         "context": "ExprLiteralContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprListContext",
+       "rule": "exprList"
+      },
+      {
+       "token": "]"
+      }
+     ],
+     "context": "ExprArrayIndexContext",
+     "rule": "expr"
+    },
+    {
+     "token": "("
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "3"
+          }
+         ],
+         "context": "LiteralContext",
+         "rule": "literal"
+        }
+       ],
+       "context": "ExprLiteralContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprListContext",
+     "rule": "exprList"
+    },
+    {
+     "token": ")"
+    }
+   ],
+   "context": "ExprFnOrIdxCallContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "|"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprConcatContext",
+     "rule": "expr"
+    },
+    {
+     "token": "|"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&c"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprConcatContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "("
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "1"
+            }
+           ],
+           "context": "LiteralContext",
+           "rule": "literal"
+          }
+         ],
+         "context": "ExprLiteralContext",
+         "rule": "expr"
+        },
+        {
+         "token": ","
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "2"
+            }
+           ],
+           "context": "LiteralContext",
+           "rule": "literal"
+          }
+         ],
+         "context": "ExprLiteralContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprListContext",
+       "rule": "exprList"
+      },
+      {
+       "token": ")"
+      }
+     ],
+     "context": "ExprFnOrIdxCallContext",
+     "rule": "expr"
+    },
+    {
+     "token": "."
+    },
+    {
+     "children": [
+      {
+       "token": "x"
+      }
+     ],
+     "context": "Id_Context",
+     "rule": "id_"
+    }
+   ],
+   "context": "ExprDotAccessContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      },
+      {
+       "token": "<="
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprComparisonContext",
+     "rule": "expr"
+    },
+    {
+     "token": "="
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&c"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprEqualityContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "@"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&a"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprDynamicReferenceContext",
+     "rule": "expr"
+    },
+    {
+     "token": "."
+    },
+    {
+     "children": [
+      {
+       "token": "b"
+      }
+     ],
+     "context": "Id_Context",
+     "rule": "id_"
+    }
+   ],
+   "context": "ExprDotAccessContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/11": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "("
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "&a"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprIdContext",
+         "rule": "expr"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "&b"
+            }
+           ],
+           "context": "Id_Context",
+           "rule": "id_"
+          }
+         ],
+         "context": "ExprIdContext",
+         "rule": "expr"
+        }
+       ],
+       "context": "ExprAddSubContext",
+       "rule": "expr"
+      },
+      {
+       "token": ")"
+      }
+     ],
+     "context": "ExprParenthesizedContext",
+     "rule": "expr"
+    },
+    {
+     "token": "*"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "2"
+        }
+       ],
+       "context": "LiteralContext",
+       "rule": "literal"
+      }
+     ],
+     "context": "ExprLiteralContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprMulDivContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "&a"
+        }
+       ],
+       "context": "Id_Context",
+       "rule": "id_"
+      }
+     ],
+     "context": "ExprIdContext",
+     "rule": "expr"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "token": "-"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "&b"
+          }
+         ],
+         "context": "Id_Context",
+         "rule": "id_"
+        }
+       ],
+       "context": "ExprIdContext",
+       "rule": "expr"
+      }
+     ],
+     "context": "ExprNegateContext",
+     "rule": "expr"
+    }
+   ],
+   "context": "ExprAddSubContext",
+   "rule": "expr"
+  }
+ },
+ "peoplecode/13": {
+  "accepted": false,
+  "tree": null
+ },
+ "peoplecode/14": {
+  "accepted": false,
+  "tree": null
+ },
+ "sapf/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "1"
+              }
+             ],
+             "context": "DecimalContext",
+             "rule": "decimal"
+            }
+           ],
+           "context": "NumberContext",
+           "rule": "number"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "atom"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "1"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "2"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "+"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "1"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "2"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "3"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "+"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "*"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "1"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "2"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "+"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "3"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "*"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "1"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "2"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "children": [
+                    {
+                     "token": "3"
+                    }
+                   ],
+                   "context": "DecimalContext",
+                   "rule": "decimal"
+                  }
+                 ],
+                 "context": "NumberContext",
+                 "rule": "number"
+                }
+               ],
+               "context": "AtomContext",
+               "rule": "atom"
+              }
+             ],
+             "context": "ExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "children": [
+                    {
+                     "token": "4"
+                    }
+                   ],
+                   "context": "DecimalContext",
+                   "rule": "decimal"
+                  }
+                 ],
+                 "context": "NumberContext",
+                 "rule": "number"
+                }
+               ],
+               "context": "AtomContext",
+               "rule": "atom"
+              }
+             ],
+             "context": "ExpressionContext",
+             "rule": "expression"
+            },
+            {
+             "token": "+"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": "-"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "*"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "("
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "1"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "children": [
+                  {
+                   "token": "2"
+                  }
+                 ],
+                 "context": "DecimalContext",
+                 "rule": "decimal"
+                }
+               ],
+               "context": "NumberContext",
+               "rule": "number"
+              }
+             ],
+             "context": "AtomContext",
+             "rule": "atom"
+            }
+           ],
+           "context": "ExpressionContext",
+           "rule": "expression"
+          },
+          {
+           "token": ")"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "3"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "+"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "1"
+              }
+             ],
+             "context": "DecimalContext",
+             "rule": "decimal"
+            }
+           ],
+           "context": "NumberContext",
+           "rule": "number"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "atom"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "1"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "2"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "+"
+        },
+        {
+         "token": "+"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "sapf/09": {
+  "accepted": false,
+  "tree": null
+ },
+ "sapf/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "1"
+              }
+             ],
+             "context": "DecimalContext",
+             "rule": "decimal"
+            }
+           ],
+           "context": "NumberContext",
+           "rule": "number"
+          }
+         ],
+         "context": "AtomContext",
+         "rule": "atom"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "2"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [
+                {
+                 "token": "3"
+                }
+               ],
+               "context": "DecimalContext",
+               "rule": "decimal"
+              }
+             ],
+             "context": "NumberContext",
+             "rule": "number"
+            }
+           ],
+           "context": "AtomContext",
+           "rule": "atom"
+          }
+         ],
+         "context": "ExpressionContext",
+         "rule": "expression"
+        },
+        {
+         "token": "+"
+        }
+       ],
+       "context": "ExpressionContext",
+       "rule": "expression"
+      }
+     ],
+     "context": "LineContext",
+     "rule": "line"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "semver/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "alpha"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "alpha"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "1"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "alpha"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      },
+      {
+       "token": "1"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "alpha"
+            }
+           ],
+           "context": "TagContext",
+           "rule": "tag"
+          },
+          {
+           "token": "."
+          }
+         ],
+         "context": "PreReleaseTaggedContext",
+         "rule": "preRelease"
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "beta"
+            }
+           ],
+           "context": "TagContext",
+           "rule": "tag"
+          },
+          {
+           "token": "."
+          }
+         ],
+         "context": "PreReleaseTaggedContext",
+         "rule": "preRelease"
+        }
+       ],
+       "context": "PreReleaseIdentifierExtendedContext",
+       "rule": "preRelease"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "rc"
+          }
+         ],
+         "context": "TagContext",
+         "rule": "tag"
+        }
+       ],
+       "context": "PreReleaseTaggedContext",
+       "rule": "preRelease"
+      }
+     ],
+     "context": "PreReleaseIdentifierExtendedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "x"
+          }
+         ],
+         "context": "PreReleaseIdentifierContext",
+         "rule": "preRelease"
+        },
+        {
+         "token": "."
+        },
+        {
+         "children": [
+          {
+           "token": "y"
+          }
+         ],
+         "context": "PreReleaseIdentifierContext",
+         "rule": "preRelease"
+        }
+       ],
+       "context": "PreReleaseIdentifierExtendedContext",
+       "rule": "preRelease"
+      },
+      {
+       "token": "-"
+      },
+      {
+       "children": [
+        {
+         "token": "z"
+        }
+       ],
+       "context": "PreReleaseIdentifierContext",
+       "rule": "preRelease"
+      }
+     ],
+     "context": "PreReleaseIdentifierExtendedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "+"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "build"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "5"
+      }
+     ],
+     "context": "BuildTaggedContext",
+     "rule": "build"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "2"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "3"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "rc"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "1"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "+"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "abc"
+          }
+         ],
+         "context": "BuildIdentifierContext",
+         "rule": "build"
+        },
+        {
+         "token": "-"
+        },
+        {
+         "children": [
+          {
+           "token": "def"
+          }
+         ],
+         "context": "BuildIdentifierContext",
+         "rule": "build"
+        }
+       ],
+       "context": "BuildIdentifierExtendedContext",
+       "rule": "build"
+      },
+      {
+       "token": "."
+      },
+      {
+       "children": [
+        {
+         "token": "7"
+        }
+       ],
+       "context": "BuildNumberContext",
+       "rule": "build"
+      }
+     ],
+     "context": "BuildIdentifierExtendedContext",
+     "rule": "build"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "1"
+          }
+         ],
+         "context": "PreReleaseNumberContext",
+         "rule": "preRelease"
+        },
+        {
+         "token": "."
+        },
+        {
+         "children": [
+          {
+           "token": "2"
+          }
+         ],
+         "context": "PreReleaseNumberContext",
+         "rule": "preRelease"
+        }
+       ],
+       "context": "PreReleaseIdentifierExtendedContext",
+       "rule": "preRelease"
+      },
+      {
+       "token": "."
+      },
+      {
+       "children": [
+        {
+         "token": "3"
+        }
+       ],
+       "context": "PreReleaseNumberContext",
+       "rule": "preRelease"
+      }
+     ],
+     "context": "PreReleaseIdentifierExtendedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "alpha"
+          }
+         ],
+         "context": "TagContext",
+         "rule": "tag"
+        },
+        {
+         "token": "-"
+        },
+        {
+         "token": "1"
+        }
+       ],
+       "context": "PreReleaseTaggedContext",
+       "rule": "preRelease"
+      },
+      {
+       "token": "-"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "beta"
+          }
+         ],
+         "context": "TagContext",
+         "rule": "tag"
+        }
+       ],
+       "context": "PreReleaseTaggedContext",
+       "rule": "preRelease"
+      }
+     ],
+     "context": "PreReleaseIdentifierExtendedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "0"
+          }
+         ],
+         "context": "PreReleaseNumberContext",
+         "rule": "preRelease"
+        },
+        {
+         "token": "."
+        },
+        {
+         "children": [
+          {
+           "token": "3"
+          }
+         ],
+         "context": "PreReleaseNumberContext",
+         "rule": "preRelease"
+        }
+       ],
+       "context": "PreReleaseIdentifierExtendedContext",
+       "rule": "preRelease"
+      },
+      {
+       "token": "."
+      },
+      {
+       "children": [
+        {
+         "token": "7"
+        }
+       ],
+       "context": "PreReleaseNumberContext",
+       "rule": "preRelease"
+      }
+     ],
+     "context": "PreReleaseIdentifierExtendedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/11": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "+"
+    },
+    {
+     "children": [
+      {
+       "token": "20130313144700"
+      }
+     ],
+     "context": "BuildNumberContext",
+     "rule": "build"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "beta"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "+"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "token": "exp"
+              }
+             ],
+             "context": "BuildIdentifierContext",
+             "rule": "build"
+            },
+            {
+             "token": "."
+            },
+            {
+             "children": [
+              {
+               "token": "sha"
+              }
+             ],
+             "context": "BuildIdentifierContext",
+             "rule": "build"
+            }
+           ],
+           "context": "BuildIdentifierExtendedContext",
+           "rule": "build"
+          },
+          {
+           "token": "."
+          },
+          {
+           "children": [
+            {
+             "token": "5114"
+            }
+           ],
+           "context": "BuildNumberContext",
+           "rule": "build"
+          }
+         ],
+         "context": "BuildIdentifierExtendedContext",
+         "rule": "build"
+        },
+        {
+         "children": [
+          {
+           "token": "f"
+          }
+         ],
+         "context": "BuildIdentifierContext",
+         "rule": "build"
+        }
+       ],
+       "context": "BuildIdentifierExtendedContext",
+       "rule": "build"
+      },
+      {
+       "children": [
+        {
+         "token": "85"
+        }
+       ],
+       "context": "BuildNumberContext",
+       "rule": "build"
+      }
+     ],
+     "context": "BuildIdentifierExtendedContext",
+     "rule": "build"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/13": {
+  "accepted": false,
+  "tree": null
+ },
+ "semver/14": {
+  "accepted": false,
+  "tree": null
+ },
+ "semver/15": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "token": "-"
+      }
+     ],
+     "context": "PreReleaseDashContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/16": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "1"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "0"
+      }
+     ],
+     "context": "VersionCoreContext",
+     "rule": "versionCore"
+    },
+    {
+     "token": "-"
+    },
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "release-candidate"
+        }
+       ],
+       "context": "TagContext",
+       "rule": "tag"
+      },
+      {
+       "token": "."
+      },
+      {
+       "token": "2"
+      }
+     ],
+     "context": "PreReleaseTaggedContext",
+     "rule": "preRelease"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "SemverContext",
+   "rule": "semver"
+  }
+ },
+ "semver/17": {
+  "accepted": false,
+  "tree": null
+ },
+ "semver/18": {
+  "accepted": false,
+  "tree": null
+ },
+ "tl/01": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/02": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "a"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/03": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/04": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        },
+        {
+         "token": "\u2228"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/05": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "\u2310"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [
+        {
+         "token": "b"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/06": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "G"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        },
+        {
+         "token": "\u2228"
+        },
+        {
+         "children": [
+          {
+           "token": "b"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/07": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "H"
+      },
+      {
+       "children": [
+        {
+         "token": "\u2310"
+        },
+        {
+         "children": [
+          {
+           "token": "a"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/08": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "("
+        },
+        {
+         "children": [
+          {
+           "children": [
+            {
+             "token": "a"
+            }
+           ],
+           "context": "PropositionContext",
+           "rule": "proposition"
+          },
+          {
+           "token": "\u2228"
+          },
+          {
+           "children": [
+            {
+             "token": "b"
+            }
+           ],
+           "context": "PropositionContext",
+           "rule": "proposition"
+          }
+         ],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        },
+        {
+         "token": ")"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [
+        {
+         "token": "c"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/09": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/10": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "a"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/11": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [
+        {
+         "token": "\u22a5"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": "\u2228"
+      },
+      {
+       "children": [
+        {
+         "token": "G"
+        },
+        {
+         "children": [],
+         "context": "PropositionContext",
+         "rule": "proposition"
+        }
+       ],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/12": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "G"
+      },
+      {
+       "children": [],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/13": {
+  "accepted": true,
+  "tree": {
+   "children": [
+    {
+     "children": [
+      {
+       "token": "("
+      },
+      {
+       "children": [],
+       "context": "PropositionContext",
+       "rule": "proposition"
+      },
+      {
+       "token": ")"
+      }
+     ],
+     "context": "PropositionContext",
+     "rule": "proposition"
+    },
+    {
+     "token": "<EOF>"
+    }
+   ],
+   "context": "File_Context",
+   "rule": "file_"
+  }
+ },
+ "tl/14": {
+  "accepted": false,
+  "tree": null
+ }
+}

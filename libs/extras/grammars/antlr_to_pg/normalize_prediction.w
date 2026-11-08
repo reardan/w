@@ -134,6 +134,7 @@ int at_normalize_prediction_expression(at_rule* rule, list[at_rule*] rules):
 			at_precedence_operator* op = operators[j]
 			at_alt* tail = new at_alt()
 			at_source_copy(tail, op.source)
+			tail.tree_role = 2
 			tail.source_lhs_label = op.source.elements[0].label
 			tail.elements = new list[at_element*]
 			for e in range(1, op.source.elements.length):
@@ -182,6 +183,7 @@ int at_normalize_prediction_list(at_rule* rule):
 		if (recursive):
 			begin = 1
 			part.source_lhs_label = alt.elements[0].label
+			part.tree_role = 2
 		for i in range(begin, alt.elements.length): part.elements.push(at_clone_element(alt.elements[i]))
 		list[at_alt*] singleton = new list[at_alt*]
 		singleton.push(part)

@@ -10,13 +10,17 @@ lines are intentionally preserved to keep those byte hashes unchanged.
 findings; eight also had other findings. Shape hypotheses are marked as inferences,
 not explanations established by the historical generic diagnostic.
 
-`current_refusals.json` separately records the newly instrumented actual guard
-exits for every refused rule, along with the original source plan/graph and
-remaining graph. `normalization_guards` names the expression/list normalizer,
+`current_refusals.json` separately records the current outcome of every
+inventoried rule: `lowered_rules` lists rules the plan-driven lowering now
+accepts (their grammar may still refuse for unrelated host findings, recorded in
+`findings`), and every remaining `AT_LEFT_RECURSION` finding keeps its guard
+exits, original source plan/graph and remaining graph. At present 24 rules are
+lowered and only Z's `expression` (predicated precedence alternatives) refuses. `normalization_guards` names the expression/list normalizer,
 stable reason code and original source alternative (0 for a rule-wide guard).
 These are observed first guard exits, not inferred root causes or proof that fixing
 one guard is sufficient. The report records its measured translator binary hash
-and clean source revision `fe55c0df9091e24e6f4aa89e1a8aa00f4bb71405`. All 21 failures preserved an existing output sentinel.
+and source revision. Every refusal preserves an existing output sentinel; a
+successful translation must replace it.
 
 `snapshots.json` records independently observed ANTLR 4.13.2 results. Both `java`
 and `javac` were checked as major 17 (OpenJDK 17.0.20.1). All 21 roots generated;

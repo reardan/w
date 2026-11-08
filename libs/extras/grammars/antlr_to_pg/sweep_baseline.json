@@ -546,20 +546,24 @@
         ],
         "stateful_strict": [],
         "exact_permissive": [
+          "agc/examples/501_RESTART_TABLES_AND_ROUTINES.agc",
           "agc/examples/ASSEMBLY_AND_OPERATION_INFORMATION.agc",
           "agc/examples/DOWN-TELEMETRY_PROGRAM.agc",
           "agc/examples/DUMMY_501_INITIALIZATION.agc",
           "agc/examples/Default.style",
           "agc/examples/FRESH_START_AND_RESTART.agc",
+          "agc/examples/IMU_PERFORMANCE_TESTS_1.agc",
           "agc/examples/INTERRUPT_TRANSFER_ROUTINES.agc",
           "agc/examples/KEYRUPT_UPRUPT_FRESH_START.agc"
         ],
         "exact_strict": [
+          "agc/examples/501_RESTART_TABLES_AND_ROUTINES.agc",
           "agc/examples/ASSEMBLY_AND_OPERATION_INFORMATION.agc",
           "agc/examples/DOWN-TELEMETRY_PROGRAM.agc",
           "agc/examples/DUMMY_501_INITIALIZATION.agc",
           "agc/examples/Default.style",
           "agc/examples/FRESH_START_AND_RESTART.agc",
+          "agc/examples/IMU_PERFORMANCE_TESTS_1.agc",
           "agc/examples/INTERRUPT_TRANSFER_ROUTINES.agc",
           "agc/examples/KEYRUPT_UPRUPT_FRESH_START.agc"
         ]
@@ -582,8 +586,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "program",
@@ -601,8 +617,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "alef/examples/example1.txt"
+        ],
+        "exact_strict": [
+          "alef/examples/example1.txt"
+        ]
       }
     },
     {
@@ -720,8 +740,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "alloyModule",
@@ -749,8 +781,16 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "alloy/examples/fact.als",
+          "alloy/examples/fs.als",
+          "alloy/examples/sig.als"
+        ],
+        "exact_strict": [
+          "alloy/examples/fact.als",
+          "alloy/examples/fs.als",
+          "alloy/examples/sig.als"
+        ]
       }
     },
     {
@@ -2122,7 +2162,13 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -2186,7 +2232,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "awk/examples/average_score.awk",
+          "awk/examples/awk-libs/colors.awk",
+          "awk/examples/awk-libs/csv.awk",
+          "awk/examples/awk-libs/math.awk",
+          "awk/examples/awk-libs/msort.awk",
+          "awk/examples/awk-libs/options.awk",
+          "awk/examples/awk-libs/psort.awk",
+          "awk/examples/awk-libs/qsort.awk",
+          "awk/examples/awk-libs/shuf.awk",
+          "awk/examples/awk-libs/strings.awk"
+        ],
         "exact_strict": []
       }
     },
@@ -4089,8 +4146,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "file_",
@@ -4483,8 +4550,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "module",
@@ -4507,8 +4586,14 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "clu/examples/bottles-133.txt",
+          "clu/examples/hello.txt"
+        ],
+        "exact_strict": [
+          "clu/examples/bottles-133.txt",
+          "clu/examples/hello.txt"
+        ]
       }
     },
     {
@@ -7412,7 +7497,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -7471,7 +7561,15 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "eiffel/examples/100_doors/application.e",
+          "eiffel/examples/100_doors/door.e",
+          "eiffel/examples/application.e",
+          "eiffel/examples/example-primes/show_primes.e",
+          "eiffel/examples/example-prog-args/prog_args.e",
+          "eiffel/examples/quicksort/application.e",
+          "eiffel/examples/quicksort/quicksort.e"
+        ],
         "exact_strict": []
       }
     },
@@ -7496,8 +7594,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "parse",
@@ -7560,8 +7668,28 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "elixir/examples/expression_addExpr.ex",
+          "elixir/examples/expression_aliasExpr.ex",
+          "elixir/examples/expression_ampExpr.ex",
+          "elixir/examples/expression_andExpr.ex",
+          "elixir/examples/expression_anonymousFunctionExpr.ex",
+          "elixir/examples/expression_atExpr.ex",
+          "elixir/examples/expression_atomExpr.ex",
+          "elixir/examples/expression_binaryExpr.ex",
+          "elixir/examples/expression_bitExpr.ex"
+        ],
+        "exact_strict": [
+          "elixir/examples/expression_addExpr.ex",
+          "elixir/examples/expression_aliasExpr.ex",
+          "elixir/examples/expression_ampExpr.ex",
+          "elixir/examples/expression_andExpr.ex",
+          "elixir/examples/expression_anonymousFunctionExpr.ex",
+          "elixir/examples/expression_atExpr.ex",
+          "elixir/examples/expression_atomExpr.ex",
+          "elixir/examples/expression_binaryExpr.ex",
+          "elixir/examples/expression_bitExpr.ex"
+        ]
       }
     },
     {
@@ -9226,8 +9354,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "gqlProgram",
@@ -9275,8 +9415,24 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "gql/examples/01_simple_match.gql",
+          "gql/examples/02_complex_match.gql",
+          "gql/examples/03_match_with_path.gql",
+          "gql/examples/04_insert_data.gql",
+          "gql/examples/05_set_data.gql",
+          "gql/examples/06_delete_data.gql",
+          "gql/examples/07_remove_properties.gql"
+        ],
+        "exact_strict": [
+          "gql/examples/01_simple_match.gql",
+          "gql/examples/02_complex_match.gql",
+          "gql/examples/03_match_with_path.gql",
+          "gql/examples/04_insert_data.gql",
+          "gql/examples/05_set_data.gql",
+          "gql/examples/06_delete_data.gql",
+          "gql/examples/07_remove_properties.gql"
+        ]
       }
     },
     {
@@ -9883,7 +10039,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -9947,7 +10108,17 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "gvpr/examples/1909.gvpr",
+          "gvpr/examples/2138.gvpr",
+          "gvpr/examples/2185.gvpr",
+          "gvpr/examples/2211.gvpr",
+          "gvpr/examples/2454.gvpr",
+          "gvpr/examples/addedges.gvpr",
+          "gvpr/examples/addranks.gvpr",
+          "gvpr/examples/addrings.gvpr",
+          "gvpr/examples/all_blue.gvpr"
+        ],
         "exact_strict": []
       }
     },
@@ -10404,8 +10575,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "start_script",
@@ -12328,7 +12509,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -17283,7 +17469,13 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -17347,7 +17539,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "peoplecode/examples/AppClassPC.SSF_SS_PMT.SSF_Student.Student.OnExecute.pc",
+          "peoplecode/examples/ComponentPC.SSR_SSENRL_LIST.GBL.PostBuild.pc",
+          "peoplecode/examples/ComponentPC.SSS_STUDENT_CENTER.GBL.STDNT_SRCH.SearchInit.pc",
+          "peoplecode/examples/PagePC.SSR_SSENRL_NODATA.Activate.pc",
+          "peoplecode/examples/RecordPC.DERIVED_ADDR.COUNTRY.FieldChange.pc",
+          "peoplecode/examples/RecordPC.DERIVED_CLSRCH.SSR_EXPAND_COLLAP2.FieldChange.pc",
+          "peoplecode/examples/RecordPC.DERIVED_CS.CRSE_ROLL_PB.FieldChange.pc",
+          "peoplecode/examples/RecordPC.DERIVED_CS.CUM_GPA.FieldDefault.pc",
+          "peoplecode/examples/RecordPC.DERIVED_CS.FIELDNAME.RowInit.pc",
+          "peoplecode/examples/RecordPC.DERIVED_CS.REPLACE_CAREER.SavePreChange.pc"
+        ],
         "exact_strict": []
       }
     },
@@ -18257,8 +18460,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "program",
@@ -20158,8 +20371,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "file_",
@@ -20177,8 +20402,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "refal/examples/example1.txt"
+        ],
+        "exact_strict": [
+          "refal/examples/example1.txt"
+        ]
       }
     },
     {
@@ -21416,7 +21645,12 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
         "exact_strict": []
       },
       "runtime": {
@@ -21480,7 +21714,15 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
+        "exact_permissive": [
+          "rust/examples/long/inlinepython_example.rs",
+          "rust/examples/long/issue_1985_raw_string.rs",
+          "rust/examples/long/leaf_vmessstream.rs",
+          "rust/examples/long/literal.rs",
+          "rust/examples/long/ssrust_ssserver.rs",
+          "rust/examples/quick/comment.rs",
+          "rust/examples/quick/hello.rs"
+        ],
         "exact_strict": []
       }
     },
@@ -21501,8 +21743,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "file_",
@@ -21565,8 +21819,30 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "sapf/examples/example1.txt",
+          "sapf/examples/example10.txt",
+          "sapf/examples/example11.txt",
+          "sapf/examples/example12.txt",
+          "sapf/examples/example13.txt",
+          "sapf/examples/example14.txt",
+          "sapf/examples/example15.txt",
+          "sapf/examples/example16.txt",
+          "sapf/examples/example17.txt",
+          "sapf/examples/example18.txt"
+        ],
+        "exact_strict": [
+          "sapf/examples/example1.txt",
+          "sapf/examples/example10.txt",
+          "sapf/examples/example11.txt",
+          "sapf/examples/example12.txt",
+          "sapf/examples/example13.txt",
+          "sapf/examples/example14.txt",
+          "sapf/examples/example15.txt",
+          "sapf/examples/example16.txt",
+          "sapf/examples/example17.txt",
+          "sapf/examples/example18.txt"
+        ]
       }
     },
     {
@@ -21899,8 +22175,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "semver",
@@ -21963,8 +22251,30 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "semver/examples/semver-edge-case-2.txt",
+          "semver/examples/semver-edge-case.txt",
+          "semver/examples/semver-full-2.txt",
+          "semver/examples/semver-full.txt",
+          "semver/examples/semver-simple-2.txt",
+          "semver/examples/semver-simple-3.txt",
+          "semver/examples/semver-simple.txt",
+          "semver/examples/semver-with-build-2.txt",
+          "semver/examples/semver-with-build-3.txt",
+          "semver/examples/semver-with-build.txt"
+        ],
+        "exact_strict": [
+          "semver/examples/semver-edge-case-2.txt",
+          "semver/examples/semver-edge-case.txt",
+          "semver/examples/semver-full-2.txt",
+          "semver/examples/semver-full.txt",
+          "semver/examples/semver-simple-2.txt",
+          "semver/examples/semver-simple-3.txt",
+          "semver/examples/semver-simple.txt",
+          "semver/examples/semver-with-build-2.txt",
+          "semver/examples/semver-with-build-3.txt",
+          "semver/examples/semver-with-build.txt"
+        ]
       }
     },
     {
@@ -23132,8 +23442,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "expression",
@@ -25256,8 +25576,18 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict"
+        ]
       },
       "runtime": {
         "entry": "file_",
@@ -26852,8 +27182,20 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ],
+        "exact_strict": [
+          "translate",
+          "generate",
+          "compile",
+          "compiler_strict",
+          "examples"
+        ]
       },
       "runtime": {
         "entry": "startRule",
@@ -26916,8 +27258,30 @@
         "default_strict": [],
         "stateful_permissive": [],
         "stateful_strict": [],
-        "exact_permissive": [],
-        "exact_strict": []
+        "exact_permissive": [
+          "vb6/examples/calls/Calls.cls",
+          "vb6/examples/calls/Module1.cls",
+          "vb6/examples/expressions/ArgWithEnumDefaultValue.cls",
+          "vb6/examples/expressions/ExpressionsLiteralsTest.cls",
+          "vb6/examples/expressions/LineContinuationInExplicitMemberCallSequence.cls",
+          "vb6/examples/expressions/LineContinuationInMemberCallSequence.cls",
+          "vb6/examples/expressions/NestedProcedureCallReturningArray.cls",
+          "vb6/examples/expressions/OctalLiteral.cls",
+          "vb6/examples/expressions/StringConcatenationOverMultipleLines.cls",
+          "vb6/examples/forms/BeginPropertyBlock.frm"
+        ],
+        "exact_strict": [
+          "vb6/examples/calls/Calls.cls",
+          "vb6/examples/calls/Module1.cls",
+          "vb6/examples/expressions/ArgWithEnumDefaultValue.cls",
+          "vb6/examples/expressions/ExpressionsLiteralsTest.cls",
+          "vb6/examples/expressions/LineContinuationInExplicitMemberCallSequence.cls",
+          "vb6/examples/expressions/LineContinuationInMemberCallSequence.cls",
+          "vb6/examples/expressions/NestedProcedureCallReturningArray.cls",
+          "vb6/examples/expressions/OctalLiteral.cls",
+          "vb6/examples/expressions/StringConcatenationOverMultipleLines.cls",
+          "vb6/examples/forms/BeginPropertyBlock.frm"
+        ]
       }
     },
     {
