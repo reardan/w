@@ -1817,3 +1817,30 @@ The runtime's locals share the type namespace of whatever program imports
 it. Direction: resolve a runtime module's identifiers in its own scope (or
 warn when a program type shadows a runtime local), and until then keep
 runtime locals to names no test is likely to declare as a type.
+
+## `wtest changed` sends host glue to the whole `tests` umbrella (2026-11-08)
+
+Changing `tools/web/webgl_env.mjs` (the WebGL host glue every wasm
+graphics program links against) made `bin/wtest changed` print `tests`,
+the full pre-merge umbrella, even though the targets that exercise the
+file name it as an `input=` (`graphics_effects_webgl_test`) or reference
+it in a step (`wasm_webgl_test`, `wasm_ui_test`). The literal step match
+found those too; the umbrella came on top as the unmapped-path fallback.
+Running all of `tests` for a JS glue edit costs far more than the dozen
+targets that load it. Direction: treat a path that some target already
+names in its steps or `input=`/`data=` as mapped (no fallback), or add a
+`tools/web/` residue rule pointing at the `tests_wasm` browser and stub
+gates.
+
+## `new T(field: v)` zeroes fixed-array descriptors (2026-11-08)
+
+`new fx_effect(kind: k)` on a struct with a `float32[12] p` field
+compiled cleanly, then the first `e.p[0] = ...` trapped "index out of
+range: index 0, length 0" deep inside the constructor helper — the
+named-field form zero-fills the array's descriptor header, while plain
+`new T()` initializes it. Nothing at compile time hints at it, and the
+trap names the list runtime (`__w_list_index_trap`), not the struct, so
+it reads like a container bug. Workaround in graphics/effects_core.w;
+recorded under "current limitations" in docs/todo.txt. Direction:
+initialize fixed-array descriptors in every `new` form (or reject the
+named form for such structs with a diagnostic).
