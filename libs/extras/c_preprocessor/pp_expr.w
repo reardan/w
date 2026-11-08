@@ -15,6 +15,19 @@ struct cpp_expr:
 int cpp_eval_conditional_expr(cpp_expr* expr);
 
 
+# Set by the compiler's C importer (libs/extras/c_import/importer.w) to
+# evaluate with 32-bit wraparound, the arithmetic the 32-bit self-host
+# always had, so a 64-bit-hosted compiler takes the same #if branches and
+# imports the same constants. Other users keep host-word arithmetic.
+int cpp_expr_wrap32
+
+
+int cpp_expr_wrap(int n):
+	if (cpp_expr_wrap32 == 0): return n
+	int spare = __word_size__ * 8 - 32
+	return (n << spare) >> spare
+
+
 cpp_token* cpp_expr_number_token(int value):
 	char* text = itoa(value)
 	cpp_token* token = cpp_token_new(cpp_token_number(), text, c"<expr>", 0, 0, 0)
@@ -99,10 +112,10 @@ int cpp_expr_parse_number(char* text):
 		if (base == 16): digit = cpp_expr_hex_value(text[i])
 		else if ((text[i] >= '0') && (text[i] <= '9')): digit = text[i] - '0'
 		if ((digit < 0) || (digit >= base)):
-			return value
+			return cpp_expr_wrap(value)
 		value = value * base + digit
 		i = i + 1
-	return value
+	return cpp_expr_wrap(value)
 
 
 int cpp_expr_char_escape(int c):
@@ -151,24 +164,24 @@ int cpp_eval_primary(cpp_expr* expr):
 
 int cpp_eval_unary(cpp_expr* expr):
 	if (cpp_expr_accept(expr, c"+")): return cpp_eval_unary(expr)
-	if (cpp_expr_accept(expr, c"-")): return 0 - cpp_eval_unary(expr)
+	if (cpp_expr_accept(expr, c"-")): return cpp_expr_wrap(0 - cpp_eval_unary(expr))
 	if (cpp_expr_accept(expr, c"!")): return cpp_eval_unary(expr) == 0
-	if (cpp_expr_accept(expr, c"~")): return 0 - cpp_eval_unary(expr) - 1
+	if (cpp_expr_accept(expr, c"~")): return cpp_expr_wrap(0 - cpp_eval_unary(expr) - 1)
 	return cpp_eval_primary(expr)
 
 
 int cpp_eval_multiplicative(cpp_expr* expr):
 	int value = cpp_eval_unary(expr)
 	while (1):
-		if (cpp_expr_accept(expr, c"*")): value = value * cpp_eval_unary(expr)
+		if (cpp_expr_accept(expr, c"*")): value = cpp_expr_wrap(value * cpp_eval_unary(expr))
 		else if (cpp_expr_accept(expr, c"/")):
 			int right = cpp_eval_unary(expr)
 			if (right == 0): value = 0
-			else: value = value / right
+			else: value = cpp_expr_wrap(value / right)
 		else if (cpp_expr_accept(expr, c"%")):
 			int right = cpp_eval_unary(expr)
 			if (right == 0): value = 0
-			else: value = value % right
+			else: value = cpp_expr_wrap(value % right)
 		else:
 			return value
 
@@ -176,8 +189,8 @@ int cpp_eval_multiplicative(cpp_expr* expr):
 int cpp_eval_additive(cpp_expr* expr):
 	int value = cpp_eval_multiplicative(expr)
 	while (1):
-		if (cpp_expr_accept(expr, c"+")): value = value + cpp_eval_multiplicative(expr)
-		else if (cpp_expr_accept(expr, c"-")): value = value - cpp_eval_multiplicative(expr)
+		if (cpp_expr_accept(expr, c"+")): value = cpp_expr_wrap(value + cpp_eval_multiplicative(expr))
+		else if (cpp_expr_accept(expr, c"-")): value = cpp_expr_wrap(value - cpp_eval_multiplicative(expr))
 		else:
 			return value
 
@@ -185,7 +198,7 @@ int cpp_eval_additive(cpp_expr* expr):
 int cpp_eval_shift(cpp_expr* expr):
 	int value = cpp_eval_additive(expr)
 	while (1):
-		if (cpp_expr_accept(expr, c"<<")): value = value << cpp_eval_additive(expr)
+		if (cpp_expr_accept(expr, c"<<")): value = cpp_expr_wrap(value << cpp_eval_additive(expr))
 		else if (cpp_expr_accept(expr, c">>")): value = value >> cpp_eval_additive(expr)
 		else:
 			return value

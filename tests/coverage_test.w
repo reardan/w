@@ -60,9 +60,10 @@
 # wbuild: step="bin/wcoverage changed --prefix tests/wcoverage/ tests/wcoverage/changed_fixture.diff bin/coverage_changed.info" expect_fail expect_stdout="changed_fixture.w:4: changed line not reached by any test" expect_stdout="changed_fixture.w:14: changed line not reached" expect_stdout="reached: 3/5 (60%), minimum 80%" reject_stdout="changed_fixture.w:8:"
 # wbuild: step="bin/wcoverage changed --min 60 --prefix tests/wcoverage/ tests/wcoverage/changed_fixture.diff bin/coverage_changed.info" expect_stdout="reached: 3/5 (60%), minimum 60%"
 # wbuild: step="bin/wv2 tests/wcoverage/exec_probe.w -o bin/coverage_exec_probe"
-# wbuild: step="bin/wv2 a b" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_COVERAGE_OUT=bin/coverage_probe" expect_stdout="argv: bin/wv2 a b" expect_stdout="W_COVERAGE_COMPILER=[]" expect_stdout="W_PROFILE_OUT=[bin/coverage_probe/compiler_x86/"
-# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_PROFILE_OUT=bin/coverage_probe_guard.raw" expect_stdout="w 0.3.0" reject_stdout="argv:"
-# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_no_such_build" expect_fail expect_stderr="cannot execute coverage build 'bin/coverage_no_such_build' named by $W_COVERAGE_COMPILER"
+# wbuild: step="bin/wv2 a b" env="W_COVERAGE_COMPILER_64=bin/coverage_exec_probe" env="W_COVERAGE_OUT=bin/coverage_probe" expect_stdout="argv: bin/wv2 a b" expect_stdout="W_COVERAGE_COMPILER_64=[]" expect_stdout="W_PROFILE_OUT=[bin/coverage_probe/compiler_x64/"
+# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER_64=bin/coverage_exec_probe" env="W_PROFILE_OUT=bin/coverage_probe_guard.raw" expect_stdout="w 0.3.0" reject_stdout="argv:"
+# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" expect_stdout="w 0.3.0" reject_stdout="argv:"
+# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER_64=bin/coverage_no_such_build" expect_fail expect_stderr="cannot execute coverage build 'bin/coverage_no_such_build' named by $W_COVERAGE_COMPILER_64"
 # wbuild: target=coverage_arm64_test tag=tests_arm64 dep=wv2 dep=wrun dep=wcoverage input=tests/wcoverage/line_fixture.w input=tests/wcoverage/fstring_fixture.w
 # wbuild: step="bin/wv2 arm64 --coverage tests/wcoverage/line_fixture.w -o bin/coverage_fixture_arm64"
 # wbuild: step="bin/wv2 arm64 --coverage --streaming tests/wcoverage/line_fixture.w -o bin/coverage_fixture_arm64_streaming"

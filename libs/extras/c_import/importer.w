@@ -85,6 +85,8 @@ char* ci_param_classes
 
 
 void ci_session_init():
+	# C constants are 32-bit wrapped on every host (pp_expr.w).
+	cpp_expr_wrap32 = 1
 	if (ci_imported_functions == 0):
 		ci_imported_functions = new map[char*, int]
 		ci_const_values = new map[char*, int]
@@ -517,8 +519,8 @@ int ci_eval_unary(pg_ast_node* node):
 	if (ci_is_ast(first, clang_ast_unary_operator)):
 		pg_ast_node* op_token = pg_ast_child(first, 0)
 		int value = ci_eval_const(pg_ast_child(node, 1))
-		if (strcmp(op_token.text, c"-") == 0): return 0 - value
-		if (strcmp(op_token.text, c"~") == 0): return 0 - value - 1
+		if (strcmp(op_token.text, c"-") == 0): return cpp_expr_wrap(0 - value)
+		if (strcmp(op_token.text, c"~") == 0): return cpp_expr_wrap(0 - value - 1)
 		if (strcmp(op_token.text, c"!") == 0):
 			return value == 0
 		return value

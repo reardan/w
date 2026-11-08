@@ -24,7 +24,7 @@ void elf_emit_arm64_export(int address, int n, char* classes, int ret_kind):
 	a64(op(0x91, 0x0003fc))   # mov x28,sp
 	int spilled = 0
 	for i in range(n):
-		int slot = load_i(slots + i * 4, 4)
+		int slot = load_int(slots + i * 4)
 		int reg = slot
 		if (slot < 0):
 			a64(op(0xf9, 0x4003e9) | ((20 + spilled) << 10)) # ldr x9,[sp,#160+8k]
@@ -79,7 +79,7 @@ void elf_emit_export_wrappers():
 		for r in range(12, 16): push_reg(r)
 		int spilled = 0
 		for i in range(n):
-			int slot = load_i(slots + i * 4, 4)
+			int slot = load_int(slots + i * 4)
 			if (slot < 0):
 				# Native stack arguments follow the saved rbp and return address.
 				emit(2, c"\xff\xb5")

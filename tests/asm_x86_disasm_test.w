@@ -1,4 +1,5 @@
-# wbuild: deps=tests/asm/
+# wbuild: binary=asm_x86_disasm_test arch=x86 tag=tests dep=build input=tests/asm/
+# wbuild: step="bin/asm_x86_disasm_test"
 /*
 x86 (32-bit) disassembler tests (issue #165):
 
@@ -6,7 +7,7 @@ x86 (32-bit) disassembler tests (issue #165):
    tests/asm/corpus_x86.txt decodes to the recorded byte length and
    formats back to the recorded canonical text.
 2. Zero-unknown golden test: the entire .text of the self-hosted
-   compiler bin/wv2 disassembles with no `.byte` fallbacks, proving the
+   compiler bin/wv3 (the x86 self-host stage) disassembles with no `.byte` fallbacks, proving the
    decoder covers everything the compiler actually emits.
 
 docs/projects/assembler_disassembler.md.
@@ -72,7 +73,7 @@ void test_corpus_roundtrip():
 	println2(c" entries")
 
 
-# Disassemble every function symbol in bin/wv2 (the W compiler's ELF
+# Disassemble every function symbol in bin/wv3 (the x86 W compiler's ELF
 # maps its headers into .text, so a raw linear walk would try to decode
 # the ELF header; iterating symbol ranges is both correct and exactly
 # what wdbg's `disas` will do). Every instruction must decode to a known
@@ -85,8 +86,8 @@ int asm_test_in_text(asm_binary* binary, int value):
 
 
 void test_zero_unknown_wv2():
-	asm_binary* binary = asm_binary_open(c"bin/wv2")
-	asserts(c"cannot open bin/wv2", cast(int, binary) != 0)
+	asm_binary* binary = asm_binary_open(c"bin/wv3")
+	asserts(c"cannot open bin/wv3", cast(int, binary) != 0)
 	assert_equal(ASM_ELF_CLASS32, binary.elf_class)
 	char* text = asm_binary_text(binary)
 	int functions = 0

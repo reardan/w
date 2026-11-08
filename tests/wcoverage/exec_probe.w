@@ -22,5 +22,6 @@ int main(int argc, int argv):
 		print(args_get(i))
 	println(c"")
 	show(c"W_COVERAGE_COMPILER")
+	show(c"W_COVERAGE_COMPILER_64")
 	show(c"W_PROFILE_OUT")
 	return 0
