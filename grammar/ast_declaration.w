@@ -42,8 +42,14 @@ void ast_declaration_bind(statement_ast* node, int depth):
 # A typed local is in scope in its own initializer (as in C), but its slot
 # does not exist until the initializer's value is stored: reading it there
 # would load a stack word below the stack pointer. Taking its address
-# ('void* p = &p') stays legal; any read is rejected.
+# ('void* p = &p') stays legal; any read is rejected. A statement that
+# starts with '(' on the next line is absorbed as a call of the initializer
+# ('int n = 2' then '(n)'); that already reports W0084 and a call error,
+# so a read inside it adds nothing and is not reported again.
 void ast_declaration_self_read_check(expression_ast* tree, int binding):
+	for event in range(tree.count):
+		if ((tree.op[event] == ast_warning) && (tree.high[event] == 7)):
+			if (strcmp(cast(char*, tree.value[event]), c"warning: call arguments continue from the previous line") == 0): return
 	for id in range(tree.count):
 		if ((tree.op[id] == 'v') && (tree.symbol[id] == binding)):
 			int taken = 0
