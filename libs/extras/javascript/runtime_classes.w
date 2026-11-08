@@ -136,7 +136,8 @@ js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value
 		rt.new_target = new_target
 		result = js_runtime_call_code(rt, callable, rt.undefined_value, arguments, new_target, 0)
 		rt.new_target = saved
-	else if (callable.kind == 9):
+	else if (js_runtime_object(callable)):
+		# Host objects (Number, ...) without constructor behaviour in this subset.
 		js_runtime_fail(rt, 6, c"unsupported native constructor")
 		return rt.undefined_value
 	else:
