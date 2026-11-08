@@ -2,6 +2,16 @@
 import tools.test262_conformance_lib
 import libs.standard.cli.argparse
 
+# --expect pins the profile's counts and execution evidence (the native
+# baseline pins statuses only; the upstream pass is otherwise gated on
+# ERROR alone), so the gate targets carry them instead of a rerun.
+int t262_check_expect(json_value* report, char* spec, int status):
+	if (spec == 0 || status == 2): return status
+	char* mismatch = t262_expect(report, spec)
+	if (mismatch == 0): return status
+	println2(strjoin(c"test262_conformance: ", mismatch))
+	return 1
+
 int main(int argc, int argv):
 	arg_parser* parser = argparse_new(c"test262_conformance")
 	argparse_arg_default(argparse_add_option(parser, c"--manifest", c"FILE", c"pinned Test262 profile"), c"tests/javascript/test262/manifest.json")
@@ -12,6 +22,7 @@ int main(int argc, int argv):
 	argparse_add_flag(parser, c"--require-all", c"fail if any case is unsupported")
 	argparse_add_flag(parser, c"--native-only", c"skip the upstream-harness pass")
 	argparse_add_flag(parser, c"--upstream-only", c"run only the upstream-harness pass")
+	argparse_add_option(parser, c"--expect", c"KEY=N,...", c"pinned counts and evidence for the run's report")
 	arg_namespace* args = argparse_parse_or_exit(parser, argc, argv)
 	int status = 0
 	if (argparse_get_bool(args, c"upstream_only")):
@@ -21,6 +32,7 @@ int main(int argc, int argv):
 		t262_upstream = 1
 		json_value* only = t262_run(tempfile_abspath(argparse_get(args, c"manifest")), tempfile_abspath(argparse_get(args, c"runner")), cast(int, argparse_get_float(args, c"timeout") * 1000.0), argparse_get_int(args, c"budget"), &status, t262_execute)
 		if (status != 2): status = ht_number(jc_get(only, c"counts"), c"ERROR") != 0
+		status = t262_check_expect(only, argparse_get(args, c"expect"), status)
 		char* text = strjoin(json_stringify(only), c"\n")
 		char* target = argparse_get(args, c"json")
 		if (target != 0): ht_write(target, text, strlen(text))
@@ -39,6 +51,7 @@ int main(int argc, int argv):
 		json_object_set(report, c"full_harness", upstream)
 		if (upstream_status == 2): status = 2
 		if (status == 0 && ht_number(jc_get(upstream, c"counts"), c"ERROR") != 0): status = 1
+	status = t262_check_expect(report, argparse_get(args, c"expect"), status)
 	char* encoded = strjoin(json_stringify(report), c"\n")
 	char* output = argparse_get(args, c"json")
 	if (output != 0): ht_write(output, encoded, strlen(encoded))

@@ -1,8 +1,8 @@
 # wbuild: binary=test262_runtime_runner arch=x64 dep=javascript_parser
 # wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
-# wbuild: step="bin/test262_conformance --native-only --json bin/test262-conformance.json" timeout=1800000
+# wbuild: step="bin/test262_conformance --native-only --expect PASS=5063,FAIL=0,UNSUPPORTED=316,ERROR=0,execution_passes=3843,assertions=13731,variants=5379 --json bin/test262-conformance.json" timeout=1800000
 # wbuild: target=javascript_test262_upstream tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
-# wbuild: step="bin/test262_conformance --upstream-only --json bin/test262-upstream.json" timeout=1800000
+# wbuild: step="bin/test262_conformance --upstream-only --expect PASS=4908,FAIL=0,UNSUPPORTED=471,ERROR=0,pass_rate=91.24%,execution_passes=3688 --json bin/test262-upstream.json" timeout=1800000
 # Bounded upstream Test262 profile. Fresh process and realm per variant.
 import lib.args
 import lib.file

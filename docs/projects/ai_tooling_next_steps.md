@@ -1769,6 +1769,11 @@ background-task time limit (one serial pass exceeded 30 minutes on a shared
 box), merge reruns, and pick files. Direction: a `--survey DIR` mode that
 runs every test under an upstream checkout without a baseline, in parallel
 (`--jobs N`), and emits per-file native/upstream statuses ready for pinning.
+Module tests add two more hand steps: a survey manifest must leave out
+upstream files whose metadata the loader rejects (`flags: [raw, module]`
+aborts the whole run with `conflicting raw flags`), and pinning one needs
+the transitive closure of its `_FIXTURE.js` imports (fixtures import further
+fixtures), which nothing checks until a staged module fails to resolve.
 
 ## `wtest changed` over-selects when roots import generated sources (2026-11-08, #914)
 
