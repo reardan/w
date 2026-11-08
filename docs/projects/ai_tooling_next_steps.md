@@ -1710,3 +1710,13 @@ garbage index, which surfaced only as a runtime "list index out of range"
 deep in module linking. Direction: diagnose a function whose name matches a
 struct in the same program (or at least warn at the ambiguous call site),
 and have `symbols --json` flag duplicate names across kinds.
+
+## `string` as a local name gives an unrelated parse error (2026-11-08, #902)
+
+`js_value* string = ...; string.host_construct = 1` fails `check` with
+"';' expected, found 'host_construct'" at the member access, because
+`string` is treated as a type name at statement position (like `byte`, which
+CLAUDE.md warns about). The declaration itself is accepted, so the error
+points away from the cause. Direction: reject (or warn on) declaring a local
+whose name is a built-in type name, and mention the type-name reading in the
+statement-position parse error.
