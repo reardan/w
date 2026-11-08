@@ -44,10 +44,10 @@ void tc_upstream():
 	t262_upstream = 1
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3066,\"FAIL\":0,\"UNSUPPORTED\":484,\"ERROR\":0}")), c"upstream-harness counts changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3275,\"FAIL\":0,\"UNSUPPORTED\":482,\"ERROR\":0}")), c"upstream-harness counts changed")
 	tc_eq(c"upstream-harness-v1", ht_text(report, c"profile"))
-	tc_eq(c"86.36%", ht_text(report, c"pass_rate"))
-	ht_require(ht_number(report, c"execution_passes") == 1993 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
+	tc_eq(c"87.17%", ht_text(report, c"pass_rate"))
+	ht_require(ht_number(report, c"execution_passes") == 2062 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream-harness evidence changed")
 	t262_harness = new list[char*]
 	for char* file in split(c"sta.js assert.js"): t262_harness.push(tempfile_abspath(path_join(c"tests/javascript/test262/upstream/harness", file)))
 	for char* source in ht_split(c"assert(true);|assert.sameValue(NaN, NaN);|assert.throws(TypeError, function() { null.x; });|assert.compareArray([1, 2], [1, 2]);|function F() {} assert(new F() instanceof F);|switch (1) { case 1: break; default: throw 1; }", '|'): tc_eq(c"normal", ht_text(tc_execute(source), c"outcome"))
@@ -67,20 +67,20 @@ int main():
 	tc_directory = ht_temp()
 	int status = 0
 	json_value* report = tc_run(&status)
-	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3301,\"FAIL\":0,\"UNSUPPORTED\":249,\"ERROR\":0}")), c"upstream counts changed")
-	ht_require(ht_number(report, c"execution_passes") == 2228 && ht_number(report, c"assertions") == 9368 && ht_number(report, c"variants") == 3550 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
+	ht_require(status == 0 && jc_equal(jc_get(report, c"counts"), json_parse(c"{\"PASS\":3441,\"FAIL\":0,\"UNSUPPORTED\":316,\"ERROR\":0}")), c"upstream counts changed")
+	ht_require(ht_number(report, c"execution_passes") == 2228 && ht_number(report, c"assertions") == 9368 && ht_number(report, c"variants") == 3757 && jc_get(report, c"baseline_changes").array_values.length == 0, c"upstream execution evidence changed")
 	for mutation in range(1, 3):
 		tc_mutation = mutation
 		tc_changed = 0
 		json_value* changed = tc_run(&status)
 		json_value* counts = jc_get(changed, c"counts")
-		int passes = 3300
-		int unsupported = 250
+		int passes = 3440
+		int unsupported = 317
 		char* before = c"PASS"
 		char* after = c"UNSUPPORTED"
 		if (mutation == 2):
-			passes = 3302
-			unsupported = 248
+			passes = 3442
+			unsupported = 315
 			before = c"UNSUPPORTED"
 			after = c"PASS"
 		ht_require(status == 1 && ht_number(counts, c"PASS") == passes && ht_number(counts, c"UNSUPPORTED") == unsupported && ht_number(counts, c"FAIL") == 0 && ht_number(counts, c"ERROR") == 0, c"baseline change did not fail gate")

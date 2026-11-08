@@ -82,6 +82,11 @@ struct js_value:
 	int builtin_state
 
 
+# builtin_state brand of module namespace exotic objects (modules.w). Their
+# export properties carry accessor tag 2 like imported environment bindings.
+const int JS_BRAND_MODULE_NAMESPACE = 32
+
+
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
 # Null getter result and zero setter result delegate to ordinary properties.
 # Negative setter result signals rejection. Keys/context are borrowed.
@@ -385,10 +390,12 @@ int js_runtime_prefix(char* text, char* prefix):
 js_value* js_runtime_error_value(js_runtime* rt, char* message):
 	if (rt.max_values - rt.heap.length < 3 || rt.max_properties < 2 || strlen(message) > rt.max_properties || rt.max_properties < 14): return rt.undefined_value
 	char* name = c"TypeError"
-	if (strcmp(message, c"uninitialized or missing binding") == 0 || strcmp(message, c"invalid assignment target") == 0): name = c"ReferenceError"
+	if (strcmp(message, c"uninitialized or missing binding") == 0 || strcmp(message, c"invalid assignment target") == 0 || strcmp(message, c"uninitialized module binding") == 0): name = c"ReferenceError"
 	if (js_runtime_class_reference_error(message)): name = c"ReferenceError"
 	if (strcmp(message, c"duplicate lexical binding") == 0 || strcmp(message, c"duplicate callable binding") == 0): name = c"SyntaxError"
 	if (js_runtime_prefix(message, c"invalid regular expression")): name = c"SyntaxError"
+	# Module linking failures (modules.w, module_graph.w).
+	if (js_runtime_prefix(message, c"module export cannot be resolved") || js_runtime_prefix(message, c"ambiguous star export binding")): name = c"SyntaxError"
 	js_value* error = js_runtime_alloc(rt, 5)
 	error.intrinsic_error_name = name
 	error.prototype = js_runtime_error_prototype(rt, name)
@@ -856,6 +863,7 @@ int js_runtime_define(js_runtime* rt, js_value* object, js_text* key, js_value* 
 	if (getter != 0 && (getter.owner != rt || (getter.kind != 7 && getter.kind != 9))): return 0
 	if (setter != 0 && (setter.owner != rt || (setter.kind != 7 && setter.kind != 9))): return 0
 	js_value* property = js_runtime_property(object, key)
+	if (object.builtin_state == JS_BRAND_MODULE_NAMESPACE && (property == 0 || property.accessor == 2)): return 0
 	if (property != 0 && property.configurable == 0):
 		if (configurable || enumerable != property.enumerable || accessor != property.accessor): return 0
 		if (accessor):
@@ -944,6 +952,8 @@ js_value* js_runtime_read_receiver(js_runtime* rt, js_value* object, js_text* ke
 		js_value* property = js_runtime_property(current, key)
 		if (property != 0):
 			if (property.accessor == 0): return property.value
+			# Module namespace export: a live alias of the exported binding.
+			if (property.accessor == 2): return js_runtime_binding_value(rt, property)
 			if (property.getter == 0): return rt.undefined_value
 			if (js_runtime_property_enter(rt) == 0): return rt.undefined_value
 			list[js_value*] arguments = new list[js_value*]
@@ -996,6 +1006,8 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 		if (depth > rt.max_depth):
 			js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
 			return 0
+		# Module namespace objects reject every [[Set]] and are not extensible.
+		if (current.builtin_state == JS_BRAND_MODULE_NAMESPACE && current == receiver): return 0
 		if (current.host_set != 0):
 			if (js_runtime_property_enter(rt) == 0): return 0
 			js_host_setter* callback = cast(js_host_setter*, current.host_set)
@@ -1008,6 +1020,7 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 				return 0
 		js_value* property = js_runtime_property(current, key)
 		if (property != 0):
+			if (property.accessor == 2): break
 			if (property.accessor):
 				if (property.setter == 0): return 0
 				if (js_runtime_property_enter(rt) == 0): return 0
@@ -1021,6 +1034,8 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 			break
 		current = current.prototype
 	js_value* own = js_runtime_property(receiver, key)
+	# A namespace export's [[GetOwnProperty]] throws in its TDZ.
+	if (own != 0 && own.accessor == 2): js_runtime_binding_value(rt, own)
 	if (own != 0 && (own.accessor || own.writable == 0)): return 0
 	return js_runtime_put(rt, receiver, key, value)
 

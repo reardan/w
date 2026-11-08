@@ -694,7 +694,15 @@ js_value* js_object_descriptor(js_runtime* rt, js_value* object, js_value* name)
 		js_runtime_set(rt, result, c"configurable", js_runtime_boolean(rt, 0))
 	else if (property != 0):
 		result = js_runtime_alloc(rt, 5)
-		if (property.accessor):
+		if (property.accessor == 2):
+			# Module namespace export: [[GetOwnProperty]] reads the live binding.
+			js_value* current = js_runtime_binding_value(rt, property)
+			if (rt.completion.status != 0):
+				js_text_free(key)
+				return rt.undefined_value
+			js_runtime_set(rt, result, c"value", current)
+			js_runtime_set(rt, result, c"writable", js_runtime_boolean(rt, 1))
+		else if (property.accessor):
 			js_value* getter = rt.undefined_value
 			js_value* setter = rt.undefined_value
 			if (property.getter != 0): getter = property.getter
