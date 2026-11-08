@@ -509,7 +509,11 @@ Async generators keep the specification's request queue (AsyncGeneratorEnqueue,
 drain, AwaitReturn, `return` resumption awaiting its value) and `yield` awaits
 its operand. `for await` uses `Symbol.asyncIterator` or wraps a sync iterator
 with %AsyncFromSyncIteratorPrototype%, awaits each result and closes the
-iterator on early exit. The `in` operator is now supported
+iterator on early exit. Array binding patterns over non-array iterables (and
+arrays whose `Symbol.iterator` was replaced) step the iterator protocol and
+close an iterator they leave open. A `Function` global (`Function.prototype`
+and its `constructor`) makes `f instanceof Function` hold for every function
+kind; calling it with source text reports unsupported. The `in` operator is now supported
 (ToPropertyKey on the left, TypeError for a non-object right side).
 
 **Budget and limits for suspended frames.** A suspended activation holds no
