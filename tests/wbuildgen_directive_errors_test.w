@@ -129,7 +129,7 @@ void test_arch_only_single_target():
 	# basename-derived name...
 	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/solo_test.w\", \"-o\", \"bin/solo_test\"]")
 	# ...no default 32-bit twin exists...
-	assert_lacks(out, c"[\"bin/wv2\", \"tests/solo_test.w\"")
+	assert_lacks(out, c"[\"bin/wv2\", \"x86\", \"tests/solo_test.w\"")
 	# ...it joins the x64 umbrella, not the 32-bit one...
 	assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"solo_test\"\n\t\t\t]")
 	# ...the .w deps= value lands in wtest's "data" and the cache
@@ -187,7 +187,7 @@ void test_wasm_arch_shape():
 	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"wasm\", \"tests/wasmy_test.w\", \"-o\", \"bin/wasmy_test\"]")
 	assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"wasm\", \"bin/wasmy_test\"]")
 	assert_contains(out, c"\"deps\": [\"wv2\", \"wrun\"]")
-	assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
+	assert_lacks(out, c"[\"bin/wv2\", \"x86\", \"tests/wasmy_test.w\"")
 	# It joins the wasm umbrella (run by the wasm CI leg), not "tests".
 	assert_contains(out, c"\"name\": \"tests_wasm\",\n\t\t\t\"deps\": [\n\t\t\t\t\"wasmy_test\"\n\t\t\t]")
 	free(out)
@@ -235,8 +235,8 @@ void test_group_aggregate():
 	assert_contains(out, c"\"outputs\": [\"bin/alpha_x64_test\", \"bin/beta_x64_test\"]")
 	# alpha keeps its standalone default target; group_only beta does
 	# not get one.
-	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_test\"]")
-	assert_lacks(out, c"\"bin/wv2\", \"tests/beta_test.w\"")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x86\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_test\"]")
+	assert_lacks(out, c"\"bin/wv2\", \"x86\", \"tests/beta_test.w\"")
 	# The x64 aggregate joins the x64 umbrella.
 	assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"combo_test_x64\"\n\t\t\t]")
 	free(out)

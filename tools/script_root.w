@@ -109,9 +109,8 @@ void script_root_probe(char* wv2, char* outdir, list[char*] modules, char* arch,
 	int a = 0
 	strv_set(argv, a, wv2)
 	a = a + 1
-	if (strcmp(arch, c"x86") != 0):
-		strv_set(argv, a, arch)
-		a = a + 1
+	strv_set(argv, a, arch)
+	a = a + 1
 	strv_set(argv, a, c"deps")
 	strv_set(argv, a + 1, c"--import-root")
 	strv_set(argv, a + 2, outdir)

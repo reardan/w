@@ -54,10 +54,13 @@ void fail(char* desc, char* what):
 
 # Runs bin/wv2 with the space-separated words of line (a word starting
 # with '@' gets the checkout's absolute path in place of the '@', so
-# the root path itself may contain spaces) from cwd.
+# the root path itself may contain spaces) from cwd. The x86 target is
+# explicit unless the case selects x64: the cases assert word=4 and the
+# x86 per-arch module.
 process_result* wv2(char* cwd, char* line):
 	list[char*] words = new list[char*]
 	words.push(WV2)
+	if (contains(line, c"x64 ") == 0): words.push(c"x86")
 	string_builder* word = string_new()
 	int i = 0
 	while (1):
@@ -225,5 +228,5 @@ int main():
 	out(c"import_root e2e OK\n")
 	return 0
 # wbuild: target=import_root_cli_test tag=tests dep=wv2 data=tests/import_roots/ data=tools/import_root_e2e.w
-# wbuild: step="bin/wv2 tools/import_root_e2e.w -o bin/import_root_e2e"
+# wbuild: step="bin/wv2 x86 tools/import_root_e2e.w -o bin/import_root_e2e"
 # wbuild: step="bin/import_root_e2e" expect_stdout="import_root e2e OK"

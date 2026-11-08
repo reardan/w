@@ -3,7 +3,7 @@
 		{
 			"name": "archs_fixture_default",
 			"steps": [
-				{"cmd": ["bin/wv2", "tests/wtest/archs_fixture/consumer.w", "-o", "bin/archs_fixture_default"]}
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/archs_fixture/consumer.w", "-o", "bin/archs_fixture_default"]}
 			]
 		},
 		{

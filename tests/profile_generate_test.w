@@ -1,10 +1,10 @@
 # wbuild: tool=tools/wprof.w deps=tests/profile_generate_fixture.w
 # wbuild: target=verify_profile_generate tag=tests dep=build dep=build_x64
-# wbuild: step="bin/wv2 --profile-generate --strict w.w -o bin/prof_wv3"
-# wbuild: step="bin/prof_wv3 --profile-generate --strict w.w -o bin/prof_wv4"
+# wbuild: step="bin/wv2 x86 --profile-generate --strict w.w -o bin/prof_wv3"
+# wbuild: step="bin/prof_wv3 x86 --profile-generate --strict w.w -o bin/prof_wv4"
 # wbuild: step="cmp bin/prof_wv3 bin/prof_wv4"
 # wbuild: step="cmp bin/prof_wv3.wprofmap bin/prof_wv4.wprofmap"
-# wbuild: step="bin/wv2 --profile-generate --streaming --strict w.w -o bin/prof_streaming_wv3"
+# wbuild: step="bin/wv2 x86 --profile-generate --streaming --strict w.w -o bin/prof_streaming_wv3"
 # wbuild: step="cmp bin/prof_wv3 bin/prof_streaming_wv3"
 # wbuild: step="cmp bin/prof_wv3.wprofmap bin/prof_streaming_wv3.wprofmap"
 # wbuild: step="bin/wv2_64 x64 --profile-generate --strict w.w -o bin/prof_wv3_64"
@@ -73,15 +73,14 @@ int pg_run_status(char* path, char** argv, char** env):
 	return status
 
 
-# bin/wv2 [x64] --quiet --profile-generate fixture -o out
+# bin/wv2 x86|x64 --quiet --profile-generate fixture -o out
 void pg_compile(char* arch, char* out):
 	char** argv = strv_new(8)
 	int n = 0
 	strv_set(argv, n, c"bin/wv2")
 	n = n + 1
-	if (strcmp(arch, c"x64") == 0):
-		strv_set(argv, n, c"x64")
-		n = n + 1
+	strv_set(argv, n, arch)
+	n = n + 1
 	strv_set(argv, n, c"--quiet")
 	n = n + 1
 	strv_set(argv, n, c"--profile-generate")

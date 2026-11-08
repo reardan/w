@@ -4,7 +4,7 @@
 			"name": "rn_dyn32",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/dyn.w", "-o", "bin/rn_dyn32"]},
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/dyn.w", "-o", "bin/rn_dyn32"]},
 				{"cmd": ["bin/rn_dyn32"]}
 			]
 		},
@@ -28,7 +28,7 @@
 			"name": "rn_static",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/plain.w", "-o", "bin/rn_static"]},
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/plain.w", "-o", "bin/rn_static"]},
 				{"cmd": ["bin/rn_static"]}
 			]
 		},
@@ -36,14 +36,14 @@
 			"name": "rn_compile_only",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/gpu.w", "-o", "bin/rn_ptx"]}
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/gpu.w", "-o", "bin/rn_ptx"]}
 			]
 		},
 		{
 			"name": "rn_dyn_imp",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/dyn_imp.w", "-o", "bin/rn_dyn_imp"]},
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/dyn_imp.w", "-o", "bin/rn_dyn_imp"]},
 				{"cmd": ["bin/rn_dyn_imp"]}
 			]
 		},
@@ -59,7 +59,7 @@
 			"name": "rn_plain_imp",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/plain_imp.w", "-o", "bin/rn_plain_imp"]},
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/plain_imp.w", "-o", "bin/rn_plain_imp"]},
 				{"cmd": ["bin/rn_plain_imp"]}
 			]
 		},
@@ -67,7 +67,7 @@
 			"name": "rn_broken_imp",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["bin/wv2", "tests/wtest/runnable_fixture/broken_imp.w", "-o", "bin/rn_broken_imp"]},
+				{"cmd": ["bin/wv2", "x86", "tests/wtest/runnable_fixture/broken_imp.w", "-o", "bin/rn_broken_imp"]},
 				{"cmd": ["bin/rn_broken_imp"]}
 			]
 		},

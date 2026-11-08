@@ -66,8 +66,8 @@ it needs from that seed (`rm -rf bin` resets the world).
 Compile and run an arbitrary program:
 
 ```sh
-./bin/wv2 file.w -o out && ./out          # 32-bit x86
-./bin/wv2 x64 file.w -o out && ./out      # 64-bit x86-64
+./bin/wv2 file.w -o out && ./out          # 64-bit x86-64 (the default)
+./bin/wv2 x86 file.w -o out && ./out      # 32-bit x86
 ./bin/wv2 file.w > out && chmod +x out    # without -o, the ELF goes to stdout
 ```
 

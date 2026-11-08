@@ -1,7 +1,7 @@
 # wbuild: target=wgrind_compiler_test tag=tests dep=wv2 dep=wgrind_native input=tests/wgrind_compiler_fixture.w input=tests/wgrind_compiler_math_fixture.w
 # wbuild: step="bin/wv2 x64 --wgrind tests/wgrind_compiler_fixture.w -o bin/wgrind_compiler_fixture"
 # wbuild: step="bin/wv2 x64 --wgrind tests/wgrind_compiler_math_fixture.w -o bin/wgrind_compiler_math_fixture"
-# wbuild: step="bin/wv2 tests/wgrind_compiler_test.w -o bin/wgrind_compiler_test"
+# wbuild: step="bin/wv2 x86 tests/wgrind_compiler_test.w -o bin/wgrind_compiler_test"
 # wbuild: step="bin/wgrind_compiler_test inspect" expect_stdout="wgrind_compiler_test: OK"
 # wbuild: step="bin/wgrind_compiler_test execute" expect_stdout="wgrind_compiler_test: OK" timeout=120000
 # wbuild: step="bin/wgrind_native bin/wgrind_compiler_fixture h" expect_status=100 expect_stderr="incomplete" reject_stdout="unchecked callback"
@@ -9,7 +9,7 @@
 # wbuild: step="bin/wgrind_native bin/wgrind_compiler_math_fixture c"
 # wbuild: step="bin/wgrind_native bin/wgrind_compiler_math_fixture u" expect_status=99 expect_stderr="undefined-value"
 # wbuild: step="bin/wgrind_native bin/wgrind_compiler_math_fixture s" expect_status=99 expect_stderr="undefined-value"
-# wbuild: step="bin/wv2 --wgrind tests/wgrind_compiler_fixture.w -o bin/wgrind_bad_arch" expect_status=1 expect_stderr="requires the x64 Linux target"
+# wbuild: step="bin/wv2 x86 --wgrind tests/wgrind_compiler_fixture.w -o bin/wgrind_bad_arch" expect_status=1 expect_stderr="requires the x64 Linux target"
 # wbuild: step="bin/wv2 arm64 --wgrind tests/wgrind_compiler_fixture.w -o bin/wgrind_bad_arch" expect_status=1 expect_stderr="requires the x64 Linux target"
 # wbuild: step="bin/wv2 x64 --wgrind --pie tests/wgrind_compiler_fixture.w -o bin/wgrind_bad_pie" expect_status=1 expect_stderr="requires a native non-PIE executable"
 # wbuild: step="bin/wv2 x64 --wgrind --streaming tests/wgrind_compiler_fixture.w -o bin/wgrind_bad_stream" expect_status=1 expect_stderr="--streaming"

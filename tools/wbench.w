@@ -703,16 +703,12 @@ prog_result* prog_run(char* compiler, char* name, char* arch, char* prefix, int 
 	prog_result* r = prog_result_new()
 	char* source = prog_concat3(c"tests/bench/", name, c".w")
 	char* binary = prog_concat3(prefix, name, strjoin(c"_", arch))
-	int is_x64 = strcmp(arch, c"x64") == 0
-	int argc = 5
-	if (is_x64): argc = 6
-	char** argv = strv_new(argc)
+	char** argv = strv_new(6)
 	int i = 0
 	strv_set(argv, i, compiler)
 	i = i + 1
-	if (is_x64):
-		strv_set(argv, i, c"x64")
-		i = i + 1
+	strv_set(argv, i, arch)
+	i = i + 1
 	strv_set(argv, i, c"--quiet")
 	strv_set(argv, i + 1, source)
 	strv_set(argv, i + 2, c"-o")
@@ -739,16 +735,12 @@ prog_result* prog_run(char* compiler, char* name, char* arch, char* prefix, int 
 prog_result* prog_run_self(char* compiler, char* arch, char* prefix, int runs):
 	prog_result* r = prog_result_new()
 	char* out = prog_concat3(prefix, c"self_", arch)
-	int is_x64 = strcmp(arch, c"x64") == 0
-	int argc = 5
-	if (is_x64): argc = 6
-	char** argv = strv_new(argc)
+	char** argv = strv_new(6)
 	int i = 0
 	strv_set(argv, i, compiler)
 	i = i + 1
-	if (is_x64):
-		strv_set(argv, i, c"x64")
-		i = i + 1
+	strv_set(argv, i, arch)
+	i = i + 1
 	strv_set(argv, i, c"--quiet")
 	strv_set(argv, i + 1, c"w.w")
 	strv_set(argv, i + 2, c"-o")
@@ -756,7 +748,7 @@ prog_result* prog_run_self(char* compiler, char* arch, char* prefix, int runs):
 	if (prog_time_runs(r, argv, runs, 0)): return r
 	r.bytes = prog_file_size(out)
 	r.output = c"(the compiled compiler)"
-	prog_measure_ir(r, argv, argc, compiler, strjoin(out, c".callgrind"))
+	prog_measure_ir(r, argv, 6, compiler, strjoin(out, c".callgrind"))
 	return r
 
 

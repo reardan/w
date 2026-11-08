@@ -197,9 +197,9 @@
 			"inputs": [],
 			"outputs": ["bin/wv3", "bin/wv4", "bin/wv5"],
 			"steps": [
-				{"cmd": ["bin/wv2", "--strict", "w.w", "-o", "bin/wv3"], "atomic_output": "bin/wv3"},
-				{"cmd": ["bin/wv3", "--strict", "w.w", "-o", "bin/wv4"], "atomic_output": "bin/wv4"},
-				{"cmd": ["bin/wv4", "--strict", "w.w", "-o", "bin/wv5"], "atomic_output": "bin/wv5"}
+				{"cmd": ["bin/wv2", "x86", "--strict", "w.w", "-o", "bin/wv3"], "atomic_output": "bin/wv3"},
+				{"cmd": ["bin/wv3", "x86", "--strict", "w.w", "-o", "bin/wv4"], "atomic_output": "bin/wv4"},
+				{"cmd": ["bin/wv4", "x86", "--strict", "w.w", "-o", "bin/wv5"], "atomic_output": "bin/wv5"}
 			]
 		},
 		{
@@ -219,10 +219,10 @@
 			"inputs": ["profiles/self.wprof", "profiles/self_x64.wprof"],
 			"outputs": ["bin/wv3_pgo", "bin/wv4_pgo", "bin/wv5_pgo", "bin/wv3_pgo_streaming", "bin/wv3_pgo_64", "bin/wv4_pgo_64", "bin/wv3_pgo_streaming_64"],
 			"steps": [
-				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo"]},
-				{"cmd": ["bin/wv3_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo"]},
-				{"cmd": ["bin/wv4_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv5_pgo"]},
-				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--streaming", "--strict", "w.w", "-o", "bin/wv3_pgo_streaming"]},
+				{"cmd": ["bin/wv2", "x86", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo"]},
+				{"cmd": ["bin/wv3_pgo", "x86", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo"]},
+				{"cmd": ["bin/wv4_pgo", "x86", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv5_pgo"]},
+				{"cmd": ["bin/wv2", "x86", "--profile-use=profiles/self.wprof", "--streaming", "--strict", "w.w", "-o", "bin/wv3_pgo_streaming"]},
 				{"cmd": ["bin/wv2", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo_64"]},
 				{"cmd": ["bin/wv3_pgo_64", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo_64"]},
 				{"cmd": ["bin/wv2", "x64", "--profile-use=profiles/self_x64.wprof", "--streaming", "--strict", "w.w", "-o", "bin/wv3_pgo_streaming_64"]}
