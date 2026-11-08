@@ -50,6 +50,12 @@ void test_brackets_calls_and_members():
 	assert_formats(c"int n = cast (int, sizeof (T))\x0a", c"int n = cast(int, sizeof(T))\x0a")
 	assert_formats(c"while(i < n):\x0a\x09i = i + 1\x0a", c"while (i < n):\x0a\x09i = i + 1\x0a")
 	assert_formats(c"return(x)\x0a", c"return (x)\x0a")
+	assert_formats(c"rec r ={ int32 1 , &g+8, pad 4 }\x0a", c"rec r = {int32 1, &g + 8, pad 4}\x0a")
+
+
+void test_declaration_attributes():
+	assert_formats(c"@ section ( \".init.text\" ) @ weak\x0aint f():\x0a\x09return 1\x0a", c"@section(\".init.text\") @weak\x0aint f():\x0a\x09return 1\x0a")
+	assert_unchanged(c"@align(64)\x0aint cell\x0a")
 
 
 void test_pointer_types():

@@ -8,6 +8,7 @@ struct_declaration identifier :
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+void incomplete_global_complete(int type_index);   /* grammar/program.w */
 
 
 int struct_declaration():
@@ -53,6 +54,7 @@ int struct_declaration():
 				print2(c"type_token: ")
 				print2(token)
 			int field_type = type_name()
+			seg_storage_check(field_type, c"a struct field")
 			if (verbosity >= 1):
 				print_int0(c"[", field_type)
 				println2(c"]")
@@ -79,6 +81,7 @@ int struct_declaration():
 			pointer_indirection = 0
 
 
+		incomplete_global_complete(type_index)
 		defhash_note(defhash_name, c"struct", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 		return 1
 

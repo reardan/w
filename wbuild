@@ -90,7 +90,26 @@ host_android=0
 if [ -n "${ANDROID_ROOT:-}" ] || [ -x /system/bin/getprop ]; then
 	host_android=1
 fi
-if [ "$host_android" = 1 ]; then
+case "${WBUILD_HOST:-}" in
+	''|linux-x64) ;;
+	*) echo "wbuild: unsupported WBUILD_HOST: $WBUILD_HOST" >&2; exit 2 ;;
+esac
+if [ "${WBUILD_HOST:-}" = linux-x64 ]; then
+	[ "$(uname -s)-$(uname -m)" = Linux-x86_64 ] || { echo "wbuild: linux-x64 host profile requires Linux x86-64" >&2; exit 2; }
+	# Provision once outside a sandbox that blocks the x86 seed. Subsequent
+	# refreshes use only the native compiler and executor, never shared bin/wv2.
+	if [ ! -x bin/wv2_native ]; then
+		ensure_seed w
+		./w x64 w.w -o "bin/wv2_native.stage.$$"
+		mv -f "bin/wv2_native.stage.$$" bin/wv2_native
+	fi
+	if [ ! -x bin/wexec_native ]; then
+		bin/wv2_native x64 tools/wexec_main.w -o "bin/wexec_native.stage.$$"
+		mv -f "bin/wexec_native.stage.$$" bin/wexec_native
+	fi
+	./bin/wexec_native wv2_native wexec_native >/dev/null
+	executor=./bin/wexec_native
+elif [ "$host_android" = 1 ]; then
 	case "$(uname -m)" in
 		aarch64|arm64) ;;
 		*) echo "wbuild: Android hosting requires ARM64" >&2; exit 1 ;;
@@ -183,7 +202,7 @@ fi
 # terminal, but starting from the daemon's warm manifest and content
 # hashes, and auto-starting the daemon when none runs. If bin/wbuildd
 # cannot be brought up to date, the one-shot executor runs instead.
-if [ "${WBUILDD:-}" = 1 ] && [ "$host_android" = 0 ] && [ "$(uname -s)" = Linux ]; then
+if [ "${WBUILD_HOST:-}" != linux-x64 ] && [ "${WBUILDD:-}" = 1 ] && [ "$host_android" = 0 ] && [ "$(uname -s)" = Linux ]; then
 	if ./bin/wexec wbuildd >/dev/null 2>&1; then
 		exec ./bin/wbuildd build "$@"
 	fi

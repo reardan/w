@@ -22,6 +22,15 @@ int arm64_setcc_cond(int setcc);
 void error(char* s);
 
 
+# --kernel-codegen (docs/projects/object_files.md): kernel code may not
+# touch the FPU/SSE register state, which belongs to the interrupted
+# task, so every x86 float emitter below (and the float paths of the FFI
+# shims and export adapters) refuses to emit under the flag.
+void sse_kernel_reject():
+	if (kernel_codegen && (target_isa == 0)):
+		error(c"floating point is not allowed with --kernel-codegen (no SSE/x87 in kernel code)")
+
+
 ########################### GPR <-> XMM transfers ############################
 # The GPR -> XMM loads are parameterized by the target xmm (0 or 1) and the
 # source GPR (0 = eax/rax/x0, 1 = ebx/rbx/x1): the x86 reg-reg ModRM is
@@ -31,6 +40,7 @@ void error(char* s);
 
 /* movd xmm<xmm>, eax/ebx */
 void movd_xmm(int xmm, int reg):
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_movd_xmm(xmm, reg)
 	elif (target_isa == 2): wasm_movd_xmm(xmm, reg)
 	elif (target_isa == 1): a64(op(0x1e, 0x270000) | (reg << 5) | xmm)   # fmov s<xmm>, w<reg>
@@ -41,11 +51,13 @@ void movd_xmm(int xmm, int reg):
 
 /* movd xmm0, eax */
 void movd_xmm0_eax():
+	sse_kernel_reject()
 	movd_xmm(0, 0)
 
 
 /* movd eax, xmm0 */
 void movd_eax_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_movd_ax_f0()
 	elif (target_isa == 2): wasm_movd_eax_xmm0()
 	elif (target_isa == 1): a64(op(0x1e, 0x260000))   # fmov w0, s0
@@ -54,6 +66,7 @@ void movd_eax_xmm0():
 
 /* movq xmm<xmm>, rax/rbx (x64 only) */
 void movq_xmm(int xmm, int reg):
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_movq_xmm(xmm, reg)
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x9e, 0x670000) | (reg << 5) | xmm)   # fmov d<xmm>, x<reg>
@@ -64,11 +77,13 @@ void movq_xmm(int xmm, int reg):
 
 /* movq xmm0, rax (x64 only) */
 void movq_xmm0_rax():
+	sse_kernel_reject()
 	movq_xmm(0, 0)
 
 
 /* movq rax, xmm0 (x64 only) */
 void movq_rax_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_movq_ax_d0()
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x9e, 0x660000))   # fmov x0, d0
@@ -80,6 +95,7 @@ void movq_rax_xmm0():
 /* xmm0 = xmm0 <oper> xmm1 for oper '+', '-', '*' or '/':
    addss/subss/mulss/divss, or addsd/subsd/mulsd/divsd when is64 */
 void float_arith(int oper, int is64):
+	sse_kernel_reject()
 	int k = 0
 	if (oper == '-'): k = 1
 	elif (oper == '*'): k = 2
@@ -109,6 +125,7 @@ void float_arith(int oper, int is64):
 
 /* ucomiss xmm0, xmm1: sets ZF/CF like an unsigned integer compare */
 void ucomiss():
+	sse_kernel_reject()
 	if (target_isa == 3):
 		# Record the width; the following setcc emits the setp
 		ptx_fcmp_pending(1)
@@ -119,6 +136,7 @@ void ucomiss():
 
 /* ucomisd xmm0, xmm1 */
 void ucomisd():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_fcmp_pending(2)
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x1e, 0x612000))   # fcmp d0, d1
@@ -153,6 +171,7 @@ void setcc_movzx_eax(int setcc_opcode):
 
 /* cvtsi2ss xmm<xmm>, eax/ebx (rax/rbx on x64) */
 void cvtsi2ss_xmm(int xmm, int reg):
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvtsi2ss(xmm, reg)
 	elif (target_isa == 2): wasm_cvtsi2ss(xmm, reg)
 	elif (target_isa == 1): a64(op(0x9e, 0x220000) | (reg << 5) | xmm)   # scvtf s<xmm>, x<reg>
@@ -165,11 +184,13 @@ void cvtsi2ss_xmm(int xmm, int reg):
 
 /* cvtsi2ss xmm0, eax/rax */
 void cvtsi2ss_xmm0_eax():
+	sse_kernel_reject()
 	cvtsi2ss_xmm(0, 0)
 
 
 /* cvtsi2sd xmm<xmm>, rax/rbx (x64 only) */
 void cvtsi2sd_xmm(int xmm, int reg):
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvtsi2sd(xmm, reg)
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x9e, 0x620000) | (reg << 5) | xmm)   # scvtf d<xmm>, x<reg>
@@ -180,11 +201,13 @@ void cvtsi2sd_xmm(int xmm, int reg):
 
 /* cvtsi2sd xmm0, rax (x64 only) */
 void cvtsi2sd_xmm0_rax():
+	sse_kernel_reject()
 	cvtsi2sd_xmm(0, 0)
 
 
 /* cvttss2si eax/rax, xmm0 (truncating float32 -> int) */
 void cvttss2si_eax_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvttss2si()
 	elif (target_isa == 2): wasm_cvttss2si()
 	elif (target_isa == 1): a64(op(0x9e, 0x380000))   # fcvtzs x0, s0
@@ -196,6 +219,7 @@ void cvttss2si_eax_xmm0():
 
 /* cvttsd2si rax, xmm0 (truncating float64 -> int, x64 only) */
 void cvttsd2si_rax_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvttsd2si()
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x9e, 0x780000))   # fcvtzs x0, d0
@@ -204,6 +228,7 @@ void cvttsd2si_rax_xmm0():
 
 /* cvtss2sd xmm<xmm>, xmm<xmm> (widen in place) */
 void cvtss2sd_xmm(int xmm):
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvtss2sd(xmm)
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x1e, 0x22c000) | (xmm << 5) | xmm)   # fcvt d<xmm>, s<xmm>
@@ -214,11 +239,13 @@ void cvtss2sd_xmm(int xmm):
 
 /* cvtss2sd xmm0, xmm0 */
 void cvtss2sd_xmm0():
+	sse_kernel_reject()
 	cvtss2sd_xmm(0)
 
 
 /* cvtsd2ss xmm0, xmm0 */
 void cvtsd2ss_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3): ptx_cvtsd2ss()
 	elif (target_isa == 2): error(c"float64 requires the x64 target")
 	elif (target_isa == 1): a64(op(0x1e, 0x624000))   # fcvt s0, d0
@@ -229,6 +256,7 @@ void cvtsd2ss_xmm0():
 
 /* vcvtph2ps xmm0, xmm0: widen the half in the low 16 bits to float32 */
 void vcvtph2ps_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3):
 		ptx_line(c"mov.b32 %w0, %fa;")
 		ptx_line(c"cvt.u16.u32 %half, %w0;")
@@ -240,6 +268,7 @@ void vcvtph2ps_xmm0():
 
 /* Narrow float32 to half, round-to-nearest-even (x86 immediate 0). */
 void vcvtps2ph_xmm0():
+	sse_kernel_reject()
 	if (target_isa == 3):
 		ptx_line(c"cvt.rn.f16.f32 %half, %fa;")
 		ptx_line(c"cvt.u32.u16 %w0, %half;")

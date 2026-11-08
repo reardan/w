@@ -17,6 +17,9 @@ void ast_global_declaration(int binding, int type, char* init_name):
 	global_storage_ast_free(node.storage)
 	node.storage = 0
 	if (init_name):
+		if (global_brace_initializer(init_name, node.address, type)):
+			node.end_offset = token_start_offset
+			return
 		global_initializer_check_type(init_name, type)
 		if (global_address_initializer(init_name, node.address, type)):
 			node.end_offset = token_start_offset

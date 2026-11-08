@@ -152,6 +152,7 @@ void float64_bits_from_token():
 
 int float_literal():
 	if (token_is_float_literal() == 0): return 0
+	sse_kernel_reject()
 	if (word_size == 8):
 		float64_bits_from_token()
 		mov_rax_int64_halves(float64_literal_lo, float64_literal_hi)

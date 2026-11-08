@@ -96,3 +96,33 @@ void test_word_at():
 	check_word(c"na\xc3\xafve caf\xc3\xa9", 3, 0, 6)
 	check_word(c"na\xc3\xafve caf\xc3\xa9", 9, 7, 12)
 	check_word(c"", 0, 0, 0)
+
+
+# ut_utf8_scan (kept local to stay freestanding) agrees with lib.lib's
+# utf8_scan on every lead byte with assorted continuation patterns,
+# truncations included.
+void test_utf8_scan_matches_lib():
+	char* buf = cast(char*, malloc(8))
+	int[8] tails
+	tails[0] = 0x80
+	tails[1] = 0xbf
+	tails[2] = 0x9f
+	tails[3] = 0xa0
+	tails[4] = 0x8f
+	tails[5] = 0x90
+	tails[6] = 0x41
+	tails[7] = 0xc0
+	for lead in range(256):
+		for t in range(8):
+			for avail in range(1, 5):
+				buf[0] = lead
+				buf[1] = tails[t]
+				buf[2] = tails[(t + 3) % 8]
+				buf[3] = 0x80
+				int a = 0
+				int b = 0
+				int na = utf8_scan(buf, avail, &a)
+				int nb = ut_utf8_scan(buf, avail, &b)
+				assert_equal(na, nb)
+				if (na != 0): assert_equal(a, b)
+	free(buf)

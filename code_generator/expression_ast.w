@@ -602,9 +602,12 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				argument = tree.next_arg[argument]
 			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
 			strcpy(last_identifier, name)
+			if (c_abi_mode): error(c"--c-abi does not support taking the address of a generic function yet")
 			sym_emit_value(sym, name)
 			free(name)
-		else: generic_inst_emit_callee(tree.generic_instance[id])
+		else:
+			if (c_abi_mode): error(c"--c-abi does not support taking the address of a generic function yet")
+			generic_inst_emit_callee(tree.generic_instance[id])
 		return
 	if (op == 'G'):
 		int sym = tree.symbol[id]
@@ -978,6 +981,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			token = saved_token
 		return
 	if (op == 'f'):
+		sse_kernel_reject()
 		if (word_size == 8): mov_rax_int64_halves(tree.value[id], tree.high[id])
 		else: mov_eax_int32(tree.value[id])
 		return
@@ -1044,6 +1048,9 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				if (table[sym + 1] == 'A'): rg_touch = rg_touch + 1
 				be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
+		# --c-abi: a function's name as a value is its System V entry
+		else if (c_abi_mode && (op == 'v') && (load_int(table + sym + 10) == 2)): c_abi_function_value(sym, name)
+		else if ((direct == 0) && (op == 'C') && c_abi_calls_through_symbol(sym)): c_abi_function_value(sym, name)
 		else if (direct == 0): sym_emit_value(sym, name)
 		if (op == 'X'):
 			int s = stack_pos
@@ -1087,7 +1094,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 					classes[count] = push_c_variadic_argument(sym, table + tree.value[id], count, c_variadic, got)
 					count = count + 1
 					arg = tree.next_arg[arg]
-				emit_ffi_call_inline(count, classes, ffi_type_class(declared_return), sym_got_vaddr(sym))
+				c_variadic_call_emit(sym, count, classes, declared_return)
 				free(classes)
 				pop_to(s)
 				last_call_return_type = declared_return

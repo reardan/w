@@ -140,7 +140,7 @@ int defer_tree_bind(expression_ast* bound, defer_syntax_node* node):
 	if (is_call != (node.kind == 2)): return -1
 	if (is_call):
 		if (sym_is_generator(sym) || sym_is_kernel(sym) || sym_is_asm_stub(sym)): return -1
-		if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
+		if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0) || (c_abi_calls_through_symbol(sym))): return -1
 		if ((type != 0) && (defer_tree_scalar(type) == 0)): return -1
 	else if (defer_tree_scalar(type) == 0): return -1
 	int op = 'v'
