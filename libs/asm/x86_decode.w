@@ -225,11 +225,15 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	# lock cmpxchg / lock xadd r/m, r (f0 0f b1 /r, f0 0f c1 /r): the
 	# atomic_cas and atomic_add builtins. The lock prefix is part of the
 	# mnemonic; it is accepted on these two forms only.
-	if (op == 0xb1 || op == 0xc1):
-		if (op == 0xb1): insn.mnemonic = c"cmpxchg"
+	if (op == 0xb0 || op == 0xb1 || op == 0xc0 || op == 0xc1):
+		if (op == 0xb0 || op == 0xb1): insn.mnemonic = c"cmpxchg"
 		else: insn.mnemonic = c"xadd"
 		if (d.lock): insn.mnemonic = asm_x86_concat(c"lock ", insn.mnemonic)
-		asm_x86_modrm_gp(d, &insn.op2, &insn.op1)
+		if ((op & 1) == 0):
+			int modrm = asm_x86_u8(d)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), 1)
+			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, 1)
+		else: asm_x86_modrm_gp(d, &insn.op2, &insn.op1)
 		return d.pos - start
 	if (d.lock): return 0
 
@@ -606,6 +610,18 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# xchg r/m8, r8 (0x86) and r/m32, r32 (0x87): the form the encoder
+	# uses for a memory operand or two registers neither of which is eax.
+	if (op == 0x86 || op == 0x87):
+		insn.mnemonic = c"xchg"
+		int size = d.opsize
+		if (op == 0x86): size = 1
+		int modrm = asm_x86_u8(d)
+		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), size)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
+		insn.length = d.pos - start
+		return insn.length
+
 	# mov r/m8,r8 (0x88) ; r/m32,r32 (0x89) ; r8,r/m8 (0x8a) ; r32,r/m32 (0x8b)
 	if (op == 0x88 || op == 0x89 || op == 0x8a || op == 0x8b):
 		insn.mnemonic = c"mov"
@@ -771,6 +787,15 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			if (size == 1): asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 			else if (d.opsize == 2): asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
 			else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+		insn.length = d.pos - start
+		return insn.length
+
+	# pop r/m (0x8f /0), 64-bit by default in x64 like push r/m.
+	if (op == 0x8f):
+		int modrm = asm_x86_u8(d)
+		if (((modrm >> 3) & 7) != 0): return asm_x86_unknown(insn, bytes)
+		insn.mnemonic = c"pop"
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, asm_x86_stack_opsize(d))
 		insn.length = d.pos - start
 		return insn.length
 

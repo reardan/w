@@ -2652,8 +2652,11 @@ int rl_find_slot(int slot):
 # into its parameter's register (an expression park, A3), so a simple
 # argument costs one instruction and there is no 'add rsp' after the
 # call.
+# --kernel-codegen publishes no register entries: one jumps back into
+# its body, which stack validators (objtool) read as one function
+# falling into another.
 int rg_enabled():
-	if (reg_args_disabled || direct_calls_disabled || regalloc_disabled): return 0
+	if (reg_args_disabled || direct_calls_disabled || regalloc_disabled || kernel_codegen): return 0
 	if ((target_isa != 0) || (target_os != 0) || (word_size != 8)): return 0
 	if (repl_call_site_hook != 0): return 0
 	return 1

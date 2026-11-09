@@ -29,6 +29,7 @@ void ivopt_step(int offset);   /* compiler/ivopt.w (unit O7) */
 void ast_if_statement_tail();
 int ast_statement_block();
 int asm_block_misplaced();   /* grammar/asm_function.w */
+int inline_asm_statement();   /* grammar/inline_asm_stmt.w */
 
 
 # Table offset of the function whose body is being parsed; return
@@ -288,8 +289,13 @@ void statement_impl():
 
 	# DWARF line info: the code emitted next belongs to this source line.
 	# The line table and wdbg breakpoints address the statement's first
-	# byte, so no emission-time fold may reach back across it.
+	# byte, so no emission-time fold may reach back across it. The
+	# terminator note looks only forward and survives: a statement start
+	# is no jump target, so the code after a 'jmp' or 'ret' stays
+	# unreachable until a label or region end (O1).
+	int term_end = term_note_end
 	be_notes_reset()
+	term_note_end = term_end
 	debug_line_note(stack_pos)
 	if (coverage_generate_mode && (peek(c":") == 0) && (peek(c"{") == 0) && (peek(c"}") == 0)):
 		if (coverage_statement_is_label() == 0): profile_coverage_statement()
@@ -367,6 +373,12 @@ void statement_impl():
 		get_token()
 		statement()
 		terminates = flow_terminates
+
+	# asm_native: -- a native inline assembly statement. Checked here,
+	# before the expression-statement rules read 'asm_native' as an
+	# identifier and before labeled_statement treats it as a goto label
+	# (grammar/inline_asm_stmt.w).
+	else if (inline_asm_statement()): inline_hazard_count = inline_hazard_count + 1
 
 	# type-name identifier
 	else if (variable_declaration() >= 0): expect_or_newline(c";")

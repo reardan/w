@@ -93,7 +93,9 @@ void test_layout_readelf():
 		assert_contains(listing, c"R_X86_64_64            0000000000000000 c_twice + 0")
 		free(listing)
 		char* code = layout_shell(strjoin(c"objdump -d ", object))
-		assert_contains(code, c"addr32 call")
+		# a direct extern call is the plain 5-byte 'call rel32'
+		assert1(contains(code, c"addr32") == 0)
+		assert_contains(code, c"e8 00 00 00 00       \tcall")
 		free(code)
 		free(object)
 

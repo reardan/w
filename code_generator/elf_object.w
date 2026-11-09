@@ -228,6 +228,102 @@ int object_weak_count():
 	return object_weak_names.length
 
 
+# --- Native inline asm sections and relocations ----------------------
+#
+# An asm_native template (grammar/inline_asm_template.w) can switch to a
+# named section (.pushsection) and emit instructions or data there, and
+# can reference a label in another section or a symbol outside the
+# object. Its section bytes collect here, one buffer per name, and become
+# sections of their own at layout; each cross-section or symbol
+# reference becomes a relocation record:
+#
+#   site:   asm section index and offset, or OBJECT_ASM_TEXT and a code
+#           buffer offset (an instruction inline in a W function)
+#   target: asm section index and offset, OBJECT_ASM_TEXT and a code
+#           buffer offset, or OBJECT_ASM_SYMBOL and a symbol name
+#
+# The addend is relative to the target (S + A [- P]).
+const int OBJECT_ASM_TEXT = -1
+const int OBJECT_ASM_SYMBOL = -2
+
+list[char*] object_asm_names
+list[int] object_asm_flags
+list[int] object_asm_aligns
+list[object_buffer*] object_asm_buffers
+list[int] object_asm_out           # object_sections index, set at layout
+list[int] object_asm_rel_site_section
+list[int] object_asm_rel_site_offset
+list[int] object_asm_rel_type
+list[int] object_asm_rel_target_section
+list[int] object_asm_rel_target_offset
+list[char*] object_asm_rel_symbol
+list[int] object_asm_rel_addend
+int object_asm_ready
+
+
+void object_asm_init():
+	if (object_asm_ready): return
+	object_asm_ready = 1
+	object_asm_names = new list[char*]
+	object_asm_flags = new list[int]
+	object_asm_aligns = new list[int]
+	object_asm_buffers = new list[object_buffer*]
+	object_asm_out = new list[int]
+	object_asm_rel_site_section = new list[int]
+	object_asm_rel_site_offset = new list[int]
+	object_asm_rel_type = new list[int]
+	object_asm_rel_target_section = new list[int]
+	object_asm_rel_target_offset = new list[int]
+	object_asm_rel_symbol = new list[char*]
+	object_asm_rel_addend = new list[int]
+
+
+# The asm section named name (created on first use with ELF flags), as
+# an index for the calls below.
+int object_asm_section(char* name, int flags):
+	object_asm_init()
+	for i in range(object_asm_names.length):
+		if (strcmp(object_asm_names[i], name) == 0): return i
+	object_asm_names.push(strclone(name))
+	object_asm_flags.push(flags)
+	object_asm_aligns.push(1)
+	object_asm_buffers.push(object_buffer_new())
+	object_asm_out.push(0)
+	return object_asm_names.length - 1
+
+
+int object_asm_size(int section):
+	return object_asm_buffers[section].length
+
+
+void object_asm_put(int section, char* bytes, int n):
+	object_put(object_asm_buffers[section], bytes, n)
+
+
+# Pad the section to a multiple of a with fill bytes; the section is at
+# least that aligned.
+void object_asm_align(int section, int a, int fill):
+	object_buffer* b = object_asm_buffers[section]
+	while ((b.length % a) != 0): object_u8(b, fill)
+	if (a > object_asm_aligns[section]): object_asm_aligns[section] = a
+
+
+# The bytes of an asm section, for patching a resolved reference.
+char* object_asm_data(int section):
+	return object_asm_buffers[section].bytes
+
+
+void object_asm_reloc(int site_section, int site_offset, int rtype, int target_section, int target_offset, char* symbol, int addend):
+	object_asm_init()
+	object_asm_rel_site_section.push(site_section)
+	object_asm_rel_site_offset.push(site_offset)
+	object_asm_rel_type.push(rtype)
+	object_asm_rel_target_section.push(target_section)
+	object_asm_rel_target_offset.push(target_offset)
+	object_asm_rel_symbol.push(symbol)
+	object_asm_rel_addend.push(addend)
+
+
 # An '@alias("target")' declaration (symbol t, named name): the W symbol
 # is defined at the target's address as soon as the target is defined
 # (object_alias_defined, called by sym_define_global_at), so W code may
@@ -462,8 +558,9 @@ int object_symbol(char* name, int binding, int symtype, int shndx, int value, in
 # Function entry addresses, ascending (object_function_starts_init): a
 # function symbol's size runs to the next entry or the end of its piece,
 # so tools that look functions up by address (objtool, perf) find them.
-# Under --c-abi a function's entry is its System V stub, so the stub and
-# its W body are one function.
+# Under --c-abi a function's System V entry stub, its W body and its
+# adapter are three functions (object_c_abi_symbols names the last two),
+# so every call and jump lands at a function's start.
 list[int] object_function_starts
 
 
@@ -481,6 +578,12 @@ void object_function_starts_init():
 			if (object_in_text(value) && (value < code_offset + codepos)): object_function_starts.push(value)
 		t = next_token(t)
 	for e in range(wasm_export_count): object_function_starts.push(load_i(elf_export_addresses + e * __word_size__, __word_size__))
+	if (c_abi_mode && (cast(int, c_abi_stub_syms) != 0)):
+		for k in range(c_abi_stub_positions.length):
+			int stub = code_offset + c_abi_stub_positions[k]
+			object_function_starts.push(stub)
+			object_function_starts.push(stub + 5)
+			if (c_abi_adapter_ends[k] > c_abi_adapter_starts[k]): object_function_starts.push(code_offset + c_abi_adapter_starts[k])
 	# Shell sort: ascending.
 	int n = object_function_starts.length
 	int gap = n / 2
@@ -610,8 +713,25 @@ list[int] object_weak_entry_vaddrs
 list[int] object_weak_entry_symbols
 
 
+# --c-abi: local symbols for what a function's entry stub leads to, its
+# W body (NAME.w, the target of direct W calls) and its System V adapter
+# (NAME.sysv), and for the trap of functions with no System V form.
+void object_c_abi_symbols():
+	if ((c_abi_mode == 0) || (cast(int, c_abi_stub_syms) == 0)): return
+	for k in range(c_abi_stub_syms.length):
+		char* name = sym_record_name(c_abi_stub_syms[k])
+		int stub = code_offset + c_abi_stub_positions[k]
+		object_text_symbol(strjoin(name, c".w"), 0, stub + 5)
+		if (c_abi_adapter_ends[k] > c_abi_adapter_starts[k]):
+			int adapter = code_offset + c_abi_adapter_starts[k]
+			if (c_abi_adapter_starts[k] == c_abi_trap_pos): object_text_symbol(c"__w_c_abi_trap", 0, adapter)
+			else: object_text_symbol(strjoin(name, c".sysv"), 0, adapter)
+
+
 # Local symbols for W functions and the non-root globals; with
 # want_global, the root globals (and every weak definition) instead.
+# An extern function's FFI shim, whose W name is the C symbol's, is a
+# local NAME.shim.
 void object_table_symbols(int want_global):
 	int t = 0
 	while (t <= table_pos - 1):
@@ -632,6 +752,8 @@ void object_table_symbols(int want_global):
 					if (weak):
 						object_weak_text_vaddrs.push(value)
 						object_weak_text_symbols.push(index)
+			else if ((symtype == 2) && (want_global == 0) && (sym_got_vaddr(t) != 0) && object_in_text(value) && (value < code_offset + codepos)):
+				object_text_symbol(strjoin(name, c".shim"), 0, value)
 			else if (object_table_data_symbol(t, value, type)):
 				int binding = object_file_is_root(sym_decl_file_index(t)) && (object_symbol_is_static(t) == 0)
 				if (weak): binding = 2
@@ -648,11 +770,27 @@ int object_slot_target(int pos):
 	if ((pos < 3) || (pos > codepos - 4)): return -1
 	int lea = ((code[pos - 3] & 255) == 0x48) && ((code[pos - 2] & 255) == 0x8d) && ((code[pos - 1] & 255) == 5)
 	int indirect_call = ((code[pos - 2] & 255) == 0xff) && ((code[pos - 1] & 255) == 0x15)
-	if ((lea == 0) && (indirect_call == 0)): return -1
+	# --c-abi: a direct 'call rel32' to an extern's slot (ffi.w,
+	# emit_x64_call_import_slot), relocated against the C symbol
+	# (or 'jmp rel32' / 'call rel32' to a thunk, x86.w emit_x64_ret)
+	int direct_call = c_abi_mode && (((code[pos - 1] & 255) == 0xe8) || ((code[pos - 1] & 255) == 0xe9))
+	if ((lea == 0) && (indirect_call == 0) && (direct_call == 0)): return -1
 	int target = code_offset + pos + 4 + load_int(code + pos)
 	if (object_in_data(target) || object_in_text(target)): return target
 	error(c"internal error: --emit=obj address slot leaves the object")
 	return -1
+
+
+# 1 when the address slot at pos is 'lea cell(%rip),%rax' directly
+# followed by 'mov (%rax),%reg' (any 64-bit register: a subtraction's
+# left operand loads into %r8), cell being an 'extern T[]' pointer cell
+# that holds its array's placeholder.
+int object_extern_pointer_read(int pos, int cell):
+	if ((word_size != 8) || (object_pic == 0) || (object_is_extern_pointer_cell(cell) == 0)): return 0
+	if ((pos > codepos - 7) || ((code[pos - 2] & 255) != 0x8d)): return 0
+	int rex = code[pos + 4] & 255
+	if (((rex != 0x48) && (rex != 0x4c)) || ((code[pos + 5] & 255) != 0x8b) || ((code[pos + 6] & 0xc7) != 0)): return 0
+	return object_extern_data_at(load_i(data + (cell - data_offset), word_size)) >= 0
 
 
 # Return the target vaddr of the `call rel32` (or `jmp rel32`) cell at
@@ -845,6 +983,61 @@ void object_layout():
 		t = next_token(t)
 	free(cells)
 	object_data_pieces = object_pieces_complete(placed, 0, datapos, data_section)
+	# Native inline asm sections: their own bytes, flags and alignment.
+	if (object_asm_ready):
+		for i in range(object_asm_names.length):
+			int index = object_section_for(object_asm_names[i], 2)
+			object_section* s = object_sections[index]
+			s.flags = object_asm_flags[i]
+			s.align = object_asm_aligns[i]
+			s.size = object_asm_buffers[i].length
+			object_asm_out[i] = index
+
+
+# The symbol a template's name binds to, as the assembler binds it: a
+# global (or undefined) symbol of that name, else a local definition
+# (a C static of the unit), else a new undefined global. Symbols from
+# first_global on are the global ones; index 0 and the section symbols
+# have no name.
+int object_global_symbol_named(char* name, int first_global):
+	for i in range(first_global, object_symbol_count):
+		int name_off = load_int32(object_symtab.bytes + i * 24)
+		if (strcmp(object_strtab.bytes + name_off, name) == 0): return i
+	for i in range(1, first_global):
+		int name_off = load_int32(object_symtab.bytes + i * 24)
+		if ((name_off != 0) && (strcmp(object_strtab.bytes + name_off, name) == 0)): return i
+	return object_symbol(name, 1, 0, 0, 0, 0)
+
+
+# The relocation records of the native inline asm templates: each site
+# and target mapped to its object section and offset.
+void object_asm_relocations(int first_global):
+	if (object_asm_ready == 0): return
+	for i in range(object_asm_rel_type.length):
+		int rtype = object_asm_rel_type[i]
+		int addend = object_asm_rel_addend[i]
+		object_section* site_section = cast(object_section*, 0)
+		int site_off = object_asm_rel_site_offset[i]
+		if (object_asm_rel_site_section[i] == OBJECT_ASM_TEXT):
+			object_piece* site = object_text_piece(code_offset + site_off)
+			site_section = object_sections[site.section]
+			site_off = site.out + site_off - site.start
+		else: site_section = object_sections[object_asm_out[object_asm_rel_site_section[i]]]
+		int symbol = 0
+		int target = object_asm_rel_target_section[i]
+		if (target == OBJECT_ASM_SYMBOL): symbol = object_global_symbol_named(object_asm_rel_symbol[i], first_global)
+		else if (target == OBJECT_ASM_TEXT):
+			int pos = object_asm_rel_target_offset[i]
+			object_piece* dest = object_text_piece(code_offset + pos)
+			symbol = object_sections[dest.section].symbol
+			addend = addend + dest.out + pos - dest.start
+		else:
+			symbol = object_sections[object_asm_out[target]].symbol
+			addend = addend + object_asm_rel_target_offset[i]
+		object_rela(site_section.rela, site_off, symbol, rtype, addend)
+		int width = 4
+		if ((rtype == 1) || (rtype == 24)): width = 8
+		for j in range(width): site_section.bytes.bytes[site_off + j] = 0
 
 
 void elf_object_write():
@@ -891,6 +1084,7 @@ void elf_object_write():
 	if (c_abi_mode):
 		for i in range(c_abi_global_names.length): object_global_names.push(c_abi_global_names[i])
 	object_table_symbols(0)
+	object_c_abi_symbols()
 	int first_global = object_symbol_count
 	for e in range(wasm_export_count):
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
@@ -950,7 +1144,11 @@ void elf_object_write():
 		s.bytes = object_buffer_new()
 		if (s.type == 1):
 			object_buffer_reserve(s.bytes, s.size)
-			for j in range(s.size): s.bytes.bytes[j] = 0
+			# the padding between code pieces is int3, so the section
+			# still decodes as instructions (objtool reads it linearly)
+			int fill = 0
+			if (s.source == 0): fill = 0xcc
+			for j in range(s.size): s.bytes.bytes[j] = fill
 			s.bytes.length = s.size
 	for i in range(object_text_pieces.length):
 		object_piece* p = object_text_pieces[i]
@@ -962,6 +1160,11 @@ void elf_object_write():
 		if (s.type == 1):
 			for j in range(p.end - p.start): s.bytes.bytes[p.out + j] = data_copy[p.start + j]
 	free(data_copy)
+	if (object_asm_ready):
+		for i in range(object_asm_names.length):
+			object_section* s = object_sections[object_asm_out[i]]
+			object_buffer* src = object_asm_buffers[i]
+			for j in range(src.length): s.bytes.bytes[j] = src.bytes[j]
 
 	# Text relocations: address slots (to data, extern data or code) and
 	# call cells. Slots are noted on every write (backpatch chains
@@ -1002,20 +1205,43 @@ void elf_object_write():
 				int weak_lea = 0
 				if (extern_data >= 0):
 					weak_lea = object_name_is_weak(dyn_import_name(extern_data)) && ((code[pos - 2] & 255) == 0x8d) && (target == dyn_import_got_vaddr(extern_data))
-				# --c-abi: an FFI shim's 'call [rip+slot]' becomes a
-				# direct 'addr32 call rel32' to the C symbol
-				# (R_X86_64_PLT32), as ld relaxes GOTPCRELX calls, so
-				# no data word links code to its callee.
-				if ((import_index >= 0) && c_abi_mode && ((code[pos - 2] & 255) == 0xff) && ((code[pos - 1] & 255) == 0x15)):
-					site_section.bytes.bytes[offset - 2] = 0x67
-					site_section.bytes.bytes[offset - 1] = 0xe8
+				# --c-abi: an FFI shim calls the C symbol directly, a
+				# 5-byte 'call rel32' (R_X86_64_PLT32), so no data word
+				# links code to its callee.
+				if ((import_index >= 0) && c_abi_mode && (((code[pos - 1] & 255) == 0xe8) || ((code[pos - 1] & 255) == 0xe9))):
 					object_rela(site_section.rela, offset, first_import + import_index, 4, -4)
 				else if (weak_lea):
 					site_section.bytes.bytes[offset - 2] = 0x8b
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 42, -4)
 				else if (extern_data >= 0):
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 2, target - dyn_import_got_vaddr(extern_data) - 4)
+				else if (object_extern_pointer_read(pos, target)):
+					# 'lea cell(%rip) ; mov (%rax),%rax' of an 'extern T[]'
+					# name loads a constant, the C array's address: it
+					# becomes 'lea array(%rip) ; nopl (%rax)', as gcc
+					# addresses it, and the cell needs no absolute word
+					# (R_X86_64_64, which position-independent stubs
+					# reject)
+					int space = load_i(data + (target - data_offset), word_size)
+					int array = object_extern_data_at(space)
+					object_rela(site_section.rela, offset, load_int32(data_symbols + array * 4), 2, space - dyn_import_got_vaddr(array) - 4)
+					# 'mov (%rax),%reg' becomes 'mov %rax,%reg' (the
+					# REX.R of the load is the move's REX.B), or a nop
+					# for %rax itself. A read left on the cell would mix
+					# an absolute address with these PC-relative ones (the
+					# kernel's early head64 code runs below its link
+					# address and subtracts the two).
+					int dest = ((code[pos + 6] >> 3) & 7) | ((code[pos + 4] & 4) << 1)
+					if (dest == 0):
+						site_section.bytes.bytes[offset + 4] = 0x0f
+						site_section.bytes.bytes[offset + 5] = 0x1f
+						site_section.bytes.bytes[offset + 6] = 0x00
+					else:
+						site_section.bytes.bytes[offset + 4] = 0x48 | (dest >> 3)
+						site_section.bytes.bytes[offset + 5] = 0x89
+						site_section.bytes.bytes[offset + 6] = 0xc0 | (dest & 7)
 				else:
+					if (object_is_extern_pointer_cell(target)): object_extern_pointer_cells[target] = 1
 					if (import_index >= 0): import_used[import_index] = 1
 					object_piece* dest = object_data_piece(target)
 					object_section* dest_section = object_sections[dest.section]
@@ -1034,9 +1260,22 @@ void elf_object_write():
 	# slots. The header cell of an array nothing in the object reaches
 	# stays unrelocated.
 	char* cell_seen = object_unused_array_headers()
+	# A pointer cell that data points at keeps its word
+	if (cast(int, object_extern_pointer_cells) != 0):
+		for r in range(rebase_count):
+			int at = load_i(rebase_table + r * 8, 8) - data_offset
+			if ((at >= 0) && (at <= datapos - 8)):
+				int points = load_i(data + at, 8)
+				if (object_is_extern_pointer_cell(points)): object_extern_pointer_cells[points] = 1
 	for r in range(rebase_count):
 		int cell = load_i(rebase_table + r * 8, 8) - data_offset
 		if ((cell < 0) || (cell > datapos - 8)): error(c"internal error: --emit=obj pointer cell is outside data")
+		# an 'extern T[]' cell every read of which was rewritten
+		if (object_is_extern_pointer_cell(data_offset + cell) && (object_extern_pointer_cells[data_offset + cell] == 0)):
+			cell_seen[cell] = 1
+			object_piece* dead = object_data_piece(data_offset + cell)
+			object_section* dead_section = object_sections[dead.section]
+			if (dead_section.type == 1): save_i(dead_section.bytes.bytes + dead.out + cell - dead.start, 0, 8)
 		if (cell_seen[cell] == 0):
 			cell_seen[cell] = 1
 			int value = load_i(data + cell, 8)
@@ -1078,6 +1317,7 @@ void elf_object_write():
 					object_rela(object_sections[cell_site.section].rela, cell_site.out + c_abi_extern_cells[i] - data_offset - cell_site.start, first_import + j, 1, 0)
 	free(data_symbols)
 	free(import_used)
+	object_asm_relocations(first_global)
 
 	object_buffer* names = object_buffer_new()
 	object_u8(names, 0)

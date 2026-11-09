@@ -38,9 +38,11 @@ int main(int argc, char** argv):
 			for i in range(slash + 1): prefix[i] = argv[0][i]
 			prefix[slash + 1] = 0
 			char* candidate = strjoin(prefix, c"wgrind_native")
+			# process_which returns a name that contains '/' itself, so
+			# the candidate is freed only when it is not the runner.
 			runner = process_which(candidate)
 			free(prefix)
-			free(candidate)
+			if (runner != candidate): free(candidate)
 		if (runner == 0): runner = process_which(c"wgrind_native")
 		if (runner == 0):
 			println2(c"wgrind: native executor not found; build with ./wbuild wgrind_native")

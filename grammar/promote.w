@@ -544,6 +544,9 @@ int parse_coerced(int want, char* context):
 # fit in word-sized integers. cast(T, arr) decays like every other pointer
 # context: cast(int, arr) equals cast(int, arr.data), matching
 # cast(char*, arr) — the descriptor's own address has no cast() spelling.
+void coerce_narrow_integer(int want);
+
+
 void coerce_explicit(int want, int got):
 	script_profile_cast(want)
 	int want_real = type_unqualified(want)
@@ -562,3 +565,34 @@ void coerce_explicit(int want, int got):
 				# the same value coerce() produces for pointer targets
 				promote_eax()
 	coerce(want, got)
+	if (type_canonical(want_real) != type_canonical(got_real)): coerce_narrow_integer(want_real)
+
+
+# cast(T, x) to an integer type narrower than the word: truncate the
+# value in eax to T's width and sign- or zero-extend it, as C's
+# conversions do, so a cast value has the same representation as one
+# loaded from a T variable. The word-width comparisons and arithmetic
+# rely on that: on a 64-bit word a uint32 compares as a zero-extended
+# word, so cast(uint32, -1) must be 0xffffffff, not -1. A shift left
+# then an arithmetic (signed T) or logical (unsigned T) shift right by
+# the bits above T; constant operands fold through the shift emitters.
+void coerce_narrow_integer(int want):
+	want = type_canonical(want)
+	if ((want < 0) || (want == bool_type) || (want == 3) || (want == 4)): return
+	if ((type_get_pointer_level(want) > 0) || (type_num_args(want) > 0)): return
+	if (type_float_kind(want) || type_is_narrow_float(want)): return
+	if (type_is_var(want) || type_is_string(want) || type_is_array(want)): return
+	if (type_get_kind(want) != 0): return
+	int size = type_get_size(want)
+	if ((size != 1) && (size != 2) && (size != 4)): return
+	int shift = (word_size - size) * 8
+	if (shift <= 0): return
+	push_slot()
+	mov_eax_int(shift)
+	alu_shl()
+	stack_pos = stack_pos - 1
+	push_slot()
+	mov_eax_int(shift)
+	if (type_is_unsigned_fixed(want)): alu_shr()
+	else: alu_sar()
+	stack_pos = stack_pos - 1

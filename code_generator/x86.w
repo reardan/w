@@ -2886,6 +2886,10 @@ void imul_eax_int32(int v):
 int emitted_call_count
 
 
+void emit_x64_call_register(int reg);   /* below */
+void emit_x64_ret();
+
+
 void call_eax():
 	if (target_isa == 3): error(c"gpu code cannot call functions")
 	else:
@@ -2909,7 +2913,8 @@ void call_eax():
 		# their homes (R3); nothing is emitted when no loop owns any.
 		inline_real_calls = inline_real_calls + 1
 		regalloc_call_spill()
-		emit(2, c"\xff\xd0") /* call *%eax */
+		if (word_size == 8): emit_x64_call_register(0) /* call *%rax */
+		else: emit(2, c"\xff\xd0") /* call *%eax */
 		regalloc_call_reload()
 
 
@@ -3512,6 +3517,11 @@ void be_br_linked(int h):
 	if (ctrl_kind_stack[h]): be_branch_patch(codepos, ctrl_val_stack[h])
 	else: be_ctrl_link(h)
 
+# A branch patched to target makes it a jump target: when that is
+# codepos, the code emitted next is reachable again.
+void term_note_land(int target):
+	if (target == codepos): term_note_end = 0
+
 # 1 when codepos is unreachable (O1, the terminator note): the last
 # instruction was a 'ret' or an unconditional 'jmp' and no jump target
 # has been placed since. Nothing is parked then (a park would have been
@@ -3759,7 +3769,12 @@ void be_ctrl_merge(int h, int target):
 # chain to the current position (their merge point); loop regions have
 # nothing to patch.
 void be_ctrl_end(int h):
+	# A forward region no branch entered is no jump target: code after
+	# a 'ret' or 'jmp' stays unreachable across its end (O1), so a
+	# 'break' folded into an 'if 1:' leaves no dead unwind behind it
+	int term_end = term_note_end
 	be_notes_reset()
+	if ((target_isa == 0) && (ctrl_kind_stack[h] == 0) && (ctrl_val_stack[h] == 0)): term_note_end = term_end
 	ctrl_stack_pos = ctrl_stack_pos - 1
 	if (target_isa == 3):
 		# Forward regions place their merge label here; backward regions
@@ -4659,7 +4674,38 @@ void ret():
 	else:
 		if (ers_count != 0): ers_assert_none()
 		wgrind_function_return()
+		emit_x64_ret()
+
+
+# A return in x86/x64 code: 'ret', or under --function-return=thunk-extern
+# 'jmp __x86_return_thunk' (an object's PLT32 jump; elf_object.w reads
+# the e9 cell against the import slot), which a kernel patches.
+int static_link_import_slot(char* name);   /* code_generator/static_link.w */
+void emit_x64_ret():
+	if (return_thunk_mode == 0):
 		emit(1, c"\xc3") /* ret */
+		return
+	int slot = static_link_import_slot(c"__x86_return_thunk")
+	emit_int8(0xe9)
+	static_note_address(codepos)
+	emit_int32(slot - code_offset - codepos - 4)
+
+
+# call through register reg (0 rax .. 15 r15): 'call reg', or under
+# --indirect-branch=thunk-extern 'call __x86_indirect_thunk_<reg>'.
+void emit_x64_call_register(int reg):
+	if (indirect_thunk_mode == 0):
+		if (reg >= 8): emit_int8(0x41)
+		emit_int8(0xff)
+		emit_int8(0xd0 | (reg & 7))
+		return
+	char* name = c"__x86_indirect_thunk_rax"
+	if (reg == 11): name = c"__x86_indirect_thunk_r11"
+	else if (reg != 0): error(c"internal error: no indirect thunk for this register")
+	int slot = static_link_import_slot(name)
+	emit_int8(0xe8)
+	static_note_address(codepos)
+	emit_int32(slot - code_offset - codepos - 4)
 
 # Framed arm64 return: x28 = x29 drops the body's words, the pair pop
 # restores the caller's x29 and the return address and leaves x28 as it

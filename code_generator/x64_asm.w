@@ -78,6 +78,37 @@ void define_asm_functions_x64_portable():
 	x64_asm(c"pop rbx; ret")
 
 
+# The names define_asm_functions_x64 defines.
+char* x64_runtime_stub_name(int i):
+	if (i == 0): return c"syscall"
+	if (i == 1): return c"syscall7"
+	if (i == 2): return c"thread_create"
+	if (i == 3): return c"stack_create"
+	if (i == 4): return c"__w_tls_size"
+	if (i == 5): return c"__w_tls_set"
+	if (i == 6): return c"get_context"
+	if (i == 7): return c"store_context"
+	if (i == 8): return c"repl_setjmp"
+	if (i == 9): return c"setjmp"
+	if (i == 10): return c"repl_longjmp"
+	if (i == 11): return c"longjmp"
+	if (i == 12): return c"gen_switch"
+	return 0
+
+
+int sym_declare_global(char* s, int type, int symtype);   /* compiler/symbol_table.w */
+
+
+# --kernel-codegen objects: the stubs as prototypes, so library code
+# naming them still compiles; compiler/compiler.w emits them after the
+# last function when a call names one (x64_runtime_emit_if_used).
+void x64_runtime_declare():
+	int i = 0
+	while (x64_runtime_stub_name(i) != 0):
+		sym_declare_global(x64_runtime_stub_name(i), 4, 2)
+		i = i + 1
+
+
 void define_asm_functions_x64():
 	# syscall reads exactly nr + 3 fixed stack slots, so record its arity:
 	# a call with any other argument count would read garbage slots.

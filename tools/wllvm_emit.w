@@ -3152,13 +3152,15 @@ char* llvm_value_inner(int group, int operand):
 		retained_node source
 		retained_node_load(llvm_node_id(group, node.left), &source)
 		# Float casts are coerce()'s conversions; a float cast to a narrow
-		# integer keeps cvtt's whole word, as natively.
+		# integer then truncates cvtt's word to the target width, as
+		# natively.
 		if (cast_from < 0): source.semantic_type = -1
 		if (llvm_float_kind(type) || llvm_float_kind(source.semantic_type)):
 			if (llvm_type(type).pointer_level > 0): return value
 			char* converted = llvm_float_coerce(value, llvm_float_kind(source.semantic_type), llvm_float_kind(type))
 			if (llvm_narrow_float(type) && (llvm_narrow_float(type) != llvm_narrow_float(source.semantic_type))): return llvm_narrow_round(converted, llvm_narrow_float(type))
-			return converted
+			if (llvm_float_kind(type)): return converted
+			value = converted
 		int width = llvm_width(type)
 		retained_type* target = llvm_type(type)
 		if ((width == 8) || (target.pointer_level > 0) || (strcmp(target.name, c"constant") == 0)): return value

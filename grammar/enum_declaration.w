@@ -1,5 +1,6 @@
 int parse_constant_literal(char* what, char* name);
 void ast_enum_value(int binding, int value);
+int enum_rodata_value(int value);   /* grammar/program.w */
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
@@ -43,8 +44,10 @@ int enum_declaration():
 			# stream, except on wasm, where code is not addressable
 			# memory (and stray bytes between the size-prefixed function
 			# units would corrupt the code section): there it goes into
-			# the data segment.
+			# the data segment. An object keeps it in .rodata, so its
+			# code sections hold only instructions.
 			if (ast_expressions_mode >= 2): ast_enum_value(current_symbol, value)
+			else if (elf_object): sym_define_global_at(current_symbol, enum_rodata_value(value))
 			else if (target_isa == 2):
 				sym_define_global_at(current_symbol, data_offset + datapos)
 				emit_data_word(value)

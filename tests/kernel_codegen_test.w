@@ -194,10 +194,8 @@ int kc_trace(char* exe, char* out_path, int clobber):
 		insn[0] = 0
 		insn[1] = 0
 		sys_pread(mem, &insn[0], 16, rip)
-		# an addr32 prefix (--c-abi's direct extern call is 67 e8) or a
-		# REX prefix ('call r11' is 41 ff d3) precedes the opcode
+		# a REX prefix ('call r11' is 41 ff d3) may precede the opcode
 		int k = 0
-		if ((insn[k] & 255) == 0x67): k = k + 1
 		if (((insn[k] & 255) >= 0x40) && ((insn[k] & 255) <= 0x4f)): k = k + 1
 		int op = insn[k] & 255
 		int modrm = insn[k + 1] & 255
@@ -429,7 +427,9 @@ int kc_scan(char* object, int* count_out, list[int] calls):
 			# form pushes the bytes' address and lands on a 'pop'. A target
 			# the decoder never reached is data in between (restart there).
 			int target = kc_branch_target(text)
-			if (starts_with(text, c"call") && (target >= 0) && (calls != 0)): calls.push(target)
+			# (a call to a C symbol is 'call rel32' with a relocation, its
+			# unrelocated displacement 0: the next instruction)
+			if (starts_with(text, c"call") && (target >= 0) && (target != addr + 5) && (calls != 0)): calls.push(target)
 			int is_jump = starts_with(text, c"jmp ") || starts_with(text, c"call")
 			if (is_jump && (target > addr)):
 				char* at = decoded.get(target, cast(char*, 0))
@@ -794,6 +794,83 @@ void test_kernel_codegen_mode_rejections():
 	char* object = kc_path(c"rejected.o")
 	kc_reject(c"--kernel-codegen requires --emit=obj --freestanding", c"x64", c"--emit=obj", c"--kernel-codegen", c"tests/kernel_codegen/corpus.w", c"-o", object)
 	kc_reject(c"--kernel-codegen requires --emit=obj --freestanding", c"x64", c"--kernel-codegen", c"tests/kernel_codegen/corpus.w", c"-o", object)
+
+
+# What a kernel's stack validator (objtool --orc --retpoline --rethunk
+# --static-call) and its ORC unwinder need from an object, checked on
+# tests/kernel_codegen/validator.w with --c-abi, plainly and with the
+# thunk-extern flags: .text decodes as instructions from end to end (no
+# data, enum constants included, and int3 between pieces), every direct
+# call lands on a sized function symbol's start (entry stub, W body
+# NAME.w, adapter NAME.sysv and shim NAME.shim are functions of their
+# own), extern calls are the plain 5-byte 'call rel32' a static call
+# site needs, no built-in assembly stub is left in, and under the
+# flags no 'ret' or indirect call remains. Linked with C, which
+# supplies the thunks, the code runs and its returns go through the
+# return thunk.
+void kc_check_validator(int thunks):
+	char* object = kc_path(strjoin(strjoin(c"validator", itoa(thunks)), c".o"))
+	if (thunks): kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--c-abi", c"--function-return=thunk-extern", c"--indirect-branch=thunk-extern", c"tests/kernel_codegen/validator.w", c"-o", object)
+	else: kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--c-abi", c"tests/kernel_codegen/validator.w", c"-o", object)
+	char* code = kc_shell(strjoin(c"objdump -d --no-show-raw-insn -j .text ", object))
+	assert_lacks(code, c"(bad)")
+	assert_lacks(code, c"addr32")
+	assert_lacks(code, c"add    %al,(%rax)")
+	if (thunks):
+		assert_lacks(code, c"\tret")
+		assert_lacks(code, c"call   *")
+	else: assert_contains(code, c"\tret")
+	char* relocs = kc_shell(strjoin(c"readelf -rW ", object))
+	assert_contains(relocs, c"R_X86_64_PLT32         0000000000000000 kv_c_wide - 4")
+	if (thunks):
+		assert_contains(relocs, c"__x86_return_thunk - 4")
+		assert_contains(relocs, c"__x86_indirect_thunk_r11 - 4")
+	else: assert_lacks(relocs, c"thunk")
+	assert_contains(kc_shell(strjoin(c"readelf -SW ", object)), c" .rodata ")
+	# function symbols: sized, no asm stubs, the --c-abi pieces named
+	char* symbols = kc_shell(strjoin(c"readelf -sW ", object))
+	assert_contains(symbols, c"FUNC    GLOBAL DEFAULT    1 kv_run")
+	assert_contains(symbols, c"FUNC    LOCAL  DEFAULT    1 kv_run.w")
+	assert_contains(symbols, c"FUNC    LOCAL  DEFAULT    1 kv_run.sysv")
+	assert_contains(symbols, c"FUNC    LOCAL  DEFAULT    1 kv_c_wide.shim")
+	assert_contains(symbols, c"     5 FUNC    GLOBAL DEFAULT    1 kv_wide8")
+	map[int, int] starts = new map[int, int]
+	for char* line in kc_lines(symbols):
+		if (contains(line, c" FUNC ") == 0): continue
+		int at = index_of(line, c": ") + 2
+		int n = 0
+		int value = kc_hex(line + at, &n)
+		int name = strlen(line)
+		while ((name > 0) && (line[name - 1] != ' ')): name = name - 1
+		assert1(kc_is_asm_stub(line + name) == 0)
+		# the size column follows the 16-digit value
+		char* size = line + at + 17
+		while (size[0] == ' '): size = size + 1
+		assert1(size[0] != '0')
+		starts[value] = 1
+	list[int] calls = new list[int]
+	int count = 0
+	assert_equal(0, kc_scan(object, &count, calls))
+	assert1(calls.length > 5)
+	for int target in calls:
+		if (starts.get(target, 0) == 0):
+			println2(strjoin(c"call into a function's middle at .text+", itoa(target)))
+			assert1(0)
+	char* exe = kc_path(strjoin(c"validator", itoa(thunks)))
+	free(kc_shell(strjoin(strjoin(strjoin(c"cc -o ", exe), c" tests/kernel_codegen/validator_main.c "), object)))
+	char* out = kc_shell(exe)
+	if (thunks): assert_contains(out, c"validator 867 867 returns thunked")
+	else: assert_contains(out, c"validator 867 867 returns plain")
+
+
+void test_kernel_codegen_validator():
+	kc_check_validator(0)
+	kc_check_validator(1)
+	# a stub that is called is still there, after the last function
+	char* object = kc_path(c"stub_use.o")
+	kc_compile(c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"tests/kernel_codegen/stub_use.w", c"-o", object)
+	assert_contains(kc_shell(strjoin(c"nm ", object)), c" t syscall")
+	kc_reject(c"thunk-extern returns and indirect branches require --emit=obj --freestanding --c-abi", c"x64", c"--emit=obj", c"--freestanding", c"--kernel-codegen", c"--function-return=thunk-extern", c"tests/kernel_codegen/validator.w", c"-o", object)
 
 
 void test_kernel_codegen_cleanup():

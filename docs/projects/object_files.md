@@ -149,7 +149,12 @@ symbol bindings and the diagnostics.
 - **Symbols.** Every function defined in a root file and not marked
   `static`, and every `export`ed function, is a `GLOBAL FUNC` symbol at
   its entry stub. `static` functions and everything imported stay
-  `LOCAL` (at the W entry). Globals follow the rules above.
+  `LOCAL` (also at their stubs). The stub's symbol covers its 5 bytes;
+  the W body after it is a local `NAME.w` (the target of direct W
+  calls), the adapter a local `NAME.sysv`, each extern's FFI shim a
+  local `NAME.shim` and the shared trap `__w_c_abi_trap`, so every call
+  and jump in the object lands on a sized function symbol's start.
+  Globals follow the rules above.
 - **Function values.** A function's name used as a value (`fp = f`,
   `&f`, an argument, a `return`) and a file-scope address initializer
   (`binop* table = f`) yield the entry stub, so a pointer W hands out
@@ -213,6 +218,10 @@ symbol bindings and the diagnostics.
   C-variadic definition like a variadic `extern`: the C convention
   inline (`al` = the vector registers used), through its System V
   entry. The syntax needs `--c-abi` (`w check` accepts it anywhere).
+  A struct or union argument of a C-variadic call, among the fixed
+  parameters or in the variadic tail, is classified like any System V
+  record argument (registers or stack eightbytes; x64 System V only,
+  other targets reject it).
 - **Restrictions.** `--c-abi` requires `--freestanding` (the W runtime's
   own callbacks keep W's convention) and rejects `--no-direct-calls`
   (a function name's value use must stay distinguishable from a callee).
@@ -238,7 +247,7 @@ and every absolute pointer stored in data is a PIE rebase cell
 | Pointer cell in data (array headers, string descriptors, address initializers) | `R_X86_64_64` against the target's section |
 | The same pointing at an `extern` data object | `R_X86_64_64` against the undefined symbol |
 | FFI slot of an `extern` function | `R_X86_64_64` against the undefined symbol |
-| `--c-abi`: an FFI shim's `call [rip+slot]` | rewritten to `addr32 call rel32` (`67 e8`), `R_X86_64_PLT32` against the undefined symbol; the slot keeps its relocation only while a function value still loads it |
+| `--c-abi`: an FFI shim's call of the C function | a plain 5-byte `call rel32` (`e8`), `R_X86_64_PLT32` against the undefined symbol (the form a kernel's static call sites patch); the slot keeps its relocation only while a function value still loads it |
 | Call cell or address slot reaching code in another section | `R_X86_64_PC32` against that section plus offset |
 | Call to a weak definition (or its address taken) | `R_X86_64_PLT32` / `R_X86_64_PC32` against the weak symbol |
 | Address of weak `extern` data | `lea` becomes `mov` from the GOT, `R_X86_64_REX_GOTPCRELX` |
@@ -336,8 +345,11 @@ Function symbols are sized: each runs to the next function entry (or
 the end of its section piece), so tools that look code up by address
 (objtool, perf, `addr2line`) find the enclosing function. Under
 `--c-abi` a function's symbol, local (`static`) or global, is its
-System V entry stub, so the stub and its W body are one sized function,
-and a C table entry naming a static function lands on its symbol.
+System V entry stub, a 5-byte function of its own followed by `NAME.w`
+(the W body), and a C table entry naming a static function lands on
+its symbol. Enum constants are `.rodata` words in an object, and the
+padding between code pieces is `int3`, so `.text` holds only
+instructions and decodes from end to end.
 
 System V defines only a narrow integer result's own bits of `rax` (a
 `bool` callee may return `setne al` over a pointer still in `rax`), so
@@ -395,7 +407,9 @@ diagnostic helper (unless the program declares `__w_bounds_trap`
 before the access).
 Explicit `import`s are still honored: importing `lib.lib` brings its
 code in, which is the program's choice. The compiler's built-in asm
-stubs (`syscall`, `setjmp`, ...) remain as unreferenced local code.
+stubs (`syscall`, `setjmp`, ...) remain as unreferenced local code,
+except under `--kernel-codegen`, where they are emitted (after the last
+function) only when a call names one.
 
 ## Kernel code generation
 
@@ -467,13 +481,10 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   -> C call nest back to `_start`, checking each return address lies in
   `.text`. The exceptions are the compiler's built-in assembly stubs
   (`syscall`, `syscall7`, `setjmp`/`longjmp`, `get_context`,
-  `gen_switch`, `thread_create`, ...): frameless leaves that a kernel
-  object has no use for and that stay as unreferenced local code. A
-  kernel built with the ORC unwinder (the x86-64 default) instead needs
-  `objtool` to understand each object. String literals are in
-  `.rodata` now, but some data tables and descriptor blobs are still
-  emitted inside `.text`, which stops it, so such objects must be
-  marked `OBJECT_FILES_NON_STANDARD` until those move out as well.
+  `gen_switch`, `thread_create`, ...), which a kernel object only gets
+  when it calls one. A kernel built with the ORC unwinder (the x86-64
+  default) instead needs `objtool` to understand each object; see
+  "Stack validation and ORC" below.
 
 - **Code model.** Kernel code is linked in the top 2GB
   (`0xffffffff80000000` and up; gcc's `-mcmodel=kernel` uses
@@ -496,13 +507,36 @@ W chains) linked with a libc-free, `-mno-red-zone` startup
   (`code_generator/c_abi.w`): each 5-byte entry stub is a `jmp` to an
   adapter that opens a standard frame, pushes the System V arguments as
   W words and only pushes below `%rsp`; calls through function-pointer
-  values use the FFI shim's frame (`push rbp`, `and rsp,-16`, `call
-  r11`). Their xmm moves exist only for float arguments and results,
+  values and C-variadic calls are emitted inline without a frame of
+  their own (below), `call r11`. Their xmm moves exist only for float arguments and results,
   which the flag rejects, and `--stack-usage` lists each adapter as
   `name [c-abi]`. The test runs the red-zone, disassembly,
   frame-pointer, code-model and stack-usage checks on the corpus in
   both conventions; the frame check follows each entry stub's `jmp` to
   the adapter it lands in.
+
+- **Stack validation and ORC.** A kernel's `objtool` (`--orc
+  --retpoline --rethunk --static-call --uaccess`) reads an object
+  instruction by instruction, tracks the CFA through every push, pop and
+  frame-pointer move, and writes the ORC unwind tables. Under the flag
+  W objects give it what compiler-built objects do: `.text` is only
+  instructions (above), every call lands on a sized function symbol,
+  extern calls are 5-byte `call rel32`, and the frame pointer is set
+  once per function: an inline C call (a function pointer, a C-variadic
+  callee) addresses the W argument words from `%rsp`, adjusted by the
+  stack arguments it pushes, instead of opening a second `rbp` frame
+  and aligning `%rsp` -- a kernel keeps 8-byte stack alignment (gcc's
+  `-mpreferred-stack-boundary=3`). Register entries (O5) are off: one
+  jumps back into its body, which a validator reads as one function
+  falling into another. Two flags (with `--c-abi`) mirror gcc's
+  mitigations: `--function-return=thunk-extern` turns every `ret` into
+  `jmp __x86_return_thunk` and `--indirect-branch=thunk-extern` every
+  `call *%r11`/`*%rax` into `call __x86_indirect_thunk_r11`/`_rax`
+  (`R_X86_64_PLT32`), which the kernel patches at boot from the
+  `.return_sites` and `.retpoline_sites` objtool records.
+  `test_kernel_codegen_validator` checks these shapes on
+  `tests/kernel_codegen/validator.w` and runs it linked with C that
+  supplies the thunks.
 
 - **Discarded reads are performed.** A statement that only reads
   memory (`*p`, a global, `p[i]`, `s.f`) loads it, as a C volatile read
@@ -653,10 +687,12 @@ Next steps, roughly in order:
    the code-generation side: `--kernel-codegen` (no red zone, no
    SSE/x87, frame pointers; see "Kernel code generation"), the
    code-model check, `--stack-usage`, and the volatile/ordering audit
-   ("Memory accesses"). Left: symbol visibility (`STV_HIDDEN`),
-   `SHF_MERGE` string sections, retpoline/IBT forms for indirect calls
-   (`call *%rax` is emitted as is), and the built-in assembly stubs,
-   which stay in every object as unreferenced code.
+   ("Memory accesses"), and the stack-validator-clean shapes and
+   return/indirect-branch thunks ("Stack validation and ORC"). Left:
+   symbol visibility (`STV_HIDDEN`), `SHF_MERGE` string sections, IBT
+   (`endbr64` at function entries), and unreachable code a validator
+   reports (the epilogue after an infinite loop, a block's stack
+   cleanup after a `goto`).
 4. **Exported data and C-shaped aggregates.** An explicit marker for
    exported globals (today: any root global), floating-point items in
    brace initializers, and struct arguments by value in the adapters.

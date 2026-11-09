@@ -224,14 +224,15 @@ void test_c_abi_rejections():
 
 # Records by value, C-variadic definitions, wide signatures and unsized
 # extern arrays (tests/object_file/c_abi_records.w) under each front end
-# and --kernel-codegen, linked with C.
+# and --kernel-codegen and --pic, linked with C.
 void test_c_abi_records_link_with_c():
-	char*[4] fronts
+	char*[5] fronts
 	fronts[0] = c"--ast-required"
 	fronts[1] = c"--streaming"
 	fronts[2] = c"-O0"
 	fronts[3] = c"--kernel-codegen"
-	for f in range(4):
+	fronts[4] = c"--pic"
+	for f in range(5):
 		char* object = abi_path(strjoin(c"records", strjoin(itoa(f), c".o")))
 		abi_compile(c"x64", fronts[f], c"--emit=obj", c"--freestanding", c"--c-abi", c"tests/object_file/c_abi_records.w", c"-o", object)
 		char* exe = abi_path(strjoin(c"records", itoa(f)))
@@ -247,6 +248,23 @@ void test_c_abi_records_link_with_c():
 	assert_equal(0, contains(listing, c"OBJECT  LOCAL  DEFAULT    2 c_numbers"))
 	assert_equal(0, contains(listing, c"OBJECT  GLOBAL DEFAULT    2 c_numbers"))
 	free(listing)
+	# --kernel-codegen keeps an unsized array's name absolute, as gcc's
+	# -mcmodel=kernel code does: every read, whatever register it loads
+	char* absolute = abi_shell(strjoin(c"readelf -r -W ", abi_path(c"records3.o")))
+	assert_contains(absolute, c"R_X86_64_64            0000000000000000 c_numbers + 0")
+	assert_contains(absolute, c"R_X86_64_64            0000000000000000 c_bytes + 0")
+	assert_equal(0, contains(absolute, c"R_X86_64_PC32          0000000000000000 c_numbers - 4"))
+	assert_equal(0, contains(absolute, c"R_X86_64_PC32          0000000000000000 c_bytes - 4"))
+	free(absolute)
+	# --pic reads it as gcc -fPIC does, 'lea c_numbers(%rip)', also when
+	# the read loads another register than %rax (w_arrays_apart): no
+	# absolute word (R_X86_64_64) holds its address
+	char* relocations = abi_shell(strjoin(c"readelf -r -W ", abi_path(c"records4.o")))
+	assert_contains(relocations, c"R_X86_64_PC32          0000000000000000 c_numbers - 4")
+	assert_contains(relocations, c"R_X86_64_PC32          0000000000000000 c_bytes - 4")
+	assert_equal(0, contains(relocations, c"R_X86_64_64            0000000000000000 c_numbers"))
+	assert_equal(0, contains(relocations, c"R_X86_64_64            0000000000000000 c_bytes"))
+	free(relocations)
 
 
 # Executables: an extern C function taking or returning a record by
