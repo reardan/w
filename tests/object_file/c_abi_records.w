@@ -164,3 +164,10 @@ int w_vrecord_calls():
 	s.x = 7
 	s.y = 8
 	return c_tagged_vsum(p, 2, 10, 20) + 1000 * c_vrecord_tail(9, p, g, s)
+
+
+# Both names read as addresses into a subtraction (the left operand
+# loads into %r8): each must be PC-relative, as the kernel's early boot
+# code (_end - _text below its link address) needs.
+int w_arrays_apart():
+	return cast(int, c_bytes) - cast(int, c_numbers)

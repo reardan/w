@@ -256,3 +256,18 @@ export int w_pop_mem(int x):
 		"popq (%rcx)"
 		"addq $1, (%rcx)"
 	return cast(int, slot)
+
+# Byte cmpxchg (0f b0) with a flag output, as the kernel's 1-byte
+# this_cpu_try_cmpxchg() loops on it: the 32-bit form compared four
+# bytes and never succeeded.
+export int w_cmpxchg_byte(int old, int want):
+	int64 cell = 0x12345605
+	int ok = 0
+	int got = old
+	asm_native:
+		flagout z:4 = &ok
+		inout rax:1 = &got
+		input rdx = &cell
+		input rcx = want
+		"lock cmpxchgb %cl, (%rdx)"
+	return ok * 1000 + (got & 255) * 10 + cast(int, cell & 255)

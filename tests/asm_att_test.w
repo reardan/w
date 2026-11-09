@@ -91,6 +91,11 @@ int main():
 	att_is(c"lock btsq %rax, (%rdi)", c"F0 48 0F AB 07")
 	att_is(c"lock cmpxchgq %rcx, (%rdi)", c"F0 48 0F B1 0F")
 	att_is(c"lock xaddq %rcx, (%rdi)", c"F0 48 0F C1 0F")
+	att_is(c"cmpxchgb %cl, %gs:(%rdx)", c"65 0F B0 0A")
+	att_is(c"lock cmpxchgb %cl, (%rdi)", c"F0 0F B0 0F")
+	att_is(c"cmpxchgw %cx, (%rdx)", c"66 0F B1 0A")
+	att_is(c"lock xaddb %al, (%rdi)", c"F0 0F C0 07")
+	att_is(c"xaddb %r9b, (%rdi)", c"44 0F C0 0F")
 	att_is(c"lock decl (%rdi)", c"F0 FF 0F")
 	att_is(c"xchgq %rax, (%rdi)", c"48 87 07")
 

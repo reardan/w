@@ -852,7 +852,8 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return 1
 
-	# [lock] cmpxchg / xadd r/m, r (0f b1 /r, 0f c1 /r)
+	# [lock] cmpxchg / xadd r/m, r (0f b1 /r, 0f c1 /r; the byte forms
+	# 0f b0 /r, 0f c0 /r)
 	int locked = 0
 	if (strcmp(m, c"lock cmpxchg") == 0 | strcmp(m, c"lock xadd") == 0): locked = 1
 	if (locked | strcmp(m, c"cmpxchg") == 0 | strcmp(m, c"xadd") == 0):
@@ -862,6 +863,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		asm_buffer_byte(b, 0x0f)
 		int opcode = 0xc1
 		if (strcmp(m, c"cmpxchg") == 0 | strcmp(m, c"lock cmpxchg") == 0): opcode = 0xb1
+		if (insn.op2.size == 1): opcode = opcode - 1
 		asm_buffer_byte(b, opcode)
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return 1

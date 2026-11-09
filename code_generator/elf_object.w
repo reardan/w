@@ -782,12 +782,14 @@ int object_slot_target(int pos):
 
 
 # 1 when the address slot at pos is 'lea cell(%rip),%rax' directly
-# followed by 'mov (%rax),%rax', cell being an 'extern T[]' pointer cell
+# followed by 'mov (%rax),%reg' (any 64-bit register: a subtraction's
+# left operand loads into %r8), cell being an 'extern T[]' pointer cell
 # that holds its array's placeholder.
 int object_extern_pointer_read(int pos, int cell):
-	if ((word_size != 8) || (object_is_extern_pointer_cell(cell) == 0)): return 0
+	if ((word_size != 8) || (object_pic == 0) || (object_is_extern_pointer_cell(cell) == 0)): return 0
 	if ((pos > codepos - 7) || ((code[pos - 2] & 255) != 0x8d)): return 0
-	if (((code[pos + 4] & 255) != 0x48) || ((code[pos + 5] & 255) != 0x8b) || ((code[pos + 6] & 255) != 0)): return 0
+	int rex = code[pos + 4] & 255
+	if (((rex != 0x48) && (rex != 0x4c)) || ((code[pos + 5] & 255) != 0x8b) || ((code[pos + 6] & 0xc7) != 0)): return 0
 	return object_extern_data_at(load_i(data + (cell - data_offset), word_size)) >= 0
 
 
@@ -1223,9 +1225,21 @@ void elf_object_write():
 					int space = load_i(data + (target - data_offset), word_size)
 					int array = object_extern_data_at(space)
 					object_rela(site_section.rela, offset, load_int32(data_symbols + array * 4), 2, space - dyn_import_got_vaddr(array) - 4)
-					site_section.bytes.bytes[offset + 4] = 0x0f
-					site_section.bytes.bytes[offset + 5] = 0x1f
-					site_section.bytes.bytes[offset + 6] = 0x00
+					# 'mov (%rax),%reg' becomes 'mov %rax,%reg' (the
+					# REX.R of the load is the move's REX.B), or a nop
+					# for %rax itself. A read left on the cell would mix
+					# an absolute address with these PC-relative ones (the
+					# kernel's early head64 code runs below its link
+					# address and subtracts the two).
+					int dest = ((code[pos + 6] >> 3) & 7) | ((code[pos + 4] & 4) << 1)
+					if (dest == 0):
+						site_section.bytes.bytes[offset + 4] = 0x0f
+						site_section.bytes.bytes[offset + 5] = 0x1f
+						site_section.bytes.bytes[offset + 6] = 0x00
+					else:
+						site_section.bytes.bytes[offset + 4] = 0x48 | (dest >> 3)
+						site_section.bytes.bytes[offset + 5] = 0x89
+						site_section.bytes.bytes[offset + 6] = 0xc0 | (dest & 7)
 				else:
 					if (object_is_extern_pointer_cell(target)): object_extern_pointer_cells[target] = 1
 					if (import_index >= 0): import_used[import_index] = 1

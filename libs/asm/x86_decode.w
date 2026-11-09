@@ -225,11 +225,15 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	# lock cmpxchg / lock xadd r/m, r (f0 0f b1 /r, f0 0f c1 /r): the
 	# atomic_cas and atomic_add builtins. The lock prefix is part of the
 	# mnemonic; it is accepted on these two forms only.
-	if (op == 0xb1 || op == 0xc1):
-		if (op == 0xb1): insn.mnemonic = c"cmpxchg"
+	if (op == 0xb0 || op == 0xb1 || op == 0xc0 || op == 0xc1):
+		if (op == 0xb0 || op == 0xb1): insn.mnemonic = c"cmpxchg"
 		else: insn.mnemonic = c"xadd"
 		if (d.lock): insn.mnemonic = asm_x86_concat(c"lock ", insn.mnemonic)
-		asm_x86_modrm_gp(d, &insn.op2, &insn.op1)
+		if ((op & 1) == 0):
+			int modrm = asm_x86_u8(d)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), 1)
+			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, 1)
+		else: asm_x86_modrm_gp(d, &insn.op2, &insn.op1)
 		return d.pos - start
 	if (d.lock): return 0
 
