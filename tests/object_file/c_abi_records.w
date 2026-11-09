@@ -144,3 +144,10 @@ int w_numbers(int i):
 
 uint8* w_bytes_at(int i):
 	return &c_bytes[i]
+
+
+# Both names read as addresses into a subtraction (the left operand
+# loads into %r8): each must be PC-relative, as the kernel's early boot
+# code (_end - _text below its link address) needs.
+int w_arrays_apart():
+	return cast(int, c_bytes) - cast(int, c_numbers)

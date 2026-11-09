@@ -72,6 +72,12 @@ map[int, int] object_extern_pointer_symbols
 # word (elf_object.w relocates it then), 0 while every read of the cell
 # was rewritten to the C array's own address.
 map[int, int] object_extern_pointer_cells
+# --pic: position-independent code (gcc -fPIC), whose reads of an
+# 'extern T[]' name become PC-relative. Without it the name is the
+# array's absolute address, as gcc's -mcmodel=kernel code has it: the
+# kernel's early boot code runs below its link address and relies on
+# that (head64.c's '_text - __START_KERNEL_map').
+int object_pic
 # Static address cells naming a global ('&x', '&x + n' in a global
 # initializer): cell vaddr -> the vaddr of x itself. The relocation binds
 # to x (its piece, or for extern data its symbol) even when the offset

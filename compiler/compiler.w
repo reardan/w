@@ -887,6 +887,7 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--emit=obj") == 0): return 1
 	if (strcmp(arg, c"--freestanding") == 0): return 1
 	if (strcmp(arg, c"--kernel-codegen") == 0): return 1
+	if (strcmp(arg, c"--pic") == 0): return 1
 	if (strcmp(arg, c"--function-return=thunk-extern") == 0): return 1
 	if (strcmp(arg, c"--indirect-branch=thunk-extern") == 0): return 1
 	if (strcmp(arg, c"--stack-usage") == 0): return 1
@@ -1163,6 +1164,7 @@ void help_shared_options():
 	println(c"  --freestanding        with --emit=obj: no W runtime (containers, allocator, startup)")
 	println(c"  --kernel-codegen      with --emit=obj --freestanding: code safe in kernel context")
 	println(c"                        (no floating point/SSE/x87; discarded reads are performed)")
+	println(c"  --pic                 with --emit=obj: address unsized extern arrays PC-relatively (gcc -fPIC)")
 	println(c"  --stack-usage         x86/x64: write per-function stack frame sizes to <output>.su")
 	println(c"  --c-abi               with --emit=obj --freestanding: System V entries for every function and function pointer")
 	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
@@ -1673,6 +1675,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
 		else if (strcmp(*flag_arg, c"--kernel-codegen") == 0): kernel_codegen = 1
+		else if (strcmp(*flag_arg, c"--pic") == 0): object_pic = 1
 		else if (strcmp(*flag_arg, c"--function-return=thunk-extern") == 0): return_thunk_mode = 1
 		else if (strcmp(*flag_arg, c"--indirect-branch=thunk-extern") == 0): indirect_thunk_mode = 1
 		else if (strcmp(*flag_arg, c"--stack-usage") == 0): stack_usage_mode = 1
@@ -1771,6 +1774,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
 	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
 	if (kernel_codegen && (freestanding_mode == 0)): target_option_error(c"--kernel-codegen requires --emit=obj --freestanding")
+	if (object_pic && (elf_object == 0)): target_option_error(c"--pic requires --emit=obj")
 	if ((return_thunk_mode || indirect_thunk_mode) && (c_abi_mode == 0)): target_option_error(c"thunk-extern returns and indirect branches require --emit=obj --freestanding --c-abi")
 	if (stack_usage_mode && (target_isa != 0)): target_option_error(c"--stack-usage requires an x86 or x64 target")
 	# --c-abi: the W runtime's own callbacks keep W's convention, so it

@@ -26,6 +26,7 @@ long w_vrecords(long n, ...);
 long w_vcalls(void);
 long w_numbers(long i);
 unsigned char *w_bytes_at(long i);
+long w_arrays_apart(void);
 
 int c_numbers[] = {7, 11, 13, 17, 19};
 unsigned char c_bytes[] = "abcdef";
@@ -91,6 +92,7 @@ int main(void)
 	check("vcalls", w_vcalls(), 6 + 110);
 	check("numbers", w_numbers(4), 19);
 	check("bytes", *w_bytes_at(5), 'f');
+	check("arrays_apart", w_arrays_apart(), (char *)c_bytes - (char *)c_numbers);
 	if (failures == 0) printf("c abi records OK\n");
 	return failures != 0;
 }
