@@ -29,6 +29,7 @@ extern void w_misc_marker(void);
 extern int w_lock_add(int *p, int add);
 extern int w_statics(int a);
 extern int w_pop_mem(int x);
+extern int w_cmpxchg_byte(int old, int new);
 
 /* Called from w_call_c's template; read by w_bump_counter's. */
 int c_counter = 40;
@@ -203,6 +204,8 @@ int main(void)
 	/* Statics of the W unit named from a template. */
 	CHECK(w_statics(3) == 87, "template names W statics");
 	CHECK(w_pop_mem(41) == 42, "pop to memory");
+	CHECK(w_cmpxchg_byte(5, 9) == 1000 + 50 + 9, "byte cmpxchg succeeds");
+	CHECK(w_cmpxchg_byte(6, 9) == 50 + 5, "byte cmpxchg fails");
 
 	if (fails == 0) printf("native_asm driver: all checks passed\n");
 	return fails == 0 ? 0 : 1;
