@@ -648,9 +648,46 @@ void c_abi_indirect_call(int callee_type, int callee_sym, int s, int passed_args
 # A direct call of a C-variadic function (grammar/postfix_expr.w and the
 # AST emitter, the n argument words just pushed): through an extern's
 # import slot, or for a C-variadic W definition its System V entry.
+# The types of a C-variadic call's struct and union arguments (class 3),
+# by argument index; set by the call's parser (grammar/postfix_expr.w,
+# the AST emitter) around its arguments.
+int* c_variadic_record_types
+
+
+# A C-variadic call with a struct or union argument (class 3, its type in
+# c_variadic_record_types): the System V record call, the other
+# arguments typed by their class.
+void c_variadic_record_call_emit(int t, int n, char* classes, int declared_return, int got_vaddr):
+	if (c_abi_type_is_aggregate(declared_return)): error(c"struct arguments are not supported in variadic C calls")
+	int* types = cast(int*, malloc((n + 1) * __word_size__))
+	int words = 0
+	for i in range(n):
+		types[i] = -1
+		if (classes[i] == 3): types[i] = c_variadic_record_types[i]
+		else if (classes[i] == 1): types[i] = float32_value_type
+		else if (classes[i] == 2): types[i] = float64_value_type
+		words = words + c_abi_arg_words(types[i])
+	emitted_call_count = emitted_call_count + 1
+	if (stack_usage_mode): stack_usage_extra(3 + words)
+	if (ers_count != 0): ers_spill_all()
+	inline_real_calls = inline_real_calls + 1
+	regalloc_call_spill()
+	if ((got_vaddr == 0) && c_abi_mode):
+		c_abi_function_value(t, sym_record_name(t))
+		emit(3, c"\x49\x89\xc3")   # mov r11,rax
+	c_abi_emit_call(n, types, declared_return, got_vaddr, 8)
+	regalloc_call_reload()
+	if (ffi_type_class(declared_return) == 0): c_abi_extend_rax(declared_return)
+	free(cast(char*, types))
+
+
 void c_variadic_call_emit(int t, int n, char* classes, int declared_return):
 	int ret_class = ffi_type_class(declared_return)
 	int got_vaddr = sym_got_vaddr(t)
+	for i in range(n):
+		if (classes[i] == 3):
+			c_variadic_record_call_emit(t, n, classes, declared_return, got_vaddr)
+			return
 	if (got_vaddr != 0):
 		emit_ffi_call_inline(n, classes, ret_class, got_vaddr)
 		return

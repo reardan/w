@@ -24,6 +24,7 @@ long w_calls_pointers(struct pair (*make)(long, long), struct big (*make_big)(lo
 long w_vsum(long n, ...);
 long w_vrecords(long n, ...);
 long w_vcalls(void);
+long w_vrecord_calls(void);
 long w_numbers(long i);
 unsigned char *w_bytes_at(long i);
 
@@ -49,6 +50,24 @@ long c_printf_like(long n, ...)
 	long total = c_vsum(n, ap);
 	va_end(ap);
 	return total;
+}
+long c_tagged_vsum(struct pair p, long n, ...)
+{
+	va_list ap;
+	va_start(ap, n);
+	long total = p.a + 10 * p.b + c_vsum(n, ap);
+	va_end(ap);
+	return total;
+}
+long c_vrecord_tail(long n, ...)
+{
+	va_list ap;
+	va_start(ap, n);
+	struct pair p = va_arg(ap, struct pair);
+	struct big g = va_arg(ap, struct big);
+	struct small s = va_arg(ap, struct small);
+	va_end(ap);
+	return n + p.a * 10 + p.b * 20 + g.a + g.d * 10 + s.x + s.y * 100;
 }
 static long take3(struct pair p, struct big g, long k) { return p.a + p.b * 10 + g.a * 100 + g.d * 1000 + k * 100000; }
 
@@ -89,6 +108,7 @@ int main(void)
 	check("vsum_pointer", vp(2, 5L, 6L), 11);
 	check("vrecords", w_vrecords(2, p, g, 4L, 5L), 2 + 50 + 900 + 9000 + 500000);
 	check("vcalls", w_vcalls(), 6 + 110);
+	check("vrecord_calls", w_vrecord_calls(), 1 + 20 + 30 + 1000 * (9 + 10 + 40 + 3 + 60 + 7 + 800));
 	check("numbers", w_numbers(4), 19);
 	check("bytes", *w_bytes_at(5), 'f');
 	if (failures == 0) printf("c abi records OK\n");
