@@ -703,6 +703,7 @@ void compile_save(char* fn):
 # parse and the selector-first subcommand spelling ('w x64 check f.w')
 # that main() forwards through target_pending.
 int target_is_selector(char* arg):
+	if (strcmp(arg, c"x86") == 0): return 1
 	if (strcmp(arg, c"x64") == 0): return 1
 	if (strcmp(arg, c"arm64") == 0): return 1
 	if (strcmp(arg, c"arm64_android") == 0): return 1
@@ -724,6 +725,12 @@ char* target_pending
 # Apply one selector word to the target-mode globals; returns 1 when the
 # word selected a target, 0 when it is not a selector.
 int target_selector_apply(char* arg):
+	if (strcmp(arg, c"x86") == 0):
+		if (quiet_mode == 0): println2(c"Compiling in x86 mode")
+		word_size = 4
+		word_size_log2 = 2
+		diag_word_size = word_size
+		return 1
 	if (strcmp(arg, c"x64") == 0):
 		if (quiet_mode == 0): println2(c"Compiling in x64 mode")
 		word_size = 8
@@ -880,6 +887,8 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--emit=obj") == 0): return 1
 	if (strcmp(arg, c"--freestanding") == 0): return 1
 	if (strcmp(arg, c"--kernel-codegen") == 0): return 1
+	if (strcmp(arg, c"--function-return=thunk-extern") == 0): return 1
+	if (strcmp(arg, c"--indirect-branch=thunk-extern") == 0): return 1
 	if (strcmp(arg, c"--stack-usage") == 0): return 1
 	if (strcmp(arg, c"--c-abi") == 0): return 1
 	if (starts_with(arg, c"--link=")): return 1
@@ -1185,9 +1194,10 @@ void help_shared_options():
 
 
 void help_selectors():
-	println(c"target selectors (default: 32-bit x86 Linux ELF; may appear before")
+	println(c"target selectors (default: 64-bit x86-64 Linux ELF; may appear before")
 	println(c"the subcommand word or anywhere before the first input file):")
-	println(c"  x64           64-bit x86-64 Linux ELF")
+	println(c"  x86           32-bit x86 Linux ELF")
+	println(c"  x64           64-bit x86-64 Linux ELF (the default)")
 	println(c"  arm64         64-bit AArch64 Linux ELF")
 	println(c"  arm64_android 64-bit AArch64 Android ELF (PIE, 16 KB pages)")
 	println(c"  arm64_darwin  64-bit AArch64 macOS Mach-O (self-signed)")
@@ -1198,7 +1208,7 @@ void help_selectors():
 
 
 void help_link():
-	println(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+	println(c"usage: w [x86|x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 	println(c"")
 	println(c"Compile W source files into a native executable. Without -o the")
 	println(c"executable bytes are written to stdout.")
@@ -1396,6 +1406,19 @@ void finish_on_demand_imports():
 # has no entry point (elf_all.w, static_library_write), so lib.lib's
 # _main -> main call is unreachable and a library such as an Android app
 # (exported callbacks) defines none.
+# --kernel-codegen objects (code_generator/x64_asm.w): the built-in asm
+# stubs, after the last function, when code calls or takes one that
+# nothing else defined.
+void x64_runtime_emit_if_used():
+	int used = 0
+	int i = 0
+	while (x64_runtime_stub_name(i) != 0):
+		int t = sym_lookup(x64_runtime_stub_name(i))
+		if ((t >= 0) && (table[t + 1] == 'U') && ((sym_value_at(t) != code_offset) || (sym_rel_chain(t) != 0))): used = 1
+		i = i + 1
+	if (used): define_asm_functions_x64()
+
+
 void undefined_function_check():
 	int failures = 0
 	int t = 0
@@ -1433,12 +1456,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+		println2(c"usage: w [x86|x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 		println2(c"run 'w --help' for details")
 		exit(1)
 	int i = start_index
-	word_size = 4
-	word_size_log2 = 2
+	word_size = 8
+	word_size_log2 = 3
 	diag_word_size = word_size
 	target_isa = 0
 	target_os = 0
@@ -1650,6 +1673,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
 		else if (strcmp(*flag_arg, c"--kernel-codegen") == 0): kernel_codegen = 1
+		else if (strcmp(*flag_arg, c"--function-return=thunk-extern") == 0): return_thunk_mode = 1
+		else if (strcmp(*flag_arg, c"--indirect-branch=thunk-extern") == 0): indirect_thunk_mode = 1
 		else if (strcmp(*flag_arg, c"--stack-usage") == 0): stack_usage_mode = 1
 		else if (strcmp(*flag_arg, c"--c-abi") == 0): c_abi_mode = 1
 		else if (strcmp(*flag_arg, c"--shared") == 0):
@@ -1746,6 +1771,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
 	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
 	if (kernel_codegen && (freestanding_mode == 0)): target_option_error(c"--kernel-codegen requires --emit=obj --freestanding")
+	if ((return_thunk_mode || indirect_thunk_mode) && (c_abi_mode == 0)): target_option_error(c"thunk-extern returns and indirect branches require --emit=obj --freestanding --c-abi")
 	if (stack_usage_mode && (target_isa != 0)): target_option_error(c"--stack-usage requires an x86 or x64 target")
 	# --c-abi: the W runtime's own callbacks keep W's convention, so it
 	# is for freestanding objects only; a value use of a function name
@@ -1957,6 +1983,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# only the program's entry file imports. Linking the whole program
 	# is where the missing body becomes a real error.
 	if (check_mode == 0):
+		if (elf_object && kernel_codegen): x64_runtime_emit_if_used()
 		undefined_function_check()
 		global_address_finish()
 

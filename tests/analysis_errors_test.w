@@ -1,5 +1,5 @@
 # wbuild: target=analysis_errors_test tag=tests dep=wv2
-# wbuild: step="bin/wv2 tests/analysis_errors_test.w -o bin/analysis_errors_test"
+# wbuild: step="bin/wv2 x86 tests/analysis_errors_test.w -o bin/analysis_errors_test"
 # wbuild: step="bin/analysis_errors_test"
 # wbuild: target=analysis_errors_64_test tag=tests_x64 dep=build_x64
 # wbuild: step="bin/wv2 x64 tests/analysis_errors_test.w -o bin/analysis_errors_64_test"

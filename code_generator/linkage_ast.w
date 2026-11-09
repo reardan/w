@@ -1,3 +1,6 @@
+int enum_rodata_value(int value);   /* grammar/program.w */
+
+
 # Register the extern data object sym whose size bytes of space start at
 # address. In an object (--emit=obj) an extern fixed array is a C array,
 # with no {data, length} header in front of its elements: W keeps the
@@ -56,7 +59,8 @@ void extern_unsized_array(int sym, int element_type, char* name):
 # Emit bytes and relocation/import metadata from resolved declarations.
 void emit_linkage_ast(linkage_ast* node):
 	if (node.kind == ast_linkage_enum):
-		if (node.split):
+		if (elf_object): sym_define_global_at(node.binding, enum_rodata_value(node.value))
+		else if (node.split):
 			sym_define_global_at(node.binding, data_offset + datapos)
 			emit_data_word(node.value)
 		else:

@@ -170,6 +170,9 @@ struct ui_context:
 	# snapshot's focused node while access_focus_owner holds focus.
 	int32 access_focus_owner
 	int32 access_focus_child
+	# 1 while access is a snapshot ui_begin_window made for a
+	# graphics.control a11y_tree request (docs/projects/wdrive.md).
+	int32 access_control_owned
 	# Clipboard (docs/projects/ui_clipboard.md). A text widget's copy or
 	# cut leaves its text in clip_out until the next ui_begin_window hands
 	# it to the platform; a paste names the widget waiting for text in

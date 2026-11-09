@@ -72,10 +72,15 @@ void elf_start_64():
 	# --emit=obj: the headers above are scratch (elf_object_write writes
 	# its own); .text starts at a 16-byte boundary after them, with no
 	# entry or rebase stub -- the system linker owns process startup.
+	# Kernel code only declares the built-in assembly stubs (syscalls,
+	# threads, setjmp, context switches) here and gets them at the end
+	# when a call names one (x64_runtime_emit_if_used): their stack
+	# tricks are what stack validators (objtool) reject.
 	if (elf_object):
 		while ((codepos % 16) != 0): emit_int8(0)
 		elf_object_text_start = codepos
-		define_asm_functions_x64()
+		if (kernel_codegen): x64_runtime_declare()
+		else: define_asm_functions_x64()
 		return
 	if (elf_pie && (elf_shared == 0)): x64_entry_rebase_stub()
 

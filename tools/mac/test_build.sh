@@ -17,7 +17,7 @@ grep -qx build_host_test_darwin "$fixture/targets"
 cat > "$fixture/manifest.json" <<'JSON'
 {"targets":[
  {"name":"transitive_native","steps":[{"cmd":["bin/wv2","arm64_darwin","tests/wtest/host/root.w","-o","bin/mac_host_transitive"]},{"cmd":["bin/mac_host_transitive"]}]},
- {"name":"cross_x86","steps":[{"cmd":["bin/wv2","tests/wtest/host/root.w","-o","bin/mac_host_x86"]}]},
+ {"name":"cross_x86","steps":[{"cmd":["bin/wv2","x86","tests/wtest/host/root.w","-o","bin/mac_host_x86"]}]},
  {"name":"cross_x64","steps":[{"cmd":["bin/wv2","x64","tests/wtest/host/root.w","-o","bin/mac_host_x64"]}]},
  {"name":"cross_arm64","steps":[{"cmd":["bin/wv2","arm64","tests/wtest/host/root.w","-o","bin/mac_host_arm64"]}]},
  {"name":"cross_win64","steps":[{"cmd":["bin/wv2","win64","tests/wtest/host/root.w","-o","bin/mac_host_win64"]}]},

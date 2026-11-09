@@ -457,3 +457,67 @@ wresult[rgba_image*]* jpeg_decode_n(char* data, int length, image_limits* limits
 	free(owned)
 	if (error != 0): return result_new_error[rgba_image*](error)
 	return result_new_ok[rgba_image*](image)
+
+# TIFF integer of `size` (2 or 4) bytes at p, little-endian when `little`.
+int jpeg_tiff_int(char* p, int size, int little):
+	int value = 0
+	for i in range(size):
+		int index = i
+		if (little): index = size - 1 - i
+		value = (value << 8) | (p[index] & 255)
+	return value
+
+# Orientation tag of an APP1 "Exif\0\0" payload's IFD0, or 0 when absent
+# or malformed. Every offset is checked against the payload.
+int jpeg_exif_orientation(char* payload, int size):
+	if ((size < 14) || (payload[0] != 'E') || (payload[1] != 'x') || (payload[2] != 'i') || (payload[3] != 'f') || (payload[4] != 0) || (payload[5] != 0)): return 0
+	char* tiff = payload + 6
+	int length = size - 6
+	int little = 0
+	if ((tiff[0] == 'I') && (tiff[1] == 'I')): little = 1
+	else if ((tiff[0] != 'M') || (tiff[1] != 'M')): return 0
+	if (jpeg_tiff_int(tiff + 2, 2, little) != 42): return 0
+	# Offsets are unsigned 32-bit; reject any with the top bit set.
+	if ((tiff[4 + 3 * little] & 128) != 0): return 0
+	int ifd = jpeg_tiff_int(tiff + 4, 4, little)
+	if ((ifd < 8) || (ifd > length - 2)): return 0
+	int count = jpeg_tiff_int(tiff + ifd, 2, little)
+	if (count > (length - ifd - 2) / 12): return 0
+	for i in range(count):
+		char* entry = tiff + ifd + 2 + i * 12
+		if (jpeg_tiff_int(entry, 2, little) != 274): continue
+		# SHORT (type 3), one value, stored in the entry's first two bytes.
+		if ((jpeg_tiff_int(entry + 2, 2, little) != 3) || (jpeg_tiff_int(entry + 4, 4, little) != 1)): return 0
+		int orientation = jpeg_tiff_int(entry + 8, 2, little)
+		if ((orientation < 1) || (orientation > 8)): return 0
+		return orientation
+	return 0
+
+# EXIF orientation (1..8, see rgba_image_apply_orientation) from the
+# first APP1 Exif segment with a valid tag before the first scan; 1 when no
+# segment has one or the markers are malformed. Input is borrowed.
+int jpeg_decode_orientation(char* data, int length):
+	if ((data == 0) || (length < 4) || ((data[0] & 255) != 255) || ((data[1] & 255) != 216)): return 1
+	int pos = 2
+	while (pos + 4 <= length):
+		if ((data[pos] & 255) != 255): return 1
+		int marker = data[pos + 1] & 255
+		if (marker == 255):
+			pos = pos + 1
+			continue
+		# Scan data, EOI and standalone markers end the header segments.
+		if ((marker == 218) || (marker == 217) || (marker == 216) || (marker == 0) || (marker == 1) || ((marker >= 208) && (marker <= 215))): return 1
+		int size = jpeg_u16(data + pos + 2)
+		if ((size < 2) || (size > length - pos - 2)): return 1
+		if (marker == 225):
+			int orientation = jpeg_exif_orientation(data + pos + 4, size - 2)
+			if (orientation != 0): return orientation
+		pos = pos + 2 + size
+	return 1
+
+# jpeg_decode_n followed by rgba_image_apply_orientation with the file's
+# EXIF orientation, so the result is in display orientation.
+wresult[rgba_image*]* jpeg_decode_oriented_n(char* data, int length, image_limits* limits):
+	wresult[rgba_image*]* result = jpeg_decode_n(data, length, limits)
+	if (result.ok): rgba_image_apply_orientation(result.value, jpeg_decode_orientation(data, length))
+	return result

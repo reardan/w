@@ -270,7 +270,7 @@ void test_object_mode_rejections():
 	char* out = object_path(c"rejected.o")
 	object_write(c"plain.w", c"export int plain(int a):\n\treturn a\n")
 	char* plain = object_path(c"plain.w")
-	object_reject(c"--emit=obj requires the x64 Linux target", c"--emit=obj", plain, c"-o", out)
+	object_reject(c"--emit=obj requires the x64 Linux target", c"x86", c"--emit=obj", plain, c"-o", out)
 	object_reject(c"--emit=obj requires the x64 Linux target", c"arm64", c"--emit=obj", plain, c"-o", out)
 	object_reject(c"--emit=obj and --static are mutually exclusive", c"x64", c"--emit=obj", c"--static", plain, c"-o", out)
 	object_reject(c"--emit=obj and --shared are mutually exclusive", c"x64", c"--emit=obj", c"--shared", plain, c"-o", out)

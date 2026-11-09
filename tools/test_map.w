@@ -163,7 +163,7 @@ test" apart from a green run.
 
 Enormous selections COLLAPSE to umbrella targets: editing a file in
 every program's import closure (structures/w_list.w and the rest of
-the auto-imported runtime, lib/__arch__/x86/syscalls.w, ...) selects
+the auto-imported runtime, lib/__arch__/x64/syscalls.w, ...) selects
 essentially the whole manifest — correct, but useless as a printed
 list (~450 lines, ai_tooling_next_steps.md 2026-07-28 / issue #360
 item 5). When more than half of the manifest's selectable targets are
@@ -176,9 +176,9 @@ T selectable targets)'. Selected targets no umbrella covers (the
 arm64/wasm/darwin gates, tool builds) stay listed individually, so
 the collapsed output is still a complete, valid target list for
 './wbuild test_changed' / 'xargs -r ./wbuild'. The collapse is
-arch-accurate for free: an x86-only runtime edit selects few
-tests_x64 members, so only 'tests' collapses and the x64 umbrella is
-never pulled in. The collapse also COMPOSES with --available/
+arch-accurate for free: an x64-only runtime edit selects few
+'tests' members (mostly x86 twins), so only tests_x64 collapses and
+'tests' is never pulled in. The collapse also COMPOSES with --available/
 --runnable-here (ai_tooling_next_steps.md 2026-08-05): an umbrella
 whose transitive dep closure ('tests' lists tests_x64 among its deps)
 contains a target the availability filter just dropped is never
@@ -742,6 +742,7 @@ int wtest_excluded_root(char* path):
 
 
 int wtest_selector(char* word):
+	if (strcmp(word, c"x86") == 0): return 1
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
 	if (strcmp(word, c"arm64_android") == 0): return 1
@@ -754,8 +755,8 @@ int wtest_selector(char* word):
 
 
 # Root ids are "<arch> <root>" pairs ("x64 lib/lib_test.w"); the arch
-# column is the compile step's target selector, "x86" for the default
-# target, so one source file compiled for several targets gets one
+# column is the compile step's target selector (deps_default_arch when
+# it has none), so one source file compiled for several targets gets one
 # closure per target.
 char* wtest_root_id(char* arch, char* root):
 	string_builder* s = string_new()
@@ -818,7 +819,7 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 				if (strcmp(piece.string_value, c"-o") == 0): has_output = 1
 			i = i + 1
 		if (has_output == 0): continue
-		char* arch = c"x86"
+		char* arch = deps_default_arch(program.string_value)
 		json_value* selector_piece = json_array_get(cmd, 1)
 		if (selector_piece.type == json_type_string()):
 			if (wtest_selector(selector_piece.string_value)): arch = selector_piece.string_value
@@ -2622,7 +2623,7 @@ char* wtest_target_runnable_reason(char* name):
 		json_value* program = json_array_get(cmd, 0)
 		if (wtest_root_program(program.string_value) == 0): continue
 		int n = json_array_length(cmd)
-		char* arch = c"x86"
+		char* arch = deps_default_arch(program.string_value)
 		if (n >= 2):
 			json_value* selector_piece = json_array_get(cmd, 1)
 			if (wtest_selector(selector_piece.string_value)): arch = selector_piece.string_value

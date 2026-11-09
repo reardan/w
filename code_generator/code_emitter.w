@@ -76,6 +76,12 @@ int elf_static /* W x64 compiled static library */
 int elf_object /* --emit=obj: x64 ELF ET_REL object (implies elf_static) */
 int elf_object_text_start /* code offset where an object's .text begins */
 int freestanding_mode /* --freestanding: no auto-imported W runtime */
+# --function-return=thunk-extern / --indirect-branch=thunk-extern (x64
+# objects): returns jump to __x86_return_thunk, indirect calls go through
+# __x86_indirect_thunk_<reg>, as gcc's options of those names do
+# (code_generator/x86.w, emit_x64_ret)
+int return_thunk_mode
+int indirect_thunk_mode
 int kernel_codegen /* --kernel-codegen: kernel-context code (no SSE/x87; docs/projects/object_files.md) */
 int stack_usage_mode /* --stack-usage: write <output>.su (code_generator/stack_usage.w) */
 int stack_usage_active /* 1 while a function body is emitted under --stack-usage */

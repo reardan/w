@@ -133,7 +133,8 @@ int bench_field(char* text, char* label):
 	return value
 
 
-# One workload: compile source with the given compiler, runs times.
+# One workload: compile source for x86 (the baseline's target; the
+# compiler defaults to x64) with the given compiler, runs times.
 bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 	bench_result* r = new bench_result()
 	r.ok = 0
@@ -143,13 +144,14 @@ bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 	r.bytes = -1
 	r.failure = c"?"
 	for i in range(runs):
-		char** full = strv_new(6)
+		char** full = strv_new(7)
 		strv_set(full, 0, compiler)
-		strv_set(full, 1, c"--quiet")
-		strv_set(full, 2, c"--stats")
-		strv_set(full, 3, source)
-		strv_set(full, 4, c"-o")
-		strv_set(full, 5, out_path)
+		strv_set(full, 1, c"x86")
+		strv_set(full, 2, c"--quiet")
+		strv_set(full, 3, c"--stats")
+		strv_set(full, 4, source)
+		strv_set(full, 5, c"-o")
+		strv_set(full, 6, out_path)
 		int t0 = process_monotonic_ms()
 		process_result* result = process_run(compiler, full, 0, 0, 600000)
 		int elapsed = process_monotonic_ms() - t0
@@ -703,16 +705,12 @@ prog_result* prog_run(char* compiler, char* name, char* arch, char* prefix, int 
 	prog_result* r = prog_result_new()
 	char* source = prog_concat3(c"tests/bench/", name, c".w")
 	char* binary = prog_concat3(prefix, name, strjoin(c"_", arch))
-	int is_x64 = strcmp(arch, c"x64") == 0
-	int argc = 5
-	if (is_x64): argc = 6
-	char** argv = strv_new(argc)
+	char** argv = strv_new(6)
 	int i = 0
 	strv_set(argv, i, compiler)
 	i = i + 1
-	if (is_x64):
-		strv_set(argv, i, c"x64")
-		i = i + 1
+	strv_set(argv, i, arch)
+	i = i + 1
 	strv_set(argv, i, c"--quiet")
 	strv_set(argv, i + 1, source)
 	strv_set(argv, i + 2, c"-o")
@@ -739,16 +737,12 @@ prog_result* prog_run(char* compiler, char* name, char* arch, char* prefix, int 
 prog_result* prog_run_self(char* compiler, char* arch, char* prefix, int runs):
 	prog_result* r = prog_result_new()
 	char* out = prog_concat3(prefix, c"self_", arch)
-	int is_x64 = strcmp(arch, c"x64") == 0
-	int argc = 5
-	if (is_x64): argc = 6
-	char** argv = strv_new(argc)
+	char** argv = strv_new(6)
 	int i = 0
 	strv_set(argv, i, compiler)
 	i = i + 1
-	if (is_x64):
-		strv_set(argv, i, c"x64")
-		i = i + 1
+	strv_set(argv, i, arch)
+	i = i + 1
 	strv_set(argv, i, c"--quiet")
 	strv_set(argv, i + 1, c"w.w")
 	strv_set(argv, i + 2, c"-o")
@@ -756,7 +750,7 @@ prog_result* prog_run_self(char* compiler, char* arch, char* prefix, int runs):
 	if (prog_time_runs(r, argv, runs, 0)): return r
 	r.bytes = prog_file_size(out)
 	r.output = c"(the compiled compiler)"
-	prog_measure_ir(r, argv, argc, compiler, strjoin(out, c".callgrind"))
+	prog_measure_ir(r, argv, 6, compiler, strjoin(out, c".callgrind"))
 	return r
 
 

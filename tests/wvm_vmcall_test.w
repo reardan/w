@@ -3,7 +3,7 @@
 # wbuild: target=wvm_vmcall_thread_fixture dep=wv2
 # wbuild: step="bin/wv2 x64 --syscall-abi=vmcall tests/wvm_thread_fixture.w -o bin/wvm_vmcall_thread_fixture"
 # wbuild: target=wvm_vmcall_test tag=tests dep=wv2 dep=wvm dep=wvm_vmcall_fixture dep=wvm_vmcall_thread_fixture
-# wbuild: step="bin/wv2 --syscall-abi=vmcall tests/hello.w -o bin/vmcall_wrong_arch" expect_status=1 expect_stderr="requires static non-PIE x64 Linux"
+# wbuild: step="bin/wv2 x86 --syscall-abi=vmcall tests/hello.w -o bin/vmcall_wrong_arch" expect_status=1 expect_stderr="requires static non-PIE x64 Linux"
 # wbuild: step="bin/wv2 x64 --pie --syscall-abi=vmcall tests/hello.w -o bin/vmcall_wrong_pie" expect_status=1 expect_stderr="requires static non-PIE x64 Linux"
 # wbuild: step="bin/wv2 x64 --syscall-abi=vmcall tests/dynamic_test.w -o bin/vmcall_wrong_dynamic" expect_status=1 expect_stderr="does not support dynamic imports"
 # wbuild: step="bin/wv2 x64 tests/wvm_vmcall_test.w -o bin/wvm_vmcall_test"

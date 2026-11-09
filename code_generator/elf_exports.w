@@ -2,6 +2,7 @@
 # signatures as wasm exports; each entry gets a native C ABI adapter.
 import code_generator.wasm_module
 import code_generator.ffi
+void emit_x64_ret();   /* code_generator/x86.w */
 
 char* elf_export_addresses
 void stack_usage_adapter(int symbol, int words);   /* code_generator/stack_usage.w */
@@ -112,5 +113,5 @@ void elf_emit_export_wrappers():
 		if (ret_kind >= 2): sse_kernel_reject()
 		if (ret_kind == 2): emit(4, c"\x66\x0f\x6e\xc0")
 		if (ret_kind == 3): emit(5, c"\x66\x48\x0f\x6e\xc0")
-		emit_int8(0xc3)
+		emit_x64_ret()
 		free(slots)

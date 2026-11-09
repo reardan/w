@@ -28,8 +28,11 @@ first non-comment line (later comments are not scanned):
 	                               the x64 target). Space-separated
 	                               words become separate arguments
 	                               ("--profile=script --import-root=r").
-	                               Optional, no
-	                               default, and does not itself count
+	                               Optional. When it names no target
+	                               selector, "x86" is appended (the
+	                               compiler defaults to x64, and the
+	                               fixtures were written for x86). It
+	                               does not itself count
 	                               as a directive (a fixture using it
 	                               still needs an expect_stderr/
 	                               reject_stderr/expect_fail to assert
@@ -255,6 +258,30 @@ list[char*] wfixture_selector_words():
 	return words
 
 
+# 1 when a selector word is a target selector.
+int wfixture_is_target(char* word):
+	if (strcmp(word, c"x86") == 0): return 1
+	if (strcmp(word, c"x64") == 0): return 1
+	if (strcmp(word, c"win64") == 0): return 1
+	if (strcmp(word, c"wasm") == 0): return 1
+	return starts_with(word, c"arm64")
+
+
+# The compiler defaults to x64. A fixture whose selector names no
+# target keeps the 32-bit x86 target its expectations were written for.
+void wfixture_default_target():
+	for char* word in wfixture_selector_words():
+		if (wfixture_is_target(word)): return
+	string_builder* s = string_new()
+	if (wfixture_selector != 0):
+		string_append(s, wfixture_selector)
+		string_append(s, c" ")
+		free(wfixture_selector)
+	string_append(s, c"x86")
+	wfixture_selector = strclone(s.data)
+	string_free(s)
+
+
 # 1 when a selector word picks the front end itself.
 int wfixture_selector_picks_front_end():
 	int picks = 0
@@ -353,6 +380,7 @@ int wfixture_run(char* compiler, char* fixture):
 	if (wfixture_load_directives(fixture)):
 		wfixture_verdict(c"FAIL", fixture)
 		return 1
+	wfixture_default_target()
 
 	char* out_path = wfixture_output_path(fixture)
 	wfixture_echo_command(compiler, fixture, out_path)

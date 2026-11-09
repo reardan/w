@@ -3,7 +3,9 @@ graphics.window_stub: the no-backend fallback behind graphics.window on
 targets without a native windowing layer (x86). Defines the same
 gfx_window surface as the real backends; gfx_window_open reports the
 gap and returns 0, which consumers already treat as "no display" (the
-gl smoke test SKIPs, the demo exits).
+gl smoke test SKIPs, the demo exits). With no window there is nothing
+for graphics.control (W_GFX_CONTROL, docs/projects/wdrive.md) to drive,
+so this backend does not connect to it.
 */
 import lib.lib
 import graphics.event

@@ -20,7 +20,7 @@ The test_driver_* functions (default binary only) compile this file and
 a warning fixture both ways and check what the pass must not change (the
 diagnostics, the --streaming conflict) and that it did remove code.
 */
-# wbuild: step="bin/wv2 --ast-opt tests/ast_opt_test.w -o bin/ast_opt_test_on"
+# wbuild: step="bin/wv2 x86 --ast-opt tests/ast_opt_test.w -o bin/ast_opt_test_on"
 # wbuild: step="bin/ast_opt_test_on --filter=fold_,dead_"
 # wbuild: step="bin/wv2 x64 --ast-opt tests/ast_opt_test.w -o bin/ast_opt_test_on_64"
 # wbuild: step="bin/ast_opt_test_on_64 --filter=fold_,dead_"
@@ -446,10 +446,10 @@ void test_driver_streaming_conflict():
 # flag it emits exactly the default compiler's image (bin/wv3), so the
 # arms it removed from itself changed nothing it computes.
 # wbuild: target=ast_opt_verify tag=tests dep=build dep=build_x64
-# wbuild: step="bin/wv2 --ast-opt --strict w.w -o bin/ast_opt_wv3"
-# wbuild: step="bin/ast_opt_wv3 --ast-opt --strict w.w -o bin/ast_opt_wv4"
+# wbuild: step="bin/wv2 x86 --ast-opt --strict w.w -o bin/ast_opt_wv3"
+# wbuild: step="bin/ast_opt_wv3 x86 --ast-opt --strict w.w -o bin/ast_opt_wv4"
 # wbuild: step="cmp bin/ast_opt_wv3 bin/ast_opt_wv4"
-# wbuild: step="bin/ast_opt_wv3 --strict w.w -o bin/ast_opt_off_wv4"
+# wbuild: step="bin/ast_opt_wv3 x86 --strict w.w -o bin/ast_opt_off_wv4"
 # wbuild: step="cmp bin/wv3 bin/ast_opt_off_wv4"
 # wbuild: step="bin/wv2_64 x64 --ast-opt --strict w.w -o bin/ast_opt_wv3_64"
 # wbuild: step="bin/ast_opt_wv3_64 x64 --ast-opt --strict w.w -o bin/ast_opt_wv4_64"

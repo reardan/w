@@ -74,15 +74,20 @@ char* sections_shell(char* command):
 
 
 # The readelf line that mentions name (a section or symbol), or "".
+# (a line ending in name first: a symbol, not one it prefixes, such as
+# a --c-abi function's NAME.w body)
 char* sections_line(char* listing, char* name):
 	int n = strlen(listing)
-	int start = 0
-	for i in range(n + 1):
-		if ((i == n) || (listing[i] == 10)):
-			char* line = str_copy_range(listing, start, i)
-			if (contains(line, name)): return line
-			free(line)
-			start = i + 1
+	for pass in range(2):
+		int start = 0
+		for i in range(n + 1):
+			if ((i == n) || (listing[i] == 10)):
+				char* line = str_copy_range(listing, start, i)
+				if (pass == 0):
+					if (ends_with(line, name)): return line
+				else if (contains(line, name)): return line
+				free(line)
+				start = i + 1
 	return c""
 
 

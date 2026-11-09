@@ -412,12 +412,20 @@ forbid math_test
 forbid lib_test
 forbid stream_test
 
-# The x86 syscall layer is in every x86 program's closure but no x64
-# one: the collapse is arch-accurate — the 'tests' umbrella stands in
-# for the x86 members, while tests_x64 (mostly unselected members)
-# must NOT be pulled in.
+# The x64 syscall layer is in every x64 program's closure, tool builds
+# included (x64 is the compiler's default target): the collapse is
+# arch-accurate — tests_x64 stands in for the x64 members, while the
+# 'tests' umbrella (mostly x86 twins) must NOT be pulled in.
+case lib/__arch__/x64/syscalls.w
+expect tests_x64
+forbid tests
+forbid math_test
+
+# The x86 syscall layer is in every x86 twin's closure but no x64 one,
+# and no longer in most of the manifest, so nothing collapses: the x86
+# members are selected one by one, and no x64 target is.
 case lib/__arch__/x86/syscalls.w
-expect tests
+expect math_test
 forbid tests_x64
 forbid http_client_64_test
 

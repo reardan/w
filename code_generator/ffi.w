@@ -46,6 +46,9 @@ printf-style imports.
 import code_generator.code_emitter
 import lib.lib
 
+void emit_x64_ret();   /* code_generator/x86.w */
+void emit_x64_call_register(int reg);
+
 
 int type_get_pointer_level(int type_index);
 int type_float_kind(int t);
@@ -122,10 +125,73 @@ char* ffi_assign_slots(int n, char* classes, int max_gp):
 ############################### x64 System V #################################
 
 # The x64 C-call frame: rbp anchors the W arguments, rsp aligned to 16.
+#
+# Under --kernel-codegen a C call emitted inline in a W function (a
+# call through a function pointer, a variadic call: arg_base 8) has no
+# frame of its own: a kernel keeps only 8-byte stack alignment (gcc's
+# -mpreferred-stack-boundary=3), so the arguments are addressed from
+# rsp, offset by the words pushed since the frame began, and rbp stays
+# the W function's frame pointer, which stack validators (objtool) and
+# unwinders follow; a second frame inside the function would repoint
+# it. The [rbp+disp] the emitters below are written for then means
+# [rsp + disp - 8 + 8 * pushed]. A shim (arg_base 16) keeps its frame.
+int c_frame_frameless
+int c_frame_pushed
+
+void emit_x64_c_frame_begin();
+
+void emit_x64_c_frame_begin_for(int arg_base):
+	if (kernel_codegen && (arg_base == 8)):
+		c_frame_frameless = 1
+		c_frame_pushed = 0
+		return
+	emit_x64_c_frame_begin()
+
+
 void emit_x64_c_frame_begin():
 	emit(1, c"\x55")               /* push rbp */
 	emit(3, c"\x48\x89\xe5")       /* mov rbp,rsp */
 	emit(4, c"\x48\x83\xe4\xf0")   /* and rsp,-16 */
+
+
+# The ModRM byte (rm = rbp, mod = disp32) and displacement of a
+# frame-relative operand: [rbp+disp32], or the rsp-relative equivalent
+# in a frameless C call.
+void emit_x64_c_frame_operand(int modrm, int disp):
+	if (c_frame_frameless):
+		emit_int8((modrm & 0xf8) | 4)
+		emit_int8(0x24)   # SIB: [rsp]
+		emit_int32(disp - 8 + c_frame_pushed * 8)
+		return
+	emit_int8(modrm)
+	emit_int32(disp)
+
+
+# Keep rsp 16-byte aligned across stack_words pushed argument words
+# (nothing to do in a frameless kernel call).
+void emit_x64_c_frame_align(int stack_words):
+	if (c_frame_frameless): return
+	if ((stack_words & 1) == 1): emit(4, c"\x48\x83\xec\x08")   /* sub rsp,8 */
+
+
+# push qword [rbp+disp32]: one System V stack argument.
+void emit_x64_c_frame_push(int disp):
+	emit_int8(0xff)
+	emit_x64_c_frame_operand(0xb5, disp)
+	if (c_frame_frameless): c_frame_pushed = c_frame_pushed + 1
+
+
+# The call through an extern's import slot. In an --c-abi object it is
+# a direct 'call rel32' to the C symbol (elf_object.w relocates it), the
+# 5-byte form kernels patch at static call sites; elsewhere 'call
+# [rip+slot]', which the loader fills.
+void emit_x64_call_import_slot(int got_vaddr):
+	if (elf_object && c_abi_mode):
+		emit_int8(0xe8)   /* call rel32 */
+	else:
+		emit(2, c"\xff\x15")   /* call qword ptr [rip+disp32] */
+	static_note_address(codepos)
+	emit_int32(got_vaddr - code_offset - codepos - 4)
 
 
 # Float results come back in xmm0; W callers expect the bits in rax.
@@ -137,6 +203,12 @@ void emit_x64_c_frame_end(int ret_class):
 		emit(4, c"\x66\x0f\x7e\xc0")       /* movd eax,xmm0 */
 	else if (ret_class == 2):
 		emit(5, c"\x66\x48\x0f\x7e\xc0")   /* movq rax,xmm0 */
+	if (c_frame_frameless):
+		c_frame_frameless = 0
+		if (c_frame_pushed > 0):
+			emit(3, c"\x48\x81\xc4")   /* add rsp,imm32: the stack arguments */
+			emit_int32(c_frame_pushed * 8)
+		return
 	emit(3, c"\x48\x89\xec")       /* mov rsp,rbp */
 	emit(1, c"\x5d")               /* pop rbp */
 
@@ -144,19 +216,18 @@ void emit_x64_c_frame_end(int ret_class):
 # mov <gp reg>,[rbp+disp32] for argument registers 0..5 (rdi rsi rdx rcx
 # r8 r9). The REX prefix and ModRM byte vary per register.
 void emit_x64_load_gp_reg(int reg, int disp):
+	if (reg < 4): emit(2, c"\x48\x8b")
+	else: emit(2, c"\x4c\x8b")
 	if (reg == 0):
-		emit(3, c"\x48\x8b\xbd")   /* mov rdi,[rbp+disp32] */
+		emit_x64_c_frame_operand(0xbd, disp)   /* mov rdi,[rbp+disp32] */
 	else if (reg == 1):
-		emit(3, c"\x48\x8b\xb5")   /* mov rsi,[rbp+disp32] */
+		emit_x64_c_frame_operand(0xb5, disp)   /* mov rsi,[rbp+disp32] */
 	else if (reg == 2):
-		emit(3, c"\x48\x8b\x95")   /* mov rdx,[rbp+disp32] */
-	else if (reg == 3):
-		emit(3, c"\x48\x8b\x8d")   /* mov rcx,[rbp+disp32] */
-	else if (reg == 4):
-		emit(3, c"\x4c\x8b\x85")   /* mov r8,[rbp+disp32] */
+		emit_x64_c_frame_operand(0x95, disp)   /* mov rdx,[rbp+disp32] */
+	else if ((reg == 3) || (reg == 5)):
+		emit_x64_c_frame_operand(0x8d, disp)   /* mov rcx / r9,[rbp+disp32] */
 	else:
-		emit(3, c"\x4c\x8b\x8d")   /* mov r9,[rbp+disp32] */
-	emit_int32(disp)
+		emit_x64_c_frame_operand(0x85, disp)   /* mov r8,[rbp+disp32] */
 
 
 # movss/movsd xmm<reg>,[rbp+disp32] for xmm0..xmm7.
@@ -167,8 +238,7 @@ void emit_x64_load_xmm_reg(int reg, int arg_class, int disp):
 	else:
 		emit(1, c"\xf3")           /* movss */
 	emit(2, c"\x0f\x10")
-	emit_int8(133 + (reg << 3))    /* ModRM: mod=10 reg=xmm rm=rbp */
-	emit_int32(disp)
+	emit_x64_c_frame_operand(133 + (reg << 3), disp)    /* ModRM: mod=10 reg=xmm rm=rbp */
 
 
 /*
@@ -180,22 +250,19 @@ based) then sits at [rbp + arg_base + 8 * (n - 1 - i)]. A got_vaddr of 0
 calls the address in r11 instead (--c-abi indirect calls, c_abi.w).
 */
 void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int arg_base):
-	emit_x64_c_frame_begin()
+	emit_x64_c_frame_begin_for(arg_base)
 
 	# Slots: 0..5 = gp register index (rdi .. r9), 16+k = xmm k, -1 = stack.
 	char* slots = ffi_assign_slots(n, classes, 6)
 
 	# An odd number of stack pushes would leave rsp 8 off a 16-byte boundary.
-	if ((ffi_stack_count & 1) == 1):
-		emit(4, c"\x48\x83\xec\x08")   /* sub rsp,8 */
+	emit_x64_c_frame_align(ffi_stack_count)
 
 	# Push overflow args in reverse so the leftmost lands at the lowest
 	# address (the SysV memory argument order).
 	int i = n - 1
 	while (i >= 0):
-		if (load_int(slots + (i << 2)) < 0):
-			emit(2, c"\xff\xb5")       /* push qword [rbp+disp32] */
-			emit_int32(arg_base + ((n - 1 - i) << 3))
+		if (load_int(slots + (i << 2)) < 0): emit_x64_c_frame_push(arg_base + ((n - 1 - i) << 3))
 		i = i - 1
 
 	# Load the register arguments (rbp-relative, so the pushes above do
@@ -212,11 +279,8 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 	emit(1, c"\xb8")               /* mov eax,imm32: xmm registers used */
 	emit_int32(ffi_fp_used)
 	if (got_vaddr == 0):
-		emit(3, c"\x41\xff\xd3")   /* call r11: a function-pointer value (c_abi.w) */
-	else:
-		emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
-		static_note_address(codepos)
-		emit_int32(got_vaddr - code_offset - codepos - 4)
+		emit_x64_call_register(11)   /* call r11: a function-pointer value (c_abi.w) */
+	else: emit_x64_call_import_slot(got_vaddr)
 
 	emit_x64_c_frame_end(ret_class)
 

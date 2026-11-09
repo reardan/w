@@ -1,5 +1,5 @@
 # wbuild: target=repl_test tag=tests dep=wv2 data=tests/repl_giant_entry_fixture.txt data=tools/repl_giant_entry_e2e.w
-# wbuild: step="bin/wv2 repl.w -o bin/repl"
+# wbuild: step="bin/wv2 x86 repl.w -o bin/repl"
 # wbuild: step="bin/repl" stdin="int word = 0\natomic_store(&word, 42)\natomic_fence()\natomic_load(&word)\natomic_store_relaxed(&word, -17)\natomic_load_relaxed(&word)\n:quit\n" expect_stdout="42" expect_stdout="-17" reject_stderr="error:"
 # wbuild: step="bin/repl" stdin="print(c\"hello from the repl\\x0a\")\n:quit\n" expect_stdout="hello from the repl"
 # wbuild: step="bin/repl" stdin="this is not valid w\nprint(c\"recovered\\x0a\")\n:quit\n" expect_stdout="recovered"

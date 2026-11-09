@@ -289,8 +289,13 @@ void statement_impl():
 
 	# DWARF line info: the code emitted next belongs to this source line.
 	# The line table and wdbg breakpoints address the statement's first
-	# byte, so no emission-time fold may reach back across it.
+	# byte, so no emission-time fold may reach back across it. The
+	# terminator note looks only forward and survives: a statement start
+	# is no jump target, so the code after a 'jmp' or 'ret' stays
+	# unreachable until a label or region end (O1).
+	int term_end = term_note_end
 	be_notes_reset()
+	term_note_end = term_end
 	debug_line_note(stack_pos)
 	if (coverage_generate_mode && (peek(c":") == 0) && (peek(c"{") == 0) && (peek(c"}") == 0)):
 		if (coverage_statement_is_label() == 0): profile_coverage_statement()

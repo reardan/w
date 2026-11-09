@@ -2,7 +2,7 @@
 # as well as independent shared-library compilation and the SysV ABI.
 # wbuild: binary=library_shared_test arch=x64 link=shared_fixture tag=tests
 # wbuild: step="bin/library_shared_test" expect_stdout="shared library OK"
-# wbuild: step="bin/wv2 --shared tests/library_shared_input.w -o bin/library_bad_arch.so" expect_fail expect_stderr="x64"
+# wbuild: step="bin/wv2 x86 --shared tests/library_shared_input.w -o bin/library_bad_arch.so" expect_fail expect_stderr="x64"
 # wbuild: step="bin/wv2 x64 --shared tests/library_shared_tls_input.w -o bin/library_bad_tls.so" expect_fail expect_stderr="thread_local"
 import lib.lib
 import lib.assert

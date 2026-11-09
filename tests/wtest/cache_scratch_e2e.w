@@ -31,7 +31,7 @@ int wc_count_nonempty(char* text):
 	return count
 
 
-# The fake compiler: 'bin/wv2 deps <root>' logs the root to calls.log
+# The fake compiler: 'bin/wv2 <arch> deps <root>' logs the root to calls.log
 # and prints the closure "<root>" + "dep.w".
 char* wc_fake_wv2_source():
 	string_builder* sb = string_new()
@@ -39,7 +39,7 @@ char* wc_fake_wv2_source():
 	sc_src(sb, 0, c"")
 	sc_src(sb, 0, c"")
 	sc_src(sb, 0, c"int main(int argc, char** argv):")
-	sc_src(sb, 1, c"char* root = argv[2]")
+	sc_src(sb, 1, c"char* root = argv[argc - 1]")
 	# One write per line: wtest runs first attempts concurrently, and
 	# two O_APPEND writes per line would interleave between children.
 	sc_src(sb, 1, c"int n = strlen(root)")
@@ -75,7 +75,7 @@ int main(int argc, char** argv):
 		if (i < 10): name = strjoin(c"r0", itoa(i))
 		string_append(manifest, c"\t\t{\"name\": \"")
 		string_append(manifest, name)
-		string_append(manifest, c"_t\", \"steps\": [{\"cmd\": [\"bin/wv2\", \"")
+		string_append(manifest, c"_t\", \"steps\": [{\"cmd\": [\"bin/wv2\", \"x86\", \"")
 		string_append(manifest, name)
 		string_append(manifest, c".w\", \"-o\", \"bin/")
 		string_append(manifest, name)

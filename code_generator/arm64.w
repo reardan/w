@@ -580,8 +580,12 @@ void be_lea_acc_wstack(int k):
 	else: lea_eax_esp_plus(k)
 
 
+void term_note_land(int target);   /* code_generator/x86.w */
+
+
 # Patch a recorded branch site to the current position (or a given target).
 void be_branch_patch(int site, int target):
+	term_note_land(target)
 	if (target_isa == 1): arm64_branch_patch(site, target)
 	else: save_int32(code + site - 4, target - site)
 

@@ -558,8 +558,9 @@ int object_symbol(char* name, int binding, int symtype, int shndx, int value, in
 # Function entry addresses, ascending (object_function_starts_init): a
 # function symbol's size runs to the next entry or the end of its piece,
 # so tools that look functions up by address (objtool, perf) find them.
-# Under --c-abi a function's entry is its System V stub, so the stub and
-# its W body are one function.
+# Under --c-abi a function's System V entry stub, its W body and its
+# adapter are three functions (object_c_abi_symbols names the last two),
+# so every call and jump lands at a function's start.
 list[int] object_function_starts
 
 
@@ -577,6 +578,12 @@ void object_function_starts_init():
 			if (object_in_text(value) && (value < code_offset + codepos)): object_function_starts.push(value)
 		t = next_token(t)
 	for e in range(wasm_export_count): object_function_starts.push(load_i(elf_export_addresses + e * __word_size__, __word_size__))
+	if (c_abi_mode && (cast(int, c_abi_stub_syms) != 0)):
+		for k in range(c_abi_stub_positions.length):
+			int stub = code_offset + c_abi_stub_positions[k]
+			object_function_starts.push(stub)
+			object_function_starts.push(stub + 5)
+			if (c_abi_adapter_ends[k] > c_abi_adapter_starts[k]): object_function_starts.push(code_offset + c_abi_adapter_starts[k])
 	# Shell sort: ascending.
 	int n = object_function_starts.length
 	int gap = n / 2
@@ -706,8 +713,25 @@ list[int] object_weak_entry_vaddrs
 list[int] object_weak_entry_symbols
 
 
+# --c-abi: local symbols for what a function's entry stub leads to, its
+# W body (NAME.w, the target of direct W calls) and its System V adapter
+# (NAME.sysv), and for the trap of functions with no System V form.
+void object_c_abi_symbols():
+	if ((c_abi_mode == 0) || (cast(int, c_abi_stub_syms) == 0)): return
+	for k in range(c_abi_stub_syms.length):
+		char* name = sym_record_name(c_abi_stub_syms[k])
+		int stub = code_offset + c_abi_stub_positions[k]
+		object_text_symbol(strjoin(name, c".w"), 0, stub + 5)
+		if (c_abi_adapter_ends[k] > c_abi_adapter_starts[k]):
+			int adapter = code_offset + c_abi_adapter_starts[k]
+			if (c_abi_adapter_starts[k] == c_abi_trap_pos): object_text_symbol(c"__w_c_abi_trap", 0, adapter)
+			else: object_text_symbol(strjoin(name, c".sysv"), 0, adapter)
+
+
 # Local symbols for W functions and the non-root globals; with
 # want_global, the root globals (and every weak definition) instead.
+# An extern function's FFI shim, whose W name is the C symbol's, is a
+# local NAME.shim.
 void object_table_symbols(int want_global):
 	int t = 0
 	while (t <= table_pos - 1):
@@ -728,6 +752,8 @@ void object_table_symbols(int want_global):
 					if (weak):
 						object_weak_text_vaddrs.push(value)
 						object_weak_text_symbols.push(index)
+			else if ((symtype == 2) && (want_global == 0) && (sym_got_vaddr(t) != 0) && object_in_text(value) && (value < code_offset + codepos)):
+				object_text_symbol(strjoin(name, c".shim"), 0, value)
 			else if (object_table_data_symbol(t, value, type)):
 				int binding = object_file_is_root(sym_decl_file_index(t)) && (object_symbol_is_static(t) == 0)
 				if (weak): binding = 2
@@ -744,11 +770,25 @@ int object_slot_target(int pos):
 	if ((pos < 3) || (pos > codepos - 4)): return -1
 	int lea = ((code[pos - 3] & 255) == 0x48) && ((code[pos - 2] & 255) == 0x8d) && ((code[pos - 1] & 255) == 5)
 	int indirect_call = ((code[pos - 2] & 255) == 0xff) && ((code[pos - 1] & 255) == 0x15)
-	if ((lea == 0) && (indirect_call == 0)): return -1
+	# --c-abi: a direct 'call rel32' to an extern's slot (ffi.w,
+	# emit_x64_call_import_slot), relocated against the C symbol
+	# (or 'jmp rel32' / 'call rel32' to a thunk, x86.w emit_x64_ret)
+	int direct_call = c_abi_mode && (((code[pos - 1] & 255) == 0xe8) || ((code[pos - 1] & 255) == 0xe9))
+	if ((lea == 0) && (indirect_call == 0) && (direct_call == 0)): return -1
 	int target = code_offset + pos + 4 + load_int(code + pos)
 	if (object_in_data(target) || object_in_text(target)): return target
 	error(c"internal error: --emit=obj address slot leaves the object")
 	return -1
+
+
+# 1 when the address slot at pos is 'lea cell(%rip),%rax' directly
+# followed by 'mov (%rax),%rax', cell being an 'extern T[]' pointer cell
+# that holds its array's placeholder.
+int object_extern_pointer_read(int pos, int cell):
+	if ((word_size != 8) || (object_is_extern_pointer_cell(cell) == 0)): return 0
+	if ((pos > codepos - 7) || ((code[pos - 2] & 255) != 0x8d)): return 0
+	if (((code[pos + 4] & 255) != 0x48) || ((code[pos + 5] & 255) != 0x8b) || ((code[pos + 6] & 255) != 0)): return 0
+	return object_extern_data_at(load_i(data + (cell - data_offset), word_size)) >= 0
 
 
 # Return the target vaddr of the `call rel32` (or `jmp rel32`) cell at
@@ -1042,6 +1082,7 @@ void elf_object_write():
 	if (c_abi_mode):
 		for i in range(c_abi_global_names.length): object_global_names.push(c_abi_global_names[i])
 	object_table_symbols(0)
+	object_c_abi_symbols()
 	int first_global = object_symbol_count
 	for e in range(wasm_export_count):
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
@@ -1101,7 +1142,11 @@ void elf_object_write():
 		s.bytes = object_buffer_new()
 		if (s.type == 1):
 			object_buffer_reserve(s.bytes, s.size)
-			for j in range(s.size): s.bytes.bytes[j] = 0
+			# the padding between code pieces is int3, so the section
+			# still decodes as instructions (objtool reads it linearly)
+			int fill = 0
+			if (s.source == 0): fill = 0xcc
+			for j in range(s.size): s.bytes.bytes[j] = fill
 			s.bytes.length = s.size
 	for i in range(object_text_pieces.length):
 		object_piece* p = object_text_pieces[i]
@@ -1158,20 +1203,31 @@ void elf_object_write():
 				int weak_lea = 0
 				if (extern_data >= 0):
 					weak_lea = object_name_is_weak(dyn_import_name(extern_data)) && ((code[pos - 2] & 255) == 0x8d) && (target == dyn_import_got_vaddr(extern_data))
-				# --c-abi: an FFI shim's 'call [rip+slot]' becomes a
-				# direct 'addr32 call rel32' to the C symbol
-				# (R_X86_64_PLT32), as ld relaxes GOTPCRELX calls, so
-				# no data word links code to its callee.
-				if ((import_index >= 0) && c_abi_mode && ((code[pos - 2] & 255) == 0xff) && ((code[pos - 1] & 255) == 0x15)):
-					site_section.bytes.bytes[offset - 2] = 0x67
-					site_section.bytes.bytes[offset - 1] = 0xe8
+				# --c-abi: an FFI shim calls the C symbol directly, a
+				# 5-byte 'call rel32' (R_X86_64_PLT32), so no data word
+				# links code to its callee.
+				if ((import_index >= 0) && c_abi_mode && (((code[pos - 1] & 255) == 0xe8) || ((code[pos - 1] & 255) == 0xe9))):
 					object_rela(site_section.rela, offset, first_import + import_index, 4, -4)
 				else if (weak_lea):
 					site_section.bytes.bytes[offset - 2] = 0x8b
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 42, -4)
 				else if (extern_data >= 0):
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 2, target - dyn_import_got_vaddr(extern_data) - 4)
+				else if (object_extern_pointer_read(pos, target)):
+					# 'lea cell(%rip) ; mov (%rax),%rax' of an 'extern T[]'
+					# name loads a constant, the C array's address: it
+					# becomes 'lea array(%rip) ; nopl (%rax)', as gcc
+					# addresses it, and the cell needs no absolute word
+					# (R_X86_64_64, which position-independent stubs
+					# reject)
+					int space = load_i(data + (target - data_offset), word_size)
+					int array = object_extern_data_at(space)
+					object_rela(site_section.rela, offset, load_int32(data_symbols + array * 4), 2, space - dyn_import_got_vaddr(array) - 4)
+					site_section.bytes.bytes[offset + 4] = 0x0f
+					site_section.bytes.bytes[offset + 5] = 0x1f
+					site_section.bytes.bytes[offset + 6] = 0x00
 				else:
+					if (object_is_extern_pointer_cell(target)): object_extern_pointer_cells[target] = 1
 					if (import_index >= 0): import_used[import_index] = 1
 					object_piece* dest = object_data_piece(target)
 					object_section* dest_section = object_sections[dest.section]
@@ -1190,9 +1246,22 @@ void elf_object_write():
 	# slots. The header cell of an array nothing in the object reaches
 	# stays unrelocated.
 	char* cell_seen = object_unused_array_headers()
+	# A pointer cell that data points at keeps its word
+	if (cast(int, object_extern_pointer_cells) != 0):
+		for r in range(rebase_count):
+			int at = load_i(rebase_table + r * 8, 8) - data_offset
+			if ((at >= 0) && (at <= datapos - 8)):
+				int points = load_i(data + at, 8)
+				if (object_is_extern_pointer_cell(points)): object_extern_pointer_cells[points] = 1
 	for r in range(rebase_count):
 		int cell = load_i(rebase_table + r * 8, 8) - data_offset
 		if ((cell < 0) || (cell > datapos - 8)): error(c"internal error: --emit=obj pointer cell is outside data")
+		# an 'extern T[]' cell every read of which was rewritten
+		if (object_is_extern_pointer_cell(data_offset + cell) && (object_extern_pointer_cells[data_offset + cell] == 0)):
+			cell_seen[cell] = 1
+			object_piece* dead = object_data_piece(data_offset + cell)
+			object_section* dead_section = object_sections[dead.section]
+			if (dead_section.type == 1): save_i(dead_section.bytes.bytes + dead.out + cell - dead.start, 0, 8)
 		if (cell_seen[cell] == 0):
 			cell_seen[cell] = 1
 			int value = load_i(data + cell, 8)

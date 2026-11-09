@@ -13,6 +13,7 @@ import graphics.gl
 import graphics.event
 import graphics.input_queue
 import graphics.clipboard_store
+import graphics.control
 import lib.utf8
 import lib.mem
 
@@ -476,6 +477,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	gfx_input_queue_init(&win.input_queue)
 	gfx_x11_clipboard_init(win)
 	glViewport(0, 0, width, height)
+	gfx_control_open(title, c"x11")
 	return win
 
 
@@ -597,6 +599,35 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			gfx_input_queue_push(&win.input_queue, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
 
 
+# graphics.control hooks (docs/projects/wdrive.md): without a window
+# manager the server applies the request at once and the usual
+# ConfigureNotify updates width/height.
+int gfx_x11_control_resize(void* window, int width, int height):
+	gfx_window* win = cast(gfx_window*, window)
+	XResizeWindow(win.display, win.window, width, height)
+	XFlush(win.display)
+	return 1
+
+
+void gfx_x11_control_readback(int x, int y, int w, int h, char* out):
+	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out)
+
+
+void gfx_x11_control_target(gfx_window* win, gfx_control_target* t):
+	t.window = cast(void*, win)
+	t.queue = &win.input_queue
+	t.width = &win.width
+	t.height = &win.height
+	t.should_close = &win.should_close
+	t.mouse_x = &win.mouse_x
+	t.mouse_y = &win.mouse_y
+	t.mouse_buttons = &win.mouse_buttons
+	t.pixel_width = 0
+	t.pixel_height = 0
+	t.resize = gfx_x11_control_resize
+	t.readback = gfx_x11_control_readback
+
+
 # Drain pending X events. Returns 1 while the window should stay open.
 int gfx_window_poll(gfx_window* win):
 	gfx_x11_active = win
@@ -605,6 +636,10 @@ int gfx_window_poll(gfx_window* win):
 		x_event event
 		XNextEvent(win.display, &event)
 		if (XFilterEvent(&event, 0) == 0): gfx_window_handle_event(win, &event)
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_x11_control_target(win, &t)
+		gfx_control_poll(&t)
 	if (win.should_close): return 0
 	return 1
 
@@ -616,6 +651,10 @@ int gfx_window_next_event(gfx_window* win, gfx_event* out):
 
 
 void gfx_window_swap(gfx_window* win):
+	if (gfx_control_active()):
+		gfx_control_target t
+		gfx_x11_control_target(win, &t)
+		gfx_control_swap(&t)
 	glXSwapBuffers(win.display, win.window)
 
 

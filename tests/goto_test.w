@@ -244,3 +244,28 @@ int shared_name():
 
 void test_label_and_variable_share_name():
 	assert_equal(1, shared_name())
+
+
+# --- a label right after a 'return', reached only by deeper gotos ---
+# (the adjust stubs need no jump around them: nothing falls through)
+
+int label_after_return(int x):
+	if (x > 0):
+		int y = x + 1
+		if (y > 3):
+			int z = y * 2
+			if (z > 9): goto done
+			goto mid
+		return y
+	return 0
+	mid:
+	return 50
+	done:
+	return 99
+
+
+void test_label_after_return():
+	assert_equal(0, label_after_return(0))
+	assert_equal(3, label_after_return(2))
+	assert_equal(50, label_after_return(3))
+	assert_equal(99, label_after_return(5))

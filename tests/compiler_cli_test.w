@@ -1,4 +1,4 @@
-# wbuild: step="bin/wv2" expect_fail expect_stderr="usage: w [x64"
+# wbuild: step="bin/wv2" expect_fail expect_stderr="usage: w [x86|x64"
 # wbuild: step="bin/wv2 tests/no_such_cli_file.w -o bin/cli_missing" expect_fail expect_stderr="no such file: 'tests/no_such_cli_file.w'"
 # wbuild: step="bin/wv2 -v -v tests/no_such_cli_file.w -o bin/cli_missing" expect_fail expect_stderr="not found error"
 # wbuild: step="bin/wv2 tests/cli_probe.w -o bin/cli_probe"
