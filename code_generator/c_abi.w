@@ -68,6 +68,10 @@ map[int, int] object_static_symbols
 # 'extern T[] name' pointer cells (linkage_ast.w): W globals that are
 # no symbols of the object.
 map[int, int] object_extern_pointer_symbols
+# The same cells by vaddr: 1 once some reference still needs the cell's
+# word (elf_object.w relocates it then), 0 while every read of the cell
+# was rewritten to the C array's own address.
+map[int, int] object_extern_pointer_cells
 # Static address cells naming a global ('&x', '&x + n' in a global
 # initializer): cell vaddr -> the vaddr of x itself. The relocation binds
 # to x (its piece, or for extern data its symbol) even when the offset
@@ -86,6 +90,7 @@ void c_abi_reset():
 	sym_wide_param_types = 0
 	object_static_symbols = 0
 	object_extern_pointer_symbols = 0
+	object_extern_pointer_cells = 0
 	object_address_bases = 0
 
 
@@ -113,6 +118,8 @@ void object_note_static(int t):
 void object_note_extern_pointer(int t):
 	if (cast(int, object_extern_pointer_symbols) == 0): object_extern_pointer_symbols = new map[int, int]
 	object_extern_pointer_symbols[t] = 1
+	if (cast(int, object_extern_pointer_cells) == 0): object_extern_pointer_cells = new map[int, int]
+	object_extern_pointer_cells[sym_value_at(t)] = 0
 
 
 void object_note_address_base(int cell, int base):
@@ -129,6 +136,12 @@ int object_address_base_at(int cell):
 int object_symbol_is_extern_pointer(int t):
 	if (cast(int, object_extern_pointer_symbols) == 0): return 0
 	return object_extern_pointer_symbols.get(t, 0)
+
+
+# 1 when vaddr is an 'extern T[]' pointer cell.
+int object_is_extern_pointer_cell(int vaddr):
+	if (cast(int, object_extern_pointer_cells) == 0): return 0
+	return vaddr in object_extern_pointer_cells
 
 
 int object_symbol_is_static(int t):

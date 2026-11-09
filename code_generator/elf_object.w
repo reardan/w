@@ -781,6 +781,16 @@ int object_slot_target(int pos):
 	return -1
 
 
+# 1 when the address slot at pos is 'lea cell(%rip),%rax' directly
+# followed by 'mov (%rax),%rax', cell being an 'extern T[]' pointer cell
+# that holds its array's placeholder.
+int object_extern_pointer_read(int pos, int cell):
+	if ((word_size != 8) || (object_is_extern_pointer_cell(cell) == 0)): return 0
+	if ((pos > codepos - 7) || ((code[pos - 2] & 255) != 0x8d)): return 0
+	if (((code[pos + 4] & 255) != 0x48) || ((code[pos + 5] & 255) != 0x8b) || ((code[pos + 6] & 255) != 0)): return 0
+	return object_extern_data_at(load_i(data + (cell - data_offset), word_size)) >= 0
+
+
 # Return the target vaddr of the `call rel32` (or `jmp rel32`) cell at
 # pos, -1 for a cell a fold has since rewritten.
 int object_rel32_target(int pos):
@@ -1203,7 +1213,21 @@ void elf_object_write():
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 42, -4)
 				else if (extern_data >= 0):
 					object_rela(site_section.rela, offset, load_int32(data_symbols + extern_data * 4), 2, target - dyn_import_got_vaddr(extern_data) - 4)
+				else if (object_extern_pointer_read(pos, target)):
+					# 'lea cell(%rip) ; mov (%rax),%rax' of an 'extern T[]'
+					# name loads a constant, the C array's address: it
+					# becomes 'lea array(%rip) ; nopl (%rax)', as gcc
+					# addresses it, and the cell needs no absolute word
+					# (R_X86_64_64, which position-independent stubs
+					# reject)
+					int space = load_i(data + (target - data_offset), word_size)
+					int array = object_extern_data_at(space)
+					object_rela(site_section.rela, offset, load_int32(data_symbols + array * 4), 2, space - dyn_import_got_vaddr(array) - 4)
+					site_section.bytes.bytes[offset + 4] = 0x0f
+					site_section.bytes.bytes[offset + 5] = 0x1f
+					site_section.bytes.bytes[offset + 6] = 0x00
 				else:
+					if (object_is_extern_pointer_cell(target)): object_extern_pointer_cells[target] = 1
 					if (import_index >= 0): import_used[import_index] = 1
 					object_piece* dest = object_data_piece(target)
 					object_section* dest_section = object_sections[dest.section]
@@ -1222,9 +1246,22 @@ void elf_object_write():
 	# slots. The header cell of an array nothing in the object reaches
 	# stays unrelocated.
 	char* cell_seen = object_unused_array_headers()
+	# A pointer cell that data points at keeps its word
+	if (cast(int, object_extern_pointer_cells) != 0):
+		for r in range(rebase_count):
+			int at = load_i(rebase_table + r * 8, 8) - data_offset
+			if ((at >= 0) && (at <= datapos - 8)):
+				int points = load_i(data + at, 8)
+				if (object_is_extern_pointer_cell(points)): object_extern_pointer_cells[points] = 1
 	for r in range(rebase_count):
 		int cell = load_i(rebase_table + r * 8, 8) - data_offset
 		if ((cell < 0) || (cell > datapos - 8)): error(c"internal error: --emit=obj pointer cell is outside data")
+		# an 'extern T[]' cell every read of which was rewritten
+		if (object_is_extern_pointer_cell(data_offset + cell) && (object_extern_pointer_cells[data_offset + cell] == 0)):
+			cell_seen[cell] = 1
+			object_piece* dead = object_data_piece(data_offset + cell)
+			object_section* dead_section = object_sections[dead.section]
+			if (dead_section.type == 1): save_i(dead_section.bytes.bytes + dead.out + cell - dead.start, 0, 8)
 		if (cell_seen[cell] == 0):
 			cell_seen[cell] = 1
 			int value = load_i(data + cell, 8)

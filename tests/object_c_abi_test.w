@@ -247,6 +247,14 @@ void test_c_abi_records_link_with_c():
 	assert_equal(0, contains(listing, c"OBJECT  LOCAL  DEFAULT    2 c_numbers"))
 	assert_equal(0, contains(listing, c"OBJECT  GLOBAL DEFAULT    2 c_numbers"))
 	free(listing)
+	# --kernel-codegen reads an unsized array's name as gcc does, 'lea
+	# c_numbers(%rip)': no absolute word (R_X86_64_64) holds its address
+	char* relocations = abi_shell(strjoin(c"readelf -r -W ", abi_path(c"records3.o")))
+	assert_contains(relocations, c"R_X86_64_PC32          0000000000000000 c_numbers - 4")
+	assert_contains(relocations, c"R_X86_64_PC32          0000000000000000 c_bytes - 4")
+	assert_equal(0, contains(relocations, c"R_X86_64_64            0000000000000000 c_numbers"))
+	assert_equal(0, contains(relocations, c"R_X86_64_64            0000000000000000 c_bytes"))
+	free(relocations)
 
 
 # Executables: an extern C function taking or returning a record by
