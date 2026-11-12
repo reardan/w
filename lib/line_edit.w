@@ -212,10 +212,14 @@ int le_row_for_width(int chars, int cols):
 	return (chars - 1) / cols
 
 
-# 1-based column the cursor rests on under the same model.
+# 1-based column the cursor rests on under the same model: the cell after
+# the last character written. Exactly at the right margin the cursor stays
+# on the last column (wrap is deferred), so there is no next cell to name.
 int le_col_for_width(int chars, int cols):
 	if (chars <= 0): return 1
-	return (chars - 1) % cols + 1
+	int col = (chars - 1) % cols + 1
+	if (col < cols): return col + 1
+	return col
 
 
 # Write n to fd as an ANSI parameter followed by suffix, e.g. "\x1b[3A".
@@ -269,6 +273,11 @@ void le_render(char* prompt, char* buf):
 	int end_row = le_row_for_width(total_end, cols)
 	int cursor_row = le_row_for_width(total_cursor, cols)
 	int cursor_col = le_col_for_width(total_cursor, cols)
+	if ((le_pos < le_len) && (total_cursor > 0) && (total_cursor % cols == 0)):
+		# Mid-line and exactly at a margin: the character under the cursor
+		# is already written, in column 1 of the next row.
+		cursor_row = total_cursor / cols
+		cursor_col = 1
 
 	if (end_row > cursor_row): le_write_csi(end_row - cursor_row, c"A")
 	le_write_csi(cursor_col, c"G")
