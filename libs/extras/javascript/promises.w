@@ -95,7 +95,22 @@ int js_runtime_promise_thenable(js_runtime* rt, js_value* promise, js_value* val
 	job.new_target = reject
 	promise.promise_state = 4
 	promise.promise_result = value
-	return js_runtime_enqueue_microtask(rt, job)
+	if (js_runtime_enqueue_microtask(rt, job)): return 1
+	# The job was not queued: release the lock so settlement can be retried.
+	promise.promise_state = 1
+	promise.promise_result = rt.undefined_value
+	return 0
+
+
+js_value* js_runtime_promise_then(void* runtime, void* context, js_value* receiver, list[js_value*] args);
+
+
+# Adopts the state of a native promise through an ordinary reaction.
+int js_runtime_promise_follow(js_runtime* rt, js_value* promise, js_value* value):
+	promise.promise_state = 4
+	promise.promise_result = value
+	js_runtime_promise_reaction(rt, value, promise, rt.undefined_value, rt.undefined_value)
+	return rt.completion.status == 0
 
 
 # Host values must belong to rt. Settlement is first-call-wins, including
@@ -111,13 +126,11 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 	if (rejected == 0 && value == promise):
 		value = js_runtime_error_value(rt, c"promise resolution cycle")
 		rejected = 1
-	if (rejected == 0 && value.promise_state != 0):
-		promise.promise_state = 4
-		promise.promise_result = value
-		js_runtime_promise_reaction(rt, value, promise, rt.undefined_value, rt.undefined_value)
-		return rt.completion.status == 0
+	if (rejected == 0 && value.promise_state != 0 && rt.running == 0): return js_runtime_promise_follow(rt, promise, value)
 	# Host settlement (outside evaluation) never runs JavaScript.
 	if (rejected == 0 && rt.running && js_runtime_object(value) && rt.completion.status == 0):
+		# Lock while reading then, so a getter cannot settle the promise again.
+		promise.promise_state = 4
 		js_text* key = js_runtime_key(c"then")
 		js_value* then = js_runtime_member_read(rt, value, key)
 		js_text_free(key)
@@ -127,10 +140,17 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 			rt.completion.message = c""
 			rt.completion.value = rt.undefined_value
 			rejected = 1
-		else if (rt.completion.status != 0): return 0
-		else if (js_runtime_callable(then)): return js_runtime_promise_thenable(rt, promise, value, then)
+		else if (rt.completion.status != 0):
+			promise.promise_state = 1
+			return 0
+		else if (js_runtime_callable(then)):
+			# A native promise with the built-in then is followed directly; an
+			# overridden then is called like any other thenable's.
+			if (value.promise_state != 0 && then.kind == 9 && then.host == cast(int, js_runtime_promise_then)): return js_runtime_promise_follow(rt, promise, value)
+			return js_runtime_promise_thenable(rt, promise, value, then)
 	# Reserve the entire fanout before modifying state, avoiding partial delivery.
 	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
+		promise.promise_state = 1
 		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
 		return 0
 	promise.promise_state = 2
