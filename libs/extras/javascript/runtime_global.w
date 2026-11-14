@@ -89,6 +89,7 @@ void js_runtime_identifier_put(js_runtime* rt, js_value* env, char* name, js_val
 		if (env.strict): js_runtime_fail(rt, 2, c"property write rejected")
 		return
 	binding.value = value
+	if (binding.mapped_object != 0): js_arguments_sync(binding, value)
 
 
 int js_runtime_symbol_key(js_text* key):

@@ -43,6 +43,7 @@ void test_reflection():
 	reflection_eval(rt, c"'use strict';delete o.x;", 2)
 	reflection_eval(rt, c"let sparse=[1,2,3];delete sparse[1] && sparse.length===3 && !(1 in sparse) && !delete sparse.length;", 0)
 	reflection_eval(rt, c"Object.create.length===2 && Object.defineProperty.length===3 && Reflect.set.length===3 && Object.prototype.isPrototypeOf({}) && !Object.prototype.isPrototypeOf(Object.create(null));", 0)
+	reflection_eval(rt, c"function tag(){'use strict';return Object.prototype.toString.call(arguments);}tag()==='[object Arguments]';", 0)
 	reflection_eval(rt, c"let keyEffects=0;let receiverError=0;try{Object.prototype.hasOwnProperty.call(null,{toString:function(){keyEffects++;return 'x';}});}catch(e){receiverError=e.constructor===TypeError;}receiverError && keyEffects===1;", 0)
 	reflection_eval(rt, c"let keyError=0;try{Object.prototype.propertyIsEnumerable.call(null,{toString:function(){throw 81;}});}catch(e){keyError=e;}keyError===81;", 0)
 	reflection_eval(rt, c"let enumerableEffects=0;let enumerableError=0;try{Object.prototype.propertyIsEnumerable.call(undefined,{toString:function(){enumerableEffects++;return 'x';}});}catch(e){enumerableError=e.constructor===TypeError;}enumerableError && enumerableEffects===1;", 0)

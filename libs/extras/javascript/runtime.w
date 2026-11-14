@@ -92,6 +92,16 @@ struct js_value:
 	# Integrity state (runtime_object.w): zero means extensible / writable.
 	int non_extensible
 	int length_readonly
+	# Arguments objects (runtime_arguments.w). A pending binding value keeps the
+	# caller's vector in reactions; arguments_object brands the materialized
+	# object. A mapped property names its parameter binding and environment;
+	# the binding names the object and index back.
+	int arguments_pending
+	int arguments_object
+	js_value* mapped_binding
+	js_value* mapped_environment
+	js_value* mapped_object
+	int mapped_index
 
 
 # builtin_state brand of module namespace exotic objects (modules.w). Their
@@ -155,6 +165,7 @@ struct js_runtime:
 	js_value* regexp_prototype
 	# Error, TypeError, ... prototypes in runtime_constructors.w order.
 	list[js_value*] error_prototypes
+	js_value* arguments_thrower
 	# Annex B.3.3/B.3.4 function declarations (runtime_annexb.w).
 	list[js_node*] annexb_functions
 	list[js_node*] annexb_clause_functions
@@ -234,6 +245,9 @@ js_value* js_runtime_to_primitive(js_runtime* rt, js_value* value, int hint);
 float64 js_runtime_to_number(js_runtime* rt, js_value* value);
 float64 js_runtime_string_number(js_text* text);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
+void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args, js_value* callable);
+js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
+void js_arguments_sync(js_value* binding, js_value* value);
 js_value* js_runtime_loose_equal(js_runtime* rt, js_value* a, js_value* b, int negate);
 js_value* js_numeric_value(js_runtime* rt, js_value* value);
 js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js_value* right);
@@ -395,6 +409,12 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.intrinsic_error_name = c""
 	value.non_extensible = 0
 	value.length_readonly = 0
+	value.arguments_pending = 0
+	value.arguments_object = 0
+	value.mapped_binding = 0
+	value.mapped_environment = 0
+	value.mapped_object = 0
+	value.mapped_index = 0
 	rt.heap.push(value)
 	return value
 
@@ -457,11 +477,17 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		property.variable_scope = 0
 		property.host_get = 0
 		property.host_set = 0
+		property.mapped_binding = 0
+		property.mapped_environment = 0
+		property.mapped_object = 0
+		property.mapped_index = 0
 		object.properties.push(property)
 	else if (property.immutable):
 		js_runtime_fail(rt, 2, c"assignment to constant binding")
 		return 0
 	property.value = value
+	if (property.mapped_binding != 0): property.mapped_binding.value = value
+	if (property.mapped_object != 0): js_arguments_sync(property, value)
 	return 1
 
 
@@ -536,6 +562,7 @@ js_runtime* js_runtime_new():
 	rt.binary_bytes_used = 0
 	rt.regexp_prototype = 0
 	rt.error_prototypes = new list[js_value*]
+	rt.arguments_thrower = 0
 	rt.annexb_functions = 0
 	rt.annexb_clause_functions = 0
 	rt.function_prototype = 0
@@ -683,6 +710,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.number_prototype)
 	js_runtime_mark(pending, rt.boolean_prototype)
 	js_runtime_mark(pending, rt.eval_function)
+	js_runtime_mark(pending, rt.arguments_thrower)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
 	js_runtime_mark_coroutine_roots(rt, pending)
@@ -708,6 +736,8 @@ int js_runtime_collect(js_runtime* rt):
 			js_runtime_mark(pending, value.properties[i].value)
 			js_runtime_mark(pending, value.properties[i].getter)
 			js_runtime_mark(pending, value.properties[i].setter)
+			js_runtime_mark(pending, value.properties[i].mapped_environment)
+			js_runtime_mark(pending, value.properties[i].mapped_object)
 	__w_list_free(cast(__w_list*, pending))
 	int live = 0
 	int before = rt.heap.length
@@ -1048,6 +1078,12 @@ int js_runtime_define(js_runtime* rt, js_value* object, js_text* key, js_value* 
 	if (property == 0):
 		if (js_runtime_put(rt, object, key, value) == 0): return 0
 		property = js_runtime_property(object, key)
+	if (property.mapped_binding != 0):
+		if (accessor == 0): property.mapped_binding.value = value
+		if (accessor || writable == 0):
+			property.mapped_binding = 0
+			property.mapped_environment = 0
+	if (property.mapped_object != 0 && accessor == 0): js_arguments_sync(property, value)
 	property.value = value
 	property.getter = getter
 	property.setter = setter
@@ -1424,6 +1460,7 @@ js_value* js_runtime_call_code(js_runtime* rt, js_value* callable, js_value* rec
 		env.code = callable.code
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length): js_runtime_pattern_declare(rt, parameters.children[i], env, 4, 0)
+	js_arguments_prepare(rt, env, args, callable)
 	for i in range(parameters.children.length):
 		if (rt.completion.status != 0): break
 		js_node* parameter = parameters.children[i]

@@ -432,6 +432,7 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 		if (rt.completion.status != 0): return rt.undefined_value
 		char* name = c"Object"
 		if (object.kind == 6): name = c"Array"
+		if (object.arguments_object): name = c"Arguments"
 		if (js_runtime_callable(object)): name = c"Function"
 		if (object.builtin_state == 1): name = c"String"
 		if (object.builtin_state == 3): name = c"Number"

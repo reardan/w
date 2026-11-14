@@ -17,6 +17,8 @@ struct js_node:
 	list[js_node*] children
 	int offset
 	int length
+	# Cache of runtime_arguments.w: 0 unknown, 1 no `arguments`, 2 uses it.
+	int arguments_use
 
 
 type js_node_visitor = fn(js_node*) -> void
@@ -30,6 +32,7 @@ js_node* js_node_new(char* kind, char* text):
 	node.string_units = 0
 	node.offset = -1
 	node.length = 0
+	node.arguments_use = 0
 	return node
 
 
