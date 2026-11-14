@@ -50,6 +50,9 @@ void probe_string(char* w):
 	probe_row(c"string", w, c"substring", c"'abcdef'.substring(1,3) === 'bc';")
 	probe_row(c"string", w, c"fromCharCode", c"String.fromCharCode(97,98) === 'ab';")
 	probe_row(c"string", w, c"toUpperCase", c"'abc'.toUpperCase() === 'ABC' && 'ABC'.toLowerCase() === 'abc';")
+	probe_row(c"string", w, c"trimStart/trimEnd", c"' a '.trimStart() === 'a ' && ' a '.trimEnd() === ' a' && String.prototype.trimLeft === String.prototype.trimStart;")
+	probe_row(c"string", w, c"full case mapping", c"'Stra\\u00dfe'.toUpperCase() === 'STRASSE' && '\\u0391\\u03a3'.toLowerCase() === '\\u03b1\\u03c2';")
+	probe_row(c"string", w, c"split/replace", c"'a,b'.split(',').length === 2 && 'abc'.replace('b', 'X') === 'aXc';")
 
 
 void probe_numeric(char* w):
