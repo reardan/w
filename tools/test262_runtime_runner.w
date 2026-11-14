@@ -1,14 +1,14 @@
 # wbuild: binary=test262_runtime_runner arch=x64 dep=javascript_parser
 # wbuild: target=javascript_test262 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
-# wbuild: step="bin/test262_conformance --native-only --expect PASS=8398,FAIL=0,UNSUPPORTED=1046,ERROR=0,execution_passes=6418,assertions=24243,variants=9444 --json bin/test262-conformance.json" timeout=1800000
+# wbuild: step="bin/test262_conformance --native-only --expect PASS=8397,FAIL=0,UNSUPPORTED=1047,ERROR=0,execution_passes=6417,assertions=24246,variants=9444 --json bin/test262-conformance.json" timeout=1800000
 # The full upstream-harness pass outgrew a CI shard's 30-minute job, so the
 # gate runs it as four --shard targets (wexec schedules them in parallel);
 # their pins sum to the javascript_test262_upstream totals, which stays as
 # the one-process run for local use.
 # wbuild: target=javascript_test262_upstream dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
-# wbuild: step="bin/test262_conformance --upstream-only --expect PASS=8930,FAIL=0,UNSUPPORTED=514,ERROR=0,pass_rate=94.55%,execution_passes=6950 --json bin/test262-upstream.json" timeout=3600000
+# wbuild: step="bin/test262_conformance --upstream-only --expect PASS=8931,FAIL=0,UNSUPPORTED=513,ERROR=0,pass_rate=94.57%,execution_passes=6951 --json bin/test262-upstream.json" timeout=3600000
 # wbuild: target=javascript_test262_upstream_0 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
-# wbuild: step="bin/test262_conformance --upstream-only --shard 0/4 --expect PASS=2230,FAIL=0,UNSUPPORTED=133,ERROR=0,pass_rate=94.37%,execution_passes=1727,variants=2363 --json bin/test262-upstream-0.json" timeout=1200000
+# wbuild: step="bin/test262_conformance --upstream-only --shard 0/4 --expect PASS=2231,FAIL=0,UNSUPPORTED=132,ERROR=0,pass_rate=94.41%,execution_passes=1728,variants=2363 --json bin/test262-upstream-0.json" timeout=1200000
 # wbuild: target=javascript_test262_upstream_1 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/
 # wbuild: step="bin/test262_conformance --upstream-only --shard 1/4 --expect PASS=2233,FAIL=0,UNSUPPORTED=130,ERROR=0,pass_rate=94.49%,execution_passes=1743,variants=2363 --json bin/test262-upstream-1.json" timeout=1200000
 # wbuild: target=javascript_test262_upstream_2 tag=tests dep=test262_runtime_runner dep=test262_conformance data=tests/javascript/test262/

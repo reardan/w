@@ -32787,8 +32787,7 @@
       "status": "PASS"
     },
     "upstream/test/language/statements/generators/yield-as-generator-declaration-binding-identifier.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "unsupported"
+      "status": "PASS"
     },
     "upstream/test/language/statements/generators/yield-as-binding-identifier.js#sloppy": {
       "status": "PASS"
@@ -44042,10 +44041,12 @@
       "status": "PASS"
     },
     "upstream/test/language/eval-code/indirect/non-definable-global-var.js#sloppy": {
-      "status": "PASS"
+      "status": "UNSUPPORTED",
+      "reason": "unsupported Test262 harness helper or host hook"
     },
     "upstream/test/language/eval-code/indirect/non-definable-global-var.js#strict": {
-      "status": "PASS"
+      "status": "UNSUPPORTED",
+      "reason": "unsupported Test262 harness helper or host hook"
     },
     "upstream/test/language/eval-code/indirect/non-string-object.js#sloppy": {
       "status": "PASS"

@@ -29,13 +29,13 @@ in the native profile) rather than repeating the full runs. No
 network access or third-party Python packages are needed to run it.
 
 The corpus contains 5117 upstream test files (plus module fixtures) expanded
-into 9444 variants. The native profile reports **8398 PASS, 0 FAIL, 1046
-UNSUPPORTED, 0 ERROR**; 6418 passes reach runtime execution and the rest verify
+into 9444 variants. The native profile reports **8397 PASS, 0 FAIL, 1047
+UNSUPPORTED, 0 ERROR**; 6417 passes reach runtime execution and the rest verify
 syntax and module-resolution errors. The upstream-harness profile (below)
-reports **8930 PASS, 0 FAIL, 514 UNSUPPORTED, 0 ERROR (94.55%)**, 6950 of them
+reports **8931 PASS, 0 FAIL, 513 UNSUPPORTED, 0 ERROR (94.57%)**, 6951 of them
 reaching runtime execution; the 452
 property-escape variants (below) are UNSUPPORTED there because
-`regExpUtils.js` is not pinned. The positive cases execute 24243 assertions
+`regExpUtils.js` is not pinned. The positive cases execute 24246 assertions
 across strict/sloppy variants. 182 of the files are RegExp tests (reardan/w#839): pattern early
 errors under `test/language/literals/regexp/` (escape values, class ranges,
 quantifiers, lookbehind), its `named-groups/` negatives (duplicate, dangling,
