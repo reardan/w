@@ -73,6 +73,8 @@ void probe_numeric(char* w):
 	probe_row(c"numeric", w, c"parseInt", c"parseInt('42px') === 42 && parseInt('ff', 16) === 255;")
 	probe_row(c"numeric", w, c"parseFloat", c"parseFloat('3.5e1x') === 35;")
 	probe_row(c"numeric", w, c"Number constants", c"Number.MAX_VALUE > 1e308 && Number.MIN_VALUE > 0;")
+	probe_row(c"numeric", w, c"Number.parseInt/parseFloat", c"Number.parseInt === parseInt && Number.parseFloat === parseFloat && parseInt.length === 2 && isNaN.name === 'isNaN';")
+	probe_row(c"numeric", w, c"Math.pow special cases", c"isNaN(Math.pow(1, Infinity)) && Math.pow(NaN, 0) === 1 && Math.pow(-2, 3) === -8;")
 
 
 void probe_function(char* w):
