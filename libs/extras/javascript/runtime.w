@@ -245,6 +245,9 @@ js_value* js_runtime_to_primitive(js_runtime* rt, js_value* value, int hint);
 float64 js_runtime_to_number(js_runtime* rt, js_value* value);
 float64 js_runtime_string_number(js_text* text);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
+js_value* js_runtime_remainder(js_runtime* rt, js_value* left, js_value* right);
+int js_sequence_applies(js_node* root);
+js_value* js_runtime_sequence(js_runtime* rt, js_node* root, js_value* env);
 void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args, js_value* callable);
 js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
 void js_arguments_sync(js_value* binding, js_value* value);
@@ -948,6 +951,7 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
 	if (strcmp(op, c"+") == 0): return js_runtime_add(rt, a, b)
+	if (strcmp(op, c"%") == 0): return js_runtime_remainder(rt, a, b)
 	if (js_runtime_bit_operator(op)): return js_numeric_bitwise(rt, op, a, b)
 	if (strcmp(op, c"-") == 0 || strcmp(op, c"*") == 0 || strcmp(op, c"/") == 0):
 		a = js_numeric_value(rt, a)
@@ -2047,6 +2051,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 					while (js_kind(rt.jump_target, c"label")): rt.jump_target = rt.jump_target.children[0]
 		rt.empty = 1
 		return rt.undefined_value
+	if ((js_kind(node, c"binary") || js_kind(node, c"conditional")) && js_sequence_applies(node)): return js_runtime_sequence(rt, node, env)
 	if (js_kind(node, c"if") || js_kind(node, c"conditional")):
 		# Frame phase: 0 condition, 1 consequent, 2 alternative.
 		js_value* frame = js_frame_resume(rt, node)
@@ -2259,7 +2264,9 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 						js_frame_put(valuing, object)
 						js_text_free(key)
 						return rt.undefined_value
-			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
+			# Object literals use CreateDataProperty, never an inherited setter.
+			if (rt.completion.status == 0 && kind == 5): js_runtime_define_data(rt, object, key, value, 1, 1, 1)
+			else if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
 			js_text_free(key)
 		js_text_free(resumed_key)
 		return object

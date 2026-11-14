@@ -5,3 +5,5 @@ import libs.extras.javascript.runtime_equality
 import libs.extras.javascript.runtime_numeric
 import libs.extras.javascript.runtime_addition
 import libs.extras.javascript.runtime_arguments
+import libs.extras.javascript.runtime_remainder
+import libs.extras.javascript.runtime_sequence
