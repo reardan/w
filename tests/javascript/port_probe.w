@@ -80,6 +80,10 @@ void probe_function(char* w):
 	probe_row(c"function", w, c"Error cause", c"new Error('m', {cause: 5}).cause === 5;")
 	probe_row(c"function", w, c"Error.isError", c"Error.isError(new Error('x')) && !Error.isError({});")
 	probe_row(c"function", w, c"call/apply", c"function f(a){ return this.x + a; } f.call({x:1}, 2) === 3 && f.apply({x:1}, [2]) === 3;")
+	probe_row(c"function", w, c"bound construct", c"function C(x){ this.x = x; } var B = C.bind(null, 7); var o = new B(); o.x === 7 && o instanceof B && o instanceof C && B.name === 'bound C' && B.length === 0;")
+	probe_row(c"function", w, c"Function.prototype", c"Function.prototype() === undefined && Object.getPrototypeOf(Function.prototype) === Object.prototype && Function.prototype.toString.call(Error.isError).indexOf('[native code]') > 0;")
+	probe_row(c"function", w, c"AggregateError", c"var e = new AggregateError([1, 2], 'm', {cause: 3}); e.errors.length === 2 && e.message === 'm' && e.cause === 3 && Error.isError(e) && Object.getPrototypeOf(AggregateError) === Error;")
+	probe_row(c"function", w, c"Error subtypes", c"var e = new TypeError('x'); e.name === 'TypeError' && Object.prototype.toString.call(e) === '[object Error]' && String(e) === 'TypeError: x' && Error.isError(e) && !Error.isError(Object.create(Error.prototype));")
 
 
 void probe_promise(char* w):
