@@ -297,6 +297,12 @@ js_value* js_runtime_lookup_prototype(js_runtime* rt, js_value* value);
 js_value* js_number_function(void* runtime, void* context, js_value* receiver, list[js_value*] args);
 void js_runtime_install_global(js_runtime* rt);
 void js_runtime_install_wrappers(js_runtime* rt);
+void js_install_numeric(js_runtime* rt);
+void js_install_object(js_runtime* rt);
+void js_install_function(js_runtime* rt);
+void js_install_array(js_runtime* rt);
+void js_install_string(js_runtime* rt);
+void js_install_promise(js_runtime* rt);
 js_value* js_runtime_direct_eval(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
 
 
@@ -582,6 +588,12 @@ js_runtime* js_runtime_new():
 	js_runtime_install_regexp_methods(rt)
 	js_runtime_install_coroutines(rt)
 	js_runtime_install_wrappers(rt)
+	js_install_numeric(rt)
+	js_install_object(rt)
+	js_install_function(rt)
+	js_install_array(rt)
+	js_install_string(rt)
+	js_install_promise(rt)
 	# Built-in globals are non-enumerable properties of the global object.
 	for i in range(rt.global_object.properties.length): rt.global_object.properties[i].enumerable = 0
 	return rt
@@ -2394,3 +2406,9 @@ import libs.extras.javascript.runtime_coroutines
 import libs.extras.javascript.runtime_global
 import libs.extras.javascript.runtime_wrappers
 import libs.extras.javascript.runtime_eval
+import libs.extras.javascript.runtime_port_numeric
+import libs.extras.javascript.runtime_port_object
+import libs.extras.javascript.runtime_port_function
+import libs.extras.javascript.runtime_port_array
+import libs.extras.javascript.runtime_port_string
+import libs.extras.javascript.runtime_port_promise
