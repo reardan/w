@@ -437,7 +437,7 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 		if (object.builtin_state == 3): name = c"Number"
 		if (object.builtin_state == 5): name = c"Boolean"
 		if (object.regexp != 0): name = c"RegExp"
-		if (object.intrinsic_error_name[0] != 0 || (object.prototype != 0 && rt.error_prototypes.length > 0 && object.prototype == rt.error_prototypes[0])): name = c"Error"
+		if (object.intrinsic_error_name[0] != 0): name = c"Error"
 		js_text* text = js_runtime_key(c"[object ")
 		js_text* tag_key = js_symbol_key(JS_SYMBOL_TO_STRING_TAG)
 		js_value* tag = js_runtime_member_read(rt, object, tag_key)
@@ -489,10 +489,9 @@ void js_object_method(js_runtime* rt, js_value* object, char* name, js_host_rece
 	js_object_define_named(rt, method, c"length", js_runtime_number(rt, cast(float64, length)), 0, 1)
 	js_object_define_named(rt, object, name, method, 1, 1)
 
-# toString placeholders that keep ToPrimitive results stable now that
-# Object.prototype.toString exists: Array.prototype.toString joins, and
-# Function.prototype.toString stays unsupported (source text is not retained).
-# The Array and Function clusters replace them with their own methods.
+# toString placeholder that keeps ToPrimitive results stable now that
+# Object.prototype.toString exists: Array.prototype.toString joins. The Array
+# cluster replaces it; Function.prototype.toString lives in runtime_function.w.
 js_value* js_object_intrinsic_text(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
 	if (cast(int, context) == 1 && receiver.kind == 6):
@@ -501,9 +500,6 @@ js_value* js_object_intrinsic_text(void* runtime, void* context, js_value* recei
 		js_value* value = js_runtime_string(rt, joined)
 		js_text_free(joined)
 		return value
-	if (cast(int, context) == 2 && js_runtime_callable(receiver)):
-		js_runtime_fail(rt, 6, c"function source text conversion is outside the runtime subset")
-		return rt.undefined_value
 	js_runtime_fail(rt, 2, c"toString called on an incompatible receiver")
 	return rt.undefined_value
 
@@ -539,7 +535,6 @@ void js_object_install(js_runtime* rt):
 	js_object_method(rt, prototype, c"propertyIsEnumerable", js_object_prototype_method, 4, 1)
 	js_object_method(rt, prototype, c"isPrototypeOf", js_object_prototype_method, 5, 1)
 	js_object_install_intrinsic_text(rt, rt.array_prototype, 1)
-	js_object_install_intrinsic_text(rt, rt.function_prototype, 2)
 	js_value* reflect = js_runtime_alloc(rt, 5)
 	for i in range(1, 17):
 		char* name = c"create"
