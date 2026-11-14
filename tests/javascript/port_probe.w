@@ -42,6 +42,14 @@ void probe_array(char* w):
 	probe_row(c"array", w, c"concat", c"[1].concat([2],3).length === 3;")
 	probe_row(c"array", w, c"some", c"[1,2].some(function(x){ return x > 1; });")
 	probe_row(c"array", w, c"join", c"[1,2,3].join('-') === '1-2-3';")
+	probe_row(c"array", w, c"Array constructor", c"Array(3).length === 3 && new Array(1, 2).length === 2 && Array.isArray(Array());")
+	probe_row(c"array", w, c"shift/unshift", c"var a = [1, 2]; a.unshift(0); a.shift() === 0 && a.length === 2;")
+	probe_row(c"array", w, c"map/filter", c"[1,2,3].map(function(x){ return x * 2; }).join() === '2,4,6' && [1,2,3].filter(function(x){ return x > 1; }).length === 2;")
+	probe_row(c"array", w, c"every/forEach", c"var n = 0; [1,2].forEach(function(x){ n = n + x; }); n === 3 && [1,2].every(function(x){ return x > 0; });")
+	probe_row(c"array", w, c"find/findIndex", c"[1,2,3].find(function(x){ return x > 1; }) === 2 && [1,2,3].findIndex(function(x){ return x > 1; }) === 1;")
+	probe_row(c"array", w, c"reduce", c"[1,2,3].reduce(function(p, x){ return p + x; }) === 6 && [1,2,3].reduceRight(function(p, x){ return p + x; }, 0) === 6;")
+	probe_row(c"array", w, c"slice generic", c"Array.prototype.slice.call({0:'a',1:'b',length:2}, 1)[0] === 'b';")
+	probe_row(c"array", w, c"subclass species", c"class S extends Array {} var s = new S(); s.push(1, 2); s.map(function(x){ return x; }) instanceof S;")
 
 
 void probe_string(char* w):
