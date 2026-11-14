@@ -16,7 +16,7 @@ int js_array_length_descriptor(js_runtime* rt, js_value* array, js_property_desc
 		float64 second = js_runtime_to_number(rt, desc.value)
 		if (rt.completion.status != 0): return 0
 		if (f64is_nan(second) || second != cast(float64, unsigned_length)):
-			js_bigint_error(rt, c"RangeError", c"invalid Array length")
+			js_object_range_error(rt, c"invalid Array length")
 			return 0
 		length = unsigned_length
 	if ((desc.fields & 48) != 0 || ((desc.fields & 1) != 0 && desc.enumerable) || ((desc.fields & 2) != 0 && desc.configurable)): return 0
@@ -58,3 +58,18 @@ int js_array_length_descriptor(js_runtime* rt, js_value* array, js_property_desc
 	array.array_length = final_length
 	array.length_readonly = writable == 0
 	return final_length == length
+
+# [[Set]] of "length" on an Array: refuses a read-only length before any value
+# coercion, then runs ArraySetLength as a data-only descriptor update.
+int js_array_set_length(js_runtime* rt, js_value* object, js_value* value):
+	if (object == 0 || object.owner != rt || object.kind != 6 || value == 0 || value.owner != rt): return 0
+	if (object.length_readonly): return 0
+	js_property_descriptor desc
+	desc.fields = 4
+	desc.value = value
+	desc.getter = 0
+	desc.setter = 0
+	desc.writable = 0
+	desc.enumerable = 0
+	desc.configurable = 0
+	return js_array_length_descriptor(rt, object, &desc)

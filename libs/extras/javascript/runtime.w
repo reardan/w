@@ -1193,6 +1193,7 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 	# A namespace export's [[GetOwnProperty]] throws in its TDZ.
 	if (own != 0 && own.accessor == 2): js_runtime_binding_value(rt, own)
 	if (own != 0 && (own.accessor || own.writable == 0)): return 0
+	if (own == 0 && receiver.kind == 6 && receiver.length_readonly && js_runtime_array_index(key) >= receiver.array_length): return 0
 	return js_runtime_put(rt, receiver, key, value)
 
 
@@ -1212,9 +1213,8 @@ int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_v
 		if (index >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript array length limit")
 			return 0
-		if (index >= object.array_length && object.length_readonly && js_runtime_property(object, key) == 0): return 0
 	int ok = js_runtime_write_receiver(rt, object, key, value, object)
-	if (ok && index >= object.array_length): object.array_length = index + 1
+	if (ok && index >= object.array_length && js_runtime_property(object, key) != 0): object.array_length = index + 1
 	return ok
 
 

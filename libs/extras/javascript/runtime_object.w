@@ -27,6 +27,18 @@ int js_object_ordinary(js_runtime* rt, js_value* object):
 		return 0
 	return 1
 
+# A RangeError whose prototype is the realm's RangeError.prototype.
+void js_object_range_error(js_runtime* rt, char* message):
+	js_bigint_error(rt, c"RangeError", message)
+	if (rt.completion.status == 2 && rt.completion.value != rt.undefined_value): rt.completion.value.prototype = js_runtime_error_prototype(rt, c"RangeError")
+
+# CreateDataProperty append for fresh result arrays: never consults
+# inherited setters, unlike an ordinary [[Set]].
+void js_object_array_create_append(js_runtime* rt, js_value* array, js_value* value):
+	js_text* key = js_runtime_index_key(array.array_length)
+	if (js_runtime_put(rt, array, key, value)): array.array_length = array.array_length + 1
+	js_text_free(key)
+
 js_value* js_object_argument(js_runtime* rt, list[js_value*] args, int index):
 	if (index < args.length): return args[index]
 	return rt.undefined_value
@@ -205,15 +217,20 @@ js_value* js_object_descriptor_value(js_runtime* rt, js_value* object, js_text* 
 	js_runtime_set(rt, result, c"configurable", js_runtime_boolean(rt, desc.configurable))
 	return result
 
+# Functions create F.prototype lazily; it must exist before the function can
+# become non-extensible.
+void js_object_materialize(js_runtime* rt, js_value* object):
+	if (object.kind != 7): return
+	js_text* key = js_runtime_key(c"prototype")
+	js_runtime_function_prototype(rt, object, key)
+	js_text_free(key)
+
 # OrdinaryOwnPropertyKeys with Array length after the index keys. Owned keys;
 # symbols are included only on request. Charges one step per key.
 list[js_text*] js_object_keys(js_runtime* rt, js_value* object, int symbols):
 	list[js_text*] keys = new list[js_text*]
 	if (js_object_ordinary(rt, object) == 0): return keys
-	if (object.kind == 7):
-		js_text* prototype = js_runtime_key(c"prototype")
-		js_runtime_function_prototype(rt, object, prototype)
-		js_text_free(prototype)
+	js_object_materialize(rt, object)
 	list[js_text*] own = js_runtime_own_keys(object, symbols)
 	int placed = object.kind != 6
 	for i in range(own.length):
@@ -260,12 +277,11 @@ js_value* js_object_get(js_runtime* rt, js_value* object, js_text* key, js_value
 int js_object_set(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* receiver):
 	if (receiver == object): return js_runtime_member_write(rt, object, key, value)
 	if (js_runtime_object(receiver) == 0 || receiver.owner != rt): return 0
+	if (object.kind == 6 && object.length_readonly && js_runtime_key_is(key, c"length")): return 0
 	if (receiver.kind == 6 && js_runtime_key_is(key, c"length")):
 		# The setter chain is consulted first; only an Array receiver resizes.
-		if (object.kind == 6 && object.length_readonly): return 0
 		return js_runtime_member_write(rt, receiver, key, value)
 	int index = js_runtime_array_index(key)
-	if (receiver.kind == 6 && index >= receiver.array_length && receiver.length_readonly): return 0
 	int ok = js_runtime_write_receiver(rt, object, key, value, receiver)
 	if (ok && receiver.kind == 6 && index >= receiver.array_length): receiver.array_length = index + 1
 	return ok
@@ -337,6 +353,7 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 	if (code == 11 || code == 12):
 		if (js_object_ordinary(rt, object) == 0): return rt.undefined_value
 		if (code == 12): return js_runtime_boolean(rt, object.non_extensible == 0)
+		js_object_materialize(rt, object)
 		object.non_extensible = 1
 		if (reflect): return js_runtime_boolean(rt, 1)
 		return object
@@ -350,7 +367,7 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 		for i in range(keys.length):
 			if (rt.completion.status != 0): break
 			js_property_descriptor own
-			if (code == 6 || (js_object_own_descriptor(rt, object, keys[i], &own) && own.enumerable)): js_runtime_array_append(rt, result, js_object_key_value(rt, keys[i]))
+			if (code == 6 || (js_object_own_descriptor(rt, object, keys[i], &own) && own.enumerable)): js_object_array_create_append(rt, result, js_object_key_value(rt, keys[i]))
 		js_runtime_free_keys(keys)
 		if (rt.completion.status != 0): return rt.undefined_value
 		return result

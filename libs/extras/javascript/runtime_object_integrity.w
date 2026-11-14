@@ -17,7 +17,9 @@ js_value* js_object_integrity(void* runtime, void* context, js_value* receiver, 
 	if (js_object_ordinary(rt, object) == 0): return rt.undefined_value
 	if (testing && object.non_extensible == 0): return js_runtime_boolean(rt, 0)
 	# PreventExtensions is observable before OwnPropertyKeys/resource failure.
-	if (testing == 0): object.non_extensible = 1
+	if (testing == 0):
+		js_object_materialize(rt, object)
+		object.non_extensible = 1
 	list[js_text*] keys = js_object_keys(rt, object, 1)
 	int intact = 1
 	for i in range(keys.length):

@@ -106,6 +106,7 @@ js_value* js_runtime_construct_code(js_runtime* rt, js_value* callable, list[js_
 		if (rt.completion.status != 0): return rt.undefined_value
 		object = js_runtime_alloc(rt, 5)
 		if (object == rt.undefined_value): return object
+		if (prototype == 0): prototype = rt.object_prototype
 		object.prototype = prototype
 	if (js_kind(callable.code, c"class") || js_kind(callable.code, c"class_expression")):
 		if (derived == 0): return object
@@ -279,7 +280,7 @@ js_value* js_runtime_class_named(js_runtime* rt, js_node* node, js_value* env, c
 		else: inner = js_runtime_property(scope, name)
 	js_node* definition = js_runtime_class_constructor(node)
 	if (phase == 0):
-		js_value* prototype_parent = 0
+		js_value* prototype_parent = rt.object_prototype
 		js_value* constructor_parent = rt.function_prototype
 		int derived = 0
 		if (js_kind(node.children[0], c"empty") == 0):
@@ -297,7 +298,9 @@ js_value* js_runtime_class_named(js_runtime* rt, js_node* node, js_value* env, c
 					if (rt.completion.status == 0 && parent.kind != 1):
 						if (js_runtime_is_object(parent)): prototype_parent = parent
 						else: js_runtime_fail(rt, 2, c"class heritage prototype is not an object or null")
+					else if (rt.completion.status == 0): prototype_parent = 0
 					constructor_parent = heritage
+			else if (rt.completion.status == 0): prototype_parent = 0
 		if (rt.completion.status == 0): prototype = js_runtime_alloc(rt, 5)
 		if (rt.completion.status == 0):
 			prototype.prototype = prototype_parent
