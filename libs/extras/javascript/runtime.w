@@ -89,6 +89,9 @@ struct js_value:
 	int coroutine_state
 	int coroutine_kind
 	list[js_value*] coroutine_queue
+	# Integrity state (runtime_object.w): zero means extensible / writable.
+	int non_extensible
+	int length_readonly
 
 
 # builtin_state brand of module namespace exotic objects (modules.w). Their
@@ -122,6 +125,7 @@ struct js_runtime_label:
 
 struct js_runtime:
 	js_value* array_prototype
+	js_value* object_prototype
 	js_value* string_prototype
 	list[js_value*] heap
 	list[js_value*] roots
@@ -334,6 +338,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.immutable = 0
 	value.initialized = 1
 	value.prototype = 0
+	if (kind == 5): value.prototype = rt.object_prototype
 	if (kind == 6): value.prototype = rt.array_prototype
 	if (kind == 7 || kind == 9): value.prototype = rt.function_prototype
 	value.getter = 0
@@ -378,6 +383,8 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.coroutine_kind = 0
 	value.coroutine_queue = 0
 	value.intrinsic_error_name = c""
+	value.non_extensible = 0
+	value.length_readonly = 0
 	rt.heap.push(value)
 	return value
 
@@ -421,6 +428,7 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		return 0
 	js_value* property = js_runtime_property(object, key)
 	if (property == 0):
+		if (object.non_extensible): return 0
 		if (object.properties.length >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript property limit")
 			return 0
@@ -511,6 +519,7 @@ js_runtime* js_runtime_new():
 	rt.microtasks = new list[js_value*]
 	rt.microtask_head = 0
 	rt.max_microtasks = 10000
+	rt.object_prototype = 0
 	rt.promise_prototype = 0
 	rt.promise_constructor = 0
 	rt.max_binary_bytes = 67108864
@@ -649,6 +658,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.promise_prototype)
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)
+	js_runtime_mark(pending, rt.object_prototype)
 	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.regexp_prototype)
 	js_runtime_mark(pending, rt.function_prototype)
@@ -960,6 +970,8 @@ int js_runtime_object(js_value* value):
 int js_runtime_set_prototype(js_runtime* rt, js_value* object, js_value* prototype):
 	if (js_runtime_object(object) == 0 || object.owner != rt): return 0
 	if (prototype != 0 && (js_runtime_object(prototype) == 0 || prototype.owner != rt)): return 0
+	if (object.prototype == prototype): return 1
+	if (object.non_extensible): return 0
 	js_value* current = prototype
 	int depth = 0
 	while (current != 0):
@@ -1194,11 +1206,13 @@ int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_v
 	int index = -1
 	if (object.kind == 6):
 		if (js_runtime_key_is(key, c"length")):
+			if (object.length_readonly): return 0
 			return js_runtime_array_resize(rt, object, value)
 		index = js_runtime_array_index(key)
 		if (index >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript array length limit")
 			return 0
+		if (index >= object.array_length && object.length_readonly && js_runtime_property(object, key) == 0): return 0
 	int ok = js_runtime_write_receiver(rt, object, key, value, object)
 	if (ok && index >= object.array_length): object.array_length = index + 1
 	return ok
