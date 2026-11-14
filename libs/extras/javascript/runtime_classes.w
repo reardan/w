@@ -128,7 +128,12 @@ js_value* js_runtime_construct_code(js_runtime* rt, js_value* callable, list[js_
 	return frame.this_value
 
 
+int js_function_is_bound(js_value* value);
+js_value* js_function_bound_construct(js_runtime* rt, js_value* bound, list[js_value*] args, js_value* new_target);
+
+
 js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] arguments, js_value* new_target):
+	if (js_function_is_bound(callable)): return js_function_bound_construct(rt, callable, arguments, new_target)
 	if (callable.kind == 7):
 		if (js_runtime_constructible(callable) == 0):
 			js_runtime_fail(rt, 2, c"value is not a constructor")
@@ -151,7 +156,7 @@ js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value
 		js_runtime_fail(rt, 2, c"value is not a constructor")
 		return rt.undefined_value
 	# Native constructors reached through super() take new_target.prototype.
-	if (rt.completion.status == 0 && new_target != callable && js_runtime_is_object(result)):
+	if (rt.completion.status == 0 && new_target != callable && callable.host_construct != 2 && js_runtime_is_object(result)):
 		js_value* prototype = js_runtime_prototype_object(rt, new_target)
 		if (prototype != 0): result.prototype = prototype
 	return result

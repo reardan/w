@@ -18,6 +18,7 @@ char* js_error_name(int index):
 	if (index == 4): return c"RangeError"
 	if (index == 5): return c"EvalError"
 	if (index == 6): return c"URIError"
+	if (index == 7): return c"AggregateError"
 	return 0
 
 
@@ -49,6 +50,9 @@ void js_runtime_function_prototype(js_runtime* rt, js_value* callable, js_text* 
 	js_runtime_define_data(rt, callable, key, prototype, 1, 0, 0)
 
 
+int js_function_is_bound(js_value* value);
+
+
 js_value* js_runtime_prototype_of(js_runtime* rt, js_value* callable):
 	js_text* key = js_runtime_key(c"prototype")
 	js_value* prototype = js_runtime_member_read(rt, callable, key)
@@ -60,6 +64,14 @@ js_value* js_runtime_instanceof(js_runtime* rt, js_value* value, js_value* targe
 	if (target.kind != 7 && target.kind != 9):
 		js_runtime_fail(rt, 2, c"instanceof target is not callable")
 		return rt.undefined_value
+	# A bound function delegates to its target (function cluster).
+	int hops = 0
+	while (js_function_is_bound(target)):
+		hops = hops + 1
+		if (rt.depth + hops >= rt.max_depth):
+			js_runtime_fail(rt, 5, c"JavaScript bound function depth limit")
+			return rt.undefined_value
+		target = target.function_object
 	if (js_runtime_object(value) == 0): return js_runtime_boolean(rt, 0)
 	js_value* prototype = js_runtime_prototype_of(rt, target)
 	if (rt.completion.status != 0): return rt.undefined_value
