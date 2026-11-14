@@ -76,6 +76,10 @@ int main(int argc, int argv):
 	assert_equal(0, foreign.global.non_extensible)
 	js_runtime_free(foreign)
 	__w_list_free(cast(__w_list*, arguments))
+	# CanDeclareGlobalVar: eval cannot add var/function bindings to a non-extensible global.
+	js_runtime* sealed = js_runtime_new()
+	integrity_eval(sealed, c"Object.preventExtensions(this);let thrown=0;try{(0,eval)('var freshGlobalName;');}catch(e){if(e.constructor===TypeError)thrown++;}try{(0,eval)('function freshGlobalFn(){}');}catch(e){if(e.constructor===TypeError)thrown++;}thrown===2 && !Object.hasOwn(this,'freshGlobalName');")
+	js_runtime_free(sealed)
 	js_runtime_free(rt)
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_object_integrity_test: OK")

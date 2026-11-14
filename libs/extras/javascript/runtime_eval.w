@@ -105,10 +105,31 @@ int js_runtime_eval_conflict(js_runtime* rt, js_node* tree, js_value* caller, js
 	return conflict
 
 
+# CanDeclareGlobalVar/CanDeclareGlobalFunction: a non-extensible global
+# object cannot gain new var or function bindings from eval code.
+int js_runtime_eval_global_undefinable(js_runtime* rt, js_node* tree):
+	if (rt.global_object.non_extensible == 0): return 0
+	list[js_node*] names = new list[js_node*]
+	js_runtime_eval_var_names(tree, names)
+	for js_node* statement in tree.children:
+		js_node* declared = js_runtime_declared(statement)
+		if (js_runtime_function_declaration(declared)): names.push(declared)
+	int undefinable = 0
+	for js_node* name in names:
+		js_text* key = js_runtime_key(name.text)
+		if (js_runtime_property(rt.global, key) == 0 && js_runtime_property(rt.global_object, key) == 0): undefinable = 1
+		js_text_free(key)
+	__w_list_free(cast(__w_list*, names))
+	return undefinable
+
+
 # EvalDeclarationInstantiation followed by the statement list.
 js_value* js_runtime_eval_body(js_runtime* rt, js_node* tree, js_value* scope, js_value* variables, int first):
 	if (variables != scope && js_runtime_eval_conflict(rt, tree, scope.parent, variables)):
 		js_runtime_fail(rt, 2, c"duplicate lexical binding")
+		return rt.undefined_value
+	if (variables == rt.global && js_runtime_eval_global_undefinable(rt, tree)):
+		js_runtime_fail(rt, 2, c"cannot declare global binding")
 		return rt.undefined_value
 	int saved_eval = rt.eval_code
 	rt.eval_code = 1
