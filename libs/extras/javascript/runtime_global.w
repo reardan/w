@@ -257,7 +257,7 @@ js_value* js_runtime_delete_operator(js_runtime* rt, js_node* operand, js_value*
 		return rt.undefined_value
 	js_value* object = js_runtime_eval_node(rt, operand.children[0], env)
 	if (rt.completion.status != 0): return rt.undefined_value
-	js_text* key = js_runtime_member_key(rt, operand, env)
+	js_text* key = js_runtime_member_key_of(rt, operand, env, object)
 	if (rt.completion.status != 0): return rt.undefined_value
 	if (object.kind == 0 || object.kind == 1):
 		js_text_free(key)

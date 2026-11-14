@@ -194,7 +194,7 @@ js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* sk
 		if (member):
 			js_text* key = 0
 			if (js_kind(node, c"member") || js_kind(node, c"optional_member")): key = js_runtime_key(node.children[1].text)
-			else: key = js_runtime_member_key(rt, node, env)
+			else: key = js_runtime_member_key_of(rt, node, env, base)
 			js_value* value = rt.undefined_value
 			if (rt.completion.status == 0): value = js_runtime_member_read(rt, base, key)
 			js_text_free(key)

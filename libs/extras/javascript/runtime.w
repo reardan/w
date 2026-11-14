@@ -230,6 +230,16 @@ void js_runtime_install_symbols(js_runtime* rt);
 void js_runtime_install_regexp_methods(js_runtime* rt);
 js_text* js_runtime_to_text(js_runtime* rt, js_value* value);
 js_text* js_runtime_property_key(js_runtime* rt, js_value* value);
+js_value* js_runtime_to_primitive(js_runtime* rt, js_value* value, int hint);
+float64 js_runtime_to_number(js_runtime* rt, js_value* value);
+float64 js_runtime_string_number(js_text* text);
+js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
+js_value* js_runtime_loose_equal(js_runtime* rt, js_value* a, js_value* b, int negate);
+js_value* js_numeric_value(js_runtime* rt, js_value* value);
+js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js_value* right);
+js_value* js_numeric_not(js_runtime* rt, js_value* value);
+js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b);
+float64 js_equality_radix(js_text* text, int start, int end, int width);
 js_value* js_runtime_iterator_open(js_runtime* rt, js_value* value);
 js_value* js_runtime_iterator_step(js_runtime* rt, js_value* iterator);
 void js_runtime_iterator_close(js_runtime* rt, js_value* iterator);
@@ -903,24 +913,23 @@ int js_runtime_equal(js_value* a, js_value* b):
 
 
 js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
+	if (strcmp(op, c"==") == 0): return js_runtime_loose_equal(rt, a, b, 0)
+	if (strcmp(op, c"!=") == 0): return js_runtime_loose_equal(rt, a, b, 1)
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
-	if (strcmp(op, c"+") == 0 && a.kind == 4 && b.kind == 4):
-		if (a.text.units.length > rt.max_properties - b.text.units.length):
-			js_runtime_fail(rt, 5, c"JavaScript string length limit")
-			return rt.undefined_value
-		js_text* joined = js_text_clone(a.text)
-		for i in range(b.text.units.length): joined.units.push(b.text.units[i])
-		js_value* result = js_runtime_string(rt, joined)
-		js_text_free(joined)
-		return result
+	if (strcmp(op, c"+") == 0): return js_runtime_add(rt, a, b)
+	if (js_runtime_bit_operator(op)): return js_numeric_bitwise(rt, op, a, b)
+	if (strcmp(op, c"-") == 0 || strcmp(op, c"*") == 0 || strcmp(op, c"/") == 0):
+		a = js_numeric_value(rt, a)
+		if (rt.completion.status != 0): return rt.undefined_value
+		b = js_numeric_value(rt, b)
+		if (rt.completion.status != 0): return rt.undefined_value
+	if (a.kind == 10 || b.kind == 10): return js_bigint_binary(rt, op, a, b)
 	if (a.kind != 3 || b.kind != 3):
 		js_runtime_fail(rt, 6, c"implicit coercion is outside the runtime subset")
 		return rt.undefined_value
 	float64 x = a.number
 	float64 y = b.number
-	if (js_runtime_bit_operator(op)): return js_runtime_bit_binary(rt, op, x, y)
-	if (strcmp(op, c"+") == 0): return js_runtime_number(rt, x + y)
 	if (strcmp(op, c"-") == 0): return js_runtime_number(rt, x - y)
 	if (strcmp(op, c"*") == 0): return js_runtime_number(rt, x * y)
 	if (strcmp(op, c"/") == 0): return js_runtime_number(rt, x / y)
@@ -933,6 +942,15 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	return rt.undefined_value
 
 
+# The ToPropertyKey of a computed reference, after RequireObjectCoercible of
+# its base: a null or undefined base throws before the key is converted.
+js_text* js_runtime_reference_key(js_runtime* rt, js_value* object, js_value* key_value):
+	if (object.kind == 0 || object.kind == 1):
+		js_runtime_fail(rt, 2, c"cannot read or write a property of null or undefined")
+		return 0
+	return js_runtime_property_key(rt, key_value)
+
+
 # ToPropertyKey (runtime_symbols.w): strings, symbols, and the ToString of
 # every other value, including ToPrimitive on objects.
 js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env):
@@ -940,6 +958,15 @@ js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env):
 	js_value* key = js_runtime_eval_node(rt, node.children[1], env)
 	if (rt.completion.status != 0): return 0
 	return js_runtime_property_key(rt, key)
+
+
+# As js_runtime_member_key for a base already evaluated: a null or undefined
+# base throws a TypeError before the key is converted.
+js_text* js_runtime_member_key_of(js_runtime* rt, js_node* node, js_value* env, js_value* object):
+	if (js_kind(node, c"member") || js_kind(node, c"optional_member")): return js_runtime_key(node.children[1].text)
+	js_value* key = js_runtime_eval_node(rt, node.children[1], env)
+	if (rt.completion.status != 0): return 0
+	return js_runtime_reference_key(rt, object, key)
 
 
 int js_runtime_array_index(js_text* key):
@@ -1225,6 +1252,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	js_text* key = 0
 	js_value* receiver = 0
 	js_value* old = rt.undefined_value
+	js_value* key_value = 0
 	int update = js_kind(node, c"assignment") == 0
 	int read = update || strcmp(node.text, c"=") != 0
 	int identifier = js_kind(target, c"identifier")
@@ -1268,24 +1296,38 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	else if (phase == 2):
 		object = js_frame_get(frame, 0)
 		old = js_frame_get(frame, 1)
-		key = js_text_clone(frame.text)
+		key_value = js_frame_get(frame, 2)
+		if (frame.text != 0): key = js_text_clone(frame.text)
 	else:
 		if (phase == 0):
 			object = js_runtime_eval_node(rt, target.children[0], env)
 			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
 		else: object = js_frame_get(frame, 0)
-		key = js_runtime_member_key(rt, target, env)
+		# A computed key stays an unconverted value: ToPropertyKey runs at
+		# each GetValue/PutValue, after the base is known to be coercible.
+		if (js_kind(target, c"member")): key = js_runtime_key(target.children[1].text)
+		else: key_value = js_runtime_eval_node(rt, target.children[1], env)
 		js_value* keyed = js_frame_save(rt, node, 1)
 		if (keyed != 0):
 			js_frame_put(keyed, object)
 			return rt.undefined_value
-		if (read): old = js_runtime_member_read(rt, object, key)
+		if (read && rt.completion.status == 0):
+			if (key_value != 0): key = js_runtime_reference_key(rt, object, key_value)
+			if (rt.completion.status == 0): old = js_runtime_member_read(rt, object, key)
+			if (key_value != 0):
+				js_text_free(key)
+				key = 0
 	js_value* value = rt.undefined_value
 	if (rt.completion.status == 0):
 		if (update):
 			char* op = c"+"
 			if (strcmp(node.text, c"--") == 0): op = c"-"
-			value = js_runtime_binary(rt, op, old, js_runtime_number(rt, 1.0))
+			# ToNumeric(oldValue) first: postfix yields the numeric old value.
+			old = js_numeric_value(rt, old)
+			if (rt.completion.status == 0):
+				js_value* one = js_runtime_number(rt, 1.0)
+				if (old.kind == 10): one = js_runtime_bigint_i64(rt, 1)
+				value = js_runtime_binary(rt, op, old, one)
 		else:
 			if (identifier && read == 0): value = js_runtime_named_eval(rt, node.children[1], env, target.text)
 			else: value = js_runtime_eval_node(rt, node.children[1], env)
@@ -1293,6 +1335,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 			if (assigning != 0):
 				js_frame_put(assigning, object)
 				js_frame_put(assigning, old)
+				js_frame_put(assigning, key_value)
 				js_frame_set_int(assigning, 0, unresolvable)
 				assigning.text = key
 				return rt.undefined_value
@@ -1301,6 +1344,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 				op[strlen(op) - 1] = 0
 				value = js_runtime_binary(rt, op, old, value)
 				free(op)
+	if (rt.completion.status == 0 && key_value != 0 && key == 0): key = js_runtime_reference_key(rt, object, key_value)
 	if (rt.completion.status == 0):
 		# A reference unresolvable before the right operand stays so in strict code.
 		if (identifier && unresolvable && env.strict): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
@@ -2030,16 +2074,14 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			return result
 		if (strcmp(node.text, c"!") == 0): return js_runtime_boolean(rt, js_runtime_truth(value) == 0)
 		if (strcmp(node.text, c"void") == 0): return rt.undefined_value
-		if (value.kind == 10):
-			if (strcmp(node.text, c"-") == 0): return js_bigint_negate(rt, value)
-			js_runtime_fail(rt, 2, c"BigInt cannot implicitly convert to Number")
-			return rt.undefined_value
-		if (value.kind != 3):
-			js_runtime_fail(rt, 6, c"implicit numeric conversion is outside the runtime subset")
-			return rt.undefined_value
-		if (strcmp(node.text, c"~") == 0): return js_runtime_number(rt, cast(float64, ~js_runtime_int32(value.number)))
-		if (strcmp(node.text, c"-") == 0): return js_runtime_number(rt, -value.number)
-		return value
+		if (strcmp(node.text, c"+") == 0):
+			if (value.kind == 3): return value
+			return js_runtime_number(rt, js_runtime_to_number(rt, value))
+		value = js_numeric_value(rt, value)
+		if (rt.completion.status != 0): return rt.undefined_value
+		if (strcmp(node.text, c"~") == 0): return js_numeric_not(rt, value)
+		if (value.kind == 10): return js_bigint_negate(rt, value)
+		return js_runtime_number(rt, -value.number)
 	if (js_kind(node, c"optional_chain")):
 		int skipped = 0
 		js_value* receiver = rt.undefined_value
@@ -2055,7 +2097,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		else:
 			object = js_runtime_eval_node(rt, node.children[0], env)
 			if (js_frame_save(rt, node, 0) != 0): return rt.undefined_value
-		js_text* key = js_runtime_member_key(rt, node, env)
+		js_text* key = js_runtime_member_key_of(rt, node, env, object)
 		js_value* saved = js_frame_save(rt, node, 1)
 		if (saved != 0):
 			js_frame_put(saved, object)
@@ -2210,7 +2252,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				if (phase == 0): receiver = js_runtime_eval_node(rt, target.children[0], env)
 				if (rt.completion.status == 7): phase = 0
 				else if (rt.completion.status == 0):
-					js_text* key = js_runtime_member_key(rt, target, env)
+					js_text* key = js_runtime_member_key_of(rt, target, env, receiver)
 					phase = 1
 					if (rt.completion.status == 0): callable = js_runtime_member_read(rt, receiver, key)
 					js_text_free(key)
@@ -2294,10 +2336,10 @@ int js_runtime_supported(js_node* node):
 		if (consumed != strlen(node.text)): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
 	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"~") != 0 && strcmp(node.text, c"delete") != 0): return 0
-	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
+	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"%=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"%") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0): return 0
 	int saved = js_runtime_super_allowed
 	int saved_context = js_runtime_coroutine_context
 	if (js_runtime_function_node(node) && js_runtime_arrow_node(node) == 0): js_runtime_super_allowed = 0
@@ -2420,6 +2462,7 @@ import libs.extras.javascript.runtime_coroutines
 import libs.extras.javascript.runtime_global
 import libs.extras.javascript.runtime_wrappers
 import libs.extras.javascript.runtime_eval
+import libs.extras.javascript.runtime_evaluator
 import libs.extras.javascript.runtime_port_numeric
 import libs.extras.javascript.runtime_port_object
 import libs.extras.javascript.runtime_port_function
