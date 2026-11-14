@@ -27,25 +27,12 @@ js_value* js_runtime_index_get(js_runtime* rt, js_value* object, int index):
 	js_text_free(key)
 	return value
 
+# Array [[Set]] of length: ArraySetLength with ordered, bounded truncation
+# (runtime_array_descriptor.w).
+int js_array_set_length(js_runtime* rt, js_value* object, js_value* value);
+
 int js_runtime_array_resize(js_runtime* rt, js_value* object, js_value* value):
-	if (value.kind != 3 || f64is_nan(value.number) || value.number < 0.0 || value.number > cast(float64, rt.max_properties)):
-		js_runtime_fail(rt, 2, c"invalid or excessive array length")
-		return 0
-	int length = cast(int, value.number)
-	if (cast(float64, length) != value.number):
-		js_runtime_fail(rt, 2, c"invalid array length")
-		return 0
-	int i = object.properties.length - 1
-	while (i >= 0):
-		js_value* property = object.properties[i]
-		int index = js_runtime_array_index(property.key)
-		if (index >= length):
-			if (js_runtime_delete(rt, object, property.key) == 0):
-				object.array_length = index + 1
-				return 0
-		i = i - 1
-	object.array_length = length
-	return 1
+	return js_array_set_length(rt, object, value)
 
 js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)

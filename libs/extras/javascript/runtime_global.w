@@ -182,6 +182,7 @@ int js_runtime_has_key(js_runtime* rt, js_value* object, js_text* key):
 		if (depth > rt.max_depth):
 			js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
 			return 0
+		if (js_runtime_compat_step(rt) == 0): return 0
 		if (current.kind == 7): js_runtime_function_prototype(rt, current, key)
 		int enumerable = 0
 		if (current.host_get != 0 || js_runtime_own_property(current, key, &enumerable)): return 1

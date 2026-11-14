@@ -34,6 +34,11 @@ void probe_object(char* w):
 	probe_row(c"object", w, c"JSON.parse", c"JSON.parse('{\"a\":[1,2]}').a[1] === 2;")
 	probe_row(c"object", w, c"Reflect.ownKeys", c"Reflect.ownKeys({a:1,b:2}).length === 2;")
 	probe_row(c"object", w, c"Reflect.construct", c"function F(){ this.x = 1; } Reflect.construct(F, []).x === 1;")
+	probe_row(c"object", w, c"Object.prototype", c"({a:1}).hasOwnProperty('a') && Object.getPrototypeOf({}) === Object.prototype && Object.prototype.toString.call([]) === '[object Array]';")
+	probe_row(c"object", w, c"Object.create/defineProperties", c"var o = Object.create({p:1}, {q:{value:2,enumerable:true}}); o.p === 1 && Object.keys(o).length === 1 && Object.isSealed(Object.seal(o));")
+	probe_row(c"object", w, c"Reflect statics", c"var o = {}; Reflect.defineProperty(o, 'x', {value:1}) && Reflect.has(o, 'x') && Reflect.get(o, 'x') === 1 && Reflect.set(o, 'y', 2) && Reflect.apply(Math.max, null, [1,3,2]) === 3;")
+	probe_row(c"object", w, c"Array length descriptor", c"var a = [1,2,3]; Object.defineProperty(a, 'length', {value:1, writable:false}); a.length === 1 && !Reflect.set(a, 'length', 5) && !Reflect.defineProperty(a, '1', {value:2});")
+	probe_row(c"object", w, c"JSON round trip", c"JSON.stringify(JSON.parse('{\"a\":[1,{\"b\":null}],\"c\":\"d\"}')) === '{\"a\":[1,{\"b\":null}],\"c\":\"d\"}';")
 
 
 void probe_array(char* w):
