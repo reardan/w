@@ -66,7 +66,7 @@ void test_object_prototype_and_symbols():
 	reflection_eval(rt, c"let wrapper=Object('ab');let wd=Object.getOwnPropertyDescriptor(wrapper,'0');wd.value==='a' && !wd.writable && wd.enumerable && !wd.configurable && Object.keys(wrapper).length===2 && Object.getOwnPropertyNames(wrapper).length===3 && !Reflect.defineProperty(wrapper,'0',{value:'z'}) && Reflect.defineProperty(wrapper,'0',{value:'a'});", 0)
 	reflection_eval(rt, c"Reflect.apply(function(a,b){return this.x+a+b;},{x:1},[2,3])===6 && Reflect.apply.length===3 && Object.keys.length===1 && Object.getOwnPropertyDescriptor(Object,'keys').enumerable===false;", 0)
 	reflection_eval(rt, c"let applyErrors=0;try{Reflect.apply(1,null,[]);}catch(e){if(e.constructor===TypeError)applyErrors++;}try{Reflect.apply(function(){},null,3);}catch(e){if(e.constructor===TypeError)applyErrors++;}applyErrors===2;", 0)
-	reflection_eval(rt, c"let fnKeys=Object.getOwnPropertyNames(function(){});fnKeys.indexOf===undefined && Object.isExtensible(Object.preventExtensions(function(){}))===false;", 0)
+	reflection_eval(rt, c"let fnKeys=Object.getOwnPropertyNames(function(){});Array.isArray(fnKeys) && Object.isExtensible(Object.preventExtensions(function(){}))===false;", 0)
 	js_runtime_free(rt)
 
 # Every builtin charges its traversal to the evaluation budget; exhaustion
