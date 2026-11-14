@@ -93,9 +93,10 @@ void string_coercion_getters():
 	assert_equal(2, log.length)
 	assert_equal(1, log[0])
 	assert_equal(2, log[1])
-	# Origin's Error.prototype.toString still reads message after the name getter
-	# throws, and recurses without a depth guard for e.name = e; both are Error
-	# cluster behaviour, so those two cases are not asserted here.
+	first.throws = 1
+	string_coercion_eval(rt, c"let caught='';try{String(object);}catch(e){caught=e;} caught==='N';", 0)
+	assert_equal(3, log.length)
+	assert_equal(1, log[2])
 	# A generic toString accessor is called with the original receiver.
 	first.throws = 0
 	first.result = js_runtime_get(rt, js_runtime_error_prototype(rt, c"Error"), c"toString")
@@ -107,9 +108,9 @@ void string_coercion_getters():
 	js_runtime_define_data(rt, value, key, js_runtime_string_value(rt, c"N"), 1, 0, 1)
 	js_text_free(key)
 	string_coercion_eval(rt, c"String(object)==='N: M';", 0)
-	assert_equal(4, log.length)
-	assert_equal(1, log[2])
-	assert_equal(2, log[3])
+	assert_equal(5, log.length)
+	assert_equal(1, log[3])
+	assert_equal(2, log[4])
 	js_runtime_free(rt)
 	__w_list_free(cast(__w_list*, log))
 
@@ -117,6 +118,7 @@ void string_coercion_limits():
 	js_runtime* rt = js_runtime_new()
 	rt.max_depth = 24
 	string_coercion_eval(rt, c"let o={toString:function(){return String(o);}};String(o);", 5)
+	string_coercion_eval(rt, c"let e=new Error();e.name=e;String(e);", 5)
 	string_coercion_eval(rt, c"String({})==='[object Object]';", 0)
 	string_coercion_eval(rt, c"String(/a/)==='/a/';", 0)
 	js_runtime_free(rt)

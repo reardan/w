@@ -212,22 +212,19 @@ js_value* js_runtime_to_primitive(js_runtime* rt, js_value* value, int hint):
 		if (js_runtime_object(result)): return js_runtime_type_error(rt, c"Symbol.toPrimitive returned an object")
 		return result
 	# OrdinaryToPrimitive: toString first for string hints, valueOf first
-	# otherwise. A method absent from the whole chain is a missing intrinsic.
-	int missing_text = 0
+	# otherwise. Absent or noncallable methods are skipped; exhausting both
+	# throws a TypeError (as for an Object.create(null) object).
 	for i in range(2):
 		char* name = c"valueOf"
 		if ((i == 0) == (hint == 2)): name = c"toString"
 		js_text* key = js_runtime_key(name)
-		int present = js_runtime_has_property(rt, value, key)
 		js_value* method = js_runtime_member_read(rt, value, key)
 		js_text_free(key)
 		if (rt.completion.status != 0): return rt.undefined_value
-		if (present == 0 && strcmp(name, c"toString") == 0): missing_text = 1
 		if (js_runtime_callable(method)):
 			js_value* result = js_runtime_call0(rt, method, value)
 			if (rt.completion.status != 0): return rt.undefined_value
 			if (js_runtime_object(result) == 0): return result
-	if (missing_text): return js_runtime_intrinsic_text(rt, value)
 	return js_runtime_type_error(rt, c"cannot convert object to primitive value")
 
 
@@ -297,18 +294,11 @@ float64 js_runtime_string_number(js_text* text):
 		if (raw[1] == 'o' || raw[1] == 'O'): radix = 8
 		if (raw[1] == 'b' || raw[1] == 'B'): radix = 2
 	if (radix != 0):
-		result = 0.0
-		for i in range(2, length):
-			int digit = -1
-			if (raw[i] >= '0' && raw[i] <= '9'): digit = raw[i] - '0'
-			if (raw[i] >= 'a' && raw[i] <= 'f'): digit = raw[i] - 'a' + 10
-			if (raw[i] >= 'A' && raw[i] <= 'F'): digit = raw[i] - 'A' + 10
-			if (digit < 0 || digit >= radix):
-				result = nan
-				break
-			result = result * cast(float64, radix) + cast(float64, digit)
 		free(raw)
-		return result
+		int width = 4
+		if (radix == 8): width = 3
+		if (radix == 2): width = 1
+		return js_equality_radix(text, start + 2, end, width)
 	int at = 0
 	int negative = 0
 	if (raw[0] == '+' || raw[0] == '-'):

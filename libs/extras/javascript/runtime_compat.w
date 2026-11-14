@@ -102,6 +102,7 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 		else:
 			binding.value = value
 			binding.initialized = 1
+			if (binding.mapped_object != 0): js_arguments_sync(binding, value)
 		return
 	if (js_kind(pattern, c"default_pattern")):
 		if (value.kind == 0 && js_kind(pattern.children[0], c"identifier")): value = js_runtime_named_eval(rt, pattern.children[1], env, pattern.children[0].text)
@@ -194,7 +195,7 @@ js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* sk
 		if (member):
 			js_text* key = 0
 			if (js_kind(node, c"member") || js_kind(node, c"optional_member")): key = js_runtime_key(node.children[1].text)
-			else: key = js_runtime_member_key(rt, node, env)
+			else: key = js_runtime_member_key_of(rt, node, env, base)
 			js_value* value = rt.undefined_value
 			if (rt.completion.status == 0): value = js_runtime_member_read(rt, base, key)
 			js_text_free(key)
@@ -291,4 +292,8 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding):
 		js_value* value = js_runtime_call_receiver(rt, binding.getter, rt.global_object, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return value
+	if (binding.value != 0 && binding.value.arguments_pending):
+		js_value* object = js_arguments_materialize(rt, binding.value)
+		if (rt.completion.status != 0): return rt.undefined_value
+		binding.value = object
 	return binding.value

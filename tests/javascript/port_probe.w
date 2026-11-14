@@ -100,6 +100,12 @@ void probe_evaluator(char* w):
 	probe_row(c"evaluator", w, c"+ coercion", c"1 + '2' === '12' && ({valueOf: function(){ return 3; }}) + 1 === 4;")
 	probe_row(c"evaluator", w, c"arguments", c"function f(){ return arguments.length; } f(1,2,3) === 3;")
 	probe_row(c"evaluator", w, c"mapped arguments", c"function f(a){ arguments[0] = 9; return a; } f(1) === 9;")
+	probe_row(c"evaluator", w, c"== coercion", c"1 == '1' && null == undefined && ({valueOf: function(){ return 2; }}) == 2 && !(0 == null);")
+	probe_row(c"evaluator", w, c"bitwise coercion", c"('0xff' & 15) === 15 && (undefined | 4) === 4 && ~'3' === -4;")
+	probe_row(c"evaluator", w, c"numeric literal keys", c"let o = {1.0: 'a', 0x10: 'b'}; o[1] === 'a' && o['16'] === 'b';")
+	probe_row(c"evaluator", w, c"computed key order", c"let log = ''; let k = {toString: function(){ log += 'k'; return 'x'; }}; let t = {}; t[k] = (log += 'r'); log === 'rk';")
+	probe_row(c"evaluator", w, c"prototype-less ToPrimitive", c"let c = Object.create(null); let threw = false; try { c + ''; } catch (e) { threw = e instanceof TypeError; } threw;")
+	probe_row(c"evaluator", w, c"long && chain", c"true&&true&&true&&true&&true&&true&&true&&true&&true&&true&&true&&true;")
 
 
 int main(int argc, int argv):
