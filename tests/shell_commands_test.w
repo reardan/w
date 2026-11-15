@@ -1252,10 +1252,14 @@ void test_ps_lists_this_process():
 	shell_commands_ps()
 	char* got = shtest_capture_stdout_end(cap)
 
-	# The header is the first line, PID right-aligned to the widest pid.
-	int header_end = index_of(got, c"PID PPID S COMM\x0a")
-	assert1(header_end >= 0)
-	for i in range(header_end): assert_equal(' ', got[i])
+	# The header is the first line: PID and PPID right-aligned to the
+	# widest pid and ppid, so only spaces separate them.
+	int comm_at = index_of(got, c"PPID S COMM\x0a")
+	assert1(comm_at > 0)
+	int pid_at = index_of(got, c"PID")
+	assert1(pid_at < comm_at)
+	for i in range(pid_at): assert_equal(' ', got[i])
+	for i in range(pid_at + 3, comm_at): assert_equal(' ', got[i])
 	# Our own pid must lead one line (after its alignment padding) so pid
 	# 1234 cannot be satisfied by a line for pid 91234 or by a PPID cell.
 	char* pid_str = itoa(getpid())

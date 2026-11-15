@@ -2126,6 +2126,14 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"c_import_verbose_note_test")
 		wtest_add(path, c"c_import_error_directive_test")
 		matched = 1
+	# The REPL's shell mode imports lib/shell_commands.w at run time
+	# (an eval'd "import lib.shell_commands"), which no compile-time
+	# import closure shows, so its scripted end-to-end tests are coupled
+	# by hand.
+	if (strcmp(path, c"lib/shell_commands.w") == 0):
+		wtest_add(path, c"repl_test")
+		wtest_add(path, c"repl_test_x64")
+		matched = 1
 	if (strcmp(path, c"tests/c_import_skip_note_fixture.h") == 0):
 		wtest_add(path, c"c_import_verbose_note_test")
 		matched = 1
