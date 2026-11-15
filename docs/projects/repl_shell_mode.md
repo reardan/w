@@ -540,14 +540,18 @@ first, all on `lib/stat.w`'s wrapper:
 
 - `ls -l` (alone or clustered: `-la`/`-al`) prints one metadata line
   per entry from `file_lstat_path`: mode string, nlink, owner, group,
-  size, mtime, name, and `name -> target` for a symlink. Three
-  documented output simplifications, the same spirit as wc's
-  un-padded counts: single-space columns (no width alignment and no
-  `total` header line); owner/group names via `lib/passwd.w`'s
-  /etc/passwd–/etc/group parse with a numeric-id fallback; and UTC
-  `YYYY-MM-DD HH:MM` stamps (the `--time-style=long-iso` shape —
-  this tree has no timezone database). The setuid/setgid/sticky bits
-  are not rendered into the x positions.
+  size, mtime, name, and `name -> target` for a symlink. A `total N`
+  line (1K blocks) leads, and the columns are aligned like the real
+  ls (link count and size right-aligned, owner and group
+  left-aligned); owner/group names come from `lib/passwd.w`'s
+  /etc/passwd–/etc/group parse with a numeric-id fallback; stamps are
+  UTC `YYYY-MM-DD HH:MM` (the `--time-style=long-iso` shape — this
+  tree has no timezone database). The type character covers
+  `d l c b p s` and the setuid/setgid/sticky bits show as `s/S/t/T`.
+  Bare `ls` prints in columns sized to the terminal (TIOCGWINSZ,
+  `$COLUMNS` overriding) when stdout is a tty and one name per line
+  otherwise, coreutils' `-C`/`-1` switch; a non-directory operand is
+  listed as itself.
 - `touch` (with `-c`/`--no-create`) wraps `lib/stat.w`'s `file_touch`
   (utimensat(2), creating a missing file unless `-c`); a missing path
   under `-c` is silent success, like the real tool. Real touch's
@@ -584,7 +588,7 @@ runs the real tool via §7):
 |---------|-------------|-------------|-------|
 | `ln` | `-s`/`--symbolic` (REQUIRED) | exactly `TARGET LINKPATH` | symlinks only, tool fn named `ln_s`; a bare `ln` is a hard link — no `link(2)` wrapper exists, so it stays native, as do `-f`/`-n`/`-r`/`-t`, the one-arg form and the N-targets-into-a-dir form |
 | `df` | none | zero or more paths | `statfs(2)` via `lib/stat.w`'s new `file_statfs` (per-arch parse in `lib/__arch__/*/statfs.w` — i386 `statfs64` vs the 64-bit generic layout — kept out of `syscalls.w` so nothing enters the seed closure). Output: `Filesystem 1K-blocks Used Available Mounted on` header then single-space-column lines; no args = every nonzero-block `/proc/mounts` entry; explicit paths resolve their mount by device-id match (first match wins; `-` when none). `\040`-style octal escapes in mount paths are not decoded |
-| `ps` | none | none | walks `/proc/[0-9]*/stat`; prints `PID PPID S COMM` sorted by pid, comm parsed between the first `(` and last `)`; `ps aux`/`ps -ef` fall to the real ps |
+| `ps` | none | none | walks `/proc/[0-9]*/stat`; prints `PID PPID S COMM` sorted by pid (PID/PPID right-aligned), comm parsed between the first `(` and last `)`; `ps aux`/`ps -ef` fall to the real ps |
 | `grep` | `-n`/`--line-number` | `PATTERN FILE...` | matching via `lib/regex.w`'s documented subset (literals, `.`, classes, escapes, `^`/`$`, greedy `*`/`+`/`?` — deliberately NOT BRE: `+`/`?` quantify here where real grep's basic syntax reads them literally); `path:` prefix only for multi-file calls. The translator validates the pattern with `regex_valid` (chmod's validated-spelling precedent), so anything the engine cannot run (`\d`, `a**`, `[abc`) runs the real grep; a file-less `grep PATTERN` (stdin) and every other flag (`-i`/`-v`/`-r`/...) stay native too |
 
 Stage 4 also made §5.2's rule-1 metacharacter scan **quote-aware**

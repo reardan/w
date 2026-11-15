@@ -130,6 +130,77 @@ void test_ls_all_shows_dotfiles_sorted_first():
 	free(dir)
 
 
+list[char*] shtest_names(char* a, char* b, char* c, char* d, char* e):
+	list[char*] names = new list[char*]
+	names.push(a)
+	names.push(b)
+	names.push(c)
+	names.push(d)
+	names.push(e)
+	return names
+
+
+void test_columns_fill_one_row_when_everything_fits():
+	list[char*] names = shtest_names(c"alpha", c"beta", c"gamma", c"delta", c"epsilon")
+	char* got = shell_commands_columns(names, 80)
+	assert_strings_equal(c"alpha  beta  gamma  delta  epsilon\x0a", got)
+	free(got)
+
+
+void test_columns_run_down_then_across_like_coreutils():
+	# Width 20: three columns would need 5+2+5+2+7 = 21, so two columns
+	# of three rows, sorted down each column, padded to the widest name
+	# plus two spaces, with no padding after the last column.
+	list[char*] names = shtest_names(c"alpha", c"beta", c"gamma", c"delta", c"epsilon")
+	char* got = shell_commands_columns(names, 20)
+	assert_strings_equal(c"alpha  delta\x0abeta   epsilon\x0agamma\x0a", got)
+	free(got)
+
+
+void test_columns_fall_back_to_one_per_line_when_narrow():
+	list[char*] names = shtest_names(c"alpha", c"beta", c"gamma", c"delta", c"epsilon")
+	char* got = shell_commands_columns(names, 6)
+	assert_strings_equal(c"alpha\x0abeta\x0agamma\x0adelta\x0aepsilon\x0a", got)
+	free(got)
+	list[char*] none = new list[char*]
+	char* empty = shell_commands_columns(none, 80)
+	assert_strings_equal(c"", empty)
+	free(empty)
+
+
+void test_columns_count_utf8_names_by_code_point():
+	assert_equal(1, shell_commands_display_width(c"\xc3\xa9"))
+	assert_equal(5, shell_commands_display_width(c"caf\xc3\xa9s"))
+
+
+void test_ls_file_operand_lists_itself():
+	char* f = shtest_scratch_path(c"_ls_file_operand.txt")
+	file_write_text(f, c"x")
+	char* cap = shtest_scratch_path(c"_ls_file_operand.out")
+	shtest_capture_stdout_start(cap)
+	int status = shell_commands_ls(f, false, false)
+	char* got = shtest_capture_stdout_end(cap)
+	assert_equal(0, status)
+	char* want = strjoin(f, c"\x0a")
+	assert_strings_equal(want, got)
+	free(want)
+	free(got)
+
+	shtest_capture_stdout_start(cap)
+	status = shell_commands_ls(f, false, true)
+	got = shtest_capture_stdout_end(cap)
+	assert_equal(0, status)
+	# No "total" line for a file operand, and the full path is the name.
+	assert_equal(0, index_of(got, c"-"))
+	char* tail = strjoin(f, c"\x0a")
+	assert1(index_of(got, tail) > 0)
+	free(tail)
+	free(got)
+	unlink(f)
+	free(cap)
+	free(f)
+
+
 void test_ls_missing_directory_reports_cannot_access():
 	char* missing = c"/no/such/w_shell_commands_test_dir_xyz"
 	char* out_cap = shtest_scratch_path(c"_ls_missing.out")
@@ -625,16 +696,65 @@ void test_ls_long_lists_mode_nlink_size_mtime_and_name():
 	shell_commands_ls(dir, false, true)
 	char* got = shtest_capture_stdout_end(cap)
 
-	# "-rw-r--r-- 1 <owner> <group> 3 2023-11-14 22:13 alpha.txt\n" --
+	# "total N\n-rw-r--r-- 1 <owner> <group> 3 2023-11-14 22:13 alpha.txt\n" --
 	# owner/group names depend on the environment, so assert the exact
 	# prefix and the exact suffix around them.
-	assert_equal(0, index_of(got, c"-rw-r--r-- 1 "))
+	# A "total" line in 1K blocks leads, like the real ls -l.
+	assert_equal(0, index_of(got, c"total "))
+	assert1(index_of(got, c"\x0a-rw-r--r-- 1 ") > 0)
 	assert1(index_of(got, c" 3 2023-11-14 22:13 alpha.txt\x0a") >= 0)
 	unlink(file_path)
 	free(got)
 	free(cap)
 	free(file_path)
 	free(dir)
+
+
+void test_ls_long_aligns_size_column_right():
+	char* dir = shtest_scratch_path(c"_ls_long_align_dir")
+	mkdir(dir, 493)
+	char* small = path_join(dir, c"a.txt")
+	char* large = path_join(dir, c"b.txt")
+	file_write_text(small, c"abc")
+	file_write_text(large, c"0123456789")
+	assert_equal(0, file_utimens(small, 1700000000, 1700000000, 0))
+	assert_equal(0, file_utimens(large, 1700000000, 1700000000, 0))
+
+	char* cap = shtest_scratch_path(c"_ls_long_align.out")
+	shtest_capture_stdout_start(cap)
+	shell_commands_ls(dir, false, true)
+	char* got = shtest_capture_stdout_end(cap)
+
+	# Sizes 3 and 10 share one right-aligned column two wide.
+	assert1(index_of(got, c"  3 2023-11-14 22:13 a.txt\x0a") >= 0)
+	assert1(index_of(got, c" 10 2023-11-14 22:13 b.txt\x0a") >= 0)
+	unlink(small)
+	unlink(large)
+	rmdir(dir)
+	free(got)
+	free(cap)
+	free(small)
+	free(large)
+	free(dir)
+
+
+void test_ls_mode_string_renders_types_and_special_bits():
+	char* out = cast(char*, malloc(11))
+	shell_commands_mode_string(32768 + 2541, out) /* regular 04755 */
+	assert_strings_equal(c"-rwsr-xr-x", out)
+	shell_commands_mode_string(16384 + 1023, out) /* directory 01777 */
+	assert_strings_equal(c"drwxrwxrwt", out)
+	shell_commands_mode_string(32768 + 1444, out) /* regular 02644 */
+	assert_strings_equal(c"-rw-r-Sr--", out)
+	shell_commands_mode_string(8192 + 438, out) /* char device 0666 */
+	assert_strings_equal(c"crw-rw-rw-", out)
+	shell_commands_mode_string(24576 + 432, out) /* block device 0660 */
+	assert_strings_equal(c"brw-rw----", out)
+	shell_commands_mode_string(4096 + 420, out) /* fifo 0644 */
+	assert_strings_equal(c"prw-r--r--", out)
+	shell_commands_mode_string(49152 + 493, out) /* socket 0755 */
+	assert_strings_equal(c"srwxr-xr-x", out)
+	free(out)
 
 
 void test_ls_long_marks_directories_and_symlinks():
@@ -1132,19 +1252,27 @@ void test_ps_lists_this_process():
 	shell_commands_ps()
 	char* got = shtest_capture_stdout_end(cap)
 
-	assert_equal(0, index_of(got, c"PID PPID S COMM\x0a"))
-	# Our own pid must be listed; anchor the match at a line start (the
-	# header is line one, so every pid line follows a newline) so pid
-	# 1234 cannot be satisfied by a line for pid 91234.
+	# The header is the first line, PID right-aligned to the widest pid.
+	int header_end = index_of(got, c"PID PPID S COMM\x0a")
+	assert1(header_end >= 0)
+	for i in range(header_end): assert_equal(' ', got[i])
+	# Our own pid must lead one line (after its alignment padding) so pid
+	# 1234 cannot be satisfied by a line for pid 91234 or by a PPID cell.
 	char* pid_str = itoa(getpid())
-	char* pid_line = strjoin(c"\x0a", pid_str)
-	char* pid_needle = strjoin(pid_line, c" ")
-	assert1(index_of(got, pid_needle) >= 0)
+	char* pid_needle = strjoin(pid_str, c" ")
+	int found = 0
+	int line_start = 0
+	while (got[line_start] != 0):
+		int k = line_start
+		while (got[k] == ' '): k++
+		if (starts_with(got + k, pid_needle)): found = 1
+		while ((got[line_start] != 0) && (got[line_start] != 10)): line_start++
+		if (got[line_start] == 10): line_start++
+	assert1(found)
 	# comm of this test binary (shell_commands_test / its _64 twin) --
 	# the kernel truncates comm to 15 bytes, which both spell.
 	assert1(index_of(got, c"shell_commands_") >= 0)
 	free(pid_needle)
-	free(pid_line)
 	free(pid_str)
 	free(got)
 	free(cap)

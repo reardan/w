@@ -51,6 +51,9 @@ entirely) needs an explicit path argument.
 Stage 1 scope (design doc Sec 11): pwd (zero-arg), ls (bare and -a;
 -l arrived in stage 3 below once lib/stat.w existed), cat (one or more
 paths or stdin, no flags). ls lists directories with lib/dir.w's dir_names.
+Like coreutils, bare ls prints in columns sized to the terminal when
+stdout is a tty (TIOCGWINSZ, $COLUMNS overriding; lib/termios.w) and one
+name per line otherwise, and a non-directory operand lists as itself.
 
 Stage 2 (this file's remaining functions; design doc Sec 11's "rest of
 the v1 subset"): echo, head, tail, wc, mkdir, rm, cp, mv. rm/cp's
@@ -73,15 +76,16 @@ following the symlink -- exactly the "second consumer" promotion Sec
 Stage 3 (design doc Sec 11's "stage 3+" items the lib/stat.w wrapper
 unblocked): ls's -l long listing, touch, chmod, du. Notes:
 
-  - ls -l lines are single-space separated with no column padding (the
-    same v1 output simplification as wc's counts), print owner/group
-    names via lib/passwd.w's /etc/passwd//etc/group lookup (numeric
-    fallback when an id has no entry), stamp mtime as UTC
+  - ls -l starts with a "total N" line (1K blocks, rounded up per
+    entry like the real ls) and aligns its columns the way the real ls
+    does: link count and size right-aligned, owner and group
+    left-aligned, one space between columns. Owner/group names come
+    from lib/passwd.w's /etc/passwd//etc/group lookup (numeric
+    fallback when an id has no entry), mtime is stamped as UTC
     "YYYY-MM-DD HH:MM" (real ls prints local time; this tree has no
     timezone database -- the shape matches "ls --time-style=long-iso"
-    under TZ=UTC), and print no "total" header line. The
-    setuid/setgid/sticky bits are not rendered into the x positions,
-    and non-dir/symlink specials (block/char/fifo/socket) all show '-'.
+    under TZ=UTC). The type character covers d, l, c, b, p and s, and
+    setuid/setgid/sticky show as s/S/t/T in the x positions.
   - chmod is octal modes only (shell_commands_chmod_octal) --
     repl/shell_translate.w fails symbolic modes ("u+x") closed to the
     real binary.
@@ -111,7 +115,8 @@ waited for -- grep. Notes:
     the word for a multi-TB filesystem, the same accepted limit
     lib/stat.w documents.
   - ps walks /proc/[0-9]*, reads each pid's /proc/PID/stat, and prints
-    "PID PPID S COMM" lines sorted by pid -- comm parsed between the
+    "PID PPID S COMM" lines sorted by pid, PID and PPID right-aligned
+    under their headings like the real ps -- comm parsed between the
     first '(' and the LAST ')' (comm itself may contain spaces or
     parentheses), state and ppid from the two fields after. No flags:
     "ps aux"/"ps -ef" are real-ps territory and fail closed to native.
@@ -134,6 +139,7 @@ import lib.time
 import lib.passwd
 import lib.regex
 import lib.dir
+import lib.termios
 import lib.shell_patterns
 import lib.__arch__.hardlink
 
@@ -165,18 +171,33 @@ int shell_commands_pwd():
 
 # st_mode -> the 10-character "drwxr-xr-x" display string (type char +
 # nine permission bits) written into out, which needs room for 11
-# bytes. Directories show 'd', symlinks 'l', everything else '-', and
-# the setuid/setgid/sticky bits are not rendered -- see the module
-# header.
+# bytes. The type char follows ls: 'd' directory, 'l' symlink, 'c'/'b'
+# character/block device, 'p' fifo, 's' socket, '-' everything else.
+# setuid/setgid/sticky show as s/S and t/T in the x positions, like
+# the real ls (lower case when the x bit under them is set too).
 void shell_commands_mode_string(int mode, char* out):
 	int kind = mode & FILE_S_IFMT
 	out[0] = '-'
 	if (kind == FILE_S_IFDIR): out[0] = 'd'
 	if (kind == FILE_S_IFLNK): out[0] = 'l'
+	if (kind == 8192): out[0] = 'c' /* S_IFCHR */
+	if (kind == 24576): out[0] = 'b' /* S_IFBLK */
+	if (kind == 4096): out[0] = 'p' /* S_IFIFO */
+	if (kind == 49152): out[0] = 's' /* S_IFSOCK */
 	char* letters = c"rwxrwxrwx"
 	for i in range(9):
 		if (mode & (256 >> i)): out[i + 1] = letters[i]
 		else: out[i + 1] = '-'
+	# S_ISUID 04000, S_ISGID 02000, S_ISVTX 01000 over the x of u, g, o.
+	if (mode & 2048):
+		if (out[3] == 'x'): out[3] = 's'
+		else: out[3] = 'S'
+	if (mode & 1024):
+		if (out[6] == 'x'): out[6] = 's'
+		else: out[6] = 'S'
+	if (mode & 512):
+		if (out[9] == 'x'): out[9] = 't'
+		else: out[9] = 'T'
 	out[10] = 0
 
 
@@ -189,42 +210,119 @@ char* shell_commands_id_name(char* name, int id):
 	return itoa(id)
 
 
-# One "ls -l" line for entry_name inside dir: mode string, link count,
-# owner, group, size, UTC mtime to the minute, name, and " -> target"
-# for a symlink. Format notes (single-space columns, UTC long-iso
-# stamp, name-lookup fallback) are in the module header. Returns 1
-# when the entry could not be stat'ed, else 0.
-int shell_commands_ls_long_entry(char* dir, char* entry_name):
-	char* full = path_join(dir, entry_name)
+# Display width of s in terminal columns, counted as UTF-8 code points
+# (continuation bytes 10xxxxxx take no column of their own), so names
+# with accented letters line up. Wide CJK glyphs count as one -- a
+# documented simplification.
+int shell_commands_display_width(char* s):
+	int n = 0
+	int i = 0
+	while (s[i] != 0):
+		if ((s[i] & 192) != 128): n = n + 1
+		i = i + 1
+	return n
+
+
+# Append count spaces to out.
+void shell_commands_append_spaces(string_builder* out, int count):
+	int i = 0
+	while (i < count):
+		string_append_char(out, ' ')
+		i = i + 1
+
+
+# Column j's width (its widest name) for n names laid out down `rows`
+# rows: entries j*rows .. j*rows+rows-1.
+int shell_commands_column_width(list[int] widths, int rows, int j):
+	int widest = 0
+	int i = j * rows
+	int end = i + rows
+	if (end > widths.length): end = widths.length
+	while (i < end):
+		if (widths[i] > widest): widest = widths[i]
+		i = i + 1
+	return widest
+
+
+# The number of rows coreutils' "ls -C" would use for names whose
+# display widths are `widths` on a line_width-column terminal: the
+# fewest rows (most columns) whose columns, each padded to its widest
+# name plus a two-space gap (none after the last), fit the line. A
+# name wider than the line gets one column.
+int shell_commands_column_rows(list[int] widths, int line_width):
+	int n = widths.length
+	if (n == 0): return 0
+	# Every column is at least one character plus its two-space gap.
+	int max_cols = line_width / 3
+	if (max_cols < 1): max_cols = 1
+	if (max_cols > n): max_cols = n
+	int cols = max_cols
+	while (cols > 1):
+		int rows = (n + cols - 1) / cols
+		int used_cols = (n + rows - 1) / rows
+		int total = 0
+		int j = 0
+		while (j < used_cols):
+			total = total + shell_commands_column_width(widths, rows, j)
+			if (j + 1 < used_cols): total = total + 2
+			j = j + 1
+		if (total <= line_width): return rows
+		cols = cols - 1
+	return n
+
+
+# names laid out in columns, sorted down each column then across, the
+# way coreutils' ls prints to a terminal ("ls -C"): every column but
+# the last is padded to its widest name plus two spaces, and the
+# column count is the largest that fits line_width. Pure (no I/O) so
+# it is testable at any width; returns malloc'd text, one line per row,
+# each newline-terminated ("" for no names).
+char* shell_commands_columns(list[char*] names, int line_width):
+	string_builder* out = string_new()
+	list[int] widths = new list[int]
+	for char* name in names: widths.push(shell_commands_display_width(name))
+	int n = names.length
+	int rows = shell_commands_column_rows(widths, line_width)
+	int r = 0
+	while (r < rows):
+		int j = 0
+		while ((j * rows + r) < n):
+			int k = j * rows + r
+			string_append(out, names[k])
+			if (((j + 1) * rows + r) < n):
+				int pad = shell_commands_column_width(widths, rows, j) - widths[k] + 2
+				shell_commands_append_spaces(out, pad)
+			j = j + 1
+		string_append_char(out, 10)
+		r = r + 1
+	__w_list_free(cast(__w_list*, widths))
+	char* s = out.data
+	free(out)
+	return s
+
+
+# The cells of one "ls -l" line for full_path, shown as display_name:
+# mode, link count, owner, group, size, UTC mtime to the minute, and
+# the name (with " -> target" for a symlink), each malloc'd. *blocks
+# receives the entry's allocated 512-byte blocks for the "total" line.
+# Returns 0 (after reporting) when the entry could not be stat'ed.
+list[char*] shell_commands_ls_long_cells(char* full_path, char* display_name, int* blocks):
 	file_stat st
-	int err = file_lstat_path(full, &st)
+	int err = file_lstat_path(full_path, &st)
 	if (err != 0):
 		print_error(c"ls: cannot access '")
-		print_error(full)
+		print_error(full_path)
 		println2(c"': No such file or directory")
-		free(full)
-		return 1
+		return 0
+	blocks[0] = st.blocks
+	list[char*] cells = new list[char*]
 	char* mode_str = cast(char*, malloc(11))
 	shell_commands_mode_string(st.mode, mode_str)
-	print(mode_str)
-	free(mode_str)
-	print(c" ")
-	char* nlink_str = itoa(st.nlink)
-	print(nlink_str)
-	free(nlink_str)
-	print(c" ")
-	char* owner = shell_commands_id_name(passwd_uid_name(st.uid), st.uid)
-	print(owner)
-	free(owner)
-	print(c" ")
-	char* group = shell_commands_id_name(passwd_gid_name(st.gid), st.gid)
-	print(group)
-	free(group)
-	print(c" ")
-	char* size_str = itoa(st.size)
-	print(size_str)
-	free(size_str)
-	print(c" ")
+	cells.push(mode_str)
+	cells.push(itoa(st.nlink))
+	cells.push(shell_commands_id_name(passwd_uid_name(st.uid), st.uid))
+	cells.push(shell_commands_id_name(passwd_gid_name(st.gid), st.gid))
+	cells.push(itoa(st.size))
 	# time_utc_from_unix asserts on negative stamps (i386's 32-bit
 	# time_t past 2038, or a deliberately bogus mtime); clamp to the
 	# epoch instead of taking the whole REPL session down.
@@ -232,49 +330,118 @@ int shell_commands_ls_long_entry(char* dir, char* entry_name):
 	if (mtime < 0): mtime = 0
 	char* stamp = time_format_unix_utc(mtime)
 	stamp[16] = 0 /* "YYYY-MM-DD HH:MM:SS" cut to the minute */
-	print(stamp)
-	free(stamp)
-	print(c" ")
-	print(entry_name)
+	cells.push(stamp)
+	string_builder* name = string_new()
+	string_append(name, display_name)
 	if (file_is_lnk(&st)):
 		int target_size = 4096
 		char* target = cast(char*, malloc(target_size))
-		int n = file_readlink(full, target, target_size - 1)
+		int n = file_readlink(full_path, target, target_size - 1)
 		if (n >= 0):
 			target[n] = 0
-			print(c" -> ")
-			print(target)
+			string_append(name, c" -> ")
+			string_append(name, target)
 		free(target)
-	println(c"")
-	free(full)
-	return 0
+	cells.push(name.data)
+	free(name)
+	return cells
 
 
-# List path's entries, one name per line, sorted; "." and ".." are
-# always skipped, and every other dotfile is skipped too unless all is
-# set (bare "ls" vs. "ls -a"). long_format is "-l": one metadata line
-# per entry (shell_commands_ls_long_entry above) instead of the bare
-# name, with no "total" header line -- see the module header.
+# Print "ls -l" rows with every column aligned the way the real ls
+# aligns them: link count and size right-aligned, owner and group
+# left-aligned, one space between columns, the name last and unpadded.
+# Frees the rows.
+void shell_commands_ls_print_long(list[list[char*]] rows):
+	list[int] widths = new list[int]
+	for i in range(6): widths.push(0)
+	for list[char*] row in rows:
+		for i in range(6):
+			int w = shell_commands_display_width(row[i])
+			if (w > widths[i]): widths[i] = w
+	for list[char*] row in rows:
+		string_builder* line = string_new()
+		for i in range(7):
+			if (i > 0): string_append_char(line, ' ')
+			int pad = 0
+			if (i < 6): pad = widths[i] - shell_commands_display_width(row[i])
+			# nlink (1) and size (4) are numbers: right-aligned.
+			if ((i == 1) || (i == 4)): shell_commands_append_spaces(line, pad)
+			string_append(line, row[i])
+			if ((i == 2) || (i == 3)): shell_commands_append_spaces(line, pad)
+			free(row[i])
+		println(line.data)
+		string_free(line)
+		__w_list_free(cast(__w_list*, row))
+	__w_list_free(cast(__w_list*, widths))
+	__w_list_free(cast(__w_list*, rows))
+
+
+# Print bare names: in terminal-width columns when stdout is a terminal
+# (coreutils' default), one per line when it is a pipe or a file -- the
+# same switch the real ls makes, so "ls | wc -l" still counts entries.
+void shell_commands_ls_print_names(list[char*] names):
+	if (term_isatty(1)):
+		char* text = shell_commands_columns(names, term_get_cols(1))
+		print(text)
+		free(text)
+		return
+	for char* name in names: println(name)
+
+
+# List path's entries, sorted; "." and ".." are always skipped, and
+# every other dotfile is skipped too unless all is set (bare "ls" vs.
+# "ls -a"). On a terminal the names are printed in columns sized to its
+# width (shell_commands_columns, $COLUMNS overriding), otherwise one per
+# line. long_format is "-l": a "total N" line (1K blocks), then one
+# aligned metadata line per entry. A path that is not a directory is
+# listed as itself, the way the real ls lists a file operand.
 int shell_commands_ls(char* path, bool all, bool long_format):
-	# A non-directory path fails to list, same as a missing one -- both
-	# read as "cannot access" below.
 	list[char*] listed = dir_names(path)
 	if (listed == 0):
-		print_error(c"ls: cannot access '")
-		print_error(path)
-		println2(c"': No such file or directory")
-		return 1
+		# Not a directory: a file (or symlink, device, ...) operand is
+		# shown as itself; a missing path is an error.
+		file_stat st
+		if (file_lstat_path(path, &st) != 0):
+			print_error(c"ls: cannot access '")
+			print_error(path)
+			println2(c"': No such file or directory")
+			return 1
+		if (long_format):
+			int ignored = 0
+			list[char*] cells = shell_commands_ls_long_cells(path, path, &ignored)
+			if (cells == 0): return 1
+			list[list[char*]] single = new list[list[char*]]
+			single.push(cells)
+			shell_commands_ls_print_long(single)
+		else: println(path)
+		return 0
 	list[char*] names = new list[char*]
 	for char* entry_name in listed:
 		if (all || (entry_name[0] != '.')): names.push(entry_name)
 		else: free(entry_name)
+	__w_list_free(cast(__w_list*, listed))
 	int status = 0
-	int i = 0
-	while (i < names.length):
-		if (long_format): status = status | shell_commands_ls_long_entry(path, names[i])
-		else: println(names[i])
-		free(names[i])
-		i = i + 1
+	if (long_format):
+		list[list[char*]] rows = new list[list[char*]]
+		int total_blocks = 0
+		for char* name in names:
+			char* full = path_join(path, name)
+			int blocks = 0
+			list[char*] cells = shell_commands_ls_long_cells(full, name, &blocks)
+			if (cells == 0): status = 1
+			else:
+				rows.push(cells)
+				# 512-byte blocks -> 1K units, rounded up per entry like ls.
+				total_blocks = total_blocks + (blocks + 1) / 2
+			free(full)
+		char* total = itoa(total_blocks)
+		print(c"total ")
+		println(total)
+		free(total)
+		shell_commands_ls_print_long(rows)
+	else: shell_commands_ls_print_names(names)
+	for char* name in names: free(name)
+	__w_list_free(cast(__w_list*, names))
 	return status
 
 
@@ -923,13 +1090,13 @@ void shell_commands_sort_ints(list[int] values):
 		i = i + 1
 
 
-# One "pid ppid state comm" line from /proc/PID/stat. comm sits
-# between the first '(' and the LAST ')' -- comm itself may contain
-# spaces or parentheses -- and state/ppid are the two fields after. A
-# pid that vanished between the /proc walk and this read (or a
-# malformed stat line) is skipped silently, like the real ps racing
-# process exit.
-void shell_commands_ps_line(int pid):
+# The cells of one "pid ppid state comm" ps line from /proc/PID/stat,
+# each malloc'd, or 0 to skip the pid. comm sits between the first '('
+# and the LAST ')' -- comm itself may contain spaces or parentheses --
+# and state/ppid are the two fields after. A pid that vanished between
+# the /proc walk and this read (or a malformed stat line) is skipped
+# silently, like the real ps racing process exit.
+list[char*] shell_commands_ps_cells(int pid):
 	char* pid_str = itoa(pid)
 	char* base = strjoin(c"/proc/", pid_str)
 	char* stat_path = strjoin(base, c"/stat")
@@ -938,7 +1105,7 @@ void shell_commands_ps_line(int pid):
 	free(stat_path)
 	if (text == 0):
 		free(pid_str)
-		return
+		return 0
 	int lp = -1
 	int rp = -1
 	int i = 0
@@ -949,12 +1116,12 @@ void shell_commands_ps_line(int pid):
 	if ((lp < 0) || (rp <= lp) || (text[rp + 1] != ' ')):
 		free(text)
 		free(pid_str)
-		return
+		return 0
 	char state = text[rp + 2]
 	if ((state == 0) || (state == ' ') || (state == 10)):
 		free(text)
 		free(pid_str)
-		return
+		return 0
 	int k = rp + 3
 	while (text[k] == ' '): k = k + 1
 	string_builder* ppid = string_new()
@@ -965,23 +1132,52 @@ void shell_commands_ps_line(int pid):
 		string_free(ppid)
 		free(text)
 		free(pid_str)
-		return
-	print(pid_str)
-	print(c" ")
-	print(ppid.data)
-	print(c" ")
-	put_char(state)
-	print(c" ")
+		return 0
+	list[char*] cells = new list[char*]
+	cells.push(pid_str)
+	cells.push(ppid.data)
+	free(ppid)
+	string_builder* state_text = string_new()
+	string_append_char(state_text, state)
+	cells.push(state_text.data)
+	free(state_text)
 	text[rp] = 0
-	println(text + lp + 1)
-	string_free(ppid)
+	cells.push(strclone(text + lp + 1))
 	free(text)
-	free(pid_str)
+	return cells
+
+
+# Print ps rows (header first) with PID and PPID right-aligned under
+# their headings, like the real ps, one space between columns and COMM
+# last. Frees the rows.
+void shell_commands_ps_print(list[list[char*]] rows):
+	int pid_width = 0
+	int ppid_width = 0
+	for list[char*] row in rows:
+		if (strlen(row[0]) > pid_width): pid_width = strlen(row[0])
+		if (strlen(row[1]) > ppid_width): ppid_width = strlen(row[1])
+	for list[char*] row in rows:
+		string_builder* line = string_new()
+		shell_commands_append_spaces(line, pid_width - strlen(row[0]))
+		string_append(line, row[0])
+		string_append_char(line, ' ')
+		shell_commands_append_spaces(line, ppid_width - strlen(row[1]))
+		string_append(line, row[1])
+		string_append_char(line, ' ')
+		string_append(line, row[2])
+		string_append_char(line, ' ')
+		string_append(line, row[3])
+		println(line.data)
+		string_free(line)
+		for char* cell in row: free(cell)
+		__w_list_free(cast(__w_list*, row))
+	__w_list_free(cast(__w_list*, rows))
 
 
 # Process listing, like a bare real ps but for every process: walks
-# /proc's numeric entries and prints "PID PPID S COMM" lines sorted by
-# pid. No flags -- see the module header.
+# /proc's numeric entries and prints "PID PPID S COMM" rows sorted by
+# pid, the numeric columns right-aligned. No flags -- see the module
+# header.
 int shell_commands_ps():
 	list[char*] names = dir_names(c"/proc")
 	if (names == 0):
@@ -992,11 +1188,19 @@ int shell_commands_ps():
 		if (shell_commands_all_digits(entry_name)): pids.push(atoi(entry_name))
 		free(entry_name)
 	shell_commands_sort_ints(pids)
-	println(c"PID PPID S COMM")
+	list[list[char*]] rows = new list[list[char*]]
+	list[char*] header = new list[char*]
+	header.push(strclone(c"PID"))
+	header.push(strclone(c"PPID"))
+	header.push(strclone(c"S"))
+	header.push(strclone(c"COMM"))
+	rows.push(header)
 	int i = 0
 	while (i < pids.length):
-		shell_commands_ps_line(pids[i])
+		list[char*] cells = shell_commands_ps_cells(pids[i])
+		if (cells != 0): rows.push(cells)
 		i = i + 1
+	shell_commands_ps_print(rows)
 	return 0
 
 
