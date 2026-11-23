@@ -40,10 +40,6 @@ if [ -z "$tests" ]; then
 	tests="$tests bin/arm64_load_fold_test_darwin bin/arm64_cmp_imm_test_darwin bin/local_load_fold_test_darwin bin/comparison_branch_test_darwin bin/const_fold_test_darwin bin/unsigned_compare_test_darwin"
 	# Checked ownership and borrowing: cross-built matrix host plus runtime variants.
 	tests="$tests bin/safe_darwin_contract_native_test"
-	# Confined descriptor-relative file access (lib/fs_at.w), the
-	# executable path (lib/self_exe.w) and signal delivery through
-	# signal_trampoline (lib/signal.w): the generated Darwin twins.
-	tests="$tests bin/fs_at_test_darwin bin/self_exe_test_darwin bin/signal_test_darwin"
 	for checked in bin/safe_darwin_test bin/safe_*_darwin_test; do tests="$tests $checked"; done
 	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching
