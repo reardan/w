@@ -28,3 +28,8 @@ int dir_platform_read(char* path, list[char*] names, list[int] kinds):
 	FindClose(handle)
 	free(find_data)
 	return 0
+
+
+# Descriptor listing has no FindFirstFileW counterpart here.
+int dir_platform_read_fd(int fd, list[char*] names, list[int] kinds):
+	return -1

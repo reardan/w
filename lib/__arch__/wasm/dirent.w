@@ -5,3 +5,7 @@
 
 int dir_platform_read(char* path, list[char*] names, list[int] kinds):
 	return -1
+
+
+int dir_platform_read_fd(int fd, list[char*] names, list[int] kinds):
+	return -1

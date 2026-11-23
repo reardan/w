@@ -32,13 +32,10 @@ void dir_entries_free(list[dir_entry*] entries):
 	list_free[dir_entry*](entries)
 
 
-# The entries of the directory at path, "." and ".." excluded, sorted
-# by name (the platform order depends on filesystem state), or 0 when
-# path cannot be opened as a directory. Free with dir_entries_free.
-list[dir_entry*] dir_read(char* path):
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	if (dir_platform_read(path, names, kinds) != 0):
+# The sorted entry list for a platform read's names and kinds (both
+# consumed), or 0 when status reports the read failed.
+list[dir_entry*] dir_entries_sorted(int status, list[char*] names, list[int] kinds):
+	if (status != 0):
 		for char* name in names: free(name)
 		list_free[char*](names)
 		list_free[int](kinds)
@@ -63,6 +60,26 @@ list[dir_entry*] dir_read(char* path):
 	list_free[char*](names)
 	list_free[int](kinds)
 	return entries
+
+
+# The entries of the directory at path, "." and ".." excluded, sorted
+# by name (the platform order depends on filesystem state), or 0 when
+# path cannot be opened as a directory. Free with dir_entries_free.
+list[dir_entry*] dir_read(char* path):
+	list[char*] names = new list[char*]
+	list[int] kinds = new list[int]
+	return dir_entries_sorted(dir_platform_read(path, names, kinds), names, kinds)
+
+
+# dir_read for an open directory descriptor, read from its current
+# offset (a fresh descriptor lists everything); fd stays open. Lets a
+# caller list a directory it opened with confined resolution
+# (lib/fs_at.w) without naming it by path again. 0 when fd cannot be
+# listed, and always 0 on win64 and wasm.
+list[dir_entry*] dir_read_fd(int fd):
+	list[char*] names = new list[char*]
+	list[int] kinds = new list[int]
+	return dir_entries_sorted(dir_platform_read_fd(fd, names, kinds), names, kinds)
 
 
 # Just the sorted entry names of dir_read(path) (owned), or 0.
