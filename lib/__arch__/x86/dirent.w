@@ -6,3 +6,7 @@ import lib.dir_getdents
 
 int dir_platform_read(char* path, list[char*] names, list[int] kinds):
 	return dir_getdents_read(path, names, kinds, 65536, 2 * __word_size__, 2 * __word_size__ + 2, -1)
+
+
+int dir_platform_read_fd(int fd, list[char*] names, list[int] kinds):
+	return dir_getdents_read_fd(fd, names, kinds, 2 * __word_size__, 2 * __word_size__ + 2, -1)

@@ -1874,3 +1874,14 @@ it reads like a container bug. Workaround in graphics/effects_core.w;
 recorded under "current limitations" in docs/todo.txt. Direction:
 initialize fixed-array descriptors in every `new` form (or reject the
 named form for such structs with a diagnostic).
+
+## `wfmt` cannot be built on a Mac (2026-11-23)
+
+`./wbuild wfmt` is outside the qualified native macOS suite, and compiling
+`tools/wfmt.w` by hand with `bin/wv2_darwin arm64_darwin` stops at the
+missing generated `bin/wfmt_w_parser.w`, whose generator target is also
+Linux-only. So a Mac checkout cannot run the `wfmt -w` / `--check` step the
+contribution rules ask for; `check --json` per target (whitespace and lint
+warnings) is the nearest substitute. Direction: qualify the parser
+generation and `wfmt` for `tests_darwin`, or let `wfmt` fall back to the
+compiler's own whitespace check when its parser is absent.

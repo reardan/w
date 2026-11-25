@@ -68,8 +68,11 @@ char* safe_runtime_digest(char* path):
 	# registration; no allocation, ownership or entry-point changes.
 	if (ends_with(path, c"/lib/thread.w")): return c"a73fd03167a42f4b152918f16ad7528dbcc9f0e74cd8c96dd9dd30b9884554f5"
 	# The handler thunk also passes SysV registers (wllvm); its page and
-	# allocation are unchanged.
-	if (ends_with(path, c"/lib/signal.w")): return c"62ee27c31dbac1e17f4390b2824ca74e0279d9b039af6be8b005b67b2e148d57"
+	# allocation are unchanged. arm64 Darwin (signal_install_darwin) adds a
+	# per-call sigaction freed before return and, once per thread without
+	# one, a 128 KiB mmap'd alternate stack kept for the thread's lifetime;
+	# x86/x64 paths are unchanged.
+	if (ends_with(path, c"/lib/signal.w")): return c"81701510893299bb9143691e8104c5c9867807b815e4114526c5c0ad93b95748"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"
 	if (ends_with(path, c"/lib/thread_heap.w")): return c"d41ee413ab1b5f636599f62d7526c4d4b269010073e20d58810441fa3d68b01f"
 	# st_call_site accepts LLVM's indirect call forms; reads stay bounded

@@ -1,5 +1,6 @@
 /*
-Signal handler installation for the Linux x86/x64 targets.
+Signal handler installation for the Linux x86/x64 targets and arm64
+Darwin (signal_install_darwin).
 
 i386: a non-SA_SIGINFO handler is called with the classic frame
 [restorer][sig][sigcontext...] on the stack, so &sig + 4 is the
@@ -24,6 +25,7 @@ own copy for the fault-recovery path. This file is in the seed's import
 graph: seed-era syntax only.
 */
 import lib.assert
+import lib.stack_trace
 
 
 int signal_thunk_page
@@ -94,11 +96,63 @@ int signal_altstack_install(int base, int size):
 	return sys_sigaltstack(cast(int, &ss[0]), 0)
 
 
+int signal_darwin_tramp
+
+
+# arm64 Darwin: XNU enters sa_tramp, the compiler's signal_trampoline
+# stub, which calls handler(sig, ucontext) and then sigreturns (see
+# rt_sigaction in lib/darwin/syscalls.w). Seed-built sources cannot name
+# the stub, so it is found in the image's symbol table, as lib/crash.w
+# does. Handlers run on an alternate stack: a signal frame built below sp
+# would land on the live W stack (x28). Returns 0 or -errno, or -1 with
+# the disposition unchanged when the image has no usable trampoline
+# (not Mach-O, no symbols, or arm64e, whose sa_tramp must be signed).
+int signal_install_darwin(int signum, int handler, int flags):
+	if (signal_darwin_tramp == 0):
+		char[8] pcs
+		stack_trace_collect(&pcs[0], 1)
+		if ((st_state != 1) || (st_macho == 0)): return -1
+		if ((st_int32(st_base + 8) & 255) == 2): return -1  /* CPU_SUBTYPE_ARM64E */
+		signal_darwin_tramp = st_symbol_address(c"signal_trampoline")
+		if (signal_darwin_tramp == 0): return -1
+	# Darwin stack_t is {ss_sp, ss_size, ss_flags}; SS_DISABLE (4) means
+	# this thread has no alternate stack yet.
+	int[3] current
+	current[0] = 0
+	current[1] = 0
+	current[2] = 0
+	if (sys_sigaltstack(0, cast(int, &current[0])) != 0): return -1
+	if (current[2] & 4):
+		int size = 131072
+		int base = mmap(0, size, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+		if ((base <= 0) && (base >= -4095)): return -1
+		int[3] stack
+		stack[0] = base
+		stack[1] = size
+		stack[2] = 0
+		if (sys_sigaltstack(cast(int, &stack[0]), 0) != 0): return -1
+	int* act = cast(int*, malloc(5 * __word_size__))
+	act[0] = handler
+	act[1] = flags | signal_sa_onstack
+	act[2] = signal_darwin_tramp
+	act[3] = 0
+	act[4] = 0
+	int err = rt_sigaction(signum, act, 0)
+	free(act)
+	return err
+
+
 # struct sigaction: on i386 {handler, flags, restorer, mask[2]} with
 # 4-byte fields, no SA_SIGINFO/SA_RESTORER (the vdso trampoline does
 # sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
+# arm64 takes the 2-argument handler too: see signal_install_darwin.
+# arm64 Linux has no trampoline yet, so the handler is not installed
+# there (the x86 thunks would fault on the first signal).
 void signal_install_handler(int signum, int handler, int flags):
+	if (__target_isa__ == 1):
+		signal_install_darwin(signum, handler, flags)
+		return;
 	int* act = cast(int*, malloc(5 * __word_size__))
 	if (__word_size__ == 8):
 		signal_thunk_init()
